@@ -91,6 +91,7 @@ setup()
 # Scan for lamps.
 # Making this too frequent could also result in unfavourably reactivity if a lamp
 # is on the edge and ebbing in and out of "nearness" - and scanning takes extra power!
+# Using virtual timer instead of hardware for compatibility with ESP8266.
 timer = Timer(-1)
 timer.init(period=10000, mode=Timer.PERIODIC, callback=lambda t:scan_networks())
 
