@@ -7,7 +7,7 @@ import re
 
 lamp_name   = "vamp"
 color       = {"base": '#00ff00', "shade": '#ffffff'}
-signal_threshold = -75
+signal_threshold = -90
 
 
 # todo list:
@@ -15,6 +15,7 @@ signal_threshold = -75
 # - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
 # - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include more metadata in that (colors, signal strength)
 # - Create a faster loop 250ms or so, but ensure we only scan the network every 10 seconds or so
+# - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
 
 ##########################
 
@@ -39,6 +40,12 @@ signal_threshold = -75
   # Check current color & brightness of location and do nothing if the color is not changing, otherwise assign color.
   # Do this by assigning the current color and brightness to a global variable rather than querying the led strip,
   # this will likely be called every 250ms.
+
+class Lamp:
+    def __init__(self, name, base_color, shade_color):
+        self.name = name
+        self.base_color = base_color
+        self.shade_color = shade_color
 
 def setup():
     global lamp_network, wifi_sta
@@ -70,9 +77,10 @@ def scan_networks():
         ssid = ssid.decode("utf-8")
 
         match = re.search(r'LampOS-(\w+)', ssid)
+        if match: print("Match: %s @ %d db" % (match.group(1), rssi))
 
         # cycle through all the found lamps
-        if (match and rssi >= signal_threshold) :
+        if (match and rssi >= signal_threshold):
             found_lamp = match.group(1)
             nearby_lamps.append(found_lamp)
 
