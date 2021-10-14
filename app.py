@@ -5,10 +5,42 @@ import re
 
 # Lamp Config
 
-lamp_name   = "vamp"
+lamp_name   = "gramp"
 color       = {"base": (0, 200, 0, 31), "shade": (255, 255, 255, 31)}
 
 ##########################
+
+# Adjust methods should by default adjust to the configured colors.. 
+# any behavioural changes can live within these methods
+
+# Currently things to look at: 
+#   - lamp_network['current']  - An array of the names current lamps nearby. 
+#   - lamp_network['joined']  - An array of the names of lamps that just arrived (this will only be available for one loop, when they first arrive)
+#   - lamp_network['left']  - An array of the names of lamps that just left (this will only be available for one loop, when they first leave).
+
+
+#def adjust_base():
+  
+    
+#def adjust_shade():
+
+    
+def setup():
+    global lamp_network, wifi_sta
+    
+    lamp_network = {"current": [], "joined": [], "left": []}
+    
+    # Init wifi
+    wifi_sta = network.WLAN(network.STA_IF)
+    wifi_ap  = network.WLAN(network.AP_IF)
+
+    wifi_ap.active(True)
+    wifi_sta.active(True)
+
+    ssid = "LampOS-%s" % (lamp_name)
+    wifi_ap.config(essid=ssid, password="lamprichauns")
+
+    print("%s is awake!" % (lamp_name))
 
 def scan_networks():
     networks = wifi_sta.scan()
@@ -26,12 +58,12 @@ def scan_networks():
             found_lamp = match.group(1)
             nearby_lamps.append(found_lamp)
             
-            # Track who's joined the network
+            # Track who has joined the network
             if not (found_lamp in lamp_network["current"]):
                 lamp_network["joined"].append(found_lamp)
                 print("A new lamp is nearby: %s, (%d db)" % (match.group(1), rssi))                
         
-        # Track who's left the network
+        # Track who has left the network
         for lamp in lamp_network["current"]:
             if not(lamp in nearby_lamps):
                 lamp_network["left"].append(lamp)
@@ -41,25 +73,12 @@ def scan_networks():
         lamp_network["current"] = nearby_lamps.copy()
 
 
-def adjust_colors():
-    print("doesnt work yet")
+##### 
 
-
-lamp_network = {"current": [], "joined": [], "left": []}
-
-# Init wifi
-wifi_sta = network.WLAN(network.STA_IF)
-wifi_ap  = network.WLAN(network.AP_IF)
-
-wifi_ap.active(True)
-wifi_sta.active(True)
-
-ssid = "LampOS-%s" % (lamp_name)
-wifi_ap.config(essid=ssid, password="lamprichauns")
-
-print("%s is awake!" % (lamp_name))
+setup()
 
 while True:
     scan_networks()
-    # adjust_colors()
+    # adjust_base()
+    # adjust_shade()
     sleep(0.5)
