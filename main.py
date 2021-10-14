@@ -7,39 +7,19 @@ import re
 
 lamp_name   = "vamp"
 color       = {"base": '#00ff00', "shade": '#ffffff'}
-signal_threshold = -90
 
+# Signal strength threshold - weaker signal than this doesn't count as "close".
+signal_threshold = -90
 
 # todo list:
 # - When using RGBwW strips, automatically use the white when the color is set to #ffffff
 # - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
-# - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include more metadata in that (colors, signal strength)
+# - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include default colors in that
 # - Create a faster loop 250ms or so, but ensure we only scan the network every 10 seconds or so
 # - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
 
 ##########################
 
-# Adjust methods should by default adjust to the configured colors.
-# Behavioural changes can live within these methods.
-
-# Currently things to look at:
-#   - lamp_network['current']  - An array of the names current lamps nearby.
-#   - lamp_network['joined']  - An array of the names of lamps that just arrived (this will only be available for one loop, when they first arrive)
-#   - lamp_network['left']  - An array of the names of lamps that just left (this will only be available for one loop, when they first leave).
-
-
-#def adjust_base():
-  # stuff to determine color...
-  # set_color('base', color, brightness)
-
-#def adjust_shade():
-  # stuff to determine color...
-  # set_color('base', color, brightness)
-
-#def set_color(location, color)
-  # Check current color & brightness of location and do nothing if the color is not changing, otherwise assign color.
-  # Do this by assigning the current color and brightness to a global variable rather than querying the led strip,
-  # this will likely be called every 250ms.
 
 class Lamp:
     def __init__(self, name, base_color, shade_color):
@@ -99,12 +79,16 @@ def scan_networks():
     # Set current list
     lamp_network["current"] = nearby_lamps.copy()
 
+
+#def adjust_colors
+  # Call callbacks base_color(), shade_color() to determine color, use config if callbacks are not defined.
+  # if new color is not the same as last set color, set the new colors
+
 #####
 
 setup()
 
 while True:
     scan_networks()
-    # adjust_base()
-    # adjust_shade()
+    # adjust_colors()
     sleep(2)
