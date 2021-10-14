@@ -1,11 +1,12 @@
 from machine import Pin
+from machine import Timer
 from time import sleep
 import network
 import re
 
 # Lamp Config
 
-lamp_name   = "vamp"
+lamp_name   = "womp"
 color       = {"base": '#00ff00', "shade": '#ffffff'}
 
 # Signal strength threshold - weaker signal than this doesn't count as "close".
@@ -15,7 +16,6 @@ signal_threshold = -90
 # - When using RGBwW strips, automatically use the white when the color is set to #ffffff
 # - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
 # - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include default colors in that
-# - Create a faster loop 250ms or so, but ensure we only scan the network every 10 seconds or so
 # - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
 
 ##########################
@@ -88,7 +88,13 @@ def scan_networks():
 
 setup()
 
+# Scan for lamps.
+# Making this too frequent could also result in unfavourably reactivity if a lamp
+# is on the edge and ebbing in and out of "nearness" - and scanning takes extra power!
+timer = Timer(-1)
+timer.init(period=10000, mode=Timer.PERIODIC, callback=lambda t:scan_networks())
+
+# Loop pretty quickly, so we can do sub-second color changes if we want.
 while True:
-    scan_networks()
     # adjust_colors()
-    sleep(2)
+    sleep(0.25)
