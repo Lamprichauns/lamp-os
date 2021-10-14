@@ -53,7 +53,7 @@ def scan_networks():
 
     print("\nScanning for lamps..")
 
-    for ssid, bssid, channel, rssi, authmode, hidden in sorted(networks, key=lambda x: x[3], reverse=True):
+    for ssid, bssid, channel, rssi, authmode, hidden in networks:
         ssid = ssid.decode("utf-8")
 
         match = re.search(r'LampOS-(\w+)', ssid)
