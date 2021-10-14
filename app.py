@@ -6,12 +6,19 @@ import re
 # Lamp Config
 
 lamp_name   = "gramp"
-color       = {"base": (0, 200, 0, 31), "shade": (255, 255, 255, 31)}
+color       = {"base": '#00ff00', "shade": '#ffffff'}
+
+
+# todo list: 
+# - When using RGBwW strips, automatically use the white when the color is set to #ffffff
+# - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
+# - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include more metadata in that (colors, signal strength)
+# - Create a faster loop 250ms or so, but ensure we only scan the network every 10 seconds or so
 
 ##########################
 
-# Adjust methods should by default adjust to the configured colors.. 
-# any behavioural changes can live within these methods
+# Adjust methods should by default adjust to the configured colors. 
+# Behavioural changes can live within these methods.
 
 # Currently things to look at: 
 #   - lamp_network['current']  - An array of the names current lamps nearby. 
@@ -20,10 +27,17 @@ color       = {"base": (0, 200, 0, 31), "shade": (255, 255, 255, 31)}
 
 
 #def adjust_base():
-  
+  # stuff to determine color...
+  # set_color('base', color, brightness)
     
 #def adjust_shade():
+  # stuff to determine color...
+  # set_color('base', color, brightness)
 
+#def set_color(location, color)
+  # Check current color & brightness of location and do nothing if the color is not changing, otherwise assign color.
+  # Do this by assigning the current color and brightness to a global variable rather than querying the led strip, 
+  # this will likely be called every 250ms.
     
 def setup():
     global lamp_network, wifi_sta
