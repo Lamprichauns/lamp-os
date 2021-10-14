@@ -51,6 +51,7 @@ def setup():
     wifi_ap.active(True)
     wifi_sta.active(True)
 
+    # TODO: make this "LampOS-lampname-basecolor-shadecolor"
     ssid = "LampOS-%s" % (lamp_name)
     wifi_ap.config(essid=ssid, password="lamprichauns")
 
