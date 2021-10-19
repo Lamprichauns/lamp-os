@@ -5,16 +5,7 @@ import network
 import re
 
 # Signal strength threshold - weaker signal than this doesn't count as "close".
-signal_threshold = -90
-
-# todo list:
-# - When using RGBwW strips, automatically use the white when the color is set to #ffffff
-# - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
-# - make a lamp object for the lamp_network arrays instead of the strings of lamp names, so we can include default colors in that
-# - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
-
-##########################
-
+signal_threshold = -70
 
 class Lamp:
     def __init__(self, name, base_color, shade_color):
@@ -81,14 +72,15 @@ def setup():
     # TODO: make this "LampOS-lampname-basecolor-shadecolor"
     ssid = "LampOS-%s" % (config.name)
     wifi_ap.config(essid=ssid, password="lamprichauns")
-
-    print("%s is awake!" % (config.name))
+   
 
 # Scan for lamps.
 # Making this too frequent could also result in unfavourably reactivity if a lamp
 # is on the edge and ebbing in and out of "nearness" - and scanning takes extra power!
 # Using virtual timer instead of hardware for compatibility with ESP8266.
 def run():
+    print("%s is awake!" % (config.name))
+
     timer = Timer(-1)
     timer.init(period=10000, mode=Timer.PERIODIC, callback=lambda t:scan_networks())
 
@@ -96,7 +88,3 @@ def run():
     while True:
         # adjust_colors()
         sleep(0.25)
-
-
-setup()
-run()
