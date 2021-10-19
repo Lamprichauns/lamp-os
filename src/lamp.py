@@ -1,11 +1,14 @@
 from machine import Pin
 from machine import Timer
+from machine import Pin
 from time import sleep
 import network
 import re
+import _thread
 
 # Signal strength threshold - weaker signal than this doesn't count as "close".
-signal_threshold = -70
+signal_threshold    = -70
+lamp_scan_interval  = 10000
 
 class Lamp:
     def __init__(self, name, base_color, shade_color):
@@ -81,10 +84,13 @@ def setup():
 def run():
     print("%s is awake!" % (config.name))
 
+    led = Pin(5,Pin.OUT)
+
     timer = Timer(-1)
-    timer.init(period=10000, mode=Timer.PERIODIC, callback=lambda t:scan_networks())
+    timer.init(period=5000, mode=Timer.PERIODIC, callback=lambda t:_thread.start_new_thread(scan_networks,()))
 
     # Loop pretty quickly, so we can do sub-second color changes if we want.
     while True:
+        led.value(not led.value())
         # adjust_colors()
         sleep(0.25)

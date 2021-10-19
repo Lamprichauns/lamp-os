@@ -3,7 +3,7 @@
 ## Dev setup (for vscode)
 
 - Install micropy-cli
-- Install PyMakr extension in VSCode
+- Install PyMakr extension in VSCode (use 1.1.13 - 1.1.14 is broken.)
 - That's it! Then you can run the code on the arduino from within VScode, as well as REPL selected code, etc.
 
 
