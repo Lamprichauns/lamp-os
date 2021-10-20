@@ -30,3 +30,4 @@ For now to install, modify main.py to point to the right lamp and upload everyth
     - uploads boot.py and lamp.py
     - uploads lamps/name.py as `main.py`, but with a new line containing `lamp.run()` to the end of the file
     - Leave the main.py as is though, for development/testing different lamps
+    - add debug disable to boot.py

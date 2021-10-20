@@ -2,9 +2,8 @@ from machine import Pin
 from machine import Timer
 from machine import Pin
 from time import sleep
-import network
-import re
-import _thread
+import network, re, _thread
+import binascii, hashlib
 
 # Signal strength threshold - weaker signal than this doesn't count as "close".
 signal_threshold    = -70
@@ -15,6 +14,13 @@ class Lamp:
         self.name = name
         self.base_color = base_color
         self.shade_color = shade_color
+
+        attrs = f"{self.name}-{self.base_color}-{self.shade_color}"
+        sha = hashlib.sha1(attrs)
+        self.lamp_id = binascii.hexlify(sha.digest()).decode()
+
+    def __eq__(self,other):
+        return isinstance(other, Lamp) and self.lamp_id == other.lamp_id
 
 # Scan networks and find lamps, and track lamps who
 def scan_networks():
@@ -28,25 +34,26 @@ def scan_networks():
     for ssid, bssid, channel, rssi, authmode, hidden in networks:
         ssid = ssid.decode("utf-8")
 
-        match = re.search(r'LampOS-(\w+)', ssid)
-        if match: print("Match: %s @ %d db" % (match.group(1), rssi))
+        match = re.search(r'LampOS-(\w+)-(\#\w+)-(\#\w+)', ssid)
+         # Old debug, delete me soon.
+        # if match: print("Match: %s (%s / %s)@ %d db" % (match.group(1), match.group(2), match.group(3), rssi))
 
         # cycle through all the found lamps
         if (match and rssi >= signal_threshold):
-            found_lamp = match.group(1)
+            found_lamp = Lamp(match.group(1), match.group(2), match.group(3))
             nearby_lamps.append(found_lamp)
 
             # Track who has joined the network
             if not (found_lamp in lamp_network["current"]):
                 lamp_network["joined"].append(found_lamp)
-                print("A new lamp is nearby: %s, (%d db)" % (match.group(1), rssi))
+                print("A new lamp is nearby: %s[%s] (%d db)" % (found_lamp.name, found_lamp.lamp_id, rssi))
 
 
     # Track who has left the network
     for lamp in lamp_network["current"]:
         if not(lamp in nearby_lamps):
             lamp_network["left"].append(lamp)
-            print("A lamp has left: %s" % (lamp))
+            print("A lamp has left: %s[%s]" % (lamp.name, lamp.lamp_id))
 
     # Set current list
     lamp_network["current"] = nearby_lamps.copy()
@@ -67,21 +74,21 @@ def setup():
 
     # Init wifi
     wifi_sta = network.WLAN(network.STA_IF)
-    wifi_ap  = network.WLAN(network.AP_IF)
-
-    wifi_ap.active(True)
     wifi_sta.active(True)
 
-    # TODO: make this "LampOS-lampname-basecolor-shadecolor"
-    ssid = "LampOS-%s" % (config.name)
+def broadcast():
+    wifi_ap  = network.WLAN(network.AP_IF)
+    # SSID is "LampOS-lampname-basecolor-shadecolor"
+    ssid = "LampOS-%s-%s-%s" % (config.name, config.base_color, config.shade_color)
+    wifi_ap.active(True)
     wifi_ap.config(essid=ssid, password="lamprichauns")
-   
 
 # Scan for lamps.
 # Making this too frequent could also result in unfavourably reactivity if a lamp
 # is on the edge and ebbing in and out of "nearness" - and scanning takes extra power!
 # Using virtual timer instead of hardware for compatibility with ESP8266.
 def run():
+    broadcast()
     print("%s is awake!" % (config.name))
 
     led = Pin(5,Pin.OUT)
