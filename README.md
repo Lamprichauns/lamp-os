@@ -1,5 +1,11 @@
 # LampOS 
 
+## Hardware
+
+It's recommended that this run on an ESP32 - you need to first flash it with a micropython firmware: https://docs.micropython.org/en/latest/esp32/tutorial/intro.html
+
+It should also work on anything else that supports micropython and has wifi, and it's been tested on ESP8266.
+
 ## Dev setup (for vscode)
 
 - Install micropy-cli
@@ -19,7 +25,7 @@ For now to install, modify main.py to point to the right lamp and upload everyth
  - include the configured base and shade colors in the SSID so other lamps can know what colors their friends are
  - make a lampnpm install serial port object for the lamp_network arrays instead of the strings of lamp names, so we can include default colors in that
  - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
- - To avoid uploading extra files and keep things simpler, create a build script that: 
+ - To avoid uploading extra files and keep things simpler, create a build script that using `ampy` to :
     - takes the name of the lamp
     - uploads boot.py and lamp.py
     - uploads lamps/name.py as `main.py`, but with a new line containing `lamp.run()` to the end of the file

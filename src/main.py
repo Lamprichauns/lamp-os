@@ -2,7 +2,7 @@
 import lamp
 
 # Change this to point to whichever lamp we are uploading to
-import lamps.gramp
+import lamps.lamp
 
 # Turn on the lamp
 lamp.run()
