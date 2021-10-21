@@ -4,7 +4,8 @@
 
 It's recommended that this run on an ESP32 - you need to first flash it with a micropython firmware: https://docs.micropython.org/en/latest/esp32/tutorial/intro.html
 
-It should also work on anything else that supports micropython and has wifi, and it's been tested on ESP8266.
+It should also work on anything else that supports micropython and has wifi, and it's been tested on ESP8266. 
+To use the ESP8266, add `Silicon Labs` to the list of `autoconnect_comport_manufacturers` in the global PyMakr config.
 
 ## Dev setup (for vscode)
 
