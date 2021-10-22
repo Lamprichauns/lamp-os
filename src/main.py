@@ -1,8 +1,4 @@
-# Example Lamp. This can be used as a basis for creating new lamps in ./lamps
-import lamp
+# This is just for development. Flashing will use the lamps/name.py as main.py.
+# Change this to whichever you are testing/developing
 
-# Change this to point to whichever lamp we are uploading to
-import lamps.gramp
-
-# Turn on the lamp
-lamp.run()
+import lamps.lamp
