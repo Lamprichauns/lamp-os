@@ -9,7 +9,8 @@ You need to first flash the arduino with micropython firmware (for ESP32: https:
 
 ## Dev setup (for vscode)
 
-- Install micropy-cli
+- pip install -r requirements.txt
+- If using asdf, run `asdf reshim`
 - Install PyMakr extension in VSCode (use 1.1.13 - 1.1.14 is broken.)
 - For ESP32 you don't need to do anything else, for the ESP8266 add `Silicon Labs` to the list of `autoconnect_comport_manufacturers` in the global PyMakr config.
 - Now you can run the code on the arduino from within VScode, as well as REPL selected code, etc.
