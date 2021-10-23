@@ -15,6 +15,13 @@ You need to first flash the arduino with micropython firmware (for ESP32: https:
 - For ESP32 you don't need to do anything else, for the ESP8266 add `Silicon Labs` to the list of `autoconnect_comport_manufacturers` in the global PyMakr config.
 - Now you can run the code on the arduino from within VScode, as well as REPL selected code, etc.
 
+
+## Notes
+
+ - To support slower boards like the ESP8266 we need to avoid some things: 
+    - dynamic string interpolation (f"foo {bar}")
+    - threads (uasync works)
+
 ## Lamp creation
 
 To create a lamp, create `src/lamps/lampname.py` using `src/main.py` as a starting point.
