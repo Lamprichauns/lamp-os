@@ -2,7 +2,7 @@ from machine import Pin
 from machine import Timer
 from machine import Pin
 from time import sleep
-import network, re, _thread
+import network, re, uasyncio
 import binascii, hashlib
 
 # Signal strength threshold - weaker signal than this doesn't count as "close".
@@ -15,7 +15,7 @@ class Lamp:
         self.base_color = base_color
         self.shade_color = shade_color
 
-        attrs = f"{self.name}-{self.base_color}-{self.shade_color}"
+        attrs = "{name}-{base_color}-{shade_color}".format(name = self.name, base_color = self.base_color, shade_color = self.shade_color)
         sha = hashlib.sha1(attrs)
         self.lamp_id = binascii.hexlify(sha.digest()).decode()
 
@@ -23,7 +23,7 @@ class Lamp:
         return isinstance(other, Lamp) and self.lamp_id == other.lamp_id
 
 # Scan networks and find lamps, and track lamps who
-def scan_networks():
+async def scan_networks():
     networks = wifi_sta.scan()
     nearby_lamps = []
     lamp_network["joined"].clear()
@@ -94,7 +94,7 @@ def run():
     led = Pin(5,Pin.OUT)
 
     timer = Timer(-1)
-    timer.init(period=5000, mode=Timer.PERIODIC, callback=lambda t:_thread.start_new_thread(scan_networks,()))
+    timer.init(period=5000, mode=Timer.PERIODIC, callback=lambda t:uasyncio.run(scan_networks()))
 
     # Loop pretty quickly, so we can do sub-second color changes if we want.
     while True:
