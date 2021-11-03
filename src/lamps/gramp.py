@@ -1,9 +1,11 @@
-import lamp
+from lamp import Lamp
 
-# Lamp configuration
-lamp.config.name = "gramp"
-lamp.config.base_color = "#00ff00"
-lamp.config.shade_color = "#ffffff"
+lamp = Lamp("gramp", "#00ff00", "#ffffff")
 
-# Turn on the lamp
-lamp.run()
+def draw_shade():
+    print("drawing shade color")
+
+
+#lamp.register_callback(lambda: draw_shade())
+
+lamp.wake()
