@@ -34,13 +34,6 @@ To flash a lamp to an arduino, run: `invoke flash [port] [lampname]`
 
 eg. `invoke flash /dev/tty.usbserial-D3071K6D gramp` 
 
-# Todo list:
- - When using RGBwW strips, automatically use the white when the color is set to #ffffff
- - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
-
-
-
-
 
  Things to interrogate about other Lamps:
 
