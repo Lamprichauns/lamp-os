@@ -20,8 +20,8 @@ import lamps.gramp
 #   from lamp import Lamp
 #   lamp = Lamp("gramp", "#00ff00", "#ffffff")
 #
-#   def update_lamp():
+#   def update_lamp(lamp):
 #       print("drawing shade color")
 #
-#   lamp.register_callback(lambda: update_lamp())
+#   lamp.register_callback(lambda: update_lamp(lamp))
 #   lamp.wake()

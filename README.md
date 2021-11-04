@@ -38,3 +38,25 @@ eg. `invoke flash /dev/tty.usbserial-D3071K6D gramp`
 # Todo list:
  - When using RGBwW strips, automatically use the white when the color is set to #ffffff
  - Create hooks from color setting and move this all to base.py, so we can have [lampname].py that just has config and callbacks to handle behaviour for individual lamps
+
+
+
+
+
+ Things to interrogate about other Lamps:
+
+   lamp.lamp_network["current"]     : current lamps nearby
+   lamp.lamp_network["joined"]      : lamps that just got here (since the last scan)
+   lamp.lamp_network["left"]        : lamps that just left (since the last scan)
+
+ These are arrays of Lamp objects, which implement:
+
+   lamp.name         : The name of the lamp
+   lamp.base_color   : the original/config'd base color of the lamp
+   lamp.shade_color  : the original/config'd shade color of the lamp
+
+ Other interesting things:
+
+   shade_led_config["leds"]  : number of leds in the shade channel
+   base_led_config["leds"]   : number of leds in the base channel
+   lamp                      : The current lamp's Lamp object.
