@@ -1,9 +1,15 @@
-import lamp
+from lamp import Lamp
 
-# Lamp configuration
-lamp.config.name = "gramp"
-lamp.config.base_color = "#00ff00"
-lamp.config.shade_color = "#ffffff"
+lamp = Lamp("gramp", "#884400", "#00ffff")
 
-# Turn on the lamp
-lamp.run()
+def draw_shade(lamp):
+    # This is just for testing, but makes gramp steal and invert the most recently arrived other lamps colors
+    if lamp.lamp_network["current"]:
+        lamp.adjust_shade(lamp.lamp_network["current"][-1].base_color)
+        lamp.adjust_base(lamp.lamp_network["current"][-1].shade_color)
+    else:
+        lamp.reset_lights()
+
+lamp.register_callback(lambda: draw_shade(lamp))
+
+lamp.wake()

@@ -1,103 +1,137 @@
-from machine import Pin
-from machine import Timer
-from machine import Pin
-from time import sleep
 import network, re, uasyncio
-import binascii, hashlib
+from time import sleep
+from machine import Timer
+from simple_lamp import SimpleLamp
+import neopixel, machine
 
-# Signal strength threshold - weaker signal than this doesn't count as "close".
 signal_threshold    = -70
 lamp_scan_interval  = 10000
 
-class Lamp:
-    def __init__(self, name, base_color, shade_color):
-        self.name = name
-        self.base_color = base_color
-        self.shade_color = shade_color
+base_led_config     = { "pin": 5, "leds": 5 }
+shade_led_config    = { "pin": 4, "leds": 5 }
 
-        attrs = "{name}-{base_color}-{shade_color}".format(name = self.name, base_color = self.base_color, shade_color = self.shade_color)
-        sha = hashlib.sha1(attrs)
-        self.lamp_id = binascii.hexlify(sha.digest()).decode()
-
-    def __eq__(self,other):
-        return isinstance(other, Lamp) and self.lamp_id == other.lamp_id
-
-# Scan networks and find lamps, and track lamps who
-async def scan_networks():
-    networks = wifi_sta.scan()
-    nearby_lamps = []
-    lamp_network["joined"].clear()
-    lamp_network["left"].clear()
-
-    print("\nScanning for lamps..")
-
-    for ssid, bssid, channel, rssi, authmode, hidden in networks:
-        ssid = ssid.decode("utf-8")
-
-        match = re.search(r'LampOS-(\w+)-(\#\w+)-(\#\w+)', ssid)
-         # Old debug, delete me soon.
-        # if match: print("Match: %s (%s / %s)@ %d db" % (match.group(1), match.group(2), match.group(3), rssi))
-
-        # cycle through all the found lamps
-        if (match and rssi >= signal_threshold):
-            found_lamp = Lamp(match.group(1), match.group(2), match.group(3))
-            nearby_lamps.append(found_lamp)
-
-            # Track who has joined the network
-            if not (found_lamp in lamp_network["current"]):
-                lamp_network["joined"].append(found_lamp)
-                print("A new lamp is nearby: %s[%s] (%d db)" % (found_lamp.name, found_lamp.lamp_id, rssi))
-
-
-    # Track who has left the network
-    for lamp in lamp_network["current"]:
-        if not(lamp in nearby_lamps):
-            lamp_network["left"].append(lamp)
-            print("A lamp has left: %s[%s]" % (lamp.name, lamp.lamp_id))
-
-    # Set current list
-    lamp_network["current"] = nearby_lamps.copy()
-
-# Change the color of the shade and base if needed
-#def adjust_colors
-  # Call callbacks base_color(), shade_color() to determine color, use config if callbacks are not defined.
-  # if new color is not the same as last set color, set the new colors
-
-
-# Setup this lamp upon boot.
-def setup():
-    global lamp_network, wifi_sta, config
-
-    # Default lamp settings. White/White and no name
-    config = Lamp("noname", "#ffffff", "#ffffff")
-    lamp_network = {"current": [], "joined": [], "left": []}
-
-    # Init wifi
-    wifi_sta = network.WLAN(network.STA_IF)
-    wifi_sta.active(True)
-
-def broadcast():
-    wifi_ap  = network.WLAN(network.AP_IF)
+class Lamp(SimpleLamp):
+    # Broadcast that this lamp is here
     # SSID is "LampOS-lampname-basecolor-shadecolor"
-    ssid = "LampOS-%s-%s-%s" % (config.name, config.base_color, config.shade_color)
-    wifi_ap.active(True)
-    wifi_ap.config(essid=ssid, password="lamprichauns")
+    def broadcast(self):
+        self.wifi_ap  = network.WLAN(network.AP_IF)
 
-# Scan for lamps.
-# Making this too frequent could also result in unfavourably reactivity if a lamp
-# is on the edge and ebbing in and out of "nearness" - and scanning takes extra power!
-# Using virtual timer instead of hardware for compatibility with ESP8266.
-def run():
-    broadcast()
-    print("%s is awake!" % (config.name))
+        ssid = "LampOS-%s-%s-%s" % (self.name, self.base_color, self.shade_color)
+        self.wifi_ap.active(True)
+        self.wifi_ap.config(essid=ssid, password="lamprichauns")
 
-    led = Pin(5,Pin.OUT)
+    # Scan for other lamps
+    async def scan(self):
+        networks = self.wifi_sta.scan()
+        nearby_lamps = []
+        self.lamp_network["joined"].clear()
+        self.lamp_network["left"].clear()
 
-    timer = Timer(-1)
-    timer.init(period=5000, mode=Timer.PERIODIC, callback=lambda t:uasyncio.run(scan_networks()))
+        print("\nScanning for lamps..")
 
-    # Loop pretty quickly, so we can do sub-second color changes if we want.
-    while True:
-        led.value(not led.value())
-        # adjust_colors()
-        sleep(0.25)
+        for ssid, bssid, channel, rssi, authmode, hidden in networks:
+            ssid = ssid.decode("utf-8")
+
+            match = re.search(r'LampOS-(\w+)-(\#\w+)-(\#\w+)', ssid)
+            # Old debug, delete me soon.
+            # if match: print("Match: %s (%s / %s)@ %d db" % (match.group(1), match.group(2), match.group(3), rssi))
+
+            # cycle through all the found lamps
+            if (match and rssi >= signal_threshold):
+                found_lamp = SimpleLamp(match.group(1), match.group(2), match.group(3))
+                nearby_lamps.append(found_lamp)
+
+                # Track who has joined the network
+                if not (found_lamp in self.lamp_network["current"]):
+                    self.lamp_network["joined"].append(found_lamp)
+                    print("A new lamp is nearby: %s[%s] (%d db)" % (found_lamp.name, found_lamp.lamp_id, rssi))
+
+
+        # Track who has left the network
+        for lamp in self.lamp_network["current"]:
+            if not(lamp in nearby_lamps):
+                self.lamp_network["left"].append(lamp)
+                print("A lamp has left: %s[%s]" % (lamp.name, lamp.lamp_id))
+
+        # Set current list
+        self.lamp_network["current"] = nearby_lamps.copy()
+
+    # Register callback for lamp behaviours.
+    def register_callback(self, l):
+            self.callback = l
+
+    # Set the shade and base to fixed color based on the config for this lamp.
+    def reset_lights(self):
+        self.adjust_shade(self.shade_color)
+        self.adjust_base(self.base_color)
+
+
+    # Adjust colors of a led strand. There are convenience functions for shade and base below
+    def adjust_leds(self, strand, colors):
+        if strand in ["shade","base"]:
+            led_count = base_led_config["leds"] if strand == "base" else shade_led_config["leds"]
+
+            if isinstance(colors, str):
+                colors = build_color_array(hex_to_rgb(colors), led_count)
+
+            if not colors == self.current_colors[strand]:
+                print("changing %s colors" % strand)
+                write_led_colors(pixels[strand], colors)
+                self.current_colors[strand] = colors
+
+    # Adjust base colors to an array of RGBW tuples. This should be exactly the right number of colors for the channel.
+    def adjust_base(self, colors):
+        self.adjust_leds("base", colors)
+
+    # Adjust the shade color to an array of RGBW tuples. This should be exactly the right number of colors for the channel.
+    def adjust_shade(self, colors):
+        self.adjust_leds("shade", colors)
+
+    # Wake up this lamp!
+    def wake(self):
+        self.current_colors = {  "base": "", "shade": ""}
+
+        self.broadcast()
+        self.reset_lights()
+
+        print("%s is awake!" % (self.name))
+
+        self.current_colors = {  "base": "", "shade": ""}
+
+        self.wifi_sta = network.WLAN(network.STA_IF)
+        self.wifi_sta.active(True)
+        self.lamp_network = {"current": [], "joined": [], "left": []}
+
+        timer = Timer(-1)
+        timer.init(period=5000, mode=Timer.PERIODIC, callback=lambda t:uasyncio.run(self.scan()))
+
+        while True:
+            if not self.callback == None: self.callback()
+            sleep(0.25)        
+
+# Util functions for color stuff.
+
+pixels = {
+    "shade": neopixel.NeoPixel(machine.Pin(shade_led_config["pin"]), shade_led_config["leds"], bpp=4),
+    "base": neopixel.NeoPixel(machine.Pin(base_led_config["pin"]), base_led_config["leds"], bpp=4)
+}
+
+# Write  colors to leds on the right pin. Colors should be an array of tuples (R,G,B,W)
+def write_led_colors(led_channel, colors):
+    for i, c in enumerate(colors):
+        led_channel[i] = c
+        led_channel.write()
+
+
+def build_color_array(value, length):
+    colors = []
+    for i in range(length):
+        colors.append(value)
+    return colors
+
+# Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
+# instead of each individual color)
+def hex_to_rgb(value):
+    value = value.lstrip('#')
+    rgb = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
+    return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
