@@ -1,3 +1,3 @@
 from lamp import Lamp
 
-lamp = Lamp("gramp", "#0033ff", "#550077")
+lamp = Lamp("gramp", "#0033ff", "#00ff00")
