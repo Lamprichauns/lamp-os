@@ -5,4 +5,4 @@ class Gestures:
     def reset(self): 
         self.pixels.fill(self.color)
         self.pixels.write()    
-        sleep(0.1) # This is dumb but otherwise the first fiew neopixels glitch out
+        sleep(0.5)

@@ -1,5 +1,6 @@
 import neopixel, machine
 from gestures import Gestures
+from time import sleep
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip(Gestures): 
@@ -9,6 +10,11 @@ class LedStrip(Gestures):
         self.pin = pin
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4, timing=1)
+
+        # Turn everything off when initializing
+        self.pixels.fill((0,0,0,0))
+        self.pixels.write()
+        sleep(0.5) 
 
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)
