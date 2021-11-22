@@ -40,13 +40,13 @@ class Base(LightControlMixin):
     def __init__(self, color):
         self.color = self.hex_to_rgb(color) 
         self.num_pixels = base_led_config["pixels"]
-        self.pixels = neopixel.NeoPixel(machine.Pin(base_led_config["pin"]), self.num_pixels, bpp=4)
+        self.pixels = neopixel.NeoPixel(machine.Pin(base_led_config["pin"]), self.num_pixels, bpp=4, timing=1)
     
 class Shade(LightControlMixin): 
     def __init__(self,color):
         self.color = self.hex_to_rgb(color) 
         self.num_pixels = shade_led_config["pixels"]
-        self.pixels = neopixel.NeoPixel(machine.Pin(shade_led_config["pin"]), self.num_pixels, bpp=4)
+        self.pixels = neopixel.NeoPixel(machine.Pin(shade_led_config["pin"]), self.num_pixels, bpp=4, timing=1)
     
 
-lamp = Lamp("gramp", "#ff00ff", "#ff0000")
+lamp = Lamp("gramp", "#ffffff", "#00ff00")
