@@ -9,7 +9,7 @@ class LedStrip:
         self.num_pixels = num_pixels
         self.pin = pin
 
-        self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4, timing=1)
+        self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4)
 
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)
