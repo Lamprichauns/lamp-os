@@ -14,7 +14,7 @@ class Lamp:
         self.base = LedStrip(base_color, pixel_config['base']['pin'], pixel_config['base']['pixels'])
 
         self.reset()
-
+ 
     # Reset the shade and base to configured colors
     def reset(self):
         self.shade.reset()

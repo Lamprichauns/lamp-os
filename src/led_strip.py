@@ -11,11 +11,6 @@ class LedStrip(Gestures):
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4, timing=1)
 
-        # Turn everything off when initializing
-        self.pixels.fill((0,0,0,0))
-        self.pixels.write()
-        sleep(0.5) 
-
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)
     def hex_to_rgb(self, value):

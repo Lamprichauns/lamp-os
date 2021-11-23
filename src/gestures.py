@@ -4,5 +4,5 @@ class Gestures:
     # Reset to the configured color
     def reset(self): 
         self.pixels.fill(self.color)
-        self.pixels.write()    
-        sleep(0.5)
+        self.pixels.write()
+        
