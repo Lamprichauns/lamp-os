@@ -38,11 +38,13 @@ class LedStrip:
         colors.append(color_to)
         return colors
 
-    # Reset to the configured color
-    async def reset(self):
+    # Turn off the lights
+    async def off(self): 
         self.pixels.fill((0,0,0,0))
         self.pixels.write()
 
+    # Reset to the configured color
+    async def reset(self):
         uasyncio.create_task(self.fade_to(self.color,20)) 
 
     # This is gross. I should learn python better!
@@ -61,4 +63,4 @@ class LedStrip:
             for i in range(self.num_pixels):
                 self.pixels[i] = pxls[i]
             self.pixels.write()
-            sleep(0.1)
+            await uasyncio.sleep_ms(100)

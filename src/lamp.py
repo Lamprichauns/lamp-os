@@ -18,11 +18,14 @@ class Lamp:
  
     async def wake(self):
         # This is currently not working; it waits until the first coroutine is done before moving on
+        self.shade.off()
+        self.base.off()
+ 
         shade_reset = uasyncio.create_task(self.shade.reset())
         base_reset = uasyncio.create_task(self.base.reset())
         await shade_reset, base_reset
 
         print("%s is awake!" % (self.name))
-
+        
         while True:
             await uasyncio.sleep_ms(50)
