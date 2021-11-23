@@ -1,5 +1,6 @@
 import neopixel, machine
 from time import sleep
+import uasyncio
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip: 
@@ -38,14 +39,17 @@ class LedStrip:
         return colors
 
     # Reset to the configured color
-    def reset(self):
-        self.pixels.fill(self.color)
+    async def reset(self):
+        self.pixels.fill((0,0,0,0))
         self.pixels.write()
+
+        uasyncio.create_task(self.fade_to(self.color,20)) 
 
     # This is gross. I should learn python better!
     # This currently works but allocates way too much memory and is pretty terrible.
     # This should be able to be cleaned up to store less and loop less.
-    def fade_to(self, color, steps = 50):
+    # Probably replace steps with time in seconds when this is rewritten. 
+    async def fade_to(self, color, steps = 50):
         colors = []
 
         for pixel in range(self.num_pixels):
@@ -57,4 +61,4 @@ class LedStrip:
             for i in range(self.num_pixels):
                 self.pixels[i] = pxls[i]
             self.pixels.write()
-            sleep(0.2)
+            sleep(0.1)
