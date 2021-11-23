@@ -1,5 +1,5 @@
 from led_strip import LedStrip
-import uasyncio
+import uasyncio as asyncio
 
 # Configuration for the PIN and number of pixels of the base and shade LED strips
 pixel_config = {   
@@ -14,18 +14,17 @@ class Lamp:
         self.shade = LedStrip(shade_color, pixel_config['shade']['pin'], pixel_config['shade']['pixels'])
         self.base = LedStrip(base_color, pixel_config['base']['pin'], pixel_config['base']['pixels'])
 
-        uasyncio.run(self.wake())
+        asyncio.run(self.wake())
  
     async def wake(self):
         # This is currently not working; it waits until the first coroutine is done before moving on
         self.shade.off()
         self.base.off()
  
-        shade_reset = uasyncio.create_task(self.shade.reset())
-        base_reset = uasyncio.create_task(self.base.reset())
-        await shade_reset, base_reset
+        asyncio.create_task(self.shade.reset())
+        asyncio.create_task(self.base.reset())
 
         print("%s is awake!" % (self.name))
-        
+
         while True:
-            await uasyncio.sleep_ms(50)
+            await asyncio.sleep_ms(50)
