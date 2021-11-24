@@ -13,17 +13,19 @@ class Lamp:
         self.name = name
         self.shade = LedStrip(shade_color, pixel_config['shade']['pin'], pixel_config['shade']['pixels'])
         self.base = LedStrip(base_color, pixel_config['base']['pin'], pixel_config['base']['pixels'])
-
-        asyncio.run(self.wake())
- 
-    async def wake(self):
-        # This is currently not working; it waits until the first coroutine is done before moving on
+    
+    # Wake up the lamp and kick off the main loop
+    def wake(self):
         self.shade.off()
         self.base.off()
  
         asyncio.create_task(self.shade.reset())
         asyncio.create_task(self.base.reset())
 
+        asyncio.run(self.main())
+    
+    # The main loop
+    async def main(self):
         print("%s is awake!" % (self.name))
 
         while True:
