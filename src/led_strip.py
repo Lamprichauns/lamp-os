@@ -38,14 +38,17 @@ class LedStrip:
         colors.append(color_to)
         return colors
 
+    async def set_color(self, color): 
+        self.pixels.fill(color)
+        self.pixels.write()
+
     # Turn off the lights
     async def off(self): 
-        self.pixels.fill((0,0,0,0))
-        self.pixels.write()
+        await asyncio.create_task(self.set_color(0,0,0,0))
 
     # Reset to the configured color
     async def reset(self):
-        await asyncio.create_task(self.fade_to(self.color,20))
+        await asyncio.create_task(self.set_color(self.color))
 
     # This is gross. I should learn python better!
     # This currently works but allocates way too much memory and is pretty terrible.
