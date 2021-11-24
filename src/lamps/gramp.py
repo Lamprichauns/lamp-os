@@ -13,16 +13,15 @@ class GlitchyGramp(Behaviour):
     async def glitch(self):
         lamp = self.lamp
 
-        asyncio.create_task(lamp.base.set_color((0,0,0,255)))
+        await lamp.base.until_color_changed((0,0,0,255))
         await asyncio.sleep_ms(random.choice([10,5,80,300,800]))
-        asyncio.create_task(lamp.base.reset())
+        await lamp.base.until_reset()
 
     async def run(self):
         while True:
             await asyncio.sleep(random.choice(range(3600)))
-            await asyncio.create_task(self.glitch())       
+            await self.glitch()    
 
 lamp.add_behaviour(GlitchyGramp)
-
 
 lamp.wake()

@@ -29,16 +29,16 @@ class Lamp:
 
     # Wake up the lamp and kick off the main loop
     def wake(self):
-        self.shade.off()
-        self.base.off()
- 
-        asyncio.create_task(self.shade.fade_to(self.shade.color,20))
-        asyncio.create_task(self.base.fade_to(self.base.color,20))
-
         asyncio.run(self.main())
-    
+
     # The main loop
     async def main(self):
+        self.shade.off()
+        self.base.reset()
+
+        asyncio.create_task(self.shade.until_faded_to(self.shade.color,20))
+        asyncio.create_task(self.base.until_faded_to(self.base.color,20))
+
         print("%s is awake!" % (self.name))
 
         while True:
