@@ -23,9 +23,15 @@ class Lamp:
         self.behaviours.append(b) 
         print("Behaviour added: %s" % (b))
 
-    def reset():
+    # Reset the lamp to it's default colors
+    def reset(self):
         self.shade.reset()
         self.base.reset()
+
+    # Turn the lamp off
+    def off(self):
+        self.shade.off()
+        self.base.off()
 
     # Wake up the lamp and kick off the main loop
     def wake(self):
@@ -33,8 +39,7 @@ class Lamp:
 
     # The main loop
     async def main(self):
-        self.shade.off()
-        self.base.reset()
+        self.off()
 
         asyncio.create_task(self.shade.until_faded_to(self.shade.color,20))
         asyncio.create_task(self.base.until_faded_to(self.base.color,20))
