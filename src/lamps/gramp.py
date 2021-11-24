@@ -14,7 +14,7 @@ class GlitchyGramp(Behaviour):
         lamp = self.lamp
 
         asyncio.create_task(lamp.base.set_color((0,0,0,255)))
-        await asyncio.sleep_ms(random.choice([10,300,500,800])) # change this to be way faster
+        await asyncio.sleep_ms(random.choice([10,5,80,300,800]))
         asyncio.create_task(lamp.base.reset())
 
     async def run(self):
