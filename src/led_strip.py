@@ -32,9 +32,9 @@ class LedGestures:
                 w = round(self.pixels[pixel][3] + (white_diff / (steps-step)))
                 
                 self.pixels[pixel] = (r,g,b,w)
-                
+
             self.pixels.write()
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(5)
 
 
 # Abstraction for light control - this gets used for the shade and base.
