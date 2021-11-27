@@ -41,8 +41,8 @@ class Lamp:
     async def main(self):
         self.off()
 
-        asyncio.create_task(self.shade.until_faded_to(self.shade.color,20))
-        asyncio.create_task(self.base.until_faded_to(self.base.color,20))
+        asyncio.create_task(self.shade.until_faded_to(self.shade.color,100))
+        asyncio.create_task(self.base.until_faded_to(self.base.color,100))
 
         print("%s is awake!" % (self.name))
 

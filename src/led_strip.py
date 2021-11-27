@@ -1,6 +1,7 @@
 import neopixel, machine
 from time import sleep
 import uasyncio as asyncio
+import gc
 
 # :TODO: Unsure on naming of this mixin/class. Also once that's settled, move to another file.
 class LedGestures:
@@ -17,24 +18,20 @@ class LedGestures:
     async def until_reset(self):
         await self.until_color_changed(self.color)
 
-    # This is gross. I should learn python better!
-    # This currently works but allocates way too much memory and is pretty terrible.
-    # This should be able to be cleaned up to store less and loop less.
-    # Probably replace steps with time in seconds when this is rewritten. 
+    #  Fade each pixel from it's current color to the target color by number of steps
     async def until_faded_to(self, color, steps = 50):
-        colors = []
+        gc.collect()
 
+        colors = []
         for pixel in range(self.num_pixels):
             colors.append(LedStrip.colors_between(self.pixels[pixel], color, steps))
 
         for step in range(steps):
-            # I tried to just put self.pixels[i] = colors[x][step] in the lambda, but python said no.
-            pxls = list(map(lambda x: colors[x][step], range(self.num_pixels)))
-            for i in range(self.num_pixels):
-                self.pixels[i] = pxls[i]
-            self.pixels.write()
-            await asyncio.sleep_ms(100)    
+            for pixel in range(self.num_pixels):
+                self.pixels[pixel] = colors[pixel][step]
 
+            self.pixels.write()
+            await asyncio.sleep_ms(100)
 
 
 # Abstraction for light control - this gets used for the shade and base.
@@ -77,6 +74,6 @@ class LedStrip(LedGestures):
             w = round(color_from[3] + (white_diff * i / steps))
 
             colors.append((r,g,b,w))
-
+        
         colors.append(color_to)
         return colors
