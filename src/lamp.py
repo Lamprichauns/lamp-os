@@ -4,7 +4,7 @@ import uasyncio as asyncio
 # Configuration for the PIN and number of pixels of the base and shade LED strips
 pixel_config = {   
     "base":  { "pin": 12, "pixels": 5 },
-    "shade": { "pin": 13, "pixels": 5 }     
+    "shade": { "pin": 13, "pixels": 5 }
 }
 
 # We love lamp.
@@ -41,8 +41,8 @@ class Lamp:
     async def main(self):
         self.off()
 
-        asyncio.create_task(self.shade.until_faded_to(self.shade.color,100))
-        asyncio.create_task(self.base.until_faded_to(self.base.color,100))
+        asyncio.create_task(self.shade.until_faded_to(self.shade.color,50))
+        asyncio.create_task(self.base.until_faded_to(self.base.color,50))
 
         print("%s is awake!" % (self.name))
 
