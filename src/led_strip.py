@@ -19,7 +19,9 @@ class LedGestures:
     async def until_reset(self):
         await self.until_color_changed(self.color)
 
-
+    # Shift pixels from their current state to a target state
+    # :TODO: Allow color to be a dict of pixels in case we want to end at a non-solid color
+    # :TODO: Allow easing type to be passed
     async def until_faded_to(self, color, steps):
         colors_start = tuple(self.pixels)
         
