@@ -34,8 +34,8 @@ class GlitchyGramp(Behaviour):
             (250,250,250,0),
             (100,100,150,0)
         ])
-
-        await lamp.base.until_color_changed(glitch_color)
+        gc = knock_out_neck_pixels([glitch_color] * 40)
+        await lamp.base.until_colors_changed(gc)
         await asyncio.sleep_ms(random.choice([30,20000,120,800]))
         await lamp.base.until_colors_changed(colors)
 
