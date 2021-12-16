@@ -1,5 +1,6 @@
 import neopixel, machine
 from time import sleep
+import time
 import uasyncio as asyncio
 
 # :TODO: Unsure on naming of this mixin/class. Also once that's settled, move to another file.
@@ -19,22 +20,26 @@ class LedGestures:
 
     #  Fade each pixel from it's current color to the target color by number of steps
     async def until_faded_to(self, color, steps = 50):
-        for step in range(steps): 
-            for pixel in range(self.num_pixels):
-                red_diff = color[0] - self.pixels[pixel][0]
-                green_diff = color[1] - self.pixels[pixel][1]
-                blue_diff = color[2] - self.pixels[pixel][2]
-                white_diff = color[3] - self.pixels[pixel][3]
+        for step in range(steps):
+            steps_remaining = steps-step
 
-                r = round(self.pixels[pixel][0] + (red_diff / (steps-step)))
-                g = round(self.pixels[pixel][1] + (green_diff / (steps-step)))
-                b = round(self.pixels[pixel][2] + (blue_diff / (steps-step)))
-                w = round(self.pixels[pixel][3] + (white_diff / (steps-step)))
-                
+            for pixel in range(self.num_pixels):
+                px = self.pixels[pixel]
+
+                red_diff = color[0] - px[0]
+                green_diff = color[1] - px[1]
+                blue_diff = color[2] - px[2]
+                white_diff = color[3] - px[3]
+
+                r = round(px[0] + (red_diff / steps_remaining))
+                g = round(px[1] + (green_diff / steps_remaining))
+                b = round(px[2] + (blue_diff / steps_remaining))
+                w = round(px[3] + (white_diff / steps_remaining))
+
                 self.pixels[pixel] = (r,g,b,w)
 
             self.pixels.write()
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(1)
 
 
 # Abstraction for light control - this gets used for the shade and base.

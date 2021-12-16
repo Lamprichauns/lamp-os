@@ -52,3 +52,12 @@ There will be info here later on how to implement this, as well as contact info 
 To flash a lamp to an arduino, run: `invoke flash [port] [lampname]` 
 
 eg. `invoke flash /dev/tty.usbserial-D3071K6D gramp` 
+
+
+
+
+--- 
+t = time.ticks_us() 
+
+delta = time.ticks_diff(time.ticks_us(), t)
+print('step- Time = {:6.3f}ms'.format( delta/1000))  

@@ -3,8 +3,8 @@ import uasyncio as asyncio
 
 # Configuration for the PIN and number of pixels of the base and shade LED strips
 pixel_config = {   
-    "base":  { "pin": 12, "pixels": 5 },
-    "shade": { "pin": 13, "pixels": 5 }
+    "base":  { "pin": 12, "pixels": 40 },
+    "shade": { "pin": 13, "pixels": 40 }
 }
 
 # We love lamp.
@@ -17,10 +17,7 @@ class Lamp:
     
     def add_behaviour(self,behaviour_class):
         b = behaviour_class(self)
-        print(b)
-        asyncio.create_task(b.run())
-        
-        self.behaviours.append(b) 
+        self.behaviours.append(b)
         print("Behaviour added: %s" % (b))
 
     # Reset the lamp to it's default colors
@@ -39,12 +36,19 @@ class Lamp:
 
     # The main loop
     async def main(self):
-        self.off()
+        await self.base.until_off()
+        await self.shade.until_off()
 
-        asyncio.create_task(self.shade.until_faded_to(self.shade.color,50))
-        asyncio.create_task(self.base.until_faded_to(self.base.color,50))
+        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.color,30))
+        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.color,30))
+
+        await asyncio.gather(shade_fade,base_fade)
 
         print("%s is awake!" % (self.name))
+
+        for behaviour in self.behaviours:
+            print("Enabling Behaviour: %s" % (behaviour))
+            asyncio.create_task(behaviour.run())
 
         while True:
             await asyncio.sleep_ms(50)
