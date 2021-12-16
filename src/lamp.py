@@ -39,8 +39,8 @@ class Lamp:
         await self.base.until_off()
         await self.shade.until_off()
 
-        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.color,150))
-        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.color,150))
+        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.default_pixels,100))
+        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.default_pixels,100))
 
         await asyncio.gather(shade_fade,base_fade)
 
