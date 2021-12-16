@@ -1,6 +1,8 @@
 import neopixel, machine
 from time import sleep
+import time
 import uasyncio as asyncio
+from easing import *
 
 # :TODO: Unsure on naming of this mixin/class. Also once that's settled, move to another file.
 class LedGestures:
@@ -17,25 +19,32 @@ class LedGestures:
     async def until_reset(self):
         await self.until_color_changed(self.color)
 
-    #  Fade each pixel from it's current color to the target color by number of steps
-    async def until_faded_to(self, color, steps = 50):
+    # Shift pixels from their current state to a target state
+    # :TODO: Allow color to be a dict of pixels in case we want to end at a non-solid color
+    # :TODO: Allow easing type to be passed
+    async def until_faded_to(self, color, steps):
+        colors_start = tuple(self.pixels)
+        
+        colors = dict()
+        for i in range(self.num_pixels):
+            colors[i] = (
+                CubicEaseOut(start = colors_start[i][0], end = color[0], duration = steps),
+                CubicEaseOut(start = colors_start[i][1], end = color[1], duration = steps),
+                CubicEaseOut(start = colors_start[i][2], end = color[2], duration = steps),
+                CubicEaseOut(start = colors_start[i][3], end = color[3], duration = steps)
+            )
+
         for step in range(steps): 
-            for pixel in range(self.num_pixels):
-                red_diff = color[0] - self.pixels[pixel][0]
-                green_diff = color[1] - self.pixels[pixel][1]
-                blue_diff = color[2] - self.pixels[pixel][2]
-                white_diff = color[3] - self.pixels[pixel][3]
+            for p in range(self.num_pixels):
+                self.pixels[p] = (
+                    int(colors[p][0](step)),
+                    int(colors[p][1](step)),
+                    int(colors[p][2](step)),
+                    int(colors[p][3](step))
+                )
 
-                r = round(self.pixels[pixel][0] + (red_diff / (steps-step)))
-                g = round(self.pixels[pixel][1] + (green_diff / (steps-step)))
-                b = round(self.pixels[pixel][2] + (blue_diff / (steps-step)))
-                w = round(self.pixels[pixel][3] + (white_diff / (steps-step)))
-                
-                self.pixels[pixel] = (r,g,b,w)
-
-            self.pixels.write()
-            await asyncio.sleep_ms(5)
-
+            self.pixels.write()  
+            await asyncio.sleep_ms(1)
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip(LedGestures): 
