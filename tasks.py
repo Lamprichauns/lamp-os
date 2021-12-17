@@ -1,8 +1,16 @@
 from invoke import task
+import glob, os
 
 @task 
 def flash(c, port, lamp):
-    c.run(f"ampy --port {port} put ./src/lamp.py lamp.py")
-    c.run(f"ampy --port {port} put ./src/lamps/{lamp}.py main.py")
-    print(f"{lamp} flashed to %{port}")
+    for filename in glob.glob('src/*.py'):
+        file = os.path.basename(filename)
+        if file == "main.py":
+            continue
+
+        c.run(f"ampy --port {port} put {filename} {file} ")    
+        lampfile = os.path.join("src","lamps",f"{lamp}.py")
+        c.run(f"ampy --port {port} put {lampfile} main.py")
+
+        print(f"{lamp} flashed to %{port}")
     
