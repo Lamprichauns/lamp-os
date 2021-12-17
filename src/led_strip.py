@@ -71,7 +71,7 @@ class LedStrip(LedGestures):
     # Set the pixels to colors specificed in a passed in list of individual pixels
     def set_colors(self, colors): 
         for i in range(self.num_pixels): 
-            self.pixels[i] = self.default_pixels[i]
+            self.pixels[i] = colors[i]
         self.pixels.write()
 
     def reset(self):

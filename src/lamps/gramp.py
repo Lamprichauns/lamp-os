@@ -16,6 +16,7 @@ default_pixels = knock_out_neck_pixels(lamp.base.default_pixels)
 # Modify some of the colors at the top to make it purty
 for i in range(30,34):
     default_pixels[i] = (5,15,0,0)
+
 for i in range(6):
     default_pixels[34 + i] = ((100 + (i * 10)),150,0,0)
     default_pixels[12] = (0,0,30,0)
@@ -29,20 +30,20 @@ class GlitchyGramp(Behaviour):
 
         colors = list(lamp.base.pixels)
         glitch_color = random.choice([ 
-            (0,0,0,255,0),
+            (0,0,0,80,0),
             (0,0,0,50,0),
             (0,160,0,150),
             (250,250,250,0),
             (70,60,150,0)
         ])
-        gc = knock_out_neck_pixels([glitch_color] * 40)
-        await lamp.base.until_colors_changed(gc)
-        await asyncio.sleep_ms(random.choice([30,20000,120,800]))
+
+        await lamp.base.until_colors_changed(knock_out_neck_pixels([glitch_color] * 40))
+        await asyncio.sleep_ms(random.choice([30,500,120,800]))
         await lamp.base.until_colors_changed(colors)
 
     async def run(self):
         while True:
-            await asyncio.sleep(random.choice(range(3200)))
+            await asyncio.sleep(random.choice(range(900,3600)))
             await self.glitch()    
 
 class ShiftyGramp(Behaviour):
@@ -78,7 +79,7 @@ class ShiftyGramp(Behaviour):
             self.palettes[4][i+10] = (30,120 + (i * 10),5,20)       
 
         while True:
-            await asyncio.sleep(random.choice(range(800)))
+            await asyncio.sleep(random.choice(range(300,3600)))
             await self.shift()   
 
 lamp.add_behaviour(ShiftyGramp)
