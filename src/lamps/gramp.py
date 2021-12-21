@@ -15,7 +15,7 @@ lamp = Lamp("gramp", "#40b000", "#ffffff", config)
 # Gramp has a narrow neck and we need to shut some of these pixels off 
 def knock_out_neck_pixels(pixels): 
     for i in range(22,34):
-        pixels[i] = (0,0,0,0)
+        pixels[i] = (0,1,0,0)
     return pixels
 
 default_pixels = knock_out_neck_pixels(lamp.base.default_pixels)
@@ -27,6 +27,7 @@ for i in range(30,34):
 for i in range(6):
     default_pixels[34 + i] = ((100 + (i * 10)),150,0,0)
     default_pixels[12] = (0,0,30,0)
+    default_pixels[22-i] = ((5 + (i * 10)),50,0,0)
 
 lamp.base.default_pixels = default_pixels
 
@@ -109,7 +110,7 @@ class TouchyGramp(Behaviour):
         await lamp.shade.until_color_changed((150,40,0,0))
 
         while lamp.touch.is_touched():            
-            asyncio.sleep_ms(100)
+            asyncio.sleep_ms(500)
 
         await lamp.base.until_colors_changed(previous_base)
         await lamp.shade.until_colors_changed(previous_shade)
