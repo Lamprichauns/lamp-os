@@ -23,6 +23,6 @@ class LampTouch:
     def is_touched(self):
         current = self.value()
         diff = int((self.value() / self.avg) * 100)
-        print(diff)
-        
+        #print(diff)
+
         return  (40 <= diff <= 90)

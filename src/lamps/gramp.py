@@ -125,8 +125,9 @@ class TouchyGramp(Behaviour):
 # :TODO: Implement a semaphore or something along those lines
 # to allow behaviours to await other behaviours 
 
-lamp.add_behaviour(TouchyGramp)
+# This is too twitchy right now, needs work and proper connection/wiring
+#lamp.add_behaviour(TouchyGramp)
 lamp.add_behaviour(ShiftyGramp)
-#lamp.add_behaviour(GlitchyGramp)  # This is too twitchy right now, needs work and proper connection/wiring
+lamp.add_behaviour(GlitchyGramp)  
 
 lamp.wake()
