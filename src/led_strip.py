@@ -75,7 +75,7 @@ class LedStrip(LedGestures):
         self.pixels.write()
 
     def reset(self):
-        set_colors(self.default_pixels)
+        self.set_colors(self.default_pixels)
 
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)

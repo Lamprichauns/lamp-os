@@ -2,6 +2,7 @@ from behaviour import Behaviour
 from lamp import Lamp
 import uasyncio as asyncio
 import random
+import machine
 
 lamp = Lamp("gramp", "#40b000", "#ffffff")
 
@@ -91,6 +92,27 @@ class ShiftyGramp(Behaviour):
             await asyncio.sleep(random.choice(range(300,600)))
             await self.unshift()
 
+# TODO: Abstract touchy behaviour to something more usable (start touch/end touch/hold touch stuff)
+# Also move number of pixel config for leds
+class TouchyGramp(Behaviour):
+    async def run(self):
+        dim_pixels = knock_out_neck_pixels([(0,40,0,10)] * 40)
+        
+        touch = machine.TouchPad(machine.Pin(32))
+        
+        while True: 
+            await asyncio.sleep_ms(100)  
+            touch_value = touch.read()
+
+            if touch_value < 54:
+                await lamp.base.until_colors_changed(dim_pixels)
+                await lamp.shade.until_color_changed((255,100,0,0))
+            else: 
+                await lamp.base.until_reset()
+                await lamp.shade.until_reset()   
+
+lamp.add_behaviour(TouchyGramp)
 lamp.add_behaviour(ShiftyGramp)
 lamp.add_behaviour(GlitchyGramp)
+
 lamp.wake()

@@ -1,10 +1,11 @@
 from led_strip import LedStrip
 import uasyncio as asyncio
 
+
 # Configuration for the PIN and number of pixels of the base and shade LED strips
 pixel_config = {   
-    "base":  { "pin": 12, "pixels": 40 },
-    "shade": { "pin": 13, "pixels": 40 }
+    "base":  { "pin": 15, "pixels": 40 },
+    "shade": { "pin": 14, "pixels": 40 }
 }
 
 # We love lamp.
@@ -51,4 +52,4 @@ class Lamp:
             asyncio.create_task(behaviour.run())
 
         while True:
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(1)             
