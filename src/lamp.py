@@ -1,20 +1,26 @@
 from led_strip import LedStrip
 import uasyncio as asyncio
+from touch import LampTouch
 
-# Configuration for the PIN and number of pixels of the base and shade LED strips
-pixel_config = {   
+# Default config for pins and pixels
+default_config = {   
     "base":  { "pin": 12, "pixels": 40 },
-    "shade": { "pin": 13, "pixels": 40 }
+    "shade": { "pin": 13, "pixels": 40 }, 
+    "touch": { "pin": 32 }
 }
 
 # We love lamp.
 class Lamp:
-    def __init__(self, name, base_color, shade_color):
+    def __init__(self, name, base_color, shade_color, config = default_config):
+        self.lock = asyncio.Lock()
         self.name = name
         self.behaviours = []
-        self.shade = LedStrip(shade_color, pixel_config['shade']['pin'], pixel_config['shade']['pixels'])
-        self.base = LedStrip(base_color, pixel_config['base']['pin'], pixel_config['base']['pixels'])
-    
+        
+        self.touch = LampTouch(config["touch"]["pin"])        
+        self.shade = LedStrip(self, shade_color, config['shade']['pin'], config['shade']['pixels'])
+        self.base = LedStrip(self, base_color, config['base']['pin'], config['base']['pixels'])
+
+
     def add_behaviour(self,behaviour_class):
         b = behaviour_class(self)
         self.behaviours.append(b)
@@ -39,8 +45,8 @@ class Lamp:
         await self.base.until_off()
         await self.shade.until_off()
 
-        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.default_pixels,100))
-        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.default_pixels,100))
+        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.default_pixels,40))
+        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.default_pixels,40))
 
         await asyncio.gather(shade_fade,base_fade)
 
@@ -51,4 +57,4 @@ class Lamp:
             asyncio.create_task(behaviour.run())
 
         while True:
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(1)             
