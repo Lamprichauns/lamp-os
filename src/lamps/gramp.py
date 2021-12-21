@@ -91,12 +91,12 @@ class ShiftyGramp(Behaviour):
 
         while True:
             # Wait between 5 and 60 min and then shift to a different palette
-            await asyncio.sleep(random.choice(range(300,3600)))
+            await asyncio.sleep(10) #random.choice(range(300,3600)))
             await self.shift()   
 
             # Stay with this palette between 5 to 10 min, then return to defaults
-            await asyncio.sleep(random.choice(range(300,600)))
-            await self.unshift()
+            #await asyncio.sleep(random.choice(range(300,600)))
+            #await self.unshift()
 
 class TouchyGramp(Behaviour):
     async def touched(self):
@@ -108,7 +108,7 @@ class TouchyGramp(Behaviour):
         await lamp.base.until_colors_changed(dim_pixels)
         await lamp.shade.until_color_changed((150,40,0,0))
 
-        while lamp.touch.is_touched():
+        while lamp.touch.is_touched():            
             asyncio.sleep_ms(100)
 
         await lamp.base.until_colors_changed(previous_base)
@@ -117,16 +117,17 @@ class TouchyGramp(Behaviour):
     async def run(self):
         while True: 
             await asyncio.sleep_ms(100)  
-  
+
             if lamp.touch.is_touched():
-                await self.touched()
+                print("Touched")
+                async with lamp.lock:
+                    await self.touched()
 
 
 # :TODO: Implement a semaphore or something along those lines
 # to allow behaviours to await other behaviours 
 
-# This is too twitchy right now, needs work and proper connection/wiring
-#lamp.add_behaviour(TouchyGramp)
+lamp.add_behaviour(TouchyGramp)
 lamp.add_behaviour(ShiftyGramp)
 lamp.add_behaviour(GlitchyGramp)  
 

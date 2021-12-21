@@ -12,11 +12,14 @@ default_config = {
 # We love lamp.
 class Lamp:
     def __init__(self, name, base_color, shade_color, config = default_config):
+        self.lock = asyncio.Lock()
         self.name = name
         self.behaviours = []
-        self.shade = LedStrip(shade_color, config['shade']['pin'], config['shade']['pixels'])
-        self.base = LedStrip(base_color, config['base']['pin'], config['base']['pixels'])
-        self.touch = LampTouch(config["touch"]["pin"])
+        
+        self.touch = LampTouch(config["touch"]["pin"])        
+        self.shade = LedStrip(self, shade_color, config['shade']['pin'], config['shade']['pixels'])
+        self.base = LedStrip(self, base_color, config['base']['pin'], config['base']['pixels'])
+
 
     def add_behaviour(self,behaviour_class):
         b = behaviour_class(self)

@@ -8,8 +8,9 @@ from easing import *
 class LedGestures:
     # set to a new color (tuple of rgbw color)
     async def until_color_changed(self, color):
-        self.pixels.fill(color)
-        self.pixels.write()
+        async with self.lock:        
+            self.pixels.fill(color)
+            self.pixels.write()
 
     # set to a new colors (list of individual pixel colors)
     async def until_colors_changed(self, colors):
@@ -17,8 +18,9 @@ class LedGestures:
 
     # Turn off the lights
     async def until_off(self): 
-        self.pixels.fill((0,0,0,0))
-        self.pixels.write()
+        async with self.lock:        
+            self.pixels.fill((0,0,0,0))
+            self.pixels.write()
 
     # Reset to the configured color
     async def until_reset(self):
@@ -27,9 +29,10 @@ class LedGestures:
     # Shift pixels from their current state to a target state. Dest can be either a list of individual pixels or a RGBW tuple
     # :TODO: Allow easing type to be passed
     async def until_faded_to(self, dest, steps, step_delay=1):
+        
         if not isinstance(dest, list):
             dest = [dest] * self.num_pixels
-  
+
         colors_start = list(self.pixels)
         
         colors = dict()
@@ -41,24 +44,29 @@ class LedGestures:
                 CubicEaseOut(start = colors_start[i][3], end = dest[i][3], duration = steps)
             )
 
-        for step in range(steps): 
-            for p in range(self.num_pixels):
-                self.pixels[p] = (
-                    int(colors[p][0](step)),
-                    int(colors[p][1](step)),
-                    int(colors[p][2](step)),
-                    int(colors[p][3](step))
-                )
+        for step in range(steps):   
+            # Check strip lock to ensure we're not mid-writing already, check 
+            # lamp lock to ensure we're not pausing to allow something else to run
+            async with self.lock as led_lock, self.lamp.lock as lamp_lock:
+                for p in range(self.num_pixels):
+                    self.pixels[p] = (
+                        int(colors[p][0](step)),
+                        int(colors[p][1](step)),
+                        int(colors[p][2](step)),
+                        int(colors[p][3](step))
+                    )
 
-            self.pixels.write()  
-            await asyncio.sleep_ms(step_delay)
+                self.pixels.write()  
+                await asyncio.sleep_ms(step_delay)
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip(LedGestures): 
-    def __init__(self, color, pin, num_pixels):
+    def __init__(self, lamp, color, pin, num_pixels):
+        self.lamp = lamp
         self.color = LedStrip.hex_to_rgb(color) 
         self.num_pixels = num_pixels
         self.pin = pin
+        self.lock = asyncio.Lock()
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4)
         self.default_pixels = [self.color] * self.num_pixels
