@@ -91,12 +91,12 @@ class ShiftyGramp(Behaviour):
 
         while True:
             # Wait between 5 and 60 min and then shift to a different palette
-            await asyncio.sleep(10) #random.choice(range(300,3600)))
+            await asyncio.sleep(random.choice(range(300,1800)))
             await self.shift()   
 
             # Stay with this palette between 5 to 10 min, then return to defaults
-            #await asyncio.sleep(random.choice(range(300,600)))
-            #await self.unshift()
+            await asyncio.sleep(random.choice(range(300,600)))
+            await self.unshift()
 
 class TouchyGramp(Behaviour):
     async def touched(self):
