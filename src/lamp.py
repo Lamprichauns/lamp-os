@@ -20,12 +20,20 @@ class Lamp:
         self.shade = LedStrip(self, shade_color, config['shade']['pin'], config['shade']['pixels'])
         self.base = LedStrip(self, base_color, config['base']['pin'], config['base']['pixels'])
 
-
-    def add_behaviour(self,behaviour_class):
+    # Add a behaviour 
+    def add_behaviour(self, behaviour_class):
         b = behaviour_class(self)
-        self.behaviours.append(b)
-        print("Behaviour added: %s" % (b))
 
+        if any(isinstance(x, behaviour_class) for x in self.behaviours):
+            print("Behaviour already added (%s)" % (b))
+        else: 
+            self.behaviours.append(b)
+            print("Behaviour added: %s" % (b))
+
+    # Return a behaviour instance 
+    def behaviour(self, behaviour_class): 
+        return next(x for x in self.behaviours if isinstance(x, behaviour_class))
+    
     # Reset the lamp to it's default colors
     def reset(self):
         self.shade.reset()

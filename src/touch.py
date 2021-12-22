@@ -17,7 +17,7 @@ class LampTouch:
         return self.pin.read()
 
 
-    def read_averaged(self,count):
+    def read_averaged(self,count=5):
         values = []        
         for x in range(count):
             values.append(self.pin.read())
@@ -30,7 +30,7 @@ class LampTouch:
         current = self.read_averaged(5)
         diff = int((self.value() / self.avg) * 100)
 
-        touched = (40 <= diff <= 95)
+        touched = (40 <= diff <= 90)
 
-        print("Touch reading: %s" % (current))
+        #print("Touch reading: %s" % (current))
         return  touched
