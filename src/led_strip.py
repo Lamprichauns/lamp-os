@@ -8,19 +8,17 @@ from easing import *
 class LedGestures:
     # set to a new color (tuple of rgbw color)
     async def until_color_changed(self, color):
-        async with self.lock:        
-            self.pixels.fill(color)
-            self.pixels.write()
+        self.pixels.fill(color)
+        self.pixels.write()
 
-    # set to a new colors (list of individual pixel colors)
+    # set to new colors (list of individual pixel colors)
     async def until_colors_changed(self, colors):
         self.set_colors(colors)
 
     # Turn off the lights
-    async def until_off(self): 
-        async with self.lock:        
-            self.pixels.fill((0,0,0,0))
-            self.pixels.write()
+    async def until_off(self):    
+        self.pixels.fill((0,0,0,0))
+        self.pixels.write()
 
     # Reset to the configured color
     async def until_reset(self):
@@ -29,7 +27,6 @@ class LedGestures:
     # Shift pixels from their current state to a target state. Dest can be either a list of individual pixels or a RGBW tuple
     # :TODO: Allow easing type to be passed
     async def until_faded_to(self, dest, steps, step_delay=1):
-        
         if not isinstance(dest, list):
             dest = [dest] * self.num_pixels
 
@@ -45,9 +42,10 @@ class LedGestures:
             )
 
         for step in range(steps):   
-            # Check strip lock to ensure we're not mid-writing already, check 
-            # lamp lock to ensure we're not pausing to allow something else to run
-            async with self.lock as led_lock, self.lamp.lock as lamp_lock:
+            # Check against lamp lock to make sure we're not locked doing something else
+            # before we do the next update in this fade sequence (so that long fades can pause 
+            # while other things happen)
+            async with self.lamp.lock:
                 for p in range(self.num_pixels):
                     self.pixels[p] = (
                         int(colors[p][0](step)),
@@ -66,7 +64,6 @@ class LedStrip(LedGestures):
         self.color = LedStrip.hex_to_rgb(color) 
         self.num_pixels = num_pixels
         self.pin = pin
-        self.lock = asyncio.Lock()
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4)
         self.default_pixels = [self.color] * self.num_pixels

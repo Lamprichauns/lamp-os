@@ -58,11 +58,11 @@ class Lamp:
 
         await asyncio.gather(shade_fade,base_fade)
 
-        print("%s is awake!" % (self.name))
-
         for behaviour in self.behaviours:
             print("Enabling Behaviour: %s" % (behaviour))
             asyncio.create_task(behaviour.run())
+        
+        print("%s is awake!" % (self.name))
 
         while True:
             await asyncio.sleep_ms(1)             

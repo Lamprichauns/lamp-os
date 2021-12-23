@@ -8,7 +8,7 @@ class LampTouch:
         self.pin = machine.TouchPad(machine.Pin(pin))
         calibration = []
 
-        self.avg = self.read_averaged(25)
+        self.avg = self.read_averaged(15)
 
         print("Touch calibrated: %s" % (self.avg))
     
@@ -30,7 +30,7 @@ class LampTouch:
         current = self.read_averaged(5)
         diff = int((self.value() / self.avg) * 100)
 
-        touched = (40 <= diff <= 90)
+        touched = (diff <= 90)
 
         #print("Touch reading: %s" % (current))
         return  touched

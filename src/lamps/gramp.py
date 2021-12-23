@@ -32,29 +32,35 @@ for i in range(6):
 lamp.base.default_pixels = default_pixels
 
 class GlitchyGramp(Behaviour):
-    async def glitch(self):
+    async def glitch(self,max=5000):
+        glitch_time_options = [time for time in [30,10,15,5,5,20,120,250,500,650,800,5000] if time <= max]
+
         print("Glitching")        
         lamp = self.lamp
 
-        colors = list(lamp.base.pixels)
-        glitch_color = random.choice([ 
-            (0,0,0,80,0),
-            (0,0,80,50,0),
-            (0,160,0,150),
-            (250,250,250,0),
-            (70,60,150,0)
-        ])
+        async with lamp.lock:
+            colors = list(lamp.base.pixels)
 
-        await lamp.base.until_colors_changed(knock_out_neck_pixels([glitch_color] * 40))
-        await asyncio.sleep_ms(random.choice([30,5,20,250,500,120,800,5000]))
-        await lamp.base.until_colors_changed(colors)
+            glitch_color = random.choice([ 
+                (0,0,0,80,0),
+                (0,0,80,50,0),
+                (0,160,0,150),
+                (250,250,250,0),
+                (200,200,250,0)
+            ])
+
+            await lamp.base.until_colors_changed(knock_out_neck_pixels([glitch_color] * 40))
+            await asyncio.sleep_ms(random.choice(glitch_time_options))
+            await lamp.base.until_colors_changed(colors)
 
     async def run(self):
-        while True:
-            next_glitch = random.choice(range(300,2700))         
-            await asyncio.sleep(next_glitch)
-            for i in range(1,4): 
-                await self.glitch()
+        while True:         
+            await asyncio.sleep(random.choice(range(300,2700)))
+            
+            # short glitch 1-3 times, quickly
+            for i in range(1,2): await self.glitch(500)
+            # glitch once, allow long glitches
+            await self.glitch()
 
 class ShiftyGramp(Behaviour):
     async def shift(self):
@@ -66,17 +72,18 @@ class ShiftyGramp(Behaviour):
         dest_colors = knock_out_neck_pixels(self.palettes[choice]) 
 
         print("Shifting to %s" % (choice))
+        if self.shift_task: self.shift_task.cancel()
 
-        # If we're already mid-shift, abort the previous shifting
-        if self.shift_task:
-            self.shift_task.cancel()
-
-        self.shift_task = asyncio.create_task(lamp.base.until_faded_to(dest_colors,400,20))
+        # Do the shift in the background, it takes a long time!
+        self.shift_task = asyncio.create_task(lamp.base.until_faded_to(dest_colors,400,200))
         self.active_palette = choice
 
     async def unshift(self):
-        await lamp.base.until_faded_to(self.lamp.base.default_pixels,400,150)
-        print("reverted to default")        
+        print("reverting to default colors")
+        await lamp.behaviour(GlitchyGramp).glitch(200)
+
+        if self.shift_task: self.shift_task.cancel() 
+        await lamp.base.until_colors_changed(self.lamp.base.default_pixels)
 
     async def run(self):
         self.active_palette = 0
@@ -88,8 +95,7 @@ class ShiftyGramp(Behaviour):
         self.palettes[2] = [(10,160,10,0)] * 40       
         self.palettes[3] = [(30,100,5,40)] * 40    
         self.palettes[4] = [(20,250,40,0)] * 40   
-        self.palettes[5] = self.lamp.base.default_pixels.copy()
-        self.palettes[6] = [(250,250,250,0)] * 40          
+        self.palettes[5] = self.lamp.base.default_pixels.copy()       
 
         # some tweaks 
         for i in range(10):
@@ -112,23 +118,25 @@ class TouchyGramp(Behaviour):
     # - fire glitch behaviour
     # - return to previous colors
     # - fire shift behaviour
-
     async def touched(self):
         dim_pixels = knock_out_neck_pixels([(0,10,0,0)] * 40)
-
-        previous_base = list(lamp.base.pixels)
-        previous_shade = list(lamp.shade.pixels)
         
-        await lamp.base.until_colors_changed(dim_pixels)
-        await lamp.shade.until_color_changed((150,40,0,0))
+        async with lamp.lock:
+            previous_base = list(lamp.base.pixels)
+            previous_shade = list(lamp.shade.pixels)
+            
+            await lamp.base.until_colors_changed(dim_pixels)
+            await lamp.shade.until_color_changed((150,40,0,0))
 
-        while lamp.touch.is_touched():            
-            asyncio.sleep_ms(500)
-            await lamp.shade.until_color_changed((lamp.touch.value(),10,0,0))  
-        
-        await lamp.behaviour(GlitchyGramp).glitch()
-        await lamp.base.until_colors_changed(previous_base)
-        await lamp.shade.until_colors_changed(previous_shade)
+            while lamp.touch.is_touched():            
+                asyncio.sleep_ms(500)
+                await lamp.shade.until_color_changed((lamp.touch.value(),10,0,0))  
+
+            await lamp.shade.until_colors_changed(previous_shade)
+            await lamp.base.until_colors_changed(previous_base)
+
+        # Done with touch behaviour, let's glitch and then shift        
+        await lamp.behaviour(GlitchyGramp).glitch(200)
         await lamp.behaviour(ShiftyGramp).shift()     
 
     async def run(self):
@@ -137,12 +145,8 @@ class TouchyGramp(Behaviour):
 
             if lamp.touch.is_touched():
                 print("Touched - %s" % (lamp.touch.value()))
-                async with lamp.lock:
-                    await self.touched()
+                await self.touched()
 
-
-# :TODO: Implement a semaphore or something along those lines
-# to allow behaviours to await other behaviours 
 
 lamp.add_behaviour(TouchyGramp)
 lamp.add_behaviour(ShiftyGramp)
