@@ -50,11 +50,11 @@ class Lamp:
 
     # The main loop
     async def main(self):
-        await self.base.until_off()
-        await self.shade.until_off()
+        self.base.off()
+        self.shade.off()
 
-        shade_fade = asyncio.create_task(self.shade.until_faded_to(self.shade.default_pixels,40))
-        base_fade = asyncio.create_task(self.base.until_faded_to(self.base.default_pixels,40))
+        shade_fade = asyncio.create_task(self.shade.async_fade(self.shade.default_pixels,40))
+        base_fade = asyncio.create_task(self.base.async_fade(self.base.default_pixels,40))
 
         await asyncio.gather(shade_fade,base_fade)
 
@@ -65,4 +65,4 @@ class Lamp:
         print("%s is awake!" % (self.name))
 
         while True:
-            await asyncio.sleep_ms(1)             
+            await asyncio.sleep_ms(1)

@@ -2,7 +2,7 @@ import neopixel, machine
 import uasyncio as asyncio
 from led_strip import LedStrip
 
-class Behaviour(LedStrip):
+class Behaviour:
     def __init__(self,lamp):
         self.lamp = lamp
 
