@@ -35,10 +35,10 @@ class LampTouch:
     # Are we being touched? 
     def is_touched(self):
         read = self.read_averaged(50)
-        average = int((read / self.avg) * 100)
+        average = (read / self.avg) * 100
 
         if average <= 92:
             return True
         else: 
-            self.avg = read
+            self.avg = (read + self.avg) / 2
             return False

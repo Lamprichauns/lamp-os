@@ -104,17 +104,15 @@ class ShiftyGramp(Behaviour):
         self.palettes[4] = [(20,250,40,0)] * 40   
         self.palettes[5] = self.lamp.base.default_pixels.copy()
         self.palettes[6] = [(0,250,30,0)] * 40
-        self.palettes[7] = [(0,150,0,0)] * 40                
 
         # some tweaks 
         for i in range(10):
             self.palettes[5][i] = ((100 + (i * 10)),100,0,0)
             self.palettes[3][i+10] = (30,120 + (i * 10),5,20)    
-            self.palettes[7][i] = (0,20 + (i*10),0,0)   
 
         for i in range(6):
-            self.palettes[6][34 + i] = ((120 + (i * 10)),150,0,0)
-            self.palettes[7][34 + i] = (0,250 - (i*10),0,0)
+            self.palettes[6][34 + i] = ((10 + (i * 10)),250,30,0)
+  
 
         while True:
             # Every now and then, shift to a new palette
