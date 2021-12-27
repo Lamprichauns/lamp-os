@@ -29,8 +29,10 @@ class LampTouch:
                 pass
 
             sleep_ms(1)
-
-        return sum(values) // len(values)
+        if len(values) == 0:
+            return 0
+        else: 
+            return sum(values) // len(values)
 
     # Are we being touched? 
     def is_touched(self):

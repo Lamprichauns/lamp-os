@@ -140,7 +140,7 @@ class TouchyGramp(Behaviour):
         self.lamp.base.fill(dim_pixels)
 
         while self.lamp.touch.is_touched():            
-            self.lamp.shade.fill((self.lamp.touch.value(),10,0,0))
+            self.lamp.shade.fill((int(self.lamp.touch.value()),10,0,0))
             asyncio.sleep_ms(500)
 
         self.lamp.shade.fill(previous_shade)
