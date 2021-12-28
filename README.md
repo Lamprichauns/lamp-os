@@ -26,7 +26,7 @@ The vision for the lamps is that they remain mostly still and static, as a contr
 
 Within this vision there is room for the lamps to have personality, shown through subtle behaviour based on things like time, randomness, presence/absence of other lamps, etc. 
 
-With these sorts of subtle changes this also introduces an element where people may begin to realize things are not as static as they seem, creating a somewhat complex puzzle for people to solve, and then share once they've solved.
+With these sorts of subtle changes this also introduces an element where people may begin to realize things are not as static as they seem, creating a somewhat complex puzzle for people to solve and talk about.
 
 ### Implementation  
 
