@@ -3,7 +3,6 @@ from lamp import Lamp
 import uasyncio as asyncio
 import random
 
-
 config = { 
     "base": { "pin": 15, "pixels": 40}, 
     "shade": { "pin": 14, "pixels": 40}, 
@@ -153,11 +152,11 @@ class TouchyGramp(Behaviour):
 
     async def run(self):
         while True: 
-            await asyncio.sleep_ms(300)  
+            await asyncio.sleep_ms(100)  
 
             if self.lamp.touch.is_touched():
                 async with self.lamp.lock:
-                    print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.avg))
+                    print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.average()))
                     await self.touched()
 
 gramp.add_behaviour(TouchyGramp)
