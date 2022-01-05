@@ -1,6 +1,8 @@
 from led_strip import LedStrip
 import uasyncio as asyncio
 from touch import LampTouch
+from bt import LampBluetooth
+import re
 
 # Default config for pins and pixels
 default_config = {   
@@ -12,6 +14,8 @@ default_config = {
 # We love lamp.
 class Lamp:
     def __init__(self, name, base_color, shade_color, config = default_config):
+        if not re.match('^[a-z]+$', name): raise NameError('Name must be lowercase alpha')
+
         self.lock = asyncio.Lock()
         self.name = name
         self.behaviours = []
@@ -19,6 +23,9 @@ class Lamp:
         self.touch = LampTouch(config["touch"]["pin"])        
         self.shade = LedStrip(self, shade_color, config['shade']['pin'], config['shade']['pixels'])
         self.base = LedStrip(self, base_color, config['base']['pin'], config['base']['pixels'])
+
+        self.bt = LampBluetooth(name, base_color, shade_color)
+        self.network = self.bt.network
 
     # Add a behaviour 
     def add_behaviour(self, behaviour_class):
@@ -62,7 +69,10 @@ class Lamp:
             print("Enabling Behaviour: %s" % (behaviour))
             asyncio.create_task(behaviour.run())
         
+        self.bt.enable()
+
         print("%s is awake!" % (self.name))
 
         while True:
             await asyncio.sleep_ms(1)
+            await self.network.monitor()

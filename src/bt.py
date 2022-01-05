@@ -3,14 +3,77 @@ import binascii
 import bluetooth
 from micropython import const
 import ble_advertising as blea
-
+import time
+import uasyncio as asyncio
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
-_GAP_SCAN_INTERVAL_US = const(128_000)
-_GAP_SCAN_WINDOW_US = const(11_250)
+_GAP_SCAN_INTERVAL_US = const(100_000)
+_GAP_SCAN_WINDOW_US = const(15_000)
 _GAP_ADV_INTERVAL_US = const(100_000)
+
+# :TODO: Update the internal rgb/hex conversion to work with the W pixel and remove this
+def hex_to_rgbw(value):
+    value = value.lstrip('#')
+    rgb = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
+    return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
+
+class LampNetwork:
+    def __init__(self):
+        self.lamps = {}
+        self.departed_lamps = {}
+        self.arrived_lamps = {}
+    
+    def found(self, name, base_color, shade_color, rssi):
+        if name in self.lamps: 
+            self.lamps[name]["rssi"] = rssi
+            self.lamps[name]["last_seen"] = time.time() 
+        else:
+            #print("Found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
+            self.arrived_lamps[name] = self.lamps[name] = { "base_color": hex_to_rgbw(base_color), "shade_color": hex_to_rgbw(shade_color), "rssi": rssi, "first_seen": time.time(), "last_seen": time.time() }
+    
+    # returns departed lamps. Optionally pass the name of a lamp to only look for that lamp
+    @classmethod
+    async def _await_lamps(cls, name, list):
+        if name == None:
+            while not any(list):
+                await asyncio.sleep_ms(1)
+
+            lamp = list.popitem()
+        else:
+            while name not in list:
+                await asyncio.sleep_ms(1)
+            
+            lamp = (name, list.pop(name))
+
+        return {"name": lamp[0], "base_color": lamp[1]["base_color"], "shade_color": lamp[1]["shade_color"]}
+
+    @classmethod
+    def _prune_lamp_list(cls, list, field, timeout):
+        for name, data in list.items():
+            if time.time() - list[name][field] >= timeout:
+                #print("%s is stale (%s), removing" % (field, name))
+                list.pop(name)
+
+    # await for and return departed lamps. Optionally specifiy the name to look for a specific lamp
+    async def departed(self, name = None):
+        return await self._await_lamps(name, self.departed_lamps)
+
+    # await for and return arrived lamps. Optionally specifiy the name to look for a specific lamp
+    async def arrived(self, name = None):
+        return await self._await_lamps(name, self.arrived_lamps)
+
+    async def monitor(self):
+        # Add timed out lamps to departed list 
+        for name, data in self.lamps.items():
+            if time.time() - self.lamps[name]["last_seen"] >= 5: 
+                self.departed_lamps[name] = self.lamps.pop(name)
+                #print("%s has left, removing (%s)" % (name, self.lamps[name]["last_seen"]))                
+        
+        self._prune_lamp_list(self.departed_lamps, "last_seen", 15)
+        self._prune_lamp_list(self.arrived_lamps, "first_seen", 15)
+
 
 class LampBluetooth:
     MAGIC_NUM = const(42069)
@@ -61,40 +124,31 @@ class LampBluetooth:
         self.ble = bluetooth.BLE()
         self.ble.active(True)
         self.ble.irq(self.bt_irq)
+        self.network = LampNetwork()
+
         custom_field = self._pack_colors_field(base_color, shade_color)
 
         self.adv_payload = blea.advertising_payload(
             name = name,
             custom_fields=( (0xFF, custom_field), )
             )
-        print("Payload is ", len(self.adv_payload), " len")
-        print("BT Inited")
+        print("BT Initialized")
 
-    def bt_scan(self, on : bool):
-        if on:
-            self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
-            print("scanning on")
-        else:
-            self.ble.gap_scan(None)
-            print("scanning off")
-
-    def bt_adv(self, on : bool):
-        adv_data = self.adv_payload if on else None
-        self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, adv_data, connectable=False)
-        print("Adv on: ", on)
+    def enable(self): 
+        self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
+        self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, self.adv_payload, connectable=False)
+        print("BT enabled (scaning & advertising)")
 
     # pylint: disable=too-many-arguments,unused-argument
     def handle_scan_result(self, addr_type, addr, adv_type, rssi, adv_data):
         adv_bytes = bytes(adv_data)
         name = blea.decode_name(adv_bytes)
-        if name:
-            print("Found named device:", name, "rssi:", str(rssi))
+
         custom_fields = blea.decode_field(adv_bytes, 0xFF)
         for field in custom_fields:
             if self._is_lamp(field):
                 (base_color, shade_color) = self._unpack_colors_field(field)
-                print("Found a lamp!", name, base_color, shade_color, "rssi:", rssi)
-
+                self.network.found(name, base_color, shade_color, rssi) 
 
     def bt_irq(self, event, data):
         if event == _IRQ_SCAN_RESULT:

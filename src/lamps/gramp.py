@@ -159,8 +159,35 @@ class TouchyGramp(Behaviour):
                     print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.average()))
                     await self.touched()
 
+class SocialGramp(Behaviour):
+    async def blink(self,color,pausetime): 
+        async with self.lamp.lock:
+            previous_base = list(self.lamp.base.pixels)
+            self.lamp.base.fill(knock_out_neck_pixels([color] * 40))
+            await asyncio.sleep_ms(pausetime)
+            self.lamp.base.fill(previous_base)
+
+    async def arrivals(self):
+        while True:
+            arrived = await self.lamp.network.arrived()
+            print("%s has arrived" % (arrived["name"]))
+            await self.blink(arrived["base_color"],500)
+            await self.blink(arrived["base_color"],500)            
+
+    async def departures(self):
+        while True:
+            departed = await self.lamp.network.departed()
+            print("%s has departed" % (departed["name"]))
+            await self.blink(departed["base_color"],1000)
+            
+    async def run(self):
+        asyncio.create_task(self.arrivals())
+        asyncio.create_task(self.departures())
+
+
 gramp.add_behaviour(TouchyGramp)
 gramp.add_behaviour(ShiftyGramp)
 gramp.add_behaviour(GlitchyGramp)  
+gramp.add_behaviour(SocialGramp)  
 
 gramp.wake()
