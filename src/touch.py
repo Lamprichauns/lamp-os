@@ -12,8 +12,10 @@ class LampTouch:
         self.touched = False
  
     def update_averages(self): 
-        self.averages.insert(0, self.read_averaged(3))
-        self.averages.pop()
+        value = self.value()
+        if not value == 0: 
+            self.averages.insert(0, value)
+            self.averages.pop()
 
     def average(self):
         if len(self.averages) == 0:
@@ -56,8 +58,7 @@ class LampTouch:
         average = (read / self.average()) * 100
 
         # print("%s : %s (%s)" % (read, self.average(),  average))
-
-        if average <= 96:
+        if average <= 85:
             return True
         else: 
             self.update_averages()
