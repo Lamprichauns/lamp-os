@@ -94,15 +94,16 @@ class ShiftyGramp(Behaviour):
     async def run(self):
         self.active_palette = 0
         self.task = None
+        num_pixels = self.lamp.base.num_pixels
 
         self.palettes = {}
-        self.palettes[0] = [(90,240,0,0)] * 40
-        self.palettes[1] = [(0,250,0,80)] * 40     
-        self.palettes[2] = [(10,160,10,0)] * 40       
-        self.palettes[3] = [(30,100,5,40)] * 40    
-        self.palettes[4] = [(20,250,40,0)] * 40   
+        self.palettes[0] = [(90,240,0,0)] * num_pixels
+        self.palettes[1] = [(0,250,0,80)] * num_pixels     
+        self.palettes[2] = [(10,160,10,0)] * num_pixels       
+        self.palettes[3] = [(30,100,5,40)] * num_pixels    
+        self.palettes[4] = [(20,250,40,0)] * num_pixels   
         self.palettes[5] = self.lamp.base.default_pixels.copy()
-        self.palettes[6] = [(0,250,30,0)] * 40
+        self.palettes[6] = [(0,250,30,0)] * num_pixels
 
         # some tweaks 
         for i in range(10):
@@ -130,7 +131,7 @@ class TouchyGramp(Behaviour):
     # - return to previous colors
     # - fire shift behaviour
     async def touched(self):
-        dim_pixels = knock_out_neck_pixels([(0,10,0,0)] * 40)
+        dim_pixels = knock_out_neck_pixels([(0,10,0,0)] * self.lamp.base.num_pixels)
 
         previous_shade = list(self.lamp.shade.pixels)        
         previous_base = list(self.lamp.base.pixels)
@@ -163,22 +164,29 @@ class SocialGramp(Behaviour):
     async def blink(self,color,pausetime): 
         async with self.lamp.lock:
             previous_base = list(self.lamp.base.pixels)
-            self.lamp.base.fill(knock_out_neck_pixels([color] * 40))
+            self.lamp.base.fill(knock_out_neck_pixels([color] * self.lamp.base.num_pixels))
             await asyncio.sleep_ms(pausetime)
             self.lamp.base.fill(previous_base)
 
     async def arrivals(self):
         while True:
+            previous_base = list(self.lamp.base.pixels)
+
             arrived = await self.lamp.network.arrived()
             print("%s has arrived" % (arrived["name"]))
-            await self.blink(arrived["base_color"],500)
-            await self.blink(arrived["base_color"],500)            
+            num_pixels = self.lamp.base.num_pixels
+
+            await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * num_pixels),10)
+            await self.lamp.base.async_fade(previous_base,10)     
+            await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["shade_color"]] * num_pixels),10)
+            await self.lamp.base.async_fade(previous_base,10)
 
     async def departures(self):
         while True:
             departed = await self.lamp.network.departed()
             print("%s has departed" % (departed["name"]))
-            await self.blink(departed["base_color"],1000)
+            await self.blink(departed["base_color"],200)
+            await self.blink(departed["shade_color"],200)                          
             
     async def run(self):
         asyncio.create_task(self.arrivals())
@@ -189,5 +197,8 @@ gramp.add_behaviour(TouchyGramp)
 gramp.add_behaviour(ShiftyGramp)
 gramp.add_behaviour(GlitchyGramp)  
 gramp.add_behaviour(SocialGramp)  
+
+
+# :TODO: Rename async fade to just fade
 
 gramp.wake()
