@@ -1,4 +1,4 @@
 # This file is only here for development.
 # Change this to point at whatever lamp you are working on!
 
-import lamps.andy
+import lamps.gramp
