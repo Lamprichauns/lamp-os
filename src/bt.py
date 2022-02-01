@@ -9,13 +9,12 @@ import uasyncio as asyncio
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
-# Scan every 40ms (for 30ms). 
-# It's better to do frequent short scans since it cycles channels. 
-_GAP_SCAN_INTERVAL_US = const(40_000) 
-_GAP_SCAN_WINDOW_US = const(30_000)
+# Scan every INTERVAL for WINDOW
+_GAP_SCAN_INTERVAL_US = const(100_000) 
+_GAP_SCAN_WINDOW_US = const(15_000)
 
-# Advertise every 500ms 
-_GAP_ADV_INTERVAL_US = const(500_000) 
+# Advertise every INTERVAL
+_GAP_ADV_INTERVAL_US = const(100_000) 
 
 # :TODO: Update the internal rgb/hex conversion to work with the W pixel and remove this
 def hex_to_rgbw(value):
@@ -34,7 +33,7 @@ class LampNetwork:
             self.lamps[name]["rssi"] = rssi
             self.lamps[name]["last_seen"] = time.time() 
         else:
-            #print("Found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
+            print("BT: New lamp found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
             self.arrived_lamps[name] = self.lamps[name] = { "base_color": hex_to_rgbw(base_color), "shade_color": hex_to_rgbw(shade_color), "rssi": rssi, "first_seen": time.time(), "last_seen": time.time() }
     
     # returns departed lamps. Optionally pass the name of a lamp to only look for that lamp
@@ -57,7 +56,7 @@ class LampNetwork:
     def _prune_lamp_list(cls, list, field, timeout):
         for name, data in list.items():
             if time.time() - list[name][field] >= timeout:
-                #print("%s is stale (%s), removing" % (field, name))
+                #print("BT: %s is stale (%s), removing" % (field, name))
                 list.pop(name)
 
     # await for and return departed lamps. Optionally specifiy the name to look for a specific lamp
@@ -71,11 +70,11 @@ class LampNetwork:
     async def monitor(self):
         # Add timed out lamps to departed list 
         for name, data in self.lamps.items():
-            if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen 
+            if time.time() - self.lamps[name]["last_seen"] >= 20: # Currently with less timeout than this it will sometimes get un-seen/re-seen 
                 self.departed_lamps[name] = self.lamps.pop(name)
-                #print("%s has left, removing (%s)" % (name, self.lamps[name]["last_seen"]))                
+                print("BT: %s has left, removing" % (name))             
         
-        self._prune_lamp_list(self.departed_lamps, "last_seen", 15)
+        self._prune_lamp_list(self.departed_lamps, "last_seen", 30) 
         self._prune_lamp_list(self.arrived_lamps, "first_seen", 15)
 
 

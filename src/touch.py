@@ -58,7 +58,7 @@ class LampTouch:
         average = (read / self.average()) * 100
 
         # print("%s : %s (%s)" % (read, self.average(),  average))
-        if average <= 85:
+        if average <= 90:
             return True
         else: 
             self.update_averages()
