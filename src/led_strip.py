@@ -11,6 +11,7 @@ class LedStrip:
         self.color = LedStrip.hex_to_rgb(color) 
         self.num_pixels = num_pixels
         self.pin = pin
+        self.lock = asyncio.Lock()
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=4)
         self.default_pixels = [self.color] * self.num_pixels
@@ -44,17 +45,15 @@ class LedStrip:
         colors = dict()
         for i in range(self.num_pixels):
             colors[i] = (
-                CubicEaseOut(start = colors_start[i][0], end = dest[i][0], duration = steps),
-                CubicEaseOut(start = colors_start[i][1], end = dest[i][1], duration = steps),
-                CubicEaseOut(start = colors_start[i][2], end = dest[i][2], duration = steps),
-                CubicEaseOut(start = colors_start[i][3], end = dest[i][3], duration = steps)
+                QuadEaseInOut(start = colors_start[i][0], end = dest[i][0], duration = steps),
+                QuadEaseInOut(start = colors_start[i][1], end = dest[i][1], duration = steps),
+                QuadEaseInOut(start = colors_start[i][2], end = dest[i][2], duration = steps),
+                QuadEaseInOut(start = colors_start[i][3], end = dest[i][3], duration = steps)
             )
 
         for step in range(steps):   
-            # Check against lamp lock to make sure we're not locked doing something else
-            # before we do the next update in this fade sequence (so that long fades can pause 
-            # while other things happen)
-            async with self.lamp.lock:
+            # Lock the led strip while fading so we don't try to animate two things at once
+            async with self.lock:
                 for p in range(self.num_pixels):
                     self.pixels[p] = (
                         int(colors[p][0](step)),

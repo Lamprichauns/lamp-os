@@ -4,10 +4,10 @@ import uasyncio as asyncio
 import random
 
 config = { 
-    "base": { "pin": 15, "pixels": 40}, 
-    "shade": { "pin": 14, "pixels": 40}, 
+    "base": { "pin": 2, "pixels": 40}, 
+    "shade": { "pin": 27, "pixels": 40}, 
     "touch": { "pin": 32 }
-}
+} 
 
 gramp = Lamp("gramp", "#40b000", "#ffffff", config)
 
@@ -27,6 +27,9 @@ for i in range(6):
     default_pixels[34 + i] = ((100 + (i * 10)),150,0,0)
     default_pixels[12] = (0,0,30,0)
     default_pixels[22-i] = ((5 + (i * 10)),50,0,0)
+
+# Color behind the flowers
+default_pixels[13] = (0,210,0,180)
 
 gramp.base.default_pixels = default_pixels
 
@@ -86,10 +89,9 @@ class ShiftyGramp(Behaviour):
     async def unshift(self):
         print("Reverting to default colors")
 
-        async with self.lamp.lock:
-            await self.abort()            
-            await self.lamp.behaviour(GlitchyGramp).glitch(200)
-            self.lamp.base.fill(self.lamp.base.default_pixels)
+        await self.abort()            
+        await self.lamp.behaviour(GlitchyGramp).glitch(200)
+        self.lamp.base.fill(self.lamp.base.default_pixels)
 
     async def run(self):
         self.active_palette = 0
@@ -104,6 +106,7 @@ class ShiftyGramp(Behaviour):
         self.palettes[4] = [(20,250,40,0)] * num_pixels   
         self.palettes[5] = self.lamp.base.default_pixels.copy()
         self.palettes[6] = [(0,250,30,0)] * num_pixels
+        self.palettes[7] = [(0,100,0,0)] * num_pixels 
 
         # some tweaks 
         for i in range(10):
@@ -112,16 +115,17 @@ class ShiftyGramp(Behaviour):
 
         for i in range(6):
             self.palettes[6][34 + i] = ((10 + (i * 10)),250,30,0)
-  
 
         while True:
             # Every now and then, shift to a new palette
             await asyncio.sleep(random.choice(range(120,1200)))
-            await self.shift()   
+            async with self.lamp.lock:
+                await self.shift()   
 
             # Revert back to default after awhile
             await asyncio.sleep(random.choice(range(300,900)))
-            await self.unshift()
+            async with self.lamp.lock:
+                await self.unshift()
 
 class TouchyGramp(Behaviour):
     # This is mostly to flesh out some various ideas/interface bits. 
@@ -156,37 +160,36 @@ class TouchyGramp(Behaviour):
             await asyncio.sleep_ms(100)  
 
             if self.lamp.touch.is_touched():
-                async with self.lamp.lock:
+                async with self.lamp.base.lock: # Use the lock on the base led strip so we can interupt fades
                     print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.average()))
                     await self.touched()
 
 class SocialGramp(Behaviour):
-    async def blink(self,color,pausetime): 
-        async with self.lamp.lock:
-            previous_base = list(self.lamp.base.pixels)
-            self.lamp.base.fill(knock_out_neck_pixels([color] * self.lamp.base.num_pixels))
-            await asyncio.sleep_ms(pausetime)
-            self.lamp.base.fill(previous_base)
-
     async def arrivals(self):
         while True:
             previous_base = list(self.lamp.base.pixels)
 
             arrived = await self.lamp.network.arrived()
-            print("%s has arrived" % (arrived["name"]))
-            num_pixels = self.lamp.base.num_pixels
 
-            await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * num_pixels),10)
-            await self.lamp.base.async_fade(previous_base,10)     
-            await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["shade_color"]] * num_pixels),10)
-            await self.lamp.base.async_fade(previous_base,10)
+            async with self.lamp.lock:            
+                print("%s has arrived" % (arrived["name"]))
+                previous_base = list(self.lamp.base.pixels)
+                
+                await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * self.lamp.base.num_pixels), 50)
+                await self.lamp.base.async_fade(previous_base,20)
 
     async def departures(self):
         while True:
             departed = await self.lamp.network.departed()
             print("%s has departed" % (departed["name"]))
-            await self.blink(departed["base_color"],200)
-            await self.blink(departed["shade_color"],200)                          
+            
+            async with self.lamp.lock:            
+                print("%s has arrived" % (departed["name"]))
+                previous_base = list(self.lamp.base.pixels)
+                
+                await self.lamp.base.async_fade(knock_out_neck_pixels([departed["base_color"]] * self.lamp.base.num_pixels), 20)
+                await self.lamp.base.async_fade(previous_base,5)
+                        
             
     async def run(self):
         asyncio.create_task(self.arrivals())
