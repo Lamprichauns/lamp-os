@@ -10,8 +10,8 @@ _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
 # Scan every INTERVAL for WINDOW
-_GAP_SCAN_INTERVAL_US = const(100_000) 
-_GAP_SCAN_WINDOW_US = const(15_000)
+_GAP_SCAN_INTERVAL_US = const(20_000) 
+_GAP_SCAN_WINDOW_US = const(10_000)
 
 # Advertise every INTERVAL
 _GAP_ADV_INTERVAL_US = const(100_000) 
@@ -70,7 +70,7 @@ class LampNetwork:
     async def monitor(self):
         # Add timed out lamps to departed list 
         for name, data in self.lamps.items():
-            if time.time() - self.lamps[name]["last_seen"] >= 20: # Currently with less timeout than this it will sometimes get un-seen/re-seen 
+            if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen 
                 self.departed_lamps[name] = self.lamps.pop(name)
                 print("BT: %s has left, removing" % (name))             
         
