@@ -33,8 +33,10 @@ class LampNetwork:
             self.lamps[name]["rssi"] = rssi
             self.lamps[name]["last_seen"] = time.time() 
         else:
-            print("BT: New lamp found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
-            self.arrived_lamps[name] = self.lamps[name] = { "base_color": hex_to_rgbw(base_color), "shade_color": hex_to_rgbw(shade_color), "rssi": rssi, "first_seen": time.time(), "last_seen": time.time() }
+            print("RRSI of lamp %s" % (rssi))
+            if rssi > -94: # Don't add it unless it's strong enough of a signal. 
+                print("BT: New lamp found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
+                self.arrived_lamps[name] = self.lamps[name] = { "base_color": hex_to_rgbw(base_color), "shade_color": hex_to_rgbw(shade_color), "rssi": rssi, "first_seen": time.time(), "last_seen": time.time() }
     
     # returns departed lamps. Optionally pass the name of a lamp to only look for that lamp
     @classmethod

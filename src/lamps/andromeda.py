@@ -17,6 +17,9 @@ for i in [20,27,29,30,32,33,34,36,38,39]:
 for i in [22, 10, 15, 14, 13]:
     pixels[i] = (0,50,190, 0)
 
+pixels[25] = (0,40,240,0)
+pixels[23] = (100,40,240,0)
+
 andy.base.default_pixels = pixels  
 
 

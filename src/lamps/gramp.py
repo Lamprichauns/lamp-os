@@ -171,24 +171,25 @@ class SocialGramp(Behaviour):
 
             arrived = await self.lamp.network.arrived()
 
-            async with self.lamp.lock:            
+            async with self.lamp.base.lock:            
                 print("%s has arrived" % (arrived["name"]))
                 previous_base = list(self.lamp.base.pixels)
                 
-                await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * self.lamp.base.num_pixels), 50)
-                await self.lamp.base.async_fade(previous_base,20)
+                for _ in range(2): 
+                    await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * self.lamp.base.num_pixels), 10)
+                    await self.lamp.base.async_fade(previous_base,10)
 
     async def departures(self):
         while True:
             departed = await self.lamp.network.departed()
 
             
-            async with self.lamp.lock:
+            async with self.lamp.base.lock:
                 print("%s has departed" % (departed["name"]))
                 previous_base = list(self.lamp.base.pixels)
                 
-                await self.lamp.base.async_fade(knock_out_neck_pixels([departed["base_color"]] * self.lamp.base.num_pixels), 20)
-                await self.lamp.base.async_fade(previous_base,5)
+                await self.lamp.base.async_fade(knock_out_neck_pixels([departed["base_color"]] * self.lamp.base.num_pixels), 10)
+                await self.lamp.base.async_fade(previous_base,10)
                         
             
     async def run(self):
