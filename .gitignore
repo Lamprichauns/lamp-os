@@ -1,10 +1,14 @@
+# KiCad backup files
+*.bak
+*.bck
+*.kicad_pcb-bak
 
-### VisualStudioCode ###
-.vscode/*
+# KiCad generated files
+*.erc
+*.net
+*-cache.lib
+*-rescue.lib
+*-backups
 
-### Micropy Cli ###
-.micropy/
-!micropy.json
-!src/lib
-
+# MacOS
 .DS_Store
