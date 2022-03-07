@@ -15,6 +15,8 @@ This is being developed for the ESP32
 
 To create a lamp, create `src/app/lamps/lampname.py`.
 
+For an example of a simple lamp look at: `src/app/lamps/simple_lamp.py`
+
 Wiring and assembly info will be here later.
 
 ## Loading Data on the ESP32s
