@@ -1,15 +1,18 @@
-from behaviour import Behaviour
-from lamp import Lamp
+from ..lamp_core.behaviour import Behaviour
+from ..lamp_core.lamp import Lamp
+from ..network.network import LampNetworkObserver
+from ..network.coding import Codes
+from ..app import App
 import uasyncio as asyncio
 import random
 
 config = { 
-    "base": { "pin": 2, "pixels": 40}, 
-    "shade": { "pin": 27, "pixels": 40}, 
+    "base": { "pin": 12, "pixels": 40}, 
+    "shade": { "pin": 13, "pixels": 40}, 
     "touch": { "pin": 32 }
 } 
 
-gramp = Lamp("gramp", "#40b000", "#ffffff", config)
+gramp = Lamp(App.shared_app.network, "gramp", "#40b000", "#ffffff", config)
 
 # Gramp has a narrow neck and we need to shut some of these pixels off 
 def knock_out_neck_pixels(pixels): 
@@ -164,45 +167,55 @@ class TouchyGramp(Behaviour):
                     print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.average()))
                     await self.touched()
 
-class SocialGramp(Behaviour):
-    async def arrivals(self):
-        while True:
+class SocialGramp(Behaviour, LampNetworkObserver):
+    def __init__(self, lamp):
+        super().__init__(lamp)
+        self.lamp.network.add_observer(self)
+
+    def __del__(self):
+       self.lamp.network.remove_observer(self)
+
+    async def new_lamp_appeared(self, new_lamp):
+        print(f"{new_lamp.name} has arrived")
+
+    async def lamp_changed(self, lamp):
+        pass
+
+    async def lamp_attribute_changed(self, lamp, attribute):
+        if attribute.code != Codes.BASE_COLOR:
+            return
+
+        previous_base = list(self.lamp.base.pixels)
+        base_color = lamp.attributes[Codes.BASE_COLOR].value
+
+        async with self.lamp.base.lock:            
             previous_base = list(self.lamp.base.pixels)
 
-            arrived = await self.lamp.network.arrived()
-
-            async with self.lamp.base.lock:            
-                print("%s has arrived" % (arrived["name"]))
-                previous_base = list(self.lamp.base.pixels)
-                
-                for _ in range(2): 
-                    await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * self.lamp.base.num_pixels), 10)
-                    await self.lamp.base.async_fade(previous_base,10)
-
-    async def departures(self):
-        while True:
-            departed = await self.lamp.network.departed()
-
-            
-            async with self.lamp.base.lock:
-                print("%s has departed" % (departed["name"]))
-                previous_base = list(self.lamp.base.pixels)
-                
-                await self.lamp.base.async_fade(knock_out_neck_pixels([departed["base_color"]] * self.lamp.base.num_pixels), 10)
+            for _ in range(2): 
+                await self.lamp.base.async_fade(knock_out_neck_pixels([base_color] * self.lamp.base.num_pixels), 10)
                 await self.lamp.base.async_fade(previous_base,10)
-                        
-            
-    async def run(self):
-        asyncio.create_task(self.arrivals())
-        asyncio.create_task(self.departures())
 
+    async def lamps_departed(self, lamps):
+        print(f"{lamps} have departed")
+
+        base_color = lamps[0].attributes[Codes.BASE_COLOR].value
+
+        async with self.lamp.base.lock:
+            previous_base = list(self.lamp.base.pixels)
+            
+            await self.lamp.base.async_fade(knock_out_neck_pixels([base_color] * self.lamp.base.num_pixels), 10)
+            await self.lamp.base.async_fade(previous_base,10)
+
+    async def run(self):
+        pass
 
 gramp.add_behaviour(TouchyGramp)
 gramp.add_behaviour(ShiftyGramp)
 gramp.add_behaviour(GlitchyGramp)  
-gramp.add_behaviour(SocialGramp)  
+gramp.add_behaviour(SocialGramp) 
 
 
 # :TODO: Rename async fade to just fade
 
-gramp.wake()
+asyncio.create_task(gramp.startup())
+App.shared_app.lamp = gramp

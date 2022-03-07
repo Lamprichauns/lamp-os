@@ -6,7 +6,7 @@ import network
 gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
 machine.freq(240000000)
 
-webrplEnable = True
+webrplEnable = False
 
 if webrplEnable:
     ap = network.WLAN(network.AP_IF)

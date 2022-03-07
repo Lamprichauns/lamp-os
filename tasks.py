@@ -99,7 +99,7 @@ def run(c, lamp, port=None, dont_flash=False):
     c.run(f"ampy --port {port} run src/main.py", hide=False)
 
 @task
-def wipe(c, lamp, port=None):
+def wipe(c, lamp=None, port=None):
     '''
     Clear off all the files from a micropython device.
     '''
