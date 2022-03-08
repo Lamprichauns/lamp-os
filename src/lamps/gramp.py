@@ -67,7 +67,7 @@ class GlitchyGramp(Behaviour):
 class ShiftyGramp(Behaviour):
     async def shift(self):
         await self.abort()
-
+        
         options = list(range(len(self.palettes)))
         options.remove(self.active_palette)
 
@@ -77,7 +77,7 @@ class ShiftyGramp(Behaviour):
         print("Shifting to %s" % (choice))
    
         # Do the shift in the background, it takes a long time
-        self.task = asyncio.create_task(self.lamp.base.async_fade(dest_colors,400,200))
+        self.task = asyncio.create_task(self.lamp.base.async_fade(dest_colors,400,200,True))
         self.active_palette = choice
 
     async def abort(self): 
@@ -183,7 +183,6 @@ class SocialGramp(Behaviour):
         while True:
             departed = await self.lamp.network.departed()
 
-            
             async with self.lamp.base.lock:
                 print("%s has departed" % (departed["name"]))
                 previous_base = list(self.lamp.base.pixels)
@@ -202,7 +201,5 @@ gramp.add_behaviour(ShiftyGramp)
 gramp.add_behaviour(GlitchyGramp)  
 gramp.add_behaviour(SocialGramp)  
 
-
 # :TODO: Rename async fade to just fade
-
 gramp.wake()

@@ -37,7 +37,7 @@ class LedStrip:
 
     # Shift pixels from their current state to a target state. Dest can be either a list of individual pixels or a RGBW tuple
     # :TODO: Allow easing type to be passed
-    async def async_fade(self, dest, steps, step_delay=1):
+    async def async_fade(self, dest, steps, step_delay=1, background=False):
         if not isinstance(dest, list): dest = [dest] * self.num_pixels
 
         colors_start = list(self.pixels)
@@ -52,18 +52,23 @@ class LedStrip:
             )
 
         for step in range(steps):   
-            # Lock the led strip while fading so we don't try to animate two things at once
-            async with self.lock:
-                for p in range(self.num_pixels):
-                    self.pixels[p] = (
-                        int(colors[p][0](step)),
-                        int(colors[p][1](step)),
-                        int(colors[p][2](step)),
-                        int(colors[p][3](step))
-                    )
+            # If this  is a bakgrounded animation, lock the led strip while fading 
+            # so we don't try to animate two things at once. Otherwise, 
+            # we can asume things are not async (or handled) and not worry about it.
+            if background: await self.lock.acquire()
 
-                self.pixels.write()  
-                await asyncio.sleep_ms(step_delay)
+            for p in range(self.num_pixels):
+                self.pixels[p] = (
+                    int(colors[p][0](step)),
+                    int(colors[p][1](step)),
+                    int(colors[p][2](step)),
+                    int(colors[p][3](step))
+                )
+
+            self.pixels.write()  
+            await asyncio.sleep_ms(step_delay)
+
+            if background: self.lock.release()
 
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)
