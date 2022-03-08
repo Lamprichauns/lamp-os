@@ -102,6 +102,16 @@ class MyLamp(BaseLamp, LampNetworkObserver):
 
 ```
 
+### Application Structure
+
+`src/` -  is where all the code for a lamp lives, this gets flashed to devices (in entirety, so any lamp could really switch to another)
+`test/` -  is test cases, pretty much just the network module. Testing the app entry point and BLE layer is possible, but this was already getting large.
+`src/*.py` - Just the bare bones boot files for the app, rest should live in the app folder. Makes things more portable
+`src/app/network` - The networking module.
+`src/app/lamp_core` - Core code that can be leveraged for all lamps. I think can do more house keeping here.
+`src/app/utils` - Utility files not useful for all lamps, but handy to have around
+`src/app/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `app.py` the files live here.
+
 ### Lamp Personality & Behaviours 
 
 The vision for the lamps is that they remain mostly still and static, as a contrast to the plethora of sound reactive and blinky light art out there. The brightness of the lamps and the colorful glowing base draws attention to the juxtaposition of an ordinary household object in extraordinary places. 
