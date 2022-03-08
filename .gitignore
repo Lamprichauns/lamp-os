@@ -12,3 +12,13 @@
 
 # MacOS
 .DS_Store
+
+# Test interim files
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/*
+
+# User configuration
+.env
+.vscode/*

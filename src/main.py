@@ -1,5 +1,4 @@
-# This file is only here for development.
-# Change this to point at whatever lamp you are working on!
+from app.app import App
 
-#import lamps.andromeda
-import lamps.gramp
+app = App()
+app.wake()

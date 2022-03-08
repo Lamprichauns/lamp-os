@@ -2,7 +2,7 @@ import neopixel, machine
 from time import sleep
 import time
 import uasyncio as asyncio
-from easing import *
+from .easing import *
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip: 

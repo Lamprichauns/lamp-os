@@ -11,14 +11,106 @@ This is being developed for the ESP32
 - Install PyMakr extension in VSCode (use 1.1.13 - 1.1.14 is broken.)
 - Now you can run the code on the arduino from within VScode, as well as REPL selected code, etc.
 
-
 ## Lamp creation
 
-To create a lamp, create `src/lamps/lampname.py` using `src/main.py` as a starting point.
-
-For now to install, modify main.py to point to the right lamp and upload everything in `src`.
+To create a lamp, create `src/app/lamps/lampname.py`.
 
 Wiring and assembly info will be here later.
+
+## Loading Data on the ESP32s
+
+The lamp loading mechanism works by utilizing the lamps filename as the lamp to load.  All `invoke` commands (or `inv` for short) that interact with the board should be followed by the file of the lamp in question.  eg: `inv run twinkle`.
+
+### `lamp-mapping.json`
+
+The `lamp-mapping.json` file allows to set a default pairing of lamps to devices so the `--port` argument can be dropped.
+
+### Command List:
+
+#### Flash and run the lamp on the target device
+```
+inv run gramp --port /dev/tty.usbserial-0246D45F
+```
+
+#### Flash the lamp to device
+
+Note that flashing is a progressive operation. The build system will try to determine what files that need to be updated and only upload changed files since the last flash. If there is issues run `inv wipe --port [device]` first.
+```
+inv flash gramp --port /dev/tty.usbserial-0246D45F
+```
+
+#### Clean off all the code from 
+```
+inv wipe --port /dev/tty.usbserial-0246D45F
+```
+
+#### Run Test Suite
+```
+inv test
+```
+
+#### Clean interim build files
+```
+inv clean
+```
+
+## Interacting with Other Lamps
+
+One of the interesting things about these lamps is they are aware of each other.  Each lamp that is created is handed a networking object that allows you to share details about your lamp with the network, or recieve information about other lamps.
+
+#### Announcing Details About Yourself
+```
+network.announce_attribute(Code.BASE_COLOR, (255, 200, 0, 0))
+```
+
+#### Broadcasting Messages
+Any lamp that recieves a broadcast message will replay the message to the other lamps.  These messages have a `ttl` that states how long they will last. Each messages recieved by other lamps has it's `ttl` decremented by `1` to ensure that the messages don't get trapped in the network for ever. `ttl` is typically seconds.
+
+```
+network.broadcast_message(Code.BASE_OVERRIDE, 4, (255, 0, 0, 0))
+```
+
+#### Listen For Network Changes
+
+```
+from ..lamp_core.base_lamp import BaseLamp
+from ..network.network import LampNetworkObserver
+
+class MyLamp(BaseLamp, LampNetworkObserver):
+    __init__(self, network):
+        network.attach_observer(self)
+
+    # Each of these delegate methods can be optionally added to recieve
+    # information about the various network activites.
+    async def new_lamp_appeared(self, new_lamp):
+        pass
+
+    async def lamp_changed(self, lamp):
+        pass
+
+    async def lamp_attribute_changed(self, lamp, attribute):
+        pass
+
+    async def lamps_departed(self, lamps):
+        pass
+
+    async def message_observed(self, message):
+        pass
+
+    async def message_stopped(self, code):
+        pass
+
+```
+
+### Application Structure
+
+`src/` -  is where all the code for a lamp lives, this gets flashed to devices (in entirety, so any lamp could really switch to another)
+`test/` -  is test cases, pretty much just the network module. Testing the app entry point and BLE layer is possible, but this was already getting large.
+`src/*.py` - Just the bare bones boot files for the app, rest should live in the app folder. Makes things more portable
+`src/app/network` - The networking module.
+`src/app/lamp_core` - Core code that can be leveraged for all lamps. I think can do more house keeping here.
+`src/app/utils` - Utility files not useful for all lamps, but handy to have around
+`src/app/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `app.py` the files live here.
 
 ### Lamp Personality & Behaviours 
 
@@ -46,18 +138,28 @@ Some examples of things that can be done with this:
   
 There will be info here later on how to implement this, as well as contact info in case you want us to help you do it.
 
+## Firmware Flashing
 
-## Flashing lamps
+To setup the ESP32 You'll need to flash a fresh Micropython on the board. First you'll need esptool:
+```pip install esptool```
 
-To flash a lamp to an arduino, run: `invoke flash [port] [lampname]` 
+Next download the latest micropython binary from: https://micropython.org/download/esp8266/
 
-eg. `invoke flash /dev/tty.usbserial-D3071K6D gramp` 
+Finally erase and flash the board with (with the ESP32 Thing you need to hold reset down at the start of the flash):
 
+```
+esptool.py --port /dev/tty.usbserial-0246D45F erase_flash
+esptool.py --chip esp8266 --port /dev/tty.usbserial-0246D45F --baud 460800 write_flash --flash_size=detect -fm dout 0 esp8266-20210902-v1.17.bin
 
-
+```
 
 --- 
+
+
+### Curious?
+```
 t = time.ticks_us() 
 
 delta = time.ticks_diff(time.ticks_us(), t)
 print('step- Time = {:6.3f}ms'.format( delta/1000))  
+```

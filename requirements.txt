@@ -1,2 +1,7 @@
 micropy-cli
 invoke
+adafruit-ampy
+pytest
+pytest-asyncio
+
+

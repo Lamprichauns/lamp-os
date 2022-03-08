@@ -1,5 +1,6 @@
-from behaviour import Behaviour
-from lamp import Lamp
+from ..lamp_core.behaviour import Behaviour
+from ..lamp_core.lamp import Lamp
+from ..app import App
 import uasyncio as asyncio
 import random
 
@@ -8,7 +9,7 @@ config = {
     "shade": { "pin": 12, "pixels": 40}, 
     "touch": { "pin": 32 }
 } 
-andy = Lamp("andy", "#0077bb", "#ffffff", config)
+andy = Lamp(App.shared_app.network, "andy", "#0077bb", "#ffffff", config)
 pixels = andy.base.default_pixels 
 
 for i in [20,27,29,30,32,33,34,36,38,39]:
@@ -78,4 +79,5 @@ class SuperNova(Behaviour):
 andy.add_behaviour(ShuffleStars)
 andy.add_behaviour(SuperNova)
 
-andy.wake()
+asyncio.create_task(andy.startup())
+App.shared_app.lamp = andy
