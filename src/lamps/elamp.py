@@ -11,14 +11,20 @@ config = {
 elamp = Lamp("elamp", "#F23591", "#ffffff", config)
 
 class SocialColors(Behaviour):
-    
+    def shade_color(self, color): 
+        pixels = [(0,0,0,255)] * 40
+
+        for i in range(17,40):
+            pixels[i] = color
+        return pixels
+
     async def arrivals(self):
         while True:
             arrived = await self.lamp.network.arrived()
 
             async with self.lamp.base.lock:  
                 print("%s has arrived" % (arrived["name"]))
-                await self.lamp.shade.async_fade(arrived["base_color"],100)
+                await self.lamp.shade.async_fade(self.shade_color(arrived["base_color"]),100)
                 self.current_shade_source = arrived["name"]
  
     async def departures(self):
@@ -35,7 +41,7 @@ class SocialColors(Behaviour):
                         newsource = random.choice(list(self.lamp.network.lamps.keys()))
                         new_color = self.lamp.network.lamps[newsource]["base_color"]
                         self.current_shade_source = newsource
-                    await self.lamp.shade.async_fade(new_color,100)
+                    await self.lamp.shade.async_fade(self.shade_color(new_color),100)
             
     async def run(self):
         self.current_shade_source = None
