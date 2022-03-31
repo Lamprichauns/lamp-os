@@ -3,5 +3,5 @@
 
 #import lamps.andromeda
 #import lamps.ylamp
-import lamps.elamp
+import lamps.sandy
  
