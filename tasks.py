@@ -8,9 +8,11 @@ def flash(c, port, lamp):
         if file == "main.py":
             continue
 
-        c.run(f"ampy --port {port} put {filename} {file} ")    
-        lampfile = os.path.join("src","lamps",f"{lamp}.py")
-        c.run(f"ampy --port {port} put {lampfile} main.py")
+        c.run(f"ampy --port {port} put {filename} {file} ") 
+        print(f"{filename} flashed to %{port}")
 
-        print(f"{lamp} flashed to %{port}")
+    lampfile = os.path.join("src","lamps",f"{lamp}.py")
+    c.run(f"ampy --port {port} put {lampfile} main.py")
+
+    print(f"{lamp} flashed to %{port}")
     
