@@ -4,12 +4,12 @@ import uasyncio as asyncio
 import random
 
 config = {
-    "base": { "pin": 2, "pixels": 40},
-    "shade": { "pin": 12, "pixels": 40},
-    "touch": { "pin": 32 }
+    "base": { "pin": 12, "pixels": 40},
+    "shade": { "pin": 13, "pixels": 40},
+    "touch": { "pin": 33 }
 }
-foslamp = Lamp("foslamp", "#ff2600", "#ffffff", config)
-pixels = foslamp.base.default_pixels
+thislamp = Lamp("broody", "#953553", "#ffffff", config)
+pixels = thislamp.base.default_pixels
 
 for i in [34,35,36,38,39]:
     pixels[i] = (50,50,250,0)
@@ -17,7 +17,7 @@ for i in [34,35,36,38,39]:
 for i in [1, 2, 3, 4, 5, 6]:
     pixels[i] = (255,30,0,0) #255,153,51
 
-foslamp.base.default_pixels = pixels
+thislamp.base.default_pixels = pixels
 
 class ShuffleColors(Behaviour):
     async def move(self):
@@ -48,6 +48,6 @@ class Social(Behaviour):
     async def run(self):
         asyncio.create_task(self.arrivals())
 
-foslamp.add_behaviour(Social)
-foslamp.add_behaviour(ShuffleColors)
-foslamp.wake()
+thislamp.add_behaviour(Social)
+thislamp.add_behaviour(ShuffleColors)
+thislamp.wake()
