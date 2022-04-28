@@ -5,10 +5,10 @@ import uasyncio as asyncio
 from easing import *
 
 # Abstraction for light control - this gets used for the shade and base.
-class LedStrip: 
+class LedStrip:
     def __init__(self, lamp, color, pin, num_pixels):
         self.lamp = lamp
-        self.color = LedStrip.hex_to_rgb(color) 
+        self.color = LedStrip.hex_to_rgb(color)
         self.num_pixels = num_pixels
         self.pin = pin
         self.lock = asyncio.Lock()
@@ -27,10 +27,10 @@ class LedStrip:
 
    # set to a new color (tuple of rgbw color or list of individual pixels)
     def fill(self, color):
-        if isinstance(color, list): 
-            for i in range(self.num_pixels): 
+        if isinstance(color, list):
+            for i in range(self.num_pixels):
                 self.pixels[i] = color[i]
-        else: 
+        else:
             self.pixels.fill(color)
 
         self.pixels.write()
@@ -41,7 +41,7 @@ class LedStrip:
         if not isinstance(dest, list): dest = [dest] * self.num_pixels
 
         colors_start = list(self.pixels)
-        
+
         colors = dict()
         for i in range(self.num_pixels):
             colors[i] = (
@@ -51,9 +51,9 @@ class LedStrip:
                 QuadEaseInOut(start = colors_start[i][3], end = dest[i][3], duration = steps)
             )
 
-        for step in range(steps):   
-            # If this  is a bakgrounded animation, lock the led strip while fading 
-            # so we don't try to animate two things at once. Otherwise, 
+        for step in range(steps):
+            # If this  is a bakgrounded animation, lock the led strip while fading
+            # so we don't try to animate two things at once. Otherwise,
             # we can asume things are not async (or handled) and not worry about it.
             if background: await self.lock.acquire()
 
@@ -65,7 +65,7 @@ class LedStrip:
                     int(colors[p][3](step))
                 )
 
-            self.pixels.write()  
+            self.pixels.write()
             await asyncio.sleep_ms(step_delay)
 
             if background: self.lock.release()

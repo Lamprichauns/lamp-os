@@ -4,8 +4,8 @@ import uasyncio as asyncio
 import random
 
 config = {
-    "base": { "pin": 12, "pixels": 40},
-    "shade": { "pin": 13, "pixels": 40}, 
+    "base": { "pin": 2, "pixels": 40},
+    "shade": { "pin": 27, "pixels": 40},
     "touch": { "pin": 32 }
 }
 
@@ -164,42 +164,24 @@ class TouchyGramp(Behaviour):
                     print("Touched - %s (calibrated at %s)" % (self.lamp.touch.value(), self.lamp.touch.average()))
                     await self.touched()
 
-class SocialGramp(Behaviour):
+class Social(Behaviour):
     async def arrivals(self):
         while True:
-            previous_base = list(self.lamp.base.pixels)
-
             arrived = await self.lamp.network.arrived()
 
-            async with self.lamp.base.lock:
+            async with self.lamp.shade.lock:
                 print("%s has arrived" % (arrived["name"]))
-                previous_base = list(self.lamp.base.pixels)
-
-                for _ in range(2):
-                    await self.lamp.base.async_fade(knock_out_neck_pixels([arrived["base_color"]] * self.lamp.base.num_pixels), 10)
-                    await self.lamp.base.async_fade(previous_base,10)
-
-    async def departures(self):
-        while True:
-            departed = await self.lamp.network.departed()
-
-            async with self.lamp.base.lock:
-                print("%s has departed" % (departed["name"]))
-                previous_base = list(self.lamp.base.pixels)
-
-                await self.lamp.base.async_fade(knock_out_neck_pixels([departed["base_color"]] * self.lamp.base.num_pixels), 10)
-                await self.lamp.base.async_fade(previous_base,10)
-
+                await self.lamp.shade.async_fade((arrived["base_color"] * self.lamp.base.num_pixels), 90)
+                await asyncio.sleep(20)
+                await self.lamp.shade.async_fade((0,0,0,255),50)
 
     async def run(self):
         asyncio.create_task(self.arrivals())
-        asyncio.create_task(self.departures())
 
-
+gramp.add_behaviour(Social)
 gramp.add_behaviour(TouchyGramp)
 gramp.add_behaviour(ShiftyGramp)
 gramp.add_behaviour(GlitchyGramp)
-gramp.add_behaviour(SocialGramp)
 
 # :TODO: Rename async fade to just fade
 gramp.wake()
