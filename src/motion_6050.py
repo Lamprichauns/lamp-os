@@ -2,7 +2,7 @@ from machine import I2C, Pin
 from math import sqrt, pow, floor
 import mpu6050
 
-# Abstraction for lamp motion using the onboard MPU-6050 accelerometer
+# Abstraction for lamp motion using an MPU-6050 accelerometer
 class LampMotionMPU6050:
     def __init__(self, pin_sda, pin_scl):
         self.i2c = I2C(sda=Pin(pin_sda), scl=Pin(pin_scl))

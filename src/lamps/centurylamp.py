@@ -12,8 +12,8 @@ config = {
 
 motion = LampMotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 
-# Sample punter motion and react if they're dancing with the lamp
-class MotionCaptureBehavior(Behaviour):
+# Capture motion of the lamp and react to events like dancing 
+class MotionCapture(Behaviour):
     async def measure(self):
         value = motion.get_movement_intensity_value()
         if (value >= self.dance_gesture_peak):
@@ -47,5 +47,5 @@ class MotionCaptureBehavior(Behaviour):
                 await self.measure()
 
 century = Lamp("century", "#5b4711", "#5b4711", config)
-century.add_behaviour(MotionCaptureBehavior)
+century.add_behaviour(MotionCapture)
 century.wake()
