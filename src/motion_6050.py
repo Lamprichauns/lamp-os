@@ -14,7 +14,7 @@ class LampMotionMPU6050:
     def get_movement_intensity_value(self):
         value = self.accelerometer.get_values();
         norm = sqrt(pow(abs(value['AcZ']), 2) + pow(abs(value['AcY']),2) + pow(abs(value['AcX']),2));
-        difference = abs(self.previous_sample - norm)
+        difference = 0 if(self.previous_sample < 1) else abs(self.previous_sample - norm)
         self.previous_sample = norm
 
         return difference

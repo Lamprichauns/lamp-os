@@ -7,12 +7,12 @@ import random
 config = {
     "base": { "pin": 12, "pixels": 40 },
     "shade": { "pin": 13, "pixels": 40 },
-    "motion": { "pin_sda": 21, "pin_scl": 22, "polling_interval": 10e-2, "peak_hold_interval": 3, "walk_gesture_peak": 3000, "dance_gesture_peak": 15000 }
+    "motion": { "pin_sda": 21, "pin_scl": 22, "polling_interval": 10e-2, "dance_gesture_peak": 23000 }
 }
 
 motion = LampMotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 
-# Sample punter motion
+# Sample punter motion and react if they're dancing with the lamp
 class MotionCaptureBehavior(Behaviour):
     async def measure(self):
         value = motion.get_movement_intensity_value()
@@ -28,20 +28,19 @@ class MotionCaptureBehavior(Behaviour):
             # Quick flash to white
             new_pixels[pixel] = (250,250,255)
             new_pixels[pixel2] = (250,250,255)
-            await self.lamp.shade.async_fade(new_pixels,80,2)
+            await self.lamp.shade.async_fade(new_pixels,10,2)
 
             # Quick flash to black
             new_pixels[pixel] = (0,0,0)
             new_pixels[pixel2] = (0,0,0)
-            await self.lamp.shade.async_fade(new_pixels,100,5)
+            await self.lamp.shade.async_fade(new_pixels,20,5)
 
             # Slow fade back to before
-            await self.lamp.shade.async_fade(current_pixels,200,5)
+            await self.lamp.shade.async_fade(current_pixels,20,5)
 
     async def run(self):
         polling_interval = config["motion"]["polling_interval"]
         self.dance_gesture_peak = config["motion"]["dance_gesture_peak"];
-        self.walk_gesture_peak = config["motion"]["walk_gesture_peak"];
         while True:
             await asyncio.sleep(polling_interval)
             async with self.lamp.lock:
