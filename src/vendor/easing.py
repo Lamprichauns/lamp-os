@@ -1,3 +1,4 @@
+# https://github.com/semitable/easing-functions
 import math
 
 
