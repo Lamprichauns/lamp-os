@@ -4,10 +4,10 @@ if sys.implementation.name == "micropython":
 else:
     import asyncio
 
-from .models import *
-from .coding import *
+from components.network.models import *
+from components.network.coding import *
 
-class LampNetworkObserver:
+class NetworkObserver:
     def __init__(self):
         pass
 
@@ -29,7 +29,7 @@ class LampNetworkObserver:
     async def message_stopped(self, code):
         pass
 
-class LampNetworkDelegate:
+class NetworkDelegate:
     # Called with the list of LampAttributes
     def announce_attributes(self, attributes):
         pass
@@ -38,7 +38,7 @@ class LampNetworkDelegate:
     def broadcast_messages(self, messages):
         pass
 
-class LampNetwork:
+class Network:
     # How much delay between monitor cycles
     MONITOR_INTERVAL_MS = 50
 
@@ -52,7 +52,7 @@ class LampNetwork:
         self._attributes = {}
 
         # Broadcast messages are the collection of all the messages agrigated
-        # from all the lamps that are viewed. This list will be re-broadcast        
+        # from all the lamps that are viewed. This list will be re-broadcast
         # from this lamp.
         self._broadcast_messages = BroadcastMessages()
 
@@ -137,6 +137,7 @@ class LampNetwork:
     async def start_monitoring(self):
         self._monitoring = True
         self._monitor_task = asyncio.create_task(self._monitor_loop())
+        print ('Network monitoring started')
 
     async def stop_monitoring(self):
         if not self._monitor_task:

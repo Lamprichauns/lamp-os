@@ -1,1 +1,1 @@
-import lamps.gramp
+import lamps.simplelamp

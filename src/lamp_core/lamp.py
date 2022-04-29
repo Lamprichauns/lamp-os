@@ -3,10 +3,10 @@ import re
 
 # We love lamp.
 #
-# For some great examples of lamps, see the src/lamps folder
-# Lamp.py manages two objects: components and behaviours
-# Components are the initial hardware and software dependency setup for your lamp
-# Behaviours are the functionality and personality that comprises your lamp
+# Please use SimpleLamp or CustomLamp configurations from lamp_core instead of using Lamp directly
+# Check the following examples in lamps for usage
+# simplelamp:   A standard lamp example with a base, shade and networking
+# customlamp:  A fully custom lamp example with different components, custom behaviors, etc.
 class Lamp():
     def __init__(self, name):
         if not re.match('^[a-z]+$', name): raise NameError('Name must be lowercase alpha')
@@ -27,7 +27,7 @@ class Lamp():
     def wake(self):
         asyncio.run(self.start())
 
-    # Start a behaviour
+    # Start all behaviours
     async def start(self):
         for behaviour in self.behaviours:
             print("Enabling Behaviour: %s" % (behaviour))

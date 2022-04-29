@@ -1,22 +1,22 @@
 import bluetooth
 from micropython import const
 import uasyncio as asyncio
-from .ble_advertising import *
-from .network import LampNetworkDelegate
+from components.network.ble_advertising import *
+from components.network.network import NetworkDelegate
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
 # Scan every INTERVAL for WINDOW
-_GAP_SCAN_INTERVAL_US = const(20_000) 
+_GAP_SCAN_INTERVAL_US = const(20_000)
 _GAP_SCAN_WINDOW_US = const(10_000)
 
 # Advertise every INTERVAL
 _GAP_ADV_INTERVAL_US = const(100_000)
 
-class LampBluetooth(LampNetworkDelegate):
+class Bluetooth(NetworkDelegate):
     MAGIC_NUMBER = const(42069)
-    ADVERTISE_UPDATE_INTERVAL_MS = const(50)
+    ADVERTISE_UPDATE_INTERVAL_MS = const(1000)
 
     # While theoretically, a GAP advertisement can contain any data that will fit within it,
     # after testing, it appears that the it must contain at least the standard header format
@@ -86,7 +86,7 @@ class LampBluetooth(LampNetworkDelegate):
 
             await asyncio.sleep_ms(self.ADVERTISE_UPDATE_INTERVAL_MS)
 
-    async def enable(self): 
+    async def enable(self):
         self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
         self._advertising = True
         self._advertising_task = asyncio.create_task(self._advertise_update_loop())

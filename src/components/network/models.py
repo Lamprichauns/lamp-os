@@ -1,6 +1,6 @@
 import time
 import math
-from .coding import *
+from components.network.coding import *
 
 class LampModel:
     def __init__(self, id, name, rssi, attributes={}):
@@ -135,7 +135,7 @@ class BroadcastMessages(dict):
     #
     # `ttl_adjustment` - The incoming broadcast messages are by default treated with a lower
     # priority than they were sent out with to ensure they decacy over
-    # distance to prevent infinite broadcast cycles. 
+    # distance to prevent infinite broadcast cycles.
     def update_messages(self, new_messages, ttl_adjustment=1) -> bool:
         did_change = False
         for new_message in new_messages:
@@ -144,7 +144,7 @@ class BroadcastMessages(dict):
             if new_message_ttl <= 1:
                 continue
 
-            if new_message.code in self and self[new_message.code].ttl >= new_message_ttl: 
+            if new_message.code in self and self[new_message.code].ttl >= new_message_ttl:
                 continue
 
             decaying_message = DecayingBroadcastMessage(new_message.code, new_message_ttl, new_message.payload)
