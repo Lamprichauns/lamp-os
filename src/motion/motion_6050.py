@@ -1,12 +1,12 @@
 from machine import I2C, Pin
 from math import sqrt, pow, floor
-import mpu6050
+from vendor.mpu6050 import accel
 
 # Abstraction for lamp motion using an MPU-6050 accelerometer
 class LampMotionMPU6050:
     def __init__(self, pin_sda, pin_scl):
         self.i2c = I2C(sda=Pin(pin_sda), scl=Pin(pin_scl))
-        self.accelerometer = mpu6050.accel(self.i2c)
+        self.accelerometer = accel(self.i2c)
         self.previous_sample = 0.0;
 
     # Get an unsigned movement intensity value over a monotonic sample period

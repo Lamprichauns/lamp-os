@@ -2,13 +2,13 @@ import neopixel, machine
 from time import sleep
 import time
 import uasyncio as asyncio
-from easing import *
+from vendor.easing import *
 
 # Abstraction for light control - this gets used for the shade and base.
 class LedStrip2812RGB:
     def __init__(self, lamp, color, pin, num_pixels):
         self.lamp = lamp
-        self.color = LedStripRGB.hex_to_rgb(color)
+        self.color = LedStrip2812RGB.hex_to_rgb(color)
         self.num_pixels = num_pixels
         self.pin = pin
         self.lock = asyncio.Lock()
