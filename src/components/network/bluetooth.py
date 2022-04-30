@@ -8,15 +8,15 @@ _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
 # Scan every INTERVAL for WINDOW
-_GAP_SCAN_INTERVAL_US = const(20_000)
-_GAP_SCAN_WINDOW_US = const(10_000)
+_GAP_SCAN_INTERVAL_US = const(1_250_000)
+_GAP_SCAN_WINDOW_US = const(2_500)
 
 # Advertise every INTERVAL
-_GAP_ADV_INTERVAL_US = const(100_000)
+_GAP_ADV_INTERVAL_US = const(1_250_000)
 
 class Bluetooth(NetworkDelegate):
     MAGIC_NUMBER = const(42069)
-    ADVERTISE_UPDATE_INTERVAL_MS = const(1000)
+    ADVERTISE_UPDATE_INTERVAL_MS = const(300)
 
     # While theoretically, a GAP advertisement can contain any data that will fit within it,
     # after testing, it appears that the it must contain at least the standard header format

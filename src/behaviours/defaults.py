@@ -2,6 +2,7 @@
 from lamp_core.behaviour import Behaviour
 import uasyncio as asyncio
 
+# Fade from off to the default colors on boot
 class LampFadeIn(Behaviour):
     async def run(self):
         self.lamp.base.off()
@@ -13,8 +14,11 @@ class LampFadeIn(Behaviour):
         async with self.lamp.lock:
             await asyncio.gather(base_fade, shade_fade)
 
+# Run the async networking loops
 class StartNetworking(Behaviour):
     async def run(self):
+        # delay for startup lighting effects
+        await asyncio.sleep(3)
         async with self.lamp.lock:
             await self.lamp.bluetooth.enable()
             await self.lamp.network.start_monitoring()
