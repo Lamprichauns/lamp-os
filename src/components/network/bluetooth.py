@@ -1,22 +1,119 @@
+import struct
+import binascii
 import bluetooth
 from micropython import const
+import components.network.ble_advertising as blea
+import time
 import uasyncio as asyncio
-from components.network.ble_advertising import *
-from components.network.network import NetworkDelegate
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
 
 # Scan every INTERVAL for WINDOW
-_GAP_SCAN_INTERVAL_US = const(1_250_000)
-_GAP_SCAN_WINDOW_US = const(2_500)
+_GAP_SCAN_INTERVAL_US = const(20_000)
+_GAP_SCAN_WINDOW_US = const(10_000)
 
 # Advertise every INTERVAL
-_GAP_ADV_INTERVAL_US = const(1_250_000)
+_GAP_ADV_INTERVAL_US = const(100_000)
 
-class Bluetooth(NetworkDelegate):
-    MAGIC_NUMBER = const(42069)
-    ADVERTISE_UPDATE_INTERVAL_MS = const(300)
+# :TODO: Update the internal rgb/hex conversion to work with the W pixel and remove this
+def hex_to_rgbw(value):
+    value = value.lstrip('#')
+    rgb = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
+    return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
+
+class LampNetwork:
+    def __init__(self):
+        self.lamps = {}
+        self.departed_lamps = {}
+        self.arrived_lamps = {}
+
+    def found(self, name, base_color, shade_color, rssi):
+        if name in self.lamps:
+            self.lamps[name]["rssi"] = rssi
+            self.lamps[name]["last_seen"] = time.time()
+        else:
+            print("RRSI of lamp %s" % (rssi))
+            if rssi > -94: # Don't add it unless it's strong enough of a signal.
+                print("BT: New lamp found %s (%s, %s @%s)" % (name, base_color, shade_color,rssi))
+                self.arrived_lamps[name] = self.lamps[name] = { "base_color": hex_to_rgbw(base_color), "shade_color": hex_to_rgbw(shade_color), "rssi": rssi, "first_seen": time.time(), "last_seen": time.time() }
+
+    # returns departed lamps. Optionally pass the name of a lamp to only look for that lamp
+    @classmethod
+    async def _await_lamps(cls, name, list):
+        if name == None:
+            while not any(list):
+                await asyncio.sleep_ms(1)
+
+            lamp = list.popitem()
+        else:
+            while name not in list:
+                await asyncio.sleep_ms(1)
+
+            lamp = (name, list.pop(name))
+
+        return {"name": lamp[0], "base_color": lamp[1]["base_color"], "shade_color": lamp[1]["shade_color"]}
+
+    @classmethod
+    def _prune_lamp_list(cls, list, field, timeout):
+        for name, data in list.items():
+            if time.time() - list[name][field] >= timeout:
+                #print("BT: %s is stale (%s), removing" % (field, name))
+                list.pop(name)
+
+    # await for and return departed lamps. Optionally specifiy the name to look for a specific lamp
+    async def departed(self, name = None):
+        return await self._await_lamps(name, self.departed_lamps)
+
+    # await for and return arrived lamps. Optionally specifiy the name to look for a specific lamp
+    async def arrived(self, name = None):
+        return await self._await_lamps(name, self.arrived_lamps)
+
+    async def monitor(self):
+        # Add timed out lamps to departed list
+        for name, data in self.lamps.items():
+            if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
+                self.departed_lamps[name] = self.lamps.pop(name)
+                print("BT: %s has left, removing" % (name))
+
+        self._prune_lamp_list(self.departed_lamps, "last_seen", 30)
+        self._prune_lamp_list(self.arrived_lamps, "first_seen", 15)
+
+
+class Bluetooth:
+    MAGIC_NUM = const(42069)
+    COLORS_FIELD_FORMAT = "<H3B3B"
+    @classmethod
+    def _hex_to_rgb(cls, color: str):
+        hex_color = color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    @classmethod
+    def _rgb_to_hex(cls, rgb_color):
+        rgb_bytes = bytes(rgb_color)
+        return "#" + binascii.hexlify(rgb_bytes).decode()
+
+    @classmethod
+    def _pack_colors_field(cls, base_color, shade_color):
+        return struct.pack(cls.COLORS_FIELD_FORMAT,
+            cls.MAGIC_NUM,
+            *cls._hex_to_rgb(base_color)+cls._hex_to_rgb(shade_color
+            )
+        )
+
+    @classmethod
+    def _is_lamp(cls, field_data):
+        # pylint: disable=unsubscriptable-object
+        return struct.unpack("<H", field_data)[0] == cls.MAGIC_NUM
+
+    @classmethod
+    def _unpack_colors_field(cls, field_data):
+        # pylint: disable=unpacking-non-sequence
+        (magic, br, bg, bb, sr, sg, sb) = struct.unpack("<H3B3B", field_data)
+        if not magic == cls.MAGIC_NUM:
+            raise ValueError("Invalid magic number!")
+        return ( cls._rgb_to_hex((br, bg, bb)), cls._rgb_to_hex((sr, sg, sb)) )
+
 
     # While theoretically, a GAP advertisement can contain any data that will fit within it,
     # after testing, it appears that the it must contain at least the standard header format
@@ -28,45 +125,35 @@ class Bluetooth(NetworkDelegate):
     # allow lamps to recognize each other. It is then followed by the base and shade colors, each
     # packed into 3 bytes each.
 
-    def __init__(self, network) -> None:
+    def __init__(self, name, base_color, shade_color) -> None:
         self.ble = bluetooth.BLE()
         self.ble.active(True)
         self.ble.irq(self.bt_irq)
-        print("BLE Initialized")
+        self.network = LampNetwork()
 
-        self.network = network
-        self.network.network_delegate = self
+        custom_field = self._pack_colors_field(base_color, shade_color)
 
-        self.advertising_cycler = PayloadCycler(network.name, self.MAGIC_NUMBER)
+        self.adv_payload = blea.advertising_payload(
+            name = name,
+            custom_fields=( (0xFF, custom_field), )
+            )
+        print("BT Initialized")
 
-        self._attributes = {}
-        self._broadcast_messages = {}
-        self._should_update_advertisement = False
-
-        self._advertising = False
-        self._advertising_task = None
-
-    def _update_advertisement(self):
-        messages = list(map(lambda x: x.encode(), self._attributes.values())) + \
-            list(map(lambda x: x.encode(), self._broadcast_messages.values()))
-        self.advertising_cycler.messages = messages
-        payload = self.advertising_cycler.next_payload()
-        self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, payload, connectable=False)
-
-    def announce_attributes(self, attributes):
-        self._attributes = attributes
-        self._should_update_advertisement = True
-
-    def broadcast_messages(self, messages):
-        self._broadcast_messages = messages
-        self._should_update_advertisement = True
+    def enable(self):
+        self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
+        self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, self.adv_payload, connectable=False)
+        print("BT enabled (scaning & advertising)")
 
     # pylint: disable=too-many-arguments,unused-argument
     def handle_scan_result(self, addr_type, addr, adv_type, rssi, adv_data):
-        payload = DecodedPayload(addr, adv_data, self.MAGIC_NUMBER)
-        if payload.has_messages:
-            task = self.network.observed_lamp(payload.address, payload.name, rssi, payload.messages)
-            asyncio.create_task(task)
+        adv_bytes = bytes(adv_data)
+        name = blea.decode_name(adv_bytes)
+
+        custom_fields = blea.decode_field(adv_bytes, 0xFF)
+        for field in custom_fields:
+            if self._is_lamp(field):
+                (base_color, shade_color) = self._unpack_colors_field(field)
+                self.network.found(name, base_color, shade_color, rssi)
 
     def bt_irq(self, event, data):
         if event == _IRQ_SCAN_RESULT:
@@ -76,28 +163,3 @@ class Bluetooth(NetworkDelegate):
         elif event == _IRQ_SCAN_DONE:
             # Scan duration finished or manually stopped.
             print("_IRQ_SCAN_DONE")
-
-    async def _advertise_update_loop(self):
-        while self._advertising:
-            total_messages = len(self._broadcast_messages) + len (self._attributes)
-            if self._should_update_advertisement or total_messages > 1:
-                self._update_advertisement()
-                self._should_update_advertisement = False
-
-            await asyncio.sleep_ms(self.ADVERTISE_UPDATE_INTERVAL_MS)
-
-    async def enable(self):
-        self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
-        self._advertising = True
-        self._advertising_task = asyncio.create_task(self._advertise_update_loop())
-        print("BLE Enabled (Scanning & Advertising)")
-
-    async def disable(self):
-        if not self._advertising_task:
-            return
-
-        self._advertising = False
-        await self._advertising_task
-        self._advertising_task = None
-
-        self.ble.gap_scan(active=False)
