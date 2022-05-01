@@ -2,13 +2,14 @@ import neopixel, machine
 from time import sleep
 import time
 import uasyncio as asyncio
-from .easing import *
+from vendor.easing import *
 
 # Abstraction for light control - this gets used for the shade and base.
+# Hardware support for Neopixels with Red, Green, Blue and White channels
+# Prefer RGBWW (warm white) LED strips when purchasing hardware
 class LedStrip6812RGBWW:
-    def __init__(self, lamp, color, pin, num_pixels):
-        self.lamp = lamp
-        self.color = LedStrip.hex_to_rgbw(color)
+    def __init__(self, color, pin, num_pixels):
+        self.color = LedStrip6812RGBWW.hex_to_rgbw(color)
         self.num_pixels = num_pixels
         self.pin = pin
         self.lock = asyncio.Lock()
@@ -18,12 +19,7 @@ class LedStrip6812RGBWW:
 
     # Turn this LED Strip off
     def off(self):
-        self.pixels.fill((0,0,0,0))
-        self.pixels.write()
-
-    # Reset to default
-    def reset(self):
-        self.update_colors(self.default_pixels)
+        self.fill((0,0,0,0))
 
    # set to a new color (tuple of rgbw color or list of individual pixels)
     def fill(self, color):
@@ -36,8 +32,7 @@ class LedStrip6812RGBWW:
         self.pixels.write()
 
     # Shift pixels from their current state to a target state. Dest can be either a list of individual pixels or a RGBW tuple
-    # :TODO: Allow easing type to be passed
-    async def async_fade(self, dest, steps, step_delay=1):
+    async def async_fade(self, dest, steps, step_delay=1, easing_function=QuadEaseInOut):
         if not isinstance(dest, list): dest = [dest] * self.num_pixels
 
         colors_start = list(self.pixels)
@@ -45,10 +40,10 @@ class LedStrip6812RGBWW:
         colors = dict()
         for i in range(self.num_pixels):
             colors[i] = (
-                QuadEaseInOut(start = colors_start[i][0], end = dest[i][0], duration = steps),
-                QuadEaseInOut(start = colors_start[i][1], end = dest[i][1], duration = steps),
-                QuadEaseInOut(start = colors_start[i][2], end = dest[i][2], duration = steps),
-                QuadEaseInOut(start = colors_start[i][3], end = dest[i][3], duration = steps)
+                easing_function(start = colors_start[i][0], end = dest[i][0], duration = steps),
+                easing_function(start = colors_start[i][1], end = dest[i][1], duration = steps),
+                easing_function(start = colors_start[i][2], end = dest[i][2], duration = steps),
+                easing_function(start = colors_start[i][3], end = dest[i][3], duration = steps)
             )
 
         for step in range(steps):

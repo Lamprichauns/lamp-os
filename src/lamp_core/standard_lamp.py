@@ -1,8 +1,8 @@
-from components.led.led_strip_2812_rgb import LedStrip2812RGB
+from components.led.led_strip_6812_rgbww import LedStrip6812RGBWW
 from components.network.bluetooth import Bluetooth
 from components.motion.motion_6050 import MotionMPU6050
 from components.touch.touch import Touch
-from behaviours.defaults import LampFadeIn, StartNetworking
+from behaviours.defaults import LampFadeIn
 from lamp_core.lamp import Lamp
 
 # Use standard lamp to startup a lamp that uses Lamprichaun hardware
@@ -10,8 +10,8 @@ class StandardLamp(Lamp):
     def __init__(self, name, base_color, shade_color):
         super().__init__(name)
 
-        self.base = LedStrip2812RGB(self, base_color, pin=12, num_pixels=40)
-        self.shade = LedStrip2812RGB(self, shade_color, pin=13, num_pixels=40)
+        self.base = LedStrip6812RGBWW(base_color, pin=12, num_pixels=40)
+        self.shade = LedStrip6812RGBWW(shade_color, pin=13, num_pixels=40)
         self.bluetooth = Bluetooth(name, base_color, shade_color)
         self.network = self.bluetooth.network
         self.bluetooth.enable()
