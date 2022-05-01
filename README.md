@@ -96,14 +96,14 @@ Have a look at other examples of lamps to get an idea of the capabilities of Lam
 
 ## Application Structure
 
-`src/` -  is where all the code for a lamp lives, this gets flashed to devices (in entirety, so any lamp could really switch to another)
-`test/` -  is test cases, pretty much just the network module. Testing the app entry point and BLE layer is possible, but this was already getting large.
-`src/components` - The hardware definitions, drivers and synchronous initialization items are classified as components
-`src/behaviours` - Asynchronous tasks that run and give the lamp unique features, long running tasks and puzzles
-`src/lamp_core` - Core code that can be leveraged for all lamps.
-`src/utils` - Utility files not useful for all lamps, but handy to have around
-`src/vendor` - Any borrowed python code from the community goes here. Please make sure to retain a reference to github in the entry point file
-`src/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `main.py` the files live here.
+- `src/` -  is where all the code for a lamp lives, this gets flashed to devices (in entirety, so any lamp could really switch to another)
+- `test/` -  is test cases, pretty much just the network module. Testing the app entry point and BLE layer is possible, but this was already getting large.
+- `src/components` - The hardware definitions, drivers and synchronous initialization items are classified as components
+- `src/behaviours` - Asynchronous tasks that run and give the lamp unique features, long running tasks and puzzles
+- `src/lamp_core` - Core code that can be leveraged for all lamps.
+- `src/utils` - Utility files not useful for all lamps, but handy to have around
+- `src/vendor` - Any borrowed python code from the community goes here. Please make sure to retain a reference to github in the entry point file
+- `src/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `main.py` the files live here.
 
 ## Lamp Personality & Behaviours
 
