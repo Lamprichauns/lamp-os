@@ -1,8 +1,31 @@
 # LampOS
 
-## Hardware
+A platform for retrofitting traditional desk lamps with programmable LED controllers to build unique lighted art structures. Using standardized and user friendly hardware based on the ubiquitous ESP32, Neopixels and common sensors, this project seeks to simplify the job of building curious and surreal LED projects for the community to enjoy.
 
-This is being developed for the ESP32
+## Lamp Personality & Behaviours
+
+The vision for the lamps is that they remain mostly still and static, as a contrast to the plethora of sound reactive and blinky light art out there. The brightness of the lamps and the colorful glowing base draws attention to the juxtaposition of an ordinary household object in extraordinary places.
+
+Within this vision there is room for the lamps to have personality, shown through subtle behaviour based on things like time, randomness, sensor data, presence/absence of other lamps, etc.
+
+With these sorts of subtle changes, people may begin to realize things are not as static as they seem, creating a somewhat complex puzzle for people to solve and talk about.
+
+## Lamp Hardware Requirements
+
+This software can run on any ESP32 platform. Our preferred dev board is here: <https://www.digikey.ca/en/products/detail/espressif-systems/ESP32-DEVKITC-32D/9356990>
+
+By default, a lamp will use about 80 LEDs. We recommend purchasing LEDs strips with the following specs:
+
+- Around 2m in length
+- SK6812 chipset
+- IP67 waterproof
+- 5VDC
+- RGBWW (warm white) LED Strips.
+- Spacing of 60 LEDs/m
+
+The motion sensor is a MPU-6050.
+
+A 10Ah battery pack with USB will run this device portably for around 12 hours.
 
 ## Software Prerequisites
 
@@ -50,42 +73,6 @@ In the connection tab, choose your USB or COM port and click connect
 
 The left side bar will go green once connected. Use the buttons on the left side to upload your code to the onboard ESP32
 
-### Commandline Usage
-
-The lamp loading mechanism works by utilizing the lamps filename as the lamp to load.  All `invoke` commands (or `inv` for short) that interact with the board should be followed by the file of the lamp in question.  eg: `inv run twinkle`.
-
-#### Flash and run the lamp on the target device
-
-```bash
-inv run gramp --port /dev/tty.usbserial-0246D45F
-```
-
-#### Flash the lamp to device
-
-Note that flashing is a progressive operation. The build system will try to determine what files that need to be updated and only upload changed files since the last flash. If there is issues run `inv wipe --port [device]` first.
-
-```bash
-inv flash gramp --port /dev/tty.usbserial-0246D45F
-```
-
-#### Clean off all the code from
-
-```bash
-inv wipe --port /dev/tty.usbserial-0246D45F
-```
-
-#### Run Test Suite
-
-```bash
-inv test
-```
-
-#### Clean interim build files
-
-```bash
-inv clean
-```
-
 ## Lamp creation
 
 To create a lamp, create `src/lamps/lampname.py`.
@@ -104,14 +91,6 @@ Have a look at other examples of lamps to get an idea of the capabilities of Lam
 - `src/utils` - Utility files not useful for all lamps, but handy to have around
 - `src/vendor` - Any borrowed python code from the community goes here. Please make sure to retain a reference to github in the entry point file
 - `src/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `main.py` the files live here.
-
-## Lamp Personality & Behaviours
-
-The vision for the lamps is that they remain mostly still and static, as a contrast to the plethora of sound reactive and blinky light art out there. The brightness of the lamps and the colorful glowing base draws attention to the juxtaposition of an ordinary household object in extraordinary places.
-
-Within this vision there is room for the lamps to have personality, shown through subtle behaviour based on things like time, randomness, presence/absence of other lamps, etc.
-
-With these sorts of subtle changes this also introduces an element where people may begin to realize things are not as static as they seem, creating a somewhat complex puzzle for people to solve and talk about.
 
 ## Implementation  
 
