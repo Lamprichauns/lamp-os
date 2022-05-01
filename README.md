@@ -90,7 +90,7 @@ Have a look at other examples of lamps to get an idea of the capabilities of Lam
 - `src/lamp_core` - Core code that can be leveraged for all lamps.
 - `src/utils` - Utility files not useful for all lamps, but handy to have around
 - `src/vendor` - Any borrowed python code from the community goes here. Please make sure to retain a reference to github in the entry point file
-- `src/lamps` - Each lamp.  Each lamp will have it's own entry which is loaded from `main.py` the files live here.
+- `src/lamps` - Each lamp will have its own entry that can be checked into the project. Your lamp is loaded from `main.py`
 
 ## Implementation  
 
