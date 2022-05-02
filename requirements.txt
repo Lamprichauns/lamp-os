@@ -3,5 +3,4 @@ invoke
 adafruit-ampy
 pytest
 pytest-asyncio
-
-
+pylint

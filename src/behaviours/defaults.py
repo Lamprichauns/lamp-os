@@ -1,6 +1,6 @@
 # default behaviors for all lamps
-from lamp_core.behaviour import Behaviour
 import uasyncio as asyncio
+from lamp_core.behaviour import Behaviour
 
 # Fade from off to the default colors on boot
 class LampFadeIn(Behaviour):
@@ -9,6 +9,6 @@ class LampFadeIn(Behaviour):
             self.lamp.base.off()
             self.lamp.shade.off()
 
-            base_fade = asyncio.create_task(self.lamp.base.async_fade(self.lamp.base.default_pixels, 40))
-            shade_fade = asyncio.create_task(self.lamp.shade.async_fade(self.lamp.shade.default_pixels, 40))
+            base_fade = asyncio.create_task(self.lamp.base.fade(self.lamp.base.default_pixels, 40))
+            shade_fade = asyncio.create_task(self.lamp.shade.fade(self.lamp.shade.default_pixels, 40))
             await asyncio.gather(base_fade, shade_fade)

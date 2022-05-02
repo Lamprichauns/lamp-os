@@ -1,5 +1,5 @@
-import uasyncio as asyncio
 import re
+import uasyncio as asyncio
 
 # We love lamp.
 #
@@ -9,10 +9,15 @@ import re
 # customlamp:  A fully custom lamp example with different components, custom behaviors, etc.
 class Lamp():
     def __init__(self, name):
-        if not re.match('^[a-z]+$', name): raise NameError('Name must be lowercase alpha')
+        if not re.match('^[a-z]+$', name):
+            raise NameError('Name must be lowercase alpha')
         self.lock = asyncio.Lock()
         self.name = name
         self.behaviours = []
+
+    # Return a behaviour instance
+    def behaviour(self, behaviour_class):
+        return next(x for x in self.behaviours if isinstance(x, behaviour_class))
 
     # Add a behaviour
     def add_behaviour(self, behaviour_class):
@@ -24,6 +29,7 @@ class Lamp():
             self.behaviours.append(b)
             print("Behaviour added: %s" % (b))
 
+    # Called once all components and behaviours added to begin all async tasks
     def wake(self):
         asyncio.run(self.start())
 

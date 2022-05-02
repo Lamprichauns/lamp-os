@@ -1,6 +1,6 @@
-import machine
+# pylint: disable=no-name-in-module
 from time import sleep_ms
-import uasyncio as asyncio
+import machine
 
 # Capacitive touch stuff to make the lamp base into touch sensors
 class Touch:
@@ -13,15 +13,15 @@ class Touch:
 
     def update_averages(self):
         value = self.value()
-        if not value == 0:
+        if value != 0:
             self.averages.insert(0, value)
             self.averages.pop()
 
     def average(self):
         if len(self.averages) == 0:
             return 0
-        else:
-            return sum(self.averages) // len(self.averages)
+
+        return sum(self.averages) // len(self.averages)
 
     # Return the value of the sensor
     def value(self):
@@ -33,7 +33,7 @@ class Touch:
     def read_values(self, count=15):
         values = []
 
-        for x in range(count):
+        for _ in range(count):
             try:
                 val = self.pin.read()
                 values.append(val)
@@ -49,8 +49,8 @@ class Touch:
 
         if len(values) == 0:
             return 0
-        else:
-            return sum(values) // len(values)
+
+        return sum(values) // len(values)
 
     # Are we being touched?
     def is_touched(self):
@@ -60,6 +60,6 @@ class Touch:
         #print("%s : %s (%s)" % (read, self.average(),  average))
         if average <= 90:
             return True
-        else:
-            self.update_averages()
-            return False
+
+        self.update_averages()
+        return False

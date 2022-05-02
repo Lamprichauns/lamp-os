@@ -24,7 +24,7 @@ class ShuffleStars(Behaviour):
         new_pixels = sorted(new_pixels, key=lambda x: random.random())
 
         print("Slowly moving stars")
-        await self.lamp.base.async_fade(new_pixels, 300, 1000) # 5 min fade time
+        await self.lamp.base.fade(new_pixels, 300, 1000) # 5 min fade time
         print("Done.")
 
     async def run(self):
@@ -46,20 +46,20 @@ class SuperNova(Behaviour):
         # Slowly shift to orange
         new_pixels[pixel] = (255,0,187,0)
         new_pixels[pixel2] = (255,0,187,0)
-        await self.lamp.base.async_fade(new_pixels,200,5)
+        await self.lamp.base.fade(new_pixels,200,5)
 
         # Quick flash to white
         new_pixels[pixel] = (250,250,255,0)
         new_pixels[pixel2] = (250,250,255,0)
-        await self.lamp.base.async_fade(new_pixels,80,2)
+        await self.lamp.base.fade(new_pixels,80,2)
 
         # Quick flash to black
         new_pixels[pixel] = (0,0,0,0)
         new_pixels[pixel2] = (0,0,0,0)
-        await self.lamp.base.async_fade(new_pixels,100,5)
+        await self.lamp.base.fade(new_pixels,100,5)
 
         # Slow fade back to before
-        await self.lamp.base.async_fade(current_pixels,200,5)
+        await self.lamp.base.fade(current_pixels,200,5)
 
     async def run(self):
         while True:
@@ -72,4 +72,4 @@ class SuperNova(Behaviour):
 andy.add_behaviour(ShuffleStars)
 andy.add_behaviour(SuperNova)
 
-andy.wake();
+andy.wake()

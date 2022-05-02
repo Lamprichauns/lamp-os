@@ -1,15 +1,14 @@
-import neopixel, machine
-from time import sleep
-import time
+import neopixel
+import machine
 import uasyncio as asyncio
-from vendor.easing import *
+from vendor.easing import QuadEaseInOut
 
 # Abstraction for light control - this gets used for the shade and base.
 # Hardware support for Neopixels with Red, Green, Blue and White channels
 # Prefer RGBWW (warm white) LED strips when purchasing hardware
 class LedStrip6812RGBWW:
     def __init__(self, color, pin, num_pixels):
-        self.color = LedStrip6812RGBWW.hex_to_rgbw(color)
+        self.color = self.hex_to_rgbw(color)
         self.num_pixels = num_pixels
         self.pin = pin
         self.lock = asyncio.Lock()
@@ -32,12 +31,13 @@ class LedStrip6812RGBWW:
         self.pixels.write()
 
     # Shift pixels from their current state to a target state. Dest can be either a list of individual pixels or a RGBW tuple
-    async def async_fade(self, dest, steps, step_delay=1, easing_function=QuadEaseInOut):
-        if not isinstance(dest, list): dest = [dest] * self.num_pixels
+    async def fade(self, dest, steps, step_delay=1, easing_function=QuadEaseInOut):
+        if not isinstance(dest, list):
+            dest = [dest] * self.num_pixels
 
         colors_start = list(self.pixels)
 
-        colors = dict()
+        colors = {}
         for i in range(self.num_pixels):
             colors[i] = (
                 easing_function(start = colors_start[i][0], end = dest[i][0], duration = steps),
@@ -62,7 +62,7 @@ class LedStrip6812RGBWW:
 
     # Convert hex colors to RGBW - Automatically flip full white to 0,0,0,255 (turn on warm white led
     # instead of each individual color)
-    def hex_to_rgbw(value):
+    def hex_to_rgbw(self, value):
         value = value.lstrip('#')
         rgb = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
         return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
