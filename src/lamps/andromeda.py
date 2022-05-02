@@ -1,7 +1,7 @@
+import random
+import uasyncio as asyncio
 from lamp_core.behaviour import Behaviour
 from lamp_core.standard_lamp import StandardLamp
-import uasyncio as asyncio
-import random
 
 andy = StandardLamp("andy", "#0077bb", "#ffffff")
 pixels = andy.base.default_pixels
@@ -28,7 +28,7 @@ class ShuffleStars(Behaviour):
         print("Done.")
 
     async def run(self):
-       while True:
+        while True:
             await asyncio.sleep(300)
             async with self.lamp.lock:
                 await self.move()

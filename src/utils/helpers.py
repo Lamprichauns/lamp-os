@@ -1,5 +1,6 @@
 import utime
 
+# pylint: disable=unused-argument
 def timed_function(f, *args, **kwargs):
     '''
     Handy little method for printing profiling info:
