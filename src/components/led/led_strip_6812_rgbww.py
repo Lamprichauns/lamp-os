@@ -20,7 +20,7 @@ class LedStrip6812RGBWW:
     def off(self):
         self.fill((0,0,0,0))
 
-   # set to a new color (tuple of rgbw color or list of individual pixels)
+    # Set to a new color (tuple of rgbw color or list of individual pixels)
     def fill(self, color):
         if isinstance(color, list):
             for i in range(self.num_pixels):

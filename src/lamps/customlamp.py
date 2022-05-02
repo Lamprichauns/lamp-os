@@ -5,7 +5,7 @@ import uasyncio as asyncio
 from behaviours.defaults import LampFadeIn
 from lamp_core.custom_lamp import CustomLamp
 from lamp_core.behaviour import Behaviour
-from components.led.led_strip_2812_rgb import LedStrip2812RGB
+from components.led.led_strip_6812_rgbww import LedStrip6812RGBWW
 from components.motion.motion_6050 import MotionMPU6050
 from components.network.bluetooth import Bluetooth
 
@@ -58,8 +58,8 @@ class DanceReaction(Behaviour):
 
 # Compose components and behaviours to your liking
 custom = CustomLamp(config["lamp"]["name"])
-custom.shade = LedStrip2812RGB(config["shade"]["default_color"], config["shade"]["pin"], config["shade"]["pixels"])
-custom.base = LedStrip2812RGB(config["base"]["default_color"], config["base"]["pin"], config["base"]["pixels"])
+custom.shade = LedStrip6812RGBWW(config["shade"]["default_color"], config["shade"]["pin"], config["shade"]["pixels"])
+custom.base = LedStrip6812RGBWW(config["base"]["default_color"], config["base"]["pin"], config["base"]["pixels"])
 custom.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 custom.bluetooth = Bluetooth(config["lamp"]["name"], config["base"]["default_color"], config["shade"]["default_color"])
 custom.network = custom.bluetooth.network
