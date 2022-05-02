@@ -22,3 +22,6 @@ __pycache__/
 # User configuration
 .env
 .vscode/*
+
+# Templates and Generated Files
+src/main.py
