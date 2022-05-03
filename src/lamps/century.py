@@ -1,4 +1,4 @@
-# An example of a completely century lamp
+# Century lamp
 import random
 from math import ceil
 import uasyncio as asyncio
@@ -27,13 +27,13 @@ class Sunset(Behaviour):
     def __init__(self, lamp):
         super().__init__(lamp)
         self.sunset_stages = [
-            { "color_start":(138, 15, 3, 0), "color_end": (220, 60, 8, 0), "clouds": False, "stars": False },
-            { "color_start":(108, 13, 3, 0), "color_end": (217, 68, 30, 0), "clouds": False, "stars": False },
-            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "clouds": True, "stars": False },
-            { "color_start":(107, 5, 57, 0), "color_end": (155, 180, 14, 0), "clouds": True, "stars": False },
-            { "color_start":(52, 4, 107, 0), "color_end": (104, 180, 15, 0), "clouds": True, "stars": True },
-            { "color_start":(16, 7, 142, 0), "color_end": (85, 145, 16, 0), "clouds": True, "stars": True },
-            { "color_start": (5, 33, 90, 0), "color_end": (30, 112, 12, 0), "clouds": True, "stars": True },
+            { "color_start":(138, 15, 3, 0), "color_end": (220, 60, 8, 0), "clouds": False, "stars": False, "temperature_threshold": 25 },
+            { "color_start":(108, 13, 3, 0), "color_end": (217, 68, 30, 0), "clouds": False, "stars": False, "temperature_threshold": 22 },
+            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "clouds": True, "stars": False, "temperature_threshold": 18 },
+            { "color_start":(107, 5, 57, 0), "color_end": (155, 180, 14, 0), "clouds": True, "stars": False, "temperature_threshold": 16 },
+            { "color_start":(52, 4, 107, 0), "color_end": (104, 180, 15, 0), "clouds": True, "stars": True, "temperature_threshold": 14 },
+            { "color_start":(16, 7, 142, 0), "color_end": (85, 145, 16, 0), "clouds": True, "stars": True, "temperature_threshold": 12 },
+            { "color_start": (5, 33, 90, 0), "color_end": (30, 112, 12, 0), "clouds": True, "stars": True, "temperature_threshold": 0 },
         ]
         self.current_scene = 0
         self.polling_interval = 10
@@ -42,19 +42,11 @@ class Sunset(Behaviour):
         temperature = self.lamp.temperature.get_temperature_value()
         print(temperature)
 
-        if temperature > 25:
-            return 0
-        if temperature > 22:
-            return 1
-        if temperature > 18:
-            return 2
-        if temperature > 16:
-            return 3
-        if temperature > 14:
-            return 4
-        if temperature > 12:
-            return 5
-        return 6
+        for i, k in enumerate(self.sunset_stages):
+            if temperature > k["temperature_threshold"]:
+                return i
+
+        return 0
 
     def draw_scene(self, scene):
         new_pixels = create_gradient(self.sunset_stages[scene]["color_start"], self.sunset_stages[scene]["color_end"], steps=40)
@@ -132,15 +124,12 @@ century.bluetooth = Bluetooth(config["lamp"]["name"], config["base"]["default_co
 century.network = century.bluetooth.network
 century.bluetooth.enable()
 
-# Programatically create a gradient for each step in the sunset
 century.shade.default_pixels = create_gradient((138, 15, 3, 0), (220, 60, 8, 0), steps=40)
 
 for j in range(31,37):
     century.shade.default_pixels[j] = darken(century.shade.default_pixels[j], percentage=85)
 for j in range(20,25):
     century.shade.default_pixels[j] = brighten(century.shade.default_pixels[j], percentage=15)
-
-print(century.shade.default_pixels[39])
 
 century.add_behaviour(LampFadeIn)
 century.add_behaviour(DanceReaction)
