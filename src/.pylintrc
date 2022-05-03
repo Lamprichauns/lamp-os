@@ -12,7 +12,8 @@ disable = missing-function-docstring,
     consider-using-f-string,
     no-self-use,
     too-few-public-methods,
-    too-many-arguments
+    too-many-arguments,
+    too-many-return-statements
 
 [BASIC]
 good-names = a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z
