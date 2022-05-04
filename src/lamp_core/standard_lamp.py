@@ -1,6 +1,7 @@
 from components.led.led_strip_6812_rgbww import LedStrip6812RGBWW
 from components.network.bluetooth import Bluetooth
 from components.motion.motion_6050 import MotionMPU6050
+from components.temperature.temperature_6050 import TemperatureMPU6050
 from components.touch.touch import Touch
 from behaviours.defaults import LampFadeIn
 from lamp_core.lamp import Lamp
@@ -16,6 +17,7 @@ class StandardLamp(Lamp):
         self.network = self.bluetooth.network
         self.bluetooth.enable()
         self.motion = MotionMPU6050(pin_sda=21, pin_scl=22)
+        self.temperature = TemperatureMPU6050(self.motion.accelerometer)
         self.touch = Touch(pin=32)
 
         self.add_behaviour(LampFadeIn)
