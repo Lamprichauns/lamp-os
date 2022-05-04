@@ -16,8 +16,8 @@ from utils.color_darken import darken
 # for ease of use, you can define a config to flow into all the components
 config = {
     "lamp": { "name": "century" },
-    "shade": { "pin": 13, "pixels": 60, "default_color": "#931702" },
-    "base": { "pin": 12, "pixels": 5, "default_color": "#270000" },
+    "shade": { "pin": 12, "pixels": 5, "default_color": "#931702" },
+    "base": { "pin": 13, "pixels": 60, "default_color": "#270000" },
     "motion": { "pin_sda": 21, "pin_scl": 22},
     "dance_reaction": {"polling_interval": 50, "dance_gesture_peak": 20000}
 }
@@ -50,7 +50,7 @@ class Sunset(Behaviour):
         return 0
 
     def draw_scene(self, scene):
-        new_pixels = create_gradient(self.sunset_stages[scene]["color_start"], self.sunset_stages[scene]["color_end"], steps=config["shade"]["pixels"])
+        new_pixels = create_gradient(self.sunset_stages[scene]["color_start"], self.sunset_stages[scene]["color_end"], steps=config["base"]["pixels"])
 
         if self.sunset_stages[scene]["clouds"] is True:
             new_pixels[random.choice(range(19, 28))] = (255, 0, 210, 0)
@@ -66,10 +66,10 @@ class Sunset(Behaviour):
             new_pixels[random.choice(range(50, 60))] = (250, 250, 250, 0)
 
         for k in range(32,37):
-            new_pixels[k] = darken(self.lamp.shade.default_pixels[k], percentage=85)
+            new_pixels[k] = darken(self.lamp.base.default_pixels[k], percentage=85)
 
         for k in range(18,23):
-            new_pixels[k] = brighten(self.lamp.shade.default_pixels[k], percentage=15)
+            new_pixels[k] = brighten(self.lamp.base.default_pixels[k], percentage=15)
 
         return new_pixels
 
@@ -79,13 +79,13 @@ class Sunset(Behaviour):
             scene = self.get_scene_for_temperature()
             if self.animations:
                 print("Rotating stars/clouds")
-                await self.lamp.shade.fade(self.draw_scene(self.current_scene), 100, 300)
+                await self.lamp.base.fade(self.draw_scene(self.current_scene), 100, 300)
 
             if scene != self.current_scene:
                 print("Scene change")
                 self.current_scene = scene
                 self.animations = bool(self.sunset_stages[scene]["clouds"] or self.sunset_stages[scene]["stars"])
-                await self.lamp.shade.fade(self.draw_scene(scene), 150, 500)
+                await self.lamp.base.fade(self.draw_scene(scene), 150, 500)
 
 # century: Animate when lamp is under higher than normal acceleration to use as a rave scepter
 class DanceReaction(Behaviour):
@@ -135,15 +135,15 @@ century.bluetooth = Bluetooth(config["lamp"]["name"], config["base"]["default_co
 century.network = century.bluetooth.network
 century.bluetooth.enable()
 
-century.shade.default_pixels = create_gradient((158, 10, 3, 0), (220, 80, 8, 0), steps=config["shade"]["pixels"])
+century.base.default_pixels = create_gradient((158, 10, 3, 0), (220, 80, 8, 0), steps=config["base"]["pixels"])
 
 for j in range(32,37):
-    century.shade.default_pixels[j] = darken(century.shade.default_pixels[j], percentage=85)
+    century.base.default_pixels[j] = darken(century.base.default_pixels[j], percentage=85)
 for j in range(20,25):
-    century.shade.default_pixels[j] = brighten(century.shade.default_pixels[j], percentage=15)
+    century.base.default_pixels[j] = brighten(century.base.default_pixels[j], percentage=15)
 
 century.add_behaviour(LampFadeIn)
-#century.add_behaviour(DanceReaction)
+century.add_behaviour(DanceReaction)
 century.add_behaviour(Sunset)
 
 century.wake()
