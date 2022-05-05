@@ -70,14 +70,17 @@ class LampNetwork:
         return await self._await_lamps(name, self.arrived_lamps)
 
     async def monitor(self):
-        # Add timed out lamps to departed list
-        for name, data in self.lamps.items():
-            if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
-                self.departed_lamps[name] = self.lamps.pop(name)
-                print("BT: %s has left, removing" % (name))
+        while True:
+            await asyncio.sleep_ms(5)
 
-        self._prune_lamp_list(self.departed_lamps, "last_seen", 30)
-        self._prune_lamp_list(self.arrived_lamps, "first_seen", 15)
+            # Add timed out lamps to departed list
+            for name, data in self.lamps.items():
+                if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
+                    self.departed_lamps[name] = self.lamps.pop(name)
+                    print("BT: %s has left, removing" % (name))
+
+            self._prune_lamp_list(self.departed_lamps, "last_seen", 30)
+            self._prune_lamp_list(self.arrived_lamps, "first_seen", 15)
 
 
 class Bluetooth:
@@ -142,7 +145,10 @@ class Bluetooth:
     def enable(self):
         self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
         self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, self.adv_payload, connectable=False)
+        asyncio.create_task(self.network.monitor())
+
         print("BT enabled (scaning & advertising)")
+
 
     # pylint: disable=too-many-arguments,unused-argument
     def handle_scan_result(self, addr_type, addr, adv_type, rssi, adv_data):
