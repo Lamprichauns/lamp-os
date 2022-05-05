@@ -5,17 +5,28 @@ from components.touch.touch import Touch
 from behaviours.defaults import LampFadeIn
 from lamp_core.lamp import Lamp
 
+
+default_config = {
+    "base":  { "pin": 12, "pixels": 40 },
+    "shade": { "pin": 13, "pixels": 40 },
+    "touch": { "pin": 32 }
+}
+
+
 # Use standard lamp to startup a lamp that uses Lamprichaun hardware
 class StandardLamp(Lamp):
-    def __init__(self, name, base_color, shade_color):
+    def __init__(self, name, base_color, shade_color, config_opts = {}):
+        config = default_config.copy()
+        config.update(config_opts)
+
         super().__init__(name)
 
-        self.base = LedStrip6812RGBWW(base_color, pin=12, num_pixels=40)
-        self.shade = LedStrip6812RGBWW(shade_color, pin=13, num_pixels=40)
+        self.base = LedStrip6812RGBWW(base_color, pin=config["base"]["pin"], num_pixels=config["base"]["pixels"])
+        self.shade = LedStrip6812RGBWW(shade_color, pin=config["shade"]["pin"], num_pixels=config["base"]["pixels"])
         self.bluetooth = Bluetooth(name, base_color, shade_color)
         self.network = self.bluetooth.network
         self.bluetooth.enable()
-        self.motion = MotionMPU6050(pin_sda=21, pin_scl=22)
-        self.touch = Touch(pin=32)
+        #self.motion = MotionMPU6050(pin_sda=21, pin_scl=22)
+        self.touch = Touch(pin=config["touch"]["pin"])
 
         self.add_behaviour(LampFadeIn)
