@@ -3,6 +3,7 @@ import random
 from math import ceil
 import uasyncio as asyncio
 from behaviours.defaults import LampFadeIn
+from behaviours.social import SocialGreeting
 from lamp_core.custom_lamp import CustomLamp
 from lamp_core.behaviour import Behaviour
 from components.led.led_strip_2812_rgb import LedStrip2812RGB
@@ -51,22 +52,43 @@ app = tinyweb.webserver()
 # Handle new values
 class Configurator():
     def post(self, data):
+        config["sunset"]["temperature_low"] = int(data["temperature_low"])
+        config["sunset"]["temperature_high"] = int(data["temperature_high"])
         print(data)
 
         return {'message': 'OK'}, 200
 
+def build_options(selected = 0):
+    options = ""
+    for i in range(0, 45):
+        options += """<option value="{value}" {selected}>{text}</option>""".format(value=i, selected="selected=selected" if i == selected else "", text=i)
+
+    return options
+
 # Index page
 @app.route('/')
 async def index(_, response):
+
     await response.start_html()
     await response.send("""
 <html>
     <h1>LampOS</h1>
-    <h2>Temperature is {temperature}</h2>
-    <form action="/settings" method="post"><input type="text" id="fname" name="fname"><input type="submit" value="Submit"></form>
+    <h2>Current temperature is: {temperature}</h2>
+    <form action="/settings" method="post">
+        <label for="temperature_low">Low Temperature Threshold</label>
+        <select id="temperature_low" name="temperature_low">{temperature_low_options}</select><br/>
+        <label for="temperature_high">High Temperature Threshold</label>
+        <select id="temperature_high" name="temperature_high">{temperature_high_options}</select><br/>
+        <input type="submit" value="Submit">
+    </form>
     <h3><3</h3>
 </html>
-    """.format(temperature=century.temperature.get_temperature_value()))
+    """.format(
+        temperature=century.temperature.get_temperature_value(),
+        temperature_low_options=build_options(config["sunset"]["temperature_low"]),
+        temperature_high_options=build_options(config["sunset"]["temperature_high"])
+        )
+    )
 
 app.add_resource(Configurator, '/settings')
 
@@ -82,8 +104,8 @@ class Sunset(Behaviour):
         self.sunset_stages = [
             { "color_start":(150, 10, 0, 0), "color_end": (220, 80, 8, 0), "sun": True, "clouds": False, "stars": False, "temperature_threshold": 40 },
             { "color_start":(108, 13, 3, 0), "color_end": (217, 68, 30, 0), "sun": True, "clouds": False, "stars": False, "temperature_threshold": 39 },
-            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "sun": False, "clouds": True, "stars": False, "temperature_threshold": 38 },
-            { "color_start":(107, 5, 57, 0), "color_end": (155, 140, 14, 0), "sun": False, "clouds": True, "stars": False, "temperature_threshold": 37 },
+            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "sun": True, "clouds": True, "stars": False, "temperature_threshold": 38 },
+            { "color_start":(107, 5, 57, 0), "color_end": (155, 140, 30, 0), "sun": False, "clouds": True, "stars": False, "temperature_threshold": 37 },
             { "color_start":(52, 4, 107, 0), "color_end": (104, 180, 15, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 36 },
             { "color_start":(16, 7, 142, 0), "color_end": (85, 115, 16, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 34 },
             { "color_start": (5, 33, 90, 0), "color_end": (30, 90, 12, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 0 },
@@ -183,5 +205,6 @@ century.add_behaviour(LampFadeIn)
 century.add_behaviour(DanceReaction)
 century.add_behaviour(Sunset)
 century.add_behaviour(WebListener)
+century.add_behaviour(SocialGreeting)
 
 century.wake()

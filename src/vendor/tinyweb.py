@@ -13,6 +13,15 @@ import sys
 import uerrno as errno
 import usocket as socket
 
+# stubbing the logger
+class Log():
+    def exc(self, e, s):
+        print(e)
+
+    def error(self, e):
+        print(e)
+log = Log()
+
 type_gen = type((lambda: (yield))())
 
 # uasyncio v3 is shipped with MicroPython 1.13, and contains some subtle
