@@ -1,8 +1,9 @@
 # Century lamp
 import random
 import gc
-from math import ceil, floor
+from math import ceil
 import uasyncio as asyncio
+import ujson as json
 from behaviours.defaults import LampFadeIn
 from behaviours.social import SocialGreeting
 from lamp_core.custom_lamp import CustomLamp
@@ -27,6 +28,14 @@ config = {
     "sunset": {"temperature_low": 30, "temperature_high": 40 },
     "webapp": {"ssid": "century-lamp", "password": "123456789"}
 }
+
+# use a json database for changes between sessions
+with open("/lamps/files/century/db.json", mode="r", encoding="utf8") as f:
+    db = json.load(f)
+
+config["sunset"]["temperature_low"] = int(db["temperature_low"])
+config["sunset"]["temperature_high"] = int(db["temperature_high"])
+
 
 # Compose all the components
 century = CustomLamp(config["lamp"]["name"])
@@ -106,20 +115,22 @@ class Sunset(Behaviour):
     def get_scene_for_temperature(self):
         temperature = self.lamp.temperature.get_temperature_value()
         print(temperature)
+        print(config["sunset"]["temperature_high"])
+        print(config["sunset"]["temperature_low"])
 
         number_stages = len(self.sunset_stages)
         temperature_division = (config["sunset"]["temperature_high"] - config["sunset"]["temperature_low"]) / number_stages
         if temperature_division < 0:
             return 0
 
-        scene = floor((temperature - config["sunset"]["temperature_low"]) / temperature_division)
+        scene = int((temperature - config["sunset"]["temperature_low"]) / temperature_division)
 
         if scene < 0:
             return 0
-        if scene > number_stages:
+        if scene > number_stages - 1:
             return number_stages - 1
 
-        return scene - 1
+        return scene
 
     def draw_scene(self, scene):
         new_pixels = create_gradient(self.sunset_stages[scene]["color_start"], self.sunset_stages[scene]["color_end"], steps=config["base"]["pixels"])
@@ -128,11 +139,11 @@ class Sunset(Behaviour):
             new_pixels[random.choice(range(5, 20))] = (250, 90, 0, 0)
 
         if self.sunset_stages[scene]["clouds"] is True:
-            new_pixels[random.choice(range(19, 28))] = (255, 0, 210, 0)
+            new_pixels[random.choice(range(19, 28))] = (255, 0, 110, 0)
             new_pixels[random.choice(range(18, 25))] = (230, 0, 110, 0)
-            new_pixels[random.choice(range(20, 27))] = (212, 0, 178, 0)
-            new_pixels[random.choice(range(43, 57))] = (212, 0, 178, 0)
-            new_pixels[random.choice(range(48, 60))] = (212, 0, 178, 0)
+            new_pixels[random.choice(range(20, 27))] = (212, 0, 169, 0)
+            new_pixels[random.choice(range(43, 57))] = (212, 0, 181, 0)
+            new_pixels[random.choice(range(48, 60))] = (212, 0, 130, 0)
 
         if self.sunset_stages[scene]["stars"] is True:
             new_pixels[random.choice(range(25, 40))] = (250, 250, 250, 0)
