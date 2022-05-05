@@ -1,6 +1,7 @@
 # Century lamp
 import random
-from math import ceil
+import gc
+from math import ceil, floor
 import uasyncio as asyncio
 from behaviours.defaults import LampFadeIn
 from behaviours.social import SocialGreeting
@@ -23,7 +24,7 @@ config = {
     "base": { "pin": 13, "pixels": 60, "default_color": "#270000" },
     "motion": { "pin_sda": 21, "pin_scl": 22},
     "dance_reaction": {"polling_interval": 50, "dance_gesture_peak": 20000},
-    "sunset": {"temperature_low": 34, "temperature_high": 40 },
+    "sunset": {"temperature_low": 30, "temperature_high": 40 },
     "webapp": {"ssid": "century-lamp", "password": "123456789"}
 }
 
@@ -60,7 +61,7 @@ class Configurator():
 
 def build_options(selected = 0):
     options = ""
-    for i in range(0, 45):
+    for i in range(0, 50):
         options += """<option value="{value}" {selected}>{text}</option>""".format(value=i, selected="selected=selected" if i == selected else "", text=i)
 
     return options
@@ -68,22 +69,11 @@ def build_options(selected = 0):
 # Index page
 @app.route('/')
 async def index(_, response):
-
     await response.start_html()
-    await response.send("""
-<html>
-    <h1>LampOS</h1>
-    <h2>Current temperature is: {temperature}</h2>
-    <form action="/settings" method="post">
-        <label for="temperature_low">Low Temperature Threshold</label>
-        <select id="temperature_low" name="temperature_low">{temperature_low_options}</select><br/>
-        <label for="temperature_high">High Temperature Threshold</label>
-        <select id="temperature_high" name="temperature_high">{temperature_high_options}</select><br/>
-        <input type="submit" value="Submit">
-    </form>
-    <h3><3</h3>
-</html>
-    """.format(
+    with open("/lamps/files/century/configurator.html", mode="r", encoding="utf8") as file:
+        html = file.read()
+
+    await response.send(html.format(
         temperature=century.temperature.get_temperature_value(),
         temperature_low_options=build_options(config["sunset"]["temperature_low"]),
         temperature_high_options=build_options(config["sunset"]["temperature_high"])
@@ -102,26 +92,34 @@ class Sunset(Behaviour):
     def __init__(self, lamp):
         super().__init__(lamp)
         self.sunset_stages = [
-            { "color_start":(150, 10, 0, 0), "color_end": (220, 80, 8, 0), "sun": True, "clouds": False, "stars": False, "temperature_threshold": 40 },
-            { "color_start":(108, 13, 3, 0), "color_end": (217, 68, 30, 0), "sun": True, "clouds": False, "stars": False, "temperature_threshold": 39 },
-            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "sun": True, "clouds": True, "stars": False, "temperature_threshold": 38 },
-            { "color_start":(107, 5, 57, 0), "color_end": (155, 140, 30, 0), "sun": False, "clouds": True, "stars": False, "temperature_threshold": 37 },
-            { "color_start":(52, 4, 107, 0), "color_end": (104, 180, 15, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 36 },
-            { "color_start":(16, 7, 142, 0), "color_end": (85, 115, 16, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 34 },
-            { "color_start": (5, 33, 90, 0), "color_end": (30, 90, 12, 0), "sun": False, "clouds": True, "stars": True, "temperature_threshold": 0 },
+            { "color_start": (5, 33, 90, 0), "color_end": (30, 90, 12, 0), "sun": False, "clouds": True, "stars": True },
+            { "color_start":(16, 7, 142, 0), "color_end": (85, 115, 16, 0), "sun": False, "clouds": True, "stars": True },
+            { "color_start":(52, 4, 107, 0), "color_end": (104, 180, 15, 0), "sun": False, "clouds": True, "stars": True },
+            { "color_start":(107, 5, 57, 0), "color_end": (155, 140, 30, 0), "sun": False, "clouds": True, "stars": False },
+            { "color_start":(108, 4, 23, 0), "color_end": (181, 96, 14, 0), "sun": True, "clouds": True, "stars": False },
+            { "color_start":(108, 13, 3, 0), "color_end": (217, 68, 30, 0), "sun": True, "clouds": False, "stars": False },
+            { "color_start":(150, 10, 0, 0), "color_end": (220, 80, 8, 0), "sun": True, "clouds": False, "stars": False },
         ]
-        self.current_scene = 0
+        self.current_scene = 6
         self.polling_interval = 30
 
     def get_scene_for_temperature(self):
         temperature = self.lamp.temperature.get_temperature_value()
         print(temperature)
 
-        for i, k in enumerate(self.sunset_stages):
-            if temperature > k["temperature_threshold"]:
-                return i
+        number_stages = len(self.sunset_stages)
+        temperature_division = (config["sunset"]["temperature_high"] - config["sunset"]["temperature_low"]) / number_stages
+        if temperature_division < 0:
+            return 0
 
-        return 0
+        scene = floor((temperature - config["sunset"]["temperature_low"]) / temperature_division)
+
+        if scene < 0:
+            return 0
+        if scene > number_stages:
+            return number_stages - 1
+
+        return scene - 1
 
     def draw_scene(self, scene):
         new_pixels = create_gradient(self.sunset_stages[scene]["color_start"], self.sunset_stages[scene]["color_end"], steps=config["base"]["pixels"])
@@ -152,6 +150,7 @@ class Sunset(Behaviour):
 
     async def run(self):
         while True:
+            gc.collect()
             await asyncio.sleep(self.polling_interval)
             scene = self.get_scene_for_temperature()
 
@@ -159,7 +158,8 @@ class Sunset(Behaviour):
             await self.lamp.base.fade(self.draw_scene(self.current_scene), 100, 300)
 
             if scene != self.current_scene:
-                print("Scene change")
+                print("Scene change.")
+                print(scene)
                 self.current_scene = scene
                 await self.lamp.base.fade(self.draw_scene(scene), 150, 500)
 
@@ -197,6 +197,7 @@ class DanceReaction(Behaviour):
 
     async def run(self):
         while True:
+            gc.collect()
             await asyncio.sleep_ms(self.polling_interval)
             async with self.lamp.lock:
                 await self.measure()
