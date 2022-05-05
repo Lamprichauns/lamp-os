@@ -34,7 +34,7 @@ class accel():
         vals["AcX"] = self.bytes_toint(raw_ints[0], raw_ints[1])
         vals["AcY"] = self.bytes_toint(raw_ints[2], raw_ints[3])
         vals["AcZ"] = self.bytes_toint(raw_ints[4], raw_ints[5])
-        vals["Tmp"] = self.bytes_toint(raw_ints[6], raw_ints[7]) / 340.00 + 36.53
+        vals["Tmp"] = (self.bytes_toint(raw_ints[6], raw_ints[7]) + 521) / 340.00 + 35
         vals["GyX"] = self.bytes_toint(raw_ints[8], raw_ints[9])
         vals["GyY"] = self.bytes_toint(raw_ints[10], raw_ints[11])
         vals["GyZ"] = self.bytes_toint(raw_ints[12], raw_ints[13])
