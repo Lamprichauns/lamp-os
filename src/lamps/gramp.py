@@ -3,7 +3,12 @@ import uasyncio as asyncio
 from lamp_core.behaviour import Behaviour
 from lamp_core.standard_lamp import StandardLamp
 
-gramp = StandardLamp("gramp", "#40b000", "#222222")
+config = {
+    "base": { "pin": 2, "pixels": 40},
+    "shade": { "pin": 27, "pixels": 40},
+}
+
+gramp = StandardLamp("gramp", "#40b000", "#ffffff", config)
 
 # Gramp has a narrow neck and we need to shut some of these pixels off
 def knock_out_neck_pixels(pixels):
