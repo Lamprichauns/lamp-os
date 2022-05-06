@@ -13,9 +13,7 @@ from components.motion.motion_6050 import MotionMPU6050
 from components.network.access_point import AccessPoint
 from components.network.bluetooth import Bluetooth
 from components.temperature.temperature_6050 import TemperatureMPU6050
-from utils.color_gradient import create_gradient
-from utils.color_brighten import brighten
-from utils.color_darken import darken
+from utils.color_tools import create_gradient, brighten, darken
 from vendor import tinyweb
 
 # for ease of use, you can define a config to flow into all the components
@@ -62,10 +60,17 @@ app = tinyweb.webserver()
 # Handle new values
 class Configurator():
     def post(self, data):
+        #set as an override
         config["sunset"]["temperature_low"] = int(data["temperature_low"])
         config["sunset"]["temperature_high"] = int(data["temperature_high"])
-        print(data)
 
+        # write the values to flash
+        new_settings = {
+            "temperature_low": int(data["temperature_low"]),
+            "temperature_high": int(data["temperature_high"])
+        }
+
+        print(data)
         return {'message': 'OK'}, 200
 
 def build_options(selected = 0):
