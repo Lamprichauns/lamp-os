@@ -12,7 +12,6 @@ class Lamp():
     def __init__(self, name):
         if not re.match('^[a-z]+$', name):
             raise NameError('Name must be lowercase alpha')
-        self.lock = asyncio.Lock()
         self.name = name
         self.behaviours = []
 
