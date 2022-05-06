@@ -36,8 +36,14 @@ class Lamp():
     # Start all behaviours
     async def start(self):
         for behaviour in self.behaviours:
-            print("Enabling Behaviour: %s" % (behaviour))
-            asyncio.create_task(behaviour.run())
+            if behaviour.type == "startup":
+                print("Running Startup Behaviour: %s" % (behaviour))
+                await behaviour.run()
+
+        for behaviour in self.behaviours:
+            if behaviour.type != "startup":
+                print("Enabling Behaviour: %s" % (behaviour))
+                asyncio.create_task(behaviour.run())
 
         print("%s is awake!" % (self.name))
 
