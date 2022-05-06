@@ -21,8 +21,8 @@ class StandardLamp(Lamp):
 
         super().__init__(name)
 
-        self.base = LedStrip6812RGBWW(base_color, pin=config["base"]["pin"], num_pixels=config["base"]["pixels"])
-        self.shade = LedStrip6812RGBWW(shade_color, pin=config["shade"]["pin"], num_pixels=config["base"]["pixels"])
+        self.base = NeoPixelStrip(base_color, pin=config["base"]["pin"], num_pixels=config["base"]["pixels"])
+        self.shade = NeoPixelStrip(shade_color, pin=config["shade"]["pin"], num_pixels=config["base"]["pixels"])
         self.bluetooth = Bluetooth(name, base_color, shade_color)
         self.network = self.bluetooth.network
         self.bluetooth.enable()
