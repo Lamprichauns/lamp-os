@@ -21,13 +21,8 @@ class Lamp():
 
     # Add a behaviour
     def add_behaviour(self, behaviour_class):
-        b = behaviour_class(self)
-
-        if any(isinstance(x, behaviour_class) for x in self.behaviours):
-            print("Behaviour already added (%s)" % (b))
-        else:
-            self.behaviours.append(b)
-            print("Behaviour added: %s" % (b))
+        self.behaviours.append(behaviour_class)
+        print("Behaviour added: %s" % (behaviour_class))
 
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):

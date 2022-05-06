@@ -28,6 +28,10 @@ class LedStrip2812RGB:
     def draw(self, colors):
         self.frame_buffer = colors
 
+    # Fetch the frame buffer
+    def get_frame_buffer(self):
+        return self.frame_buffer
+
     # Write the final scene to the LED strip
     def flush(self):
         for p in range(self.num_pixels):
