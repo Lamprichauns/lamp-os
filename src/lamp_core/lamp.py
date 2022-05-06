@@ -1,5 +1,6 @@
 import re
 import uasyncio as asyncio
+from lamp_core.behaviour import StartupBehaviour
 
 # We love lamp.
 #
@@ -36,12 +37,12 @@ class Lamp():
     # Start all behaviours
     async def start(self):
         for behaviour in self.behaviours:
-            if behaviour.type == "startup":
+            if isinstance(behaviour, StartupBehaviour):
                 print("Running Startup Behaviour: %s" % (behaviour))
                 await behaviour.run()
 
         for behaviour in self.behaviours:
-            if behaviour.type != "startup":
+            if not isinstance(behaviour, StartupBehaviour):
                 print("Enabling Behaviour: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 

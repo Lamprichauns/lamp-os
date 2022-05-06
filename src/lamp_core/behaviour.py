@@ -1,3 +1,4 @@
+# Behaviours make up the asynchronous tasks performed by the lamp
 class Behaviour:
     def __init__(self, lamp):
         self.lamp = lamp
@@ -8,17 +9,14 @@ class Behaviour:
     async def run(self):
         pass
 
+# A stanadard priority level behavior that will loop indefinitely
 class BackgroundBehaviour(Behaviour):
-    def __init__(self, lamp):
-        super().__init__(lamp)
-        self.type = "background"
+    pass
 
+# A high priority level behavior that will loop indefinitely
 class BlockingBehaviour(Behaviour):
-    def __init__(self, lamp):
-        super().__init__(lamp)
-        self.type = "blocking"
+    pass
 
+# A behaviour that happens exactly one time at startup
 class StartupBehaviour(Behaviour):
-    def __init__(self, lamp):
-        super().__init__(lamp)
-        self.type = "startup"
+    pass
