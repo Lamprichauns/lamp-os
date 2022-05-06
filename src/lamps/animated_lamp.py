@@ -3,6 +3,7 @@ from lamp_core.custom_lamp import CustomLamp
 from components.led.led_strip_2812_rgb import LedStrip2812RGB
 from vendor.easing import LinearInOut
 import uasyncio as asyncio
+import random
 
 # Create a gradient between one color and another. Input colors should be 4-tuples of RGBW
 def create_gradient(color_start, color_end, steps, easing_function=LinearInOut):
@@ -34,26 +35,26 @@ class WarpDrive(BackgroundBehaviour):
         self.step = 0
 
     async def run(self):
-        warp_drive_pattern = create_gradient((5, 22, 31, 0), (23, 50, 80, 0), 40)
+        warp_drive_pattern = create_gradient((35, 7, 0, 0), (90, 23, 0, 0), 40)
 
         while True:
             warp_drive_pattern_start = warp_drive_pattern
-            warp_drive_pattern = warp_drive_pattern[3:] + warp_drive_pattern[:3]
+            warp_drive_pattern = warp_drive_pattern[4:] + warp_drive_pattern[:4]
             colors = {}
             for i in range(40):
                 colors[i] = (
-                    LinearInOut(start = warp_drive_pattern_start[i][0], end = warp_drive_pattern[i][0], duration = 90)(self.step),
-                    LinearInOut(start = warp_drive_pattern_start[i][1], end = warp_drive_pattern[i][1], duration = 90)(self.step),
-                    LinearInOut(start = warp_drive_pattern_start[i][2], end = warp_drive_pattern[i][2], duration = 90)(self.step),
-                    LinearInOut(start = warp_drive_pattern_start[i][3], end = warp_drive_pattern[i][3], duration = 90)(self.step)
+                    LinearInOut(start = warp_drive_pattern_start[i][0], end = warp_drive_pattern[i][0], duration = 30)(self.step),
+                    LinearInOut(start = warp_drive_pattern_start[i][1], end = warp_drive_pattern[i][1], duration = 30)(self.step),
+                    LinearInOut(start = warp_drive_pattern_start[i][2], end = warp_drive_pattern[i][2], duration = 30)(self.step),
+                    LinearInOut(start = warp_drive_pattern_start[i][3], end = warp_drive_pattern[i][3], duration = 30)(self.step)
                 )
 
             self.lamp.shade.draw(colors)
             self.step += 1
-            if self.step == 90:
+            if self.step == 30:
                 self.step = 0
 
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep(0)
 
 class WarningLights(BackgroundBehaviour):
     def __init__(self, lamp):
@@ -100,15 +101,28 @@ class WarningLights(BackgroundBehaviour):
             if self.step == 90:
                 self.step = 0
                 direction = not direction
+            await asyncio.sleep(0)
+
+class GlitchGreen(BackgroundBehaviour):
+    async def run(self):
+        while True:
             await asyncio.sleep_ms(1)
+            chance = random.choice(range(1,40))
+            if chance == 30:
+                colors = self.lamp.shade.frame_buffer
+                for i in range(30,40):
+                    colors[i] = (0, 0, 255, 0)
+                self.lamp.shade.draw(colors)
+
 
 class Draw(BackgroundBehaviour):
     async def run(self):
         while True:
             self.lamp.shade.flush()
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep(0)
 
 animated_lamp.add_behaviour(WarpDrive)
 animated_lamp.add_behaviour(WarningLights)
+animated_lamp.add_behaviour(GlitchGreen)
 animated_lamp.add_behaviour(Draw)
 animated_lamp.wake()
