@@ -11,12 +11,12 @@ class Behaviour:
 class BackgroundBehaviour(Behaviour):
     def __init__(self, lamp):
         super().__init__(lamp)
-        self.type = "pipeline"
+        self.type = "background"
 
 class BlockingBehaviour(Behaviour):
     def __init__(self, lamp):
         super().__init__(lamp)
-        self.type = "glitch"
+        self.type = "blocking"
 
 class StartupBehaviour(Behaviour):
     def __init__(self, lamp):
