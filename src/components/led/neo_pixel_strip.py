@@ -13,6 +13,7 @@ class NeoPixelStrip:
         self.pin = pin
         self.lock = asyncio.Lock()
         self.task = None
+        self.bpp = bpp
 
         self.pixels = neopixel.NeoPixel(machine.Pin(self.pin), self.num_pixels, bpp=bpp)
         self.default_pixels = [self.color] * self.num_pixels
@@ -74,4 +75,8 @@ class NeoPixelStrip:
     def hex_to_rgbw(self, value):
         value = value.lstrip('#')
         rgb = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
-        return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
+
+        if self.bpp == 4:
+            return (0,0,0,255) if rgb == (255,255,255) else rgb + (0,)
+        else:
+            return rgb + (0,)
