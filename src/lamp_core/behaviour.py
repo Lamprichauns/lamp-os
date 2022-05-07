@@ -11,10 +11,6 @@ class Behaviour:
     async def run(self):
         pass
 
-class AnimationStyle:
-    REPEAT = 1
-    PING_PONG = 2
-
 class AnimationState:
     PLAYING = 1
     PAUSING = 2
@@ -22,12 +18,10 @@ class AnimationState:
 
 # An animation behavior that will loop indefinitely
 class AnimatedBehaviour(Behaviour):
-    def __init__(self, lamp, frames=60, animate=AnimationStyle.REPEAT):
+    def __init__(self, lamp, frames=60):
         super().__init__(lamp)
-        self.animate = animate
         self.frames = frames
         self.frame = 0
-        self.direction = True
         self.animation_state = AnimationState.PLAYING
 
     def pause(self):
@@ -43,15 +37,9 @@ class AnimatedBehaviour(Behaviour):
 
         if self.frame >= self.frames:
             self.frame = 0
-            if self.animation_state == AnimationState.PAUSING and self.animate == AnimationStyle.PING_PONG and self.direction is False:
-                self.animation_state = AnimationState.PAUSED
-                self.direction = True
 
-            elif self.animation_state == AnimationState.PAUSING and self.animate == AnimationStyle.REPEAT:
+            if self.animation_state == AnimationState.PAUSING:
                 self.animation_state = AnimationState.PAUSED
-
-            elif self.animate == AnimationStyle.PING_PONG:
-                self.direction = not self.direction
 
         await asyncio.sleep(0)
 
