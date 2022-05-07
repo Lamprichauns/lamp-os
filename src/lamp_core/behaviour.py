@@ -58,3 +58,9 @@ class StartupBehaviour(Behaviour):
 # A controller handler
 class ControllerBehaviour(Behaviour):
     pass
+
+class DrawBehaviour(Behaviour):
+    async def run(self):
+        while True:
+            self.lamp.shade.flush()
+            await asyncio.sleep(0)

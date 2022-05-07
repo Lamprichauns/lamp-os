@@ -1,3 +1,5 @@
+#  Allow all behaviors to contribute their pixels to the scene
+# and then flush it to the LED driver
 class FrameBuffer():
     def __init__(self, default_color, num_pixels, driver):
         self.default_color = default_color

@@ -1,6 +1,8 @@
 import re
 import uasyncio as asyncio
-from lamp_core.behaviour import StartupBehaviour, AnimatedBehaviour, ControllerBehaviour
+from lamp_core.behaviour import StartupBehaviour, AnimatedBehaviour, ControllerBehaviour, DrawBehaviour
+
+
 
 # We love lamp.
 #
@@ -13,7 +15,9 @@ class Lamp():
         if not re.match('^[a-z]+$', name):
             raise NameError('Name must be lowercase alpha')
         self.name = name
-        self.behaviours = []
+        self.behaviours = [
+            DrawBehaviour(self)
+        ]
 
     # Return a behaviour instance
     def behaviour(self, behaviour_class):
@@ -41,6 +45,10 @@ class Lamp():
                 asyncio.create_task(behaviour.animate())
 
             if isinstance(behaviour, ControllerBehaviour):
+                print("Enabling Behavior: %s" % (behaviour))
+                asyncio.create_task(behaviour.run())
+
+            if isinstance(behaviour, DrawBehaviour):
                 print("Enabling Behavior: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 

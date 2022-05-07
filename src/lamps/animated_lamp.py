@@ -54,14 +54,7 @@ class ControllerMock(ControllerBehaviour):
 
             await asyncio.sleep(2)
 
-class Draw(ControllerBehaviour):
-    async def run(self):
-        while True:
-            self.lamp.shade.flush()
-            await asyncio.sleep(0)
-
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
 animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=40))
-animated_lamp.add_behaviour(Draw(animated_lamp))
 animated_lamp.add_behaviour(ControllerMock(animated_lamp))
 animated_lamp.wake()
