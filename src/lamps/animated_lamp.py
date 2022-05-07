@@ -3,22 +3,17 @@ import uasyncio as asyncio
 from utils.gradient import create_gradient
 from utils.fade import fade, pingpong_fade
 from lamp_core.behaviour import AnimatedBehaviour, ControllerBehaviour
-from lamp_core.custom_lamp import CustomLamp
-from lamp_core.frame_buffer import FrameBuffer
-from components.led.neopixel import NeoPixel
+from lamp_core.standard_lamp import StandardLamp
 from vendor.easing import LinearInOut
-from behaviours.defaults import LampFadeIn
 
 # for ease of use, you can define a config to flow into all the components
 config = {
-    "lamp": { "name": "custom" },
-    "shade": { "pin": 13, "pixels": 40, "bpp": 3, "default_color": (90, 23, 0, 0) },
-    "base": { "pin": 12, "pixels": 5, "bpp": 3, "default_color": (16, 20, 160, 0) },
+    "base":  { "pin": 12, "pixels": 40, "bpp": 3},
+    "shade": { "pin": 13, "pixels": 40, "bpp": 3},
+    "touch": { "pin": 32 }
 }
 
-animated_lamp = CustomLamp(config["lamp"]["name"])
-animated_lamp.shade = FrameBuffer(config["shade"]["default_color"], config["shade"]["pixels"], NeoPixel(config["shade"]["pin"], config["shade"]["pixels"], config["shade"]["bpp"]))
-animated_lamp.base = FrameBuffer(config["base"]["default_color"], config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]))
+animated_lamp = StandardLamp("crazybeans", "#230700", "230700", config)
 
 class WarpDrive(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
@@ -65,7 +60,6 @@ class Draw(ControllerBehaviour):
             self.lamp.shade.flush()
             await asyncio.sleep(0)
 
-animated_lamp.add_behaviour(LampFadeIn(animated_lamp))
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
 animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=40))
 animated_lamp.add_behaviour(Draw(animated_lamp))
