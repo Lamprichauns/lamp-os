@@ -44,18 +44,18 @@ class WarningLights(AnimatedBehaviour):
         self.lamp.shade.buffer = colors
         await self.next_frame()
 
-class SocialControlMock(ControllerBehaviour):
+class ControllerMock(ControllerBehaviour):
     async def run(self):
         while True:
             chance = random.choice(range(0, 40))
 
             if chance > 35:
                 print("pausing warning lights")
-                animated_lamp.behaviour(WarningLights).pause()
+                self.lamp.behaviour(WarningLights).pause()
 
             if chance < 10:
                 print("resuming warning lights")
-                animated_lamp.behaviour(WarningLights).resume()
+                self.lamp.behaviour(WarningLights).resume()
 
             await asyncio.sleep(2)
 
@@ -69,5 +69,5 @@ animated_lamp.add_behaviour(LampFadeIn(animated_lamp))
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
 animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=40))
 animated_lamp.add_behaviour(Draw(animated_lamp))
-animated_lamp.add_behaviour(SocialControlMock(animated_lamp))
+animated_lamp.add_behaviour(ControllerMock(animated_lamp))
 animated_lamp.wake()
