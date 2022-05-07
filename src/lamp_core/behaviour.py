@@ -24,6 +24,14 @@ class AnimatedBehaviour(Behaviour):
         self.frame = 0
         self.animation_state = AnimationState.PLAYING
 
+    async def animate(self):
+        while True:
+            if self.animation_state == AnimationState.PAUSED:
+                await self.next_frame()
+                continue
+
+            await self.run()
+
     def pause(self):
         if self.animation_state == AnimationState.PLAYING:
             self.animation_state = AnimationState.PAUSING
@@ -45,4 +53,8 @@ class AnimatedBehaviour(Behaviour):
 
 # A behaviour that happens exactly one time at startup
 class StartupBehaviour(Behaviour):
+    pass
+
+# A controller handler
+class ControllerBehaviour(Behaviour):
     pass

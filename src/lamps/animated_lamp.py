@@ -2,7 +2,7 @@ import random
 import uasyncio as asyncio
 from utils.gradient import create_gradient
 from utils.fade import fade, pingpong_fade
-from lamp_core.behaviour import AnimatedBehaviour, Behaviour, AnimationState
+from lamp_core.behaviour import AnimatedBehaviour, ControllerBehaviour
 from lamp_core.custom_lamp import CustomLamp
 from lamp_core.frame_buffer import FrameBuffer
 from components.led.neopixel import NeoPixel
@@ -12,7 +12,7 @@ from behaviours.defaults import LampFadeIn
 # for ease of use, you can define a config to flow into all the components
 config = {
     "lamp": { "name": "custom" },
-    "shade": { "pin": 13, "pixels": 40, "bpp": 3, "default_color": (130, 90, 20, 0) },
+    "shade": { "pin": 13, "pixels": 40, "bpp": 3, "default_color": (90, 23, 0, 0) },
     "base": { "pin": 12, "pixels": 5, "bpp": 3, "default_color": (16, 20, 160, 0) },
 }
 
@@ -21,36 +21,30 @@ animated_lamp.shade = FrameBuffer(config["shade"]["default_color"], config["shad
 animated_lamp.base = FrameBuffer(config["base"]["default_color"], config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]))
 
 class WarpDrive(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.warp_drive_pattern = create_gradient((35, 7, 0, 0), (90, 23, 0, 0), 40)
+
     async def run(self):
-        warp_drive_pattern = create_gradient((35, 7, 0, 0), (90, 23, 0, 0), 40)
+        warp_drive_pattern_start = self.warp_drive_pattern
+        self.warp_drive_pattern = self.warp_drive_pattern[4:] + self.warp_drive_pattern[:4]
+        colors = {}
+        for i in range(40):
+            colors[i] = fade(warp_drive_pattern_start[i], self.warp_drive_pattern[i], self.frame, self.frames, LinearInOut)
 
-        while True:
-            warp_drive_pattern_start = warp_drive_pattern
-            warp_drive_pattern = warp_drive_pattern[4:] + warp_drive_pattern[:4]
-            colors = {}
-            for i in range(40):
-                colors[i] = fade(warp_drive_pattern_start[i], warp_drive_pattern[i], self.frame, self.frames, LinearInOut)
-
-            self.lamp.shade.buffer = colors
-            await self.next_frame()
+        self.lamp.shade.buffer = colors
+        await self.next_frame()
 
 class WarningLights(AnimatedBehaviour):
     async def run(self):
-        light = (255, 255, 255, 0)
+        colors = self.lamp.shade.buffer
+        colors[18] = pingpong_fade(colors[18], (255, 255, 255, 0), colors[18], self.frame, self.frames)
+        colors[10] = pingpong_fade(colors[18], (255, 255, 255, 0), colors[18], self.frame, self.frames)
 
-        while True:
-            if self.animation_state == AnimationState.PAUSED:
-                await self.next_frame()
-                continue
+        self.lamp.shade.buffer = colors
+        await self.next_frame()
 
-            colors = self.lamp.shade.buffer
-            colors[18] = pingpong_fade(colors[18], light, colors[18], self.frame, self.frames)
-            colors[10] = pingpong_fade(colors[18], light, colors[18], self.frame, self.frames)
-
-            self.lamp.shade.buffer = colors
-            await self.next_frame()
-
-class SocialControlMock(Behaviour):
+class SocialControlMock(ControllerBehaviour):
     async def run(self):
         while True:
             chance = random.choice(range(0, 40))
@@ -65,7 +59,7 @@ class SocialControlMock(Behaviour):
 
             await asyncio.sleep(2)
 
-class Draw(Behaviour):
+class Draw(ControllerBehaviour):
     async def run(self):
         while True:
             self.lamp.shade.flush()

@@ -1,6 +1,6 @@
 import re
 import uasyncio as asyncio
-from lamp_core.behaviour import StartupBehaviour
+from lamp_core.behaviour import StartupBehaviour, AnimatedBehaviour, ControllerBehaviour
 
 # We love lamp.
 #
@@ -36,8 +36,12 @@ class Lamp():
                 await behaviour.run()
 
         for behaviour in self.behaviours:
-            if not isinstance(behaviour, StartupBehaviour):
-                print("Enabling Behaviour: %s" % (behaviour))
+            if isinstance(behaviour, AnimatedBehaviour):
+                print("Enabling Animation: %s" % (behaviour))
+                asyncio.create_task(behaviour.animate())
+
+            if isinstance(behaviour, ControllerBehaviour):
+                print("Enabling Behavior: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 
         print("%s is awake!" % (self.name))
