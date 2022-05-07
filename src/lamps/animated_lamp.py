@@ -1,7 +1,8 @@
+import random
 import uasyncio as asyncio
 from utils.gradient import create_gradient
 from utils.fade import fade
-from lamp_core.behaviour import AnimatedBehaviour, Behaviour, AnimationStyle
+from lamp_core.behaviour import AnimatedBehaviour, Behaviour, AnimationStyle, AnimationState
 from lamp_core.custom_lamp import CustomLamp
 from lamp_core.frame_buffer import FrameBuffer
 from components.led.neopixel import NeoPixel
@@ -38,6 +39,10 @@ class WarningLights(AnimatedBehaviour):
         light = (255, 255, 255, 0)
 
         while True:
+            if self.animation_state == AnimationState.PAUSED:
+                await self.next_frame()
+                continue
+
             colors = self.lamp.shade.buffer
 
             if self.direction is True:
@@ -50,6 +55,21 @@ class WarningLights(AnimatedBehaviour):
             self.lamp.shade.buffer = colors
             await self.next_frame()
 
+class SocialControlMock(Behaviour):
+    async def run(self):
+        while True:
+            chance = random.choice(range(0, 40))
+
+            if chance > 35:
+                print("pausing warning lights")
+                animated_lamp.behaviour(WarningLights).pause()
+
+            if chance < 10:
+                print("resuming warning lights")
+                animated_lamp.behaviour(WarningLights).resume()
+
+            await asyncio.sleep(2)
+
 class Draw(Behaviour):
     async def run(self):
         while True:
@@ -60,4 +80,5 @@ animated_lamp.add_behaviour(LampFadeIn(animated_lamp))
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
 animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=20, animate=AnimationStyle.PING_PONG))
 animated_lamp.add_behaviour(Draw(animated_lamp))
+animated_lamp.add_behaviour(SocialControlMock(animated_lamp))
 animated_lamp.wake()
