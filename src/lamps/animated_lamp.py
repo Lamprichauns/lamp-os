@@ -3,20 +3,21 @@ from utils.gradient import create_gradient
 from utils.fade import fade
 from lamp_core.behaviour import AnimatedBehaviour, Behaviour, AnimationStyle
 from lamp_core.custom_lamp import CustomLamp
-from components.led.led_strip_2812_rgb import LedStrip2812RGB
+from lamp_core.frame_buffer import FrameBuffer
+from components.led.neopixel import NeoPixel
 from vendor.easing import LinearInOut
 from behaviours.defaults import LampFadeIn
 
 # for ease of use, you can define a config to flow into all the components
 config = {
     "lamp": { "name": "custom" },
-    "shade": { "pin": 13, "pixels": 40, "default_color": "#5b4711" },
-    "base": { "pin": 12, "pixels": 5, "default_color": "#270000" },
+    "shade": { "pin": 13, "pixels": 40, "bpp": 3, "default_color": (130, 90, 20, 0) },
+    "base": { "pin": 12, "pixels": 5, "bpp": 3, "default_color": (16, 20, 160, 0) },
 }
 
 animated_lamp = CustomLamp(config["lamp"]["name"])
-animated_lamp.shade = LedStrip2812RGB(config["shade"]["default_color"], config["shade"]["pin"], config["shade"]["pixels"])
-animated_lamp.base = LedStrip2812RGB(config["base"]["default_color"], config["base"]["pin"], config["base"]["pixels"])
+animated_lamp.shade = FrameBuffer(config["shade"]["default_color"], config["shade"]["pixels"], NeoPixel(config["shade"]["pin"], config["shade"]["pixels"], config["shade"]["bpp"]))
+animated_lamp.base = FrameBuffer(config["base"]["default_color"], config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]))
 
 class WarpDrive(AnimatedBehaviour):
     async def run(self):
@@ -29,7 +30,7 @@ class WarpDrive(AnimatedBehaviour):
             for i in range(40):
                 colors[i] = fade(warp_drive_pattern_start[i], warp_drive_pattern[i], self.frame, self.frames, LinearInOut)
 
-            self.lamp.shade.draw(colors)
+            self.lamp.shade.buffer = colors
             await self.next_frame()
 
 class WarningLights(AnimatedBehaviour):
@@ -37,7 +38,7 @@ class WarningLights(AnimatedBehaviour):
         light = (255, 255, 255, 0)
 
         while True:
-            colors = self.lamp.shade.get_frame_buffer()
+            colors = self.lamp.shade.buffer
 
             if self.direction is True:
                 colors[18] = fade(colors[18], light, self.frame, self.frames)
@@ -46,7 +47,7 @@ class WarningLights(AnimatedBehaviour):
                 colors[18] = fade(light, colors[18], self.frame, self.frames)
                 colors[10] = fade(light, colors[10], self.frame, self.frames)
 
-            self.lamp.shade.draw(colors)
+            self.lamp.shade.buffer = colors
             await self.next_frame()
 
 class Draw(Behaviour):

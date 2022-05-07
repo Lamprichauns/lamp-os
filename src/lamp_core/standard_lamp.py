@@ -13,7 +13,7 @@ default_config = {
 }
 
 
-# Use standard lamp to startup a lamp that uses Lamprichaun hardware
+# Use standard lamp to startup a lamp that uses the kicad connection layout
 class StandardLamp(Lamp):
     def __init__(self, name, base_color, shade_color, config_opts = {}):
         config = default_config.copy()
