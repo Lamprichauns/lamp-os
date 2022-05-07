@@ -47,4 +47,4 @@ class Lamp():
         print("%s is awake!" % (self.name))
 
         while True:
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep(0)

@@ -13,7 +13,7 @@ config = {
     "touch": { "pin": 32 }
 }
 
-animated_lamp = StandardLamp("crazybeans", "#230700", "230700", config)
+animated_lamp = StandardLamp("crazybeans", "#5a1700", "#5a1700", config)
 
 class WarpDrive(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
