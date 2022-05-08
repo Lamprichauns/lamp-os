@@ -29,4 +29,4 @@ class StandardLamp(Lamp):
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
 
-        self.add_behaviour(LampFadeIn(self))
+        self.add_behaviour(LampFadeIn(self, frames=8))

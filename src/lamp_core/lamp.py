@@ -1,6 +1,6 @@
 import re
 import uasyncio as asyncio
-from lamp_core.behaviour import StartupBehaviour, AnimatedBehaviour, ControllerBehaviour, DrawBehaviour
+from lamp_core.behaviour import AnimatedBehaviour, DrawBehaviour
 
 
 
@@ -15,9 +15,7 @@ class Lamp():
         if not re.match('^[a-z]+$', name):
             raise NameError('Name must be lowercase alpha')
         self.name = name
-        self.behaviours = [
-            DrawBehaviour(self)
-        ]
+        self.behaviours = []
 
     # Return a behaviour instance
     def behaviour(self, behaviour_class):
@@ -28,6 +26,12 @@ class Lamp():
         self.behaviours.append(behaviour_class)
         print("Behaviour added: %s" % (behaviour_class))
 
+    # Stop all behaviours
+    def pause_all_behaviors(self):
+        for behaviour in self.behaviours:
+            if isinstance(behaviour, AnimatedBehaviour):
+                behaviour.pause()
+
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):
         asyncio.run(self.start())
@@ -35,22 +39,12 @@ class Lamp():
     # Start all behaviours
     async def start(self):
         for behaviour in self.behaviours:
-            if isinstance(behaviour, StartupBehaviour):
-                print("Running Startup Behaviour: %s" % (behaviour))
-                await behaviour.run()
-
-        for behaviour in self.behaviours:
             if isinstance(behaviour, AnimatedBehaviour):
                 print("Enabling Animation: %s" % (behaviour))
-                asyncio.create_task(behaviour.animate())
-
-            if isinstance(behaviour, ControllerBehaviour):
-                print("Enabling Behavior: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 
-            if isinstance(behaviour, DrawBehaviour):
-                print("Enabling Behavior: %s" % (behaviour))
-                asyncio.create_task(behaviour.run())
+        draw = DrawBehaviour(self)
+        asyncio.create_task(draw.run())
 
         print("%s is awake!" % (self.name))
 

@@ -34,18 +34,19 @@ class NeoPixel:
         self.timing = timing
         self.color_order = color_order
 
-    def __len__(self):
-        return self.n
-
-    def __setitem__(self, i, v):
-        offset = i * self.bpp
-        for j in range(self.bpp):
-            self.buf[offset + self.color_order[j]] = v[j]
-
-    def __getitem__(self, i):
-        offset = i * self.bpp
-        return tuple(self.buf[offset + self.color_order[i]] for i in range(self.bpp))
-
-    def write(self):
+    def write(self, data):
         # BITSTREAM_TYPE_HIGH_LOW = 0
+        if self.bpp == 3:
+            for p in range(self.n):
+                self.buf[(p*3)] = int(data[p][1])
+                self.buf[(p*3)+1] = int(data[p][0])
+                self.buf[(p*3)+2] = int(data[p][2])
+
+        if self.bpp == 4:
+            for p in range(self.n):
+                self.buf[(p*3)] = int(data[p][1])
+                self.buf[(p*3)+1] = int(data[p][0])
+                self.buf[(p*3)+2] = int(data[p][2])
+                self.buf[(p*3)+3] = int(data[p][3])
+
         bitstream(self.pin, 0, self.timing, self.buf)

@@ -1,4 +1,6 @@
 import uasyncio as asyncio
+import utime
+import gc
 
 # Behaviours make up the asynchronous tasks performed by the lamp
 class Behaviour:
@@ -12,9 +14,23 @@ class Behaviour:
         pass
 
 class AnimationState:
+    # Animation is playing normally
     PLAYING = 1
+
+    # Animation is about to stop dead in its tracks
     PAUSING = 2
+
+    # Animation will no longer contribute pixels to the scene and will keep
+    # its playhead at the last frame position
     PAUSED = 3
+
+    # Animation will stop gracefully and let the total frame count continue
+    # to contribute to the scene
+    STOPPING = 4
+
+    # Animation will no longer contribute to the scene and it will
+    # resume from the beginning of the frame count
+    STOPPED = 5
 
 # An animation behavior that will loop indefinitely
 class AnimatedBehaviour(Behaviour):
@@ -22,45 +38,61 @@ class AnimatedBehaviour(Behaviour):
         super().__init__(lamp)
         self.frames = frames
         self.frame = 0
-        self.animation_state = AnimationState.PLAYING
+        self.animation_state = AnimationState.STOPPED
+
+    async def control(self):
+        pass
+
+    async def draw(self):
+        pass
 
     async def animate(self):
         while True:
-            if self.animation_state == AnimationState.PAUSED:
+            if self.animation_state in(AnimationState.PAUSED, AnimationState.STOPPED):
                 await self.next_frame()
                 continue
 
-            await self.run()
+            await self.draw()
+
+    async def run(self):
+        await asyncio.gather(
+            asyncio.create_task(self.control()),
+            asyncio.create_task(self.animate())
+        )
 
     def pause(self):
         if self.animation_state == AnimationState.PLAYING:
             self.animation_state = AnimationState.PAUSING
 
-    def resume(self):
+    def stop(self):
+        if self.animation_state == AnimationState.PLAYING:
+            self.animation_state = AnimationState.STOPPING
+
+    def play(self):
         self.animation_state = AnimationState.PLAYING
 
     async def next_frame(self):
-        if self.animation_state != AnimationState.PAUSED:
+        if self.animation_state == AnimationState.PAUSING:
+            self.animation_state = AnimationState.PAUSED
+
+        if self.animation_state not in (AnimationState.PAUSED, AnimationState.STOPPED):
             self.frame += 1
 
         if self.frame >= self.frames:
             self.frame = 0
 
-            if self.animation_state == AnimationState.PAUSING:
-                self.animation_state = AnimationState.PAUSED
+            if self.animation_state == AnimationState.STOPPING:
+                self.animation_state = AnimationState.STOPPED
 
         await asyncio.sleep(0)
 
-# A behaviour that happens exactly one time at startup
-class StartupBehaviour(Behaviour):
-    pass
-
-# A controller handler
-class ControllerBehaviour(Behaviour):
-    pass
-
 class DrawBehaviour(Behaviour):
     async def run(self):
+        self.lamp.base.fill((0, 0, 0, 0))
+        self.lamp.shade.fill((0, 0, 0, 0))
+
         while True:
+            self.lamp.base.flush()
             self.lamp.shade.flush()
+
             await asyncio.sleep(0)
