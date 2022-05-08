@@ -2,8 +2,6 @@
 import uasyncio as asyncio
 from lamp_core.behaviour import AnimatedBehaviour, AnimationState
 from utils.fade import fade
-from behaviours.warninglights import WarningLights
-from behaviours.warpdrive import WarpDrive
 
 class LampFadeIn(AnimatedBehaviour):
     async def draw(self):
@@ -26,8 +24,8 @@ class LampFadeIn(AnimatedBehaviour):
 
         while True:
             if self.lamp.behaviour(LampFadeIn).animation_state == AnimationState.STOPPED:
-                self.lamp.behaviour(WarningLights).play()
-                self.lamp.behaviour(WarpDrive).play()
+                for behavior in self.chained_behaviors:
+                    self.lamp.behaviour(behavior).play()
                 break
 
             await asyncio.sleep(0)

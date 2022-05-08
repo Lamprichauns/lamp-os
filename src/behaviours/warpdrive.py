@@ -1,8 +1,6 @@
-import random
-import uasyncio as asyncio
 from utils.gradient import create_gradient
-from utils.fade import pingpong_fade, fade
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState
+from utils.fade import fade
+from lamp_core.behaviour import AnimatedBehaviour
 from vendor.easing import LinearInOut
 
 class WarpDrive(AnimatedBehaviour):

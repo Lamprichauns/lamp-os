@@ -1,6 +1,4 @@
 import uasyncio as asyncio
-import utime
-import gc
 
 # Behaviours make up the asynchronous tasks performed by the lamp
 class Behaviour:
@@ -34,11 +32,12 @@ class AnimationState:
 
 # An animation behavior that will loop indefinitely
 class AnimatedBehaviour(Behaviour):
-    def __init__(self, lamp, frames=60):
+    def __init__(self, lamp, frames=60, chained_behaviors=None):
         super().__init__(lamp)
         self.frames = frames
         self.frame = 0
         self.animation_state = AnimationState.STOPPED
+        self.chained_behaviors = chained_behaviors if isinstance(chained_behaviors, list) else []
 
     async def control(self):
         pass

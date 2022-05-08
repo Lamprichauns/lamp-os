@@ -1,7 +1,6 @@
 from components.led.neopixel import NeoPixel
 from components.network.bluetooth import Bluetooth
 from components.touch.touch import Touch
-from behaviours.defaults import LampFadeIn
 from lamp_core.lamp import Lamp
 from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
@@ -28,5 +27,3 @@ class StandardLamp(Lamp):
         self.network = self.bluetooth.network
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
-
-        self.add_behaviour(LampFadeIn(self, frames=8))

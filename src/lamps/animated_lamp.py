@@ -1,12 +1,7 @@
-import random
-import uasyncio as asyncio
-from utils.gradient import create_gradient
-from utils.fade import fade, pingpong_fade
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState
 from lamp_core.standard_lamp import StandardLamp
-from vendor.easing import LinearInOut
 from behaviours.warninglights import WarningLights
 from behaviours.warpdrive import WarpDrive
+from behaviours.defaults import LampFadeIn
 
 # for ease of use, you can define a config to flow into all the components
 config = {
@@ -17,6 +12,7 @@ config = {
 
 animated_lamp = StandardLamp("crazybeans", "#5a1700", "#5a1700", config)
 
+animated_lamp.add_behaviour(LampFadeIn(animated_lamp, frames=8, chained_behaviors=[WarpDrive, WarningLights]))
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
-animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=40))
+animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=60))
 animated_lamp.wake()

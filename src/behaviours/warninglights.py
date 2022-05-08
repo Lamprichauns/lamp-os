@@ -1,8 +1,5 @@
-import random
-import uasyncio as asyncio
-from utils.gradient import create_gradient
 from utils.fade import pingpong_fade
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState
+from lamp_core.behaviour import AnimatedBehaviour
 
 class WarningLights(AnimatedBehaviour):
     async def draw(self):
