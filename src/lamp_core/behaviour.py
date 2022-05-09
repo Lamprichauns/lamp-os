@@ -1,4 +1,6 @@
 import uasyncio as asyncio
+import utime
+import gc
 
 # Behaviours make up the asynchronous tasks performed by the lamp
 class Behaviour:
@@ -89,9 +91,18 @@ class DrawBehaviour(Behaviour):
     async def run(self):
         self.lamp.base.fill((0, 0, 0, 0))
         self.lamp.shade.fill((0, 0, 0, 0))
-
+        ticks = 0
+        avg_duration = 0
         while True:
+            t = utime.ticks_us()
             self.lamp.base.flush()
             self.lamp.shade.flush()
-
+            gc.collect()
+            avg_duration += utime.ticks_diff(utime.ticks_us(), t)
+            if ticks % 60 == 1:
+                print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
+                print('Framerate: {}Hz'.format(1000/(avg_duration/60000)))
+                print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
+                avg_duration = 0
+            ticks += 1
             await asyncio.sleep(0)

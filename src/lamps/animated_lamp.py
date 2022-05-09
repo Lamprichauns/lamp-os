@@ -12,7 +12,7 @@ config = {
 
 animated_lamp = StandardLamp("crazybeans", "#5a1700", "#5a1700", config)
 
-animated_lamp.add_behaviour(LampFadeIn(animated_lamp, frames=8, chained_behaviors=[WarpDrive, WarningLights]))
+animated_lamp.add_behaviour(LampFadeIn(animated_lamp, frames=6, chained_behaviors=[WarpDrive, WarningLights]))
 animated_lamp.add_behaviour(WarpDrive(animated_lamp, frames=30))
 animated_lamp.add_behaviour(WarningLights(animated_lamp, frames=60))
 animated_lamp.wake()

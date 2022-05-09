@@ -5,15 +5,9 @@ color types in this lib
 '''
 
 from machine import bitstream, Pin
+from utils.helpers import timed_function
 
 class ColorOrder:
-    RGB  = (0, 1, 2)
-    RBG  = (0, 2, 1)
-    GBR  = (1, 2, 0)
-    GRB  = (1, 0, 2)
-    BRG  = (2, 0, 1)
-    BGR  = (2, 1, 0)
-
     RGBW = (0, 1, 2, 3)
     RBGW = (0, 2, 1, 3)
     GBRW = (1, 2, 0, 3)
@@ -30,23 +24,30 @@ class NeoPixel:
         self.pin.init(self.pin.OUT)
         self.n = n
         self.bpp = bpp
-        self.buf = bytearray(n * bpp)
+        self.buffer = bytearray(n * bpp)
+        self.previous_data = None
         self.timing = timing
         self.color_order = color_order
 
+    # send bitmap to the led strip if there are changes
     def write(self, data):
-        # BITSTREAM_TYPE_HIGH_LOW = 0
+        if data == self.previous_data:
+            return
+
+        self.previous_data = data
+
         if self.bpp == 3:
             for p in range(self.n):
-                self.buf[(p*3)] = int(data[p][1])
-                self.buf[(p*3)+1] = int(data[p][0])
-                self.buf[(p*3)+2] = int(data[p][2])
+                self.buffer[(p*3)] = data[p][1]
+                self.buffer[(p*3)+1] = data[p][0]
+                self.buffer[(p*3)+2] = data[p][2]
 
         if self.bpp == 4:
             for p in range(self.n):
-                self.buf[(p*3)] = int(data[p][1])
-                self.buf[(p*3)+1] = int(data[p][0])
-                self.buf[(p*3)+2] = int(data[p][2])
-                self.buf[(p*3)+3] = int(data[p][3])
+                self.buffer[(p*3)] = data[p][1]
+                self.buffer[(p*3)+1] = data[p][0]
+                self.buffer[(p*3)+2] = data[p][2]
+                self.buffer[(p*3)+3] = data[p][3]
 
-        bitstream(self.pin, 0, self.timing, self.buf)
+        # BITSTREAM_TYPE_HIGH_LOW = 0
+        bitstream(self.pin, 0, self.timing, self.buffer)

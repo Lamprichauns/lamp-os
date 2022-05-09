@@ -4,6 +4,8 @@ from components.touch.touch import Touch
 from lamp_core.lamp import Lamp
 from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
+import gc
+from time import sleep
 
 default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4},
@@ -27,3 +29,6 @@ class StandardLamp(Lamp):
         self.network = self.bluetooth.network
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
+
+        gc.collect()
+        sleep(1)

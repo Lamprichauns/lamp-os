@@ -2,6 +2,8 @@
 #  - self.buffer holds a list of RGBW tuples for the scene
 #  - write it to the LED driver using flush
 #  - color order will be handled by the driver at write time
+from utils.helpers import timed_function
+
 class FrameBuffer():
     def __init__(self, default_color, num_pixels, driver):
         self.default_color = default_color
@@ -14,11 +16,6 @@ class FrameBuffer():
     def fill(self, color):
         self.buffer = [color] * self.num_pixels
 
-    # Write the final scene to the LED strip if necessary
+    # Write the final scene to the driver as a list of int 4-tuples in RGBW order
     def flush(self):
-        if self.buffer == self.previous_buffer:
-            return
-
-        self.previous_buffer = self.buffer.copy()
-
-        self.driver.write(self.buffer)
+        self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
