@@ -32,7 +32,6 @@ class WarningLights(AnimatedBehaviour):
         colors[18] = pingpong_fade(colors[18], (255, 255, 255, 0), colors[18], self.frame, self.frames)
         colors[10] = pingpong_fade(colors[18], (255, 255, 255, 0), colors[18], self.frame, self.frames)
 
-        self.lamp.shade.buffer = colors
         await self.next_frame()
 
 

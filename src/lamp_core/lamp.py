@@ -6,10 +6,9 @@ from lamp_core.behaviour import AnimatedBehaviour, DrawBehaviour
 
 # We love lamp.
 #
-# Please use SimpleLamp or CustomLamp configurations from lamp_core instead of using Lamp directly
-# Check the following examples in lamps for usage
-# simplelamp:   A standard lamp example with a base, shade and networking
-# customlamp:  A fully custom lamp example with different components, custom behaviors, etc.
+# Please use StandardLamp instead of using this class directly if you're using an
+# ESP32 board with neopixels
+# Check the examples in lamps for usage
 class Lamp():
     def __init__(self, name):
         if not re.match('^[a-z]+$', name):
