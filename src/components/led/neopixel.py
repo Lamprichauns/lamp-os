@@ -44,10 +44,10 @@ class NeoPixel:
 
         if self.bpp == 4:
             for p in range(self.n):
-                self.buffer[(p*3)] = data[p][1]
-                self.buffer[(p*3)+1] = data[p][0]
-                self.buffer[(p*3)+2] = data[p][2]
-                self.buffer[(p*3)+3] = data[p][3]
+                self.buffer[(p*4)] = data[p][1]
+                self.buffer[(p*4)+1] = data[p][0]
+                self.buffer[(p*4)+2] = data[p][2]
+                self.buffer[(p*4)+3] = data[p][3]
 
         # BITSTREAM_TYPE_HIGH_LOW = 0
         bitstream(self.pin, 0, self.timing, self.buffer)
