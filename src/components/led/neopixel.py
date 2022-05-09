@@ -3,17 +3,10 @@ NeoPixel driver based on the NeoPixel driver in MicroPython
 Adds better support for RGB(W) types and for working with the
 color types in this lib
 '''
-
 from machine import bitstream, Pin
-from utils.helpers import timed_function
 
 class ColorOrder:
-    RGBW = (0, 1, 2, 3)
-    RBGW = (0, 2, 1, 3)
-    GBRW = (1, 2, 0, 3)
     GRBW = (1, 0, 2, 3)
-    BRGW = (2, 0, 1, 3)
-    BGRW = (2, 1, 0, 3)
 
 class NeoPixel:
     TIMING_800kHz = (400, 850, 800, 450)

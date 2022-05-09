@@ -98,6 +98,9 @@ class DrawBehaviour(Behaviour):
             self.lamp.base.flush()
             self.lamp.shade.flush()
             gc.collect()
+
+            await asyncio.sleep(0)
+
             avg_duration += utime.ticks_diff(utime.ticks_us(), t)
             if ticks % 60 == 1:
                 print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
@@ -105,4 +108,3 @@ class DrawBehaviour(Behaviour):
                 print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
                 avg_duration = 0
             ticks += 1
-            await asyncio.sleep(0)

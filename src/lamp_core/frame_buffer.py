@@ -2,8 +2,6 @@
 #  - self.buffer holds a list of RGBW tuples for the scene
 #  - write it to the LED driver using flush
 #  - color order will be handled by the driver at write time
-from utils.helpers import timed_function
-
 class FrameBuffer():
     def __init__(self, default_color, num_pixels, driver):
         self.default_color = default_color
@@ -11,6 +9,10 @@ class FrameBuffer():
         self.driver = driver
         self.previous_buffer = [default_color] * self.num_pixels
         self.buffer = [default_color] * self.num_pixels
+        # In case your lamp needs to go back to its original state, store a
+        # copy of the ideal start state. Behaviors can use this information
+        # to return the lamp to a default state
+        self.default_pixels = [default_color] * self.num_pixels
 
     # Set entire buffer to a new solid color
     def fill(self, color):
