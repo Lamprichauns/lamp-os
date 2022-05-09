@@ -1,12 +1,14 @@
 import re
 import uasyncio as asyncio
+from lamp_core.behaviour import AnimatedBehaviour, DrawBehaviour
+
+
 
 # We love lamp.
 #
-# Please use SimpleLamp or CustomLamp configurations from lamp_core instead of using Lamp directly
-# Check the following examples in lamps for usage
-# simplelamp:   A standard lamp example with a base, shade and networking
-# customlamp:  A fully custom lamp example with different components, custom behaviors, etc.
+# Please use StandardLamp instead of using this class directly if you're using an
+# ESP32 board with neopixels
+# Check the examples in lamps for usage
 class Lamp():
     def __init__(self, name):
         if not re.match('^[a-z]+$', name):
@@ -20,13 +22,14 @@ class Lamp():
 
     # Add a behaviour
     def add_behaviour(self, behaviour_class):
-        b = behaviour_class(self)
+        self.behaviours.append(behaviour_class)
+        print("Behaviour added: %s" % (behaviour_class))
 
-        if any(isinstance(x, behaviour_class) for x in self.behaviours):
-            print("Behaviour already added (%s)" % (b))
-        else:
-            self.behaviours.append(b)
-            print("Behaviour added: %s" % (b))
+    # Stop all behaviours
+    def pause_all_behaviors(self):
+        for behaviour in self.behaviours:
+            if isinstance(behaviour, AnimatedBehaviour):
+                behaviour.pause()
 
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):
@@ -35,10 +38,14 @@ class Lamp():
     # Start all behaviours
     async def start(self):
         for behaviour in self.behaviours:
-            print("Enabling Behaviour: %s" % (behaviour))
-            asyncio.create_task(behaviour.run())
+            if isinstance(behaviour, AnimatedBehaviour):
+                print("Enabling Animation: %s" % (behaviour))
+                asyncio.create_task(behaviour.run())
+
+        draw = DrawBehaviour(self)
+        asyncio.create_task(draw.run())
 
         print("%s is awake!" % (self.name))
 
         while True:
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep(0)

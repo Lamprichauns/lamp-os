@@ -1,5 +1,7 @@
 import utime
 
+# Python decorator for timing class synchronous methods
+
 # pylint: disable=unused-argument
 def timed_function(f, *args, **kwargs):
     '''
