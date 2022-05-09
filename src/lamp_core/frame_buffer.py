@@ -18,4 +18,10 @@ class FrameBuffer():
 
     # Write the final scene to the driver as a list of int 4-tuples in RGBW order
     def flush(self):
+        # fast sanity check before doing computation
+        if self.previous_buffer == self.buffer:
+            return
+
+        self.previous_buffer = self.buffer.copy()
+
         self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
