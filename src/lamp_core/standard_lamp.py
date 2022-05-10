@@ -21,7 +21,9 @@ class StandardLamp(Lamp):
 
         config = default_config.copy()
         if isinstance(config_opts, dict):
-            config.update(config_opts)
+            for key in config_opts:
+                if isinstance(config[key], dict):
+                    config[key].update(config_opts[key])
 
         if post_process_function:
             self.base = FrameBuffer(hex_to_rgbw(base_color), config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]), post_process_function=post_process_function)
