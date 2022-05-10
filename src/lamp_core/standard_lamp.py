@@ -20,7 +20,9 @@ class StandardLamp(Lamp):
 
         config = default_config.copy()
         if isinstance(config_opts, dict):
-            config.update(config_opts)
+            for key in config_opts:
+                if isinstance(config[key], dict):
+                    config[key].update(config_opts[key])
 
         self.base = FrameBuffer(hex_to_rgbw(base_color), config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]))
         self.shade = FrameBuffer(hex_to_rgbw(shade_color), config["shade"]["pixels"], NeoPixel(config["shade"]["pin"], config["shade"]["pixels"], config["shade"]["bpp"]))
