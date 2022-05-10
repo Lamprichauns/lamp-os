@@ -1,4 +1,5 @@
 import gc
+from behaviours.lamp_fade_in import LampFadeIn
 from components.led.neopixel import NeoPixel
 from components.network.bluetooth import Bluetooth
 from components.touch.touch import Touch
@@ -9,7 +10,8 @@ from utils.hex_to_rgbw import hex_to_rgbw
 default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4},
     "shade": { "pin": 13, "pixels": 40, "bpp": 4},
-    "touch": { "pin": 32 }
+    "touch": { "pin": 32 },
+    "fade_in": True
 }
 
 # Use standard lamp to startup a lamp that uses the kicad connection layout
@@ -31,6 +33,9 @@ class StandardLamp(Lamp):
         self.network = self.bluetooth.network
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
+
+        if config["fade_in"]:
+            self.add_behaviour(LampFadeIn(self, frames=30))
 
         # pylint: disable=no-member
         print("StandardLamp Started allocating {} bytes".format(gc.mem_alloc()))

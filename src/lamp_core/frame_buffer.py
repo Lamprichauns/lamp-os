@@ -33,5 +33,5 @@ class FrameBuffer():
 
         try:
             self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
-        except:
-            print('Memory overage while painting')
+        except Exception as e:
+            print(e)

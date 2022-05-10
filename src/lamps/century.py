@@ -19,6 +19,7 @@ sleep(5)
 config = {
     "shade": { "pin": 12, "pixels": 40, "bpp": 3},
     "base": { "pin": 13, "pixels": 60, "bpp": 3},
+    "fade_in": False,
     "motion": { "pin_sda": 21, "pin_scl": 22},
     "sunset": {"temperature_low": 30, "temperature_high": 40 },
 }

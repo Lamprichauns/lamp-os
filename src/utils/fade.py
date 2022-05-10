@@ -1,7 +1,6 @@
 from vendor.easing import ease, quad_ease_in_out
 
 # a basic fade over a number of steps
-# this function is somewhat heavy, so avoid using it on entire lamp changes
 def fade(start, end, current_step, steps, easing_function = quad_ease_in_out):
     return (
         end[0] if start[0] == end[0] else ease(start = start[0], end = end[0], duration = steps, current_step = current_step, easing_function = easing_function),
