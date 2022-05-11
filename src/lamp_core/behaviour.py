@@ -80,9 +80,7 @@ class AnimatedBehaviour(Behaviour):
 
         if self.animation_state not in (AnimationState.PAUSED, AnimationState.STOPPED):
             self.frame += 1
-            if self.frame % 2 == 0:
-                # Constantly clean up animation mallocs
-                gc.collect()
+            gc.collect()
 
         if self.frame >= self.frames:
             self.frame = 0
