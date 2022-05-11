@@ -36,7 +36,7 @@ century = StandardLamp("century", "#270000", "#931702", config, post_process_fun
 century.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 century.temperature = TemperatureMPU6050(century.motion.accelerometer)
 century.access_point = AccessPoint(ssid="century-lamp", password="123456789")
-century.base.default_pixels = create_gradient((158, 10, 3, 0), (220, 80, 8, 0), steps=config["base"]["pixels"])
+century.base.default_pixels = create_gradient((150, 10, 0, 0), (220, 80, 8, 0), steps=config["base"]["pixels"])
 
 # Web svc init
 app = tinyweb.webserver()
@@ -130,10 +130,10 @@ class Sunset(AnimatedBehaviour):
                 self.frame = 0
                 self.scene_change = True
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(20)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset]))
-century.add_behaviour(Sunset(century, frames=600))
+century.add_behaviour(Sunset(century, frames=2000))
 century.add_behaviour(WebListener(century))
 
 century.wake()
