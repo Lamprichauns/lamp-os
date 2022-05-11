@@ -18,10 +18,16 @@ class LampFadeIn(AnimatedBehaviour):
         self.lamp.behaviour(LampFadeIn).stop()
 
         while True:
-            if self.lamp.behaviour(LampFadeIn).animation_state == AnimationState.STOPPED:
-                for behavior in self.chained_behaviors:
-                    self.lamp.behaviour(behavior).play()
+            #component will be in the stopped state twice: once on init and once above
+            if self.animation_state == AnimationState.STOPPED and self.current_loop > 0:
+                #land on the exact default pixel color
+                self.lamp.base.buffer = self.lamp.base.default_pixels.copy()
+                self.lamp.base.previous_buffer = self.lamp.base.default_pixels.copy()
 
+                # run next behavior if configured
+                for behaviour in self.chained_behaviors:
+                    print("running sunset")
+                    self.lamp.behaviour(behaviour).play()
                 break
 
             await asyncio.sleep(0)

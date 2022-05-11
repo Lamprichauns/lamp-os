@@ -17,10 +17,10 @@ sleep(1)
 
 # for ease of use, you can define a config to flow into all the components
 config = {
-    "shade": { "pin": 12, "pixels": 40, "bpp": 3},
-    "base": { "pin": 13, "pixels": 60, "bpp": 3},
-    "fade_in": False,
-    "motion": { "pin_sda": 21, "pin_scl": 22},
+    "shade": { "pin": 12, "pixels": 40, "bpp": 3 },
+    "base": { "pin": 13, "pixels": 60, "bpp": 3 },
+    "lamp": { "fade_in": False },
+    "motion": { "pin_sda": 21, "pin_scl": 22 },
     "sunset": {"temperature_low": 30, "temperature_high": 40 },
 }
 
@@ -36,11 +36,9 @@ century = StandardLamp("century", "#270000", "#931702", config, post_process_fun
 century.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 century.temperature = TemperatureMPU6050(century.motion.accelerometer)
 century.access_point = AccessPoint(ssid="century-lamp", password="123456789")
-
-# Setup first sunset scene
 century.base.default_pixels = create_gradient((158, 10, 3, 0), (220, 80, 8, 0), steps=config["base"]["pixels"])
 
-# Kick off the web server for lamp remote controls
+# Web svc init
 app = tinyweb.webserver()
 
 # Handle new values

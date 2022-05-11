@@ -38,6 +38,7 @@ class AnimatedBehaviour(Behaviour):
         super().__init__(lamp)
         self.frames = frames
         self.frame = 0
+        self.current_loop = 0
         self.animation_state = AnimationState.STOPPED
         self.chained_behaviors = chained_behaviors if isinstance(chained_behaviors, list) else []
         gc.collect()
@@ -85,6 +86,7 @@ class AnimatedBehaviour(Behaviour):
 
         if self.frame >= self.frames:
             self.frame = 0
+            self.current_loop += 1
 
             if self.animation_state == AnimationState.STOPPING:
                 self.animation_state = AnimationState.STOPPED

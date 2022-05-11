@@ -8,10 +8,10 @@ from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
 
 default_config = {
-    "base":  { "pin": 12, "pixels": 40, "bpp": 4},
-    "shade": { "pin": 13, "pixels": 40, "bpp": 4},
+    "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
+    "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
     "touch": { "pin": 32 },
-    "fade_in": True
+    "lamp":  { "fade_in": True },
 }
 
 # Use standard lamp to startup a lamp that uses the kicad connection layout
@@ -28,7 +28,7 @@ class StandardLamp(Lamp):
                 except KeyError:
                     pass
 
-        if post_process_function:
+        if post_process_function is not None:
             self.base = FrameBuffer(hex_to_rgbw(base_color), config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]), post_process_function=post_process_function)
         else:
             self.base = FrameBuffer(hex_to_rgbw(base_color), config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]))
@@ -39,7 +39,7 @@ class StandardLamp(Lamp):
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
 
-        if config["fade_in"]:
+        if config["lamp"]["fade_in"] is True:
             self.add_behaviour(LampFadeIn(self, frames=30))
 
         # pylint: disable=no-member
