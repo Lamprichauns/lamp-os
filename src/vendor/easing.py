@@ -184,7 +184,5 @@ def bounce_ease_in_out(t):
 Easing function for use with float values over a given number of steps
 """
 def ease(start, end, duration, current_step, easing_function=quad_ease_in_out):
-    t = limit[0] * (1 - current_step) + limit[1] * current_step
-    t /= duration
-    a = easing_function(t)
+    a = easing_function(((limit[0] * (1 - current_step) + limit[1] * current_step) / duration))
     return end * a + start * (1 - a)

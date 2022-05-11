@@ -23,12 +23,6 @@ class Lamp():
         self.behaviours.append(behaviour_class)
         print("Behaviour added: %s" % (behaviour_class))
 
-    # Stop all behaviours
-    def pause_all_behaviors(self):
-        for behaviour in self.behaviours:
-            if isinstance(behaviour, AnimatedBehaviour):
-                behaviour.pause()
-
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):
         asyncio.run(self.start())

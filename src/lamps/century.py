@@ -1,4 +1,5 @@
 # Century lamp
+from time import sleep
 import uasyncio as asyncio
 import ujson as json
 from behaviours.lamp_fade_in import LampFadeIn
@@ -10,8 +11,9 @@ from components.temperature.temperature_6050 import TemperatureMPU6050
 from utils.color_tools import brighten, darken
 from utils.gradient import create_gradient
 from utils.fade import fade
+from utils.temperature import get_temperature_index
 from vendor import tinyweb
-from time import sleep
+
 
 sleep(5)
 
@@ -108,25 +110,6 @@ class Sunset(AnimatedBehaviour):
     def create_scene(self, scene):
         return create_gradient(self.sunset_stages[scene]["start"], self.sunset_stages[scene]["end"], config["base"]["pixels"])
 
-    def get_scene_for_temperature(self):
-        temperature = self.lamp.temperature.get_temperature_value()
-        print(temperature)
-
-        number_stages = len(self.sunset_stages)
-
-        temperature_division = (config["sunset"]["temperature_high"] - config["sunset"]["temperature_low"]) / number_stages
-        if temperature_division < 0:
-            return 0
-
-        scene = int((temperature - config["sunset"]["temperature_low"]) / temperature_division)
-
-        if scene < 0:
-            return 0
-        if scene > number_stages - 1:
-            return number_stages - 1
-
-        return scene
-
     async def draw(self):
         if self.scene_change is True:
             for i in range(config["base"]["pixels"]):
@@ -163,7 +146,7 @@ class Sunset(AnimatedBehaviour):
                 self.frame = 0
                 self.scene_change = True
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset]))
 century.add_behaviour(Sunset(century, frames=600))
