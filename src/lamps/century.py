@@ -1,7 +1,6 @@
 # Century lamp
 from time import sleep
 import uasyncio as asyncio
-import ujson as json
 from behaviours.lamp_fade_in import LampFadeIn
 from lamp_core.behaviour import BackgroundBehavior, AnimatedBehaviour
 from lamp_core.standard_lamp import StandardLamp
@@ -14,8 +13,7 @@ from utils.fade import fade
 from utils.temperature import get_temperature_index
 from vendor import tinyweb
 
-
-sleep(5)
+sleep(1)
 
 # for ease of use, you can define a config to flow into all the components
 config = {
@@ -61,13 +59,6 @@ class Configurator():
         print(data)
         return {'message': 'OK'}, 200
 
-def build_options(selected = 0):
-    options = ""
-    for i in range(0, 50):
-        options += """<option value="{value}" {selected}>{text}</option>""".format(value=i, selected="selected=selected" if i == selected else "", text=i)
-
-    return options
-
 # Index page
 @app.route('/')
 async def index(_, response):
@@ -75,12 +66,7 @@ async def index(_, response):
     with open("/lamps/files/century/configurator.html", mode="r", encoding="utf8") as file:
         html = file.read()
 
-    await response.send(html.format(
-        temperature=century.temperature.get_temperature_value(),
-        temperature_low_options=build_options(config["sunset"]["temperature_low"]),
-        temperature_high_options=build_options(config["sunset"]["temperature_high"])
-        )
-    )
+    await response.send(html)
 
 app.add_resource(Configurator, '/settings')
 

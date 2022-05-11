@@ -1,7 +1,6 @@
 # https://github.com/adamjezek98/MPU6050-ESP8266-MicroPython
 import machine
 
-
 class accel():
     def __init__(self, i2c, addr=0x68):
         self.iic = i2c
@@ -38,11 +37,5 @@ class accel():
         vals["GyX"] = self.bytes_toint(raw_ints[8], raw_ints[9])
         vals["GyY"] = self.bytes_toint(raw_ints[10], raw_ints[11])
         vals["GyZ"] = self.bytes_toint(raw_ints[12], raw_ints[13])
-        return vals  # returned in range of Int16
-        # -32768 to 32767
 
-    def val_test(self):  # ONLY FOR TESTING! Also, fast reading sometimes crashes IIC
-        from time import sleep
-        while 1:
-            print(self.get_values())
-            sleep(0.05)
+        return vals
