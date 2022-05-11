@@ -1,6 +1,6 @@
+import gc
 import uasyncio as asyncio
 import utime
-import gc
 
 # Behaviours make up the asynchronous tasks performed by the lamp
 class Behaviour:
@@ -38,8 +38,10 @@ class AnimatedBehaviour(Behaviour):
         super().__init__(lamp)
         self.frames = frames
         self.frame = 0
+        self.current_loop = 0
         self.animation_state = AnimationState.STOPPED
         self.chained_behaviors = chained_behaviors if isinstance(chained_behaviors, list) else []
+        gc.collect()
 
     async def control(self):
         pass
@@ -78,14 +80,19 @@ class AnimatedBehaviour(Behaviour):
 
         if self.animation_state not in (AnimationState.PAUSED, AnimationState.STOPPED):
             self.frame += 1
+            gc.collect()
 
         if self.frame >= self.frames:
             self.frame = 0
+            self.current_loop += 1
 
             if self.animation_state == AnimationState.STOPPING:
                 self.animation_state = AnimationState.STOPPED
 
         await asyncio.sleep(0)
+
+class BackgroundBehavior(Behaviour):
+    pass
 
 class DrawBehaviour(Behaviour):
     async def run(self):
@@ -102,9 +109,10 @@ class DrawBehaviour(Behaviour):
             await asyncio.sleep(0)
 
             avg_duration += utime.ticks_diff(utime.ticks_us(), t)
-            if ticks % 60 == 1:
+            if ticks % 60 == 0:
                 print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
                 print('Framerate: {}Hz'.format(1000/(avg_duration/60000)))
+                # pylint: disable=no-member
                 print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
                 avg_duration = 0
             ticks += 1

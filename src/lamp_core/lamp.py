@@ -1,8 +1,6 @@
 import re
 import uasyncio as asyncio
-from lamp_core.behaviour import AnimatedBehaviour, DrawBehaviour
-
-
+from lamp_core.behaviour import AnimatedBehaviour, DrawBehaviour, BackgroundBehavior
 
 # We love lamp.
 #
@@ -25,12 +23,6 @@ class Lamp():
         self.behaviours.append(behaviour_class)
         print("Behaviour added: %s" % (behaviour_class))
 
-    # Stop all behaviours
-    def pause_all_behaviors(self):
-        for behaviour in self.behaviours:
-            if isinstance(behaviour, AnimatedBehaviour):
-                behaviour.pause()
-
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):
         asyncio.run(self.start())
@@ -40,6 +32,10 @@ class Lamp():
         for behaviour in self.behaviours:
             if isinstance(behaviour, AnimatedBehaviour):
                 print("Enabling Animation: %s" % (behaviour))
+                asyncio.create_task(behaviour.run())
+
+            if isinstance(behaviour, BackgroundBehavior):
+                print("Enabling Background Task: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 
         draw = DrawBehaviour(self)

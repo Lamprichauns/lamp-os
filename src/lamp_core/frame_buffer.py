@@ -2,8 +2,10 @@
 #  - self.buffer holds a list of RGBW tuples for the scene
 #  - write it to the LED driver using flush
 #  - color order will be handled by the driver at write time
+#  - optionally apply a brightness contour to your lamp with the post process function
 class FrameBuffer():
-    def __init__(self, default_color, num_pixels, driver):
+    def __init__(self, default_color, num_pixels, driver, post_process_function=None):
+        self.post_process_function = post_process_function
         self.default_color = default_color
         self.num_pixels = num_pixels
         self.driver = driver
@@ -26,4 +28,10 @@ class FrameBuffer():
 
         self.previous_buffer = self.buffer.copy()
 
-        self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
+        if self.post_process_function is not None:
+            self.post_process_function(self.buffer)
+
+        try:
+            self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
+        except Exception as e:
+            print(e)
