@@ -12,6 +12,7 @@ class Lamp():
         if not re.match('^[a-z]+$', name):
             raise NameError('Name must be lowercase alpha')
         self.name = name
+        self.debug = False
         self.behaviours = []
 
     # Return a behaviour instance
@@ -21,7 +22,8 @@ class Lamp():
     # Add a behaviour
     def add_behaviour(self, behaviour_class):
         self.behaviours.append(behaviour_class)
-        print("Behaviour added: %s" % (behaviour_class))
+        if self.debug is True:
+            print("Behaviour added: %s" % (behaviour_class))
 
     # Called once all components and behaviours added to begin all async tasks
     def wake(self):
@@ -31,17 +33,20 @@ class Lamp():
     async def start(self):
         for behaviour in self.behaviours:
             if isinstance(behaviour, AnimatedBehaviour):
-                print("Enabling Animation: %s" % (behaviour))
+                if self.debug is True:
+                    print("Enabling Animation: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 
             if isinstance(behaviour, BackgroundBehavior):
-                print("Enabling Background Task: %s" % (behaviour))
+                if self.debug is True:
+                    print("Enabling Background Task: %s" % (behaviour))
                 asyncio.create_task(behaviour.run())
 
         draw = DrawBehaviour(self)
         asyncio.create_task(draw.run())
 
-        print("%s is awake!" % (self.name))
+        if self.debug is True:
+            print("%s is awake!" % (self.name))
 
         while True:
             await asyncio.sleep(0)

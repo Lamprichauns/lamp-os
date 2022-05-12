@@ -26,7 +26,6 @@ class LampFadeIn(AnimatedBehaviour):
 
                 # run next behavior if configured
                 for behaviour in self.chained_behaviors:
-                    print("running sunset")
                     self.lamp.behaviour(behaviour).play()
                 break
 

@@ -110,9 +110,10 @@ class DrawBehaviour(Behaviour):
 
             avg_duration += utime.ticks_diff(utime.ticks_us(), t)
             if ticks % 60 == 0:
-                print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
-                print('Framerate: {}Hz'.format(1000/(avg_duration/60000)))
-                # pylint: disable=no-member
-                print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
+                if self.lamp.debug is True:
+                    print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
+                    print('Framerate: {}Hz'.format(1000/(avg_duration/60000)))
+                    # pylint: disable=no-member
+                    print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
                 avg_duration = 0
             ticks += 1
