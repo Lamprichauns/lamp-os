@@ -104,7 +104,6 @@ class DrawBehaviour(Behaviour):
             t = utime.ticks_us()
             self.lamp.base.flush()
             self.lamp.shade.flush()
-            gc.collect()
 
             await asyncio.sleep(0)
 

@@ -32,6 +32,6 @@ class FrameBuffer():
             self.post_process_function(self.buffer)
 
         try:
-            self.driver.write([(int(r), int(g), int(b), int(w)) for r, g, b, w in self.buffer])
+            self.driver.write(self.buffer)
         except Exception as e:
             print(e)
