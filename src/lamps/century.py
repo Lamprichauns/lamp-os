@@ -22,11 +22,13 @@ config = {
     "base": { "pin": 13, "pixels": 60, "bpp": 3 },
     "lamp": { "fade_in": False, "debug": True },
     "motion": { "pin_sda": 21, "pin_scl": 22 },
-    "sunset": {"temperature_low": 30, "temperature_high": 40 },
+    "sunset": {"low": 30, "high": 40 },
 }
 
 # knockout and brighten some pixels for all scenes
 def post_process(pixels):
+    for j in range(1,8):
+        pixels[j] = darken(pixels[j], percentage=40)
     for j in range(32,37):
         pixels[j] = darken(pixels[j], percentage=85)
     for j in range(20,25):
@@ -72,23 +74,17 @@ class Sunset(AnimatedBehaviour):
         await self.next_frame()
 
     async def control(self):
-        scene = self.current_scene
-
         while True:
             if (self.scene_change or
                self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
                 await asyncio.sleep(0)
                 continue
 
-            #scene = self.get_scene_for_temperature()
-            scene += 1
-            if scene > 6:
-                scene = 0
+            scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
 
             if scene != self.current_scene:
-                print("Scene change {}".format(scene))
+                print("Scene change {}: Temperature: {}".format(scene, self.lamp.temperature.get_temperature_value()))
 
-                # precompute the scenes
                 self.previous_scene_pixels = self.create_scene(self.current_scene)
                 self.current_scene_pixels = self.create_scene(scene)
 
@@ -158,18 +154,21 @@ class Sun(AnimatedBehaviour):
 class EveningSky(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cloud_color = (225, 100, 160, 0)
         self.cloud_positions = []
+        self.cloud_brightness = 145
 
     async def draw(self):
+        percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
+
         for i in self.cloud_positions:
-            self.lamp.base.buffer[i] = pingpong_fade(self.lamp.base.buffer[i], self.cloud_color, self.lamp.base.buffer[i], self.frame, self.frames)
+            self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
 
         await self.next_frame()
 
     async def control(self):
         while True:
             if self.frame == 0:
+                self.cloud_brightness = choice(range(145, 185))
                 self.cloud_positions = [randrange(22, 30, 1) for i in range(1)]
                 self.cloud_positions += [randrange(43, 57, 1) for i in range(2)]
                 self.cloud_positions += [randrange(48, 60, 1) for i in range(1)]
