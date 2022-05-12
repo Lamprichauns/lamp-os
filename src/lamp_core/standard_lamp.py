@@ -11,7 +11,7 @@ default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
     "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
     "touch": { "pin": 32 },
-    "lamp":  { "fade_in": True },
+    "lamp":  { "fade_in": True, "debug": False },
 }
 
 # Use standard lamp to startup a lamp that uses the kicad connection layout
@@ -38,10 +38,12 @@ class StandardLamp(Lamp):
         self.network = self.bluetooth.network
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
+        self.debug = config["lamp"]["debug"]
 
         if config["lamp"]["fade_in"] is True:
             self.add_behaviour(LampFadeIn(self, frames=30))
 
         # pylint: disable=no-member
-        print("StandardLamp Started allocating {} bytes".format(gc.mem_alloc()))
+        if self.debug is True:
+            print("StandardLamp Started allocating {} bytes".format(gc.mem_alloc()))
         gc.collect()

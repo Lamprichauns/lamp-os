@@ -1,19 +1,17 @@
 # Century lamp
 from time import sleep
+from random import randrange
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
-from lamp_core.behaviour import BackgroundBehavior, AnimatedBehaviour, AnimationState
+from lamp_core.behaviour import AnimatedBehaviour, AnimationState
 from lamp_core.standard_lamp import StandardLamp
 from components.motion.motion_6050 import MotionMPU6050
-from components.network.access_point import AccessPoint
 from components.temperature.temperature_6050 import TemperatureMPU6050
 from utils.color_tools import brighten, darken
 from utils.gradient import create_gradient
-from utils.fade import fade, pingpong_fade
+from utils.fade import fade
 from utils.temperature import get_temperature_index
-from vendor import tinyweb
-from random import randrange
-from math import ceil
+from vendor.easing import pingpong_ease
 
 sleep(1)
 
@@ -21,7 +19,7 @@ sleep(1)
 config = {
     "shade": { "pin": 12, "pixels": 40, "bpp": 3 },
     "base": { "pin": 13, "pixels": 60, "bpp": 3 },
-    "lamp": { "fade_in": False },
+    "lamp": { "fade_in": False, "debug": True },
     "motion": { "pin_sda": 21, "pin_scl": 22 },
     "sunset": {"temperature_low": 30, "temperature_high": 40 },
 }
@@ -31,51 +29,15 @@ def post_process(pixels):
     for j in range(32,37):
         pixels[j] = darken(pixels[j], percentage=85)
     for j in range(20,25):
-        pixels[j] = brighten(pixels[j], percentage=15)
+        pixels[j] = brighten(pixels[j], percentage=115)
 
 # Compose all the components
 century = StandardLamp("century", "#270000", "#931702", config, post_process_function = post_process)
 century.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 century.temperature = TemperatureMPU6050(century.motion.accelerometer)
-century.access_point = AccessPoint(ssid="century-lamp", password="123456789")
 century.base.default_pixels = create_gradient((150, 10, 0, 0), (220, 80, 8, 0), steps=config["base"]["pixels"])
 
-# Web svc init
-app = tinyweb.webserver()
-
-# Handle new values
-class Configurator():
-    def post(self, data):
-        #set as an override
-        config["sunset"]["temperature_low"] = int(data["temperature_low"])
-        config["sunset"]["temperature_high"] = int(data["temperature_high"])
-
-        # write the values to flash
-        new_settings = {
-            "temperature_low": int(data["temperature_low"]),
-            "temperature_high": int(data["temperature_high"])
-        }
-
-        print(data)
-        return {'message': 'OK'}, 200
-
-# Index page
-@app.route('/')
-async def index(_, response):
-    await response.start_html()
-    with open("/lamps/files/century/configurator.html", mode="r", encoding="utf8") as file:
-        html = file.read()
-
-    await response.send(html)
-
-app.add_resource(Configurator, '/settings')
-
-# Start listening for connections on port 80
-class WebListener(BackgroundBehavior):
-    async def run(self):
-        app.run(host='0.0.0.0', port=80)
-
-# This behavior will create a very slow cooling/warming color change in reaction the ambient temperature
+# A very slow cooling/warming color change in reaction the ambient temperature
 class Sunset(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -112,7 +74,8 @@ class Sunset(AnimatedBehaviour):
         scene = self.current_scene
 
         while True:
-            if self.scene_change:
+            if (self.scene_change or
+               self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
                 await asyncio.sleep(0)
                 continue
 
@@ -134,46 +97,51 @@ class Sunset(AnimatedBehaviour):
 
             await asyncio.sleep(20)
 
+# Gently vibe to the rhythm if the lamp is dancing
 class DanceReaction(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.last_accelerometer_value = 0
         self.polling_interval = 100
-        self.dance_gesture_peak = 5000
-        self.current_scene_pixels = [(0, 0, 0, 0)]*self.lamp.base.num_pixels
-        self.previous_scene_pixels = [(0, 0, 0, 0)]*self.lamp.base.num_pixels
+        self.dance_gesture_peak = 3000
+        self.pixel_list = []
+
+    def within_range(self, value, baseline, threshold):
+        if baseline - threshold > value < baseline + threshold:
+            return True
+
+        return False
 
     async def draw(self):
-        for i in range(self.lamp.base.num_pixels):
-            self.lamp.base.buffer[i] = pingpong_fade(self.previous_scene_pixels[i], self.current_scene_pixels[i], self.previous_scene_pixels[i], self.frame, self.frames)
+        percentage = pingpong_ease(0, 100, 0, self.frames, self.frame)
+
+        for i in self.pixel_list:
+            self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
 
         await self.next_frame()
 
     async def control(self):
         while True:
-            if self.animation_state in(AnimationState.PLAYING, AnimationState.STOPPING):
-                await asyncio.sleep(0)
+            if (self.animation_state in(AnimationState.PLAYING, AnimationState.STOPPING) or
+               self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
+                await asyncio.sleep_ms(self.polling_interval)
                 continue
 
             value = self.lamp.motion.get_movement_intensity_value()
 
-            if (value >= self.dance_gesture_peak and value is not self.last_accelerometer_value):
-                self.last_accelerometer_value = value
-                pixel_list = [randrange(0, self.lamp.base.num_pixels, 1) for i in range(ceil(self.lamp.base.num_pixels/2))]
+            if (value >= self.dance_gesture_peak and value is not self.within_range(value, self.last_accelerometer_value, 100)):
                 print(value)
-                self.current_scene_pixels = self.lamp.base.buffer.copy()
-                self.previous_scene_pixels = self.lamp.base.buffer.copy()
-                for i in pixel_list:
-                    self.current_scene_pixels[i] = (111,111,111, 0)
+                self.last_accelerometer_value = value
+
+                self.pixel_list = [randrange(0, self.lamp.base.num_pixels, 1) for i in range(int(self.lamp.base.num_pixels/2))]
 
                 self.play()
                 self.stop()
 
-            await asyncio.sleep_ms(100)
+            await asyncio.sleep_ms(self.polling_interval)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset]))
 century.add_behaviour(Sunset(century, frames=2000))
-century.add_behaviour(DanceReaction(century, frames=6))
-century.add_behaviour(WebListener(century))
+century.add_behaviour(DanceReaction(century, frames=10))
 
 century.wake()
