@@ -23,6 +23,6 @@ class NeoPixel:
     # send bitmap to the led strip
     def write(self, data):
         if self.bpp == 3:
-            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(int(g), int(r), int(b)) for r, g, b, _ in data] for item in t]))
+            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(g, r, b) for r, g, b, _ in data] for item in t]))
         else:
-            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(int(g), int(r), int(b), int(w)) for r, g, b, w in data] for item in t]))
+            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(g, r, b, w) for r, g, b, w in data] for item in t]))
