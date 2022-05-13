@@ -3,6 +3,7 @@ from time import sleep
 from random import randrange, choice
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
+from behaviours.social import SocialGreeting
 from lamp_core.behaviour import AnimatedBehaviour, AnimationState
 from lamp_core.standard_lamp import StandardLamp
 from components.motion.motion_6050 import MotionMPU6050
@@ -20,7 +21,7 @@ sleep(1)
 config = {
     "shade": { "pin": 12, "pixels": 40, "bpp": 3 },
     "base": { "pin": 13, "pixels": 60, "bpp": 3 },
-    "lamp": { "fade_in": False, "debug": True },
+    "lamp": { "default_behaviours": False, "debug": True },
     "motion": { "pin_sda": 21, "pin_scl": 22 },
     "sunset": {"low": 30, "high": 40 },
 }
@@ -179,6 +180,7 @@ century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset, 
 century.add_behaviour(Sunset(century, frames=2000))
 century.add_behaviour(Sun(century, frames=1860))
 century.add_behaviour(EveningSky(century, frames=820))
+century.add_behaviour(SocialGreeting(century, frames=300))
 century.add_behaviour(DanceReaction(century, frames=10))
 
 century.wake()

@@ -1,16 +1,34 @@
 import uasyncio as asyncio
-from lamp_core.behaviour import Behaviour
+from lamp_core.behaviour import AnimatedBehaviour, AnimationState
+from utils.fade import fade
 
-class SocialGreeting(Behaviour):
-    async def arrivals(self):
+class SocialGreeting(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.arrived = None
+        self.ease_frames = 5
+
+    async def draw(self):
+        for i in range(self.lamp.shade.num_pixels):
+            if self.frame < self.ease_frames:
+                self.lamp.shade.buffer[i] = fade(self.lamp.shade.buffer[i], self.arrived["base_color"], self.frame, self.ease_frames)
+
+            elif self.frame > self.frames-self.ease_frames:
+                self.lamp.shade.buffer[i] = fade(self.arrived["base_color"], self.lamp.shade.buffer[i], self.frame % self.ease_frames, self.ease_frames)
+
+            else:
+                self.lamp.shade.buffer[i] = self.arrived["base_color"]
+
+        await self.next_frame()
+
+    async def control(self):
         while True:
-            arrived = await self.lamp.network.arrived()
+            # wait for lamp to be started up for a while on first boot
+            await asyncio.sleep(15)
 
-            async with self.lamp.shade.lock:
+            if self.animation_state not in (AnimationState.PLAYING, AnimationState.STOPPING):
+                arrived = await self.lamp.network.arrived()
+                self.arrived = arrived
                 print("%s has arrived" % (arrived["name"]))
-                await self.lamp.shade.fade((arrived["base_color"] * self.lamp.base.num_pixels), 90)
-                await asyncio.sleep(20)
-                await self.lamp.shade.fade((0,0,0,255),50)
-
-    async def run(self):
-        asyncio.create_task(self.arrivals())
+                self.play()
+                self.stop()

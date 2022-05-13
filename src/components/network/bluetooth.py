@@ -43,12 +43,12 @@ class LampNetwork:
     async def _await_lamps(cls, name, list):
         if name == None:
             while not any(list):
-                await asyncio.sleep_ms(1)
+                await asyncio.sleep(0)
 
             lamp = list.popitem()
         else:
             while name not in list:
-                await asyncio.sleep_ms(1)
+                await asyncio.sleep(0)
 
             lamp = (name, list.pop(name))
 
@@ -61,7 +61,7 @@ class LampNetwork:
                 #print("BT: %s is stale (%s), removing" % (field, name))
                 list.pop(name)
 
-    # await for and return departed lamps. Optionally specifiy the name to look for a specific lamp
+    # await for and return departed lamps. Optionally specify the name to look for a specific lamp
     async def departed(self, name = None):
         return await self._await_lamps(name, self.departed_lamps)
 
@@ -71,7 +71,7 @@ class LampNetwork:
 
     async def monitor(self):
         while True:
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep(1)
 
             # Add timed out lamps to departed list
             for name, data in self.lamps.items():

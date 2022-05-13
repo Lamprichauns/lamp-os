@@ -1,5 +1,7 @@
 import gc
 from behaviours.lamp_fade_in import LampFadeIn
+from behaviours.lamp_idle import LampIdle
+from behaviours.social import SocialGreeting
 from components.led.neopixel import NeoPixel
 from components.network.bluetooth import Bluetooth
 from components.touch.touch import Touch
@@ -11,7 +13,7 @@ default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
     "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
     "touch": { "pin": 32 },
-    "lamp":  { "fade_in": True, "debug": False },
+    "lamp":  { "default_behaviours": True, "debug": False },
 }
 
 # Use standard lamp to startup a lamp that uses the kicad connection layout
@@ -40,8 +42,10 @@ class StandardLamp(Lamp):
         self.touch = Touch(pin=config["touch"]["pin"])
         self.debug = config["lamp"]["debug"]
 
-        if config["lamp"]["fade_in"] is True:
-            self.add_behaviour(LampFadeIn(self, frames=30))
+        if config["lamp"]["default_behaviours"] is True:
+            self.add_behaviour(LampFadeIn(self, frames=30, chained_behaviors = [LampIdle]))
+            self.add_behaviour(LampIdle(self, frames=1))
+            self.add_behaviour(SocialGreeting(self, frames=3000))
 
         # pylint: disable=no-member
         if self.debug is True:
