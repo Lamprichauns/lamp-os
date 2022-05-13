@@ -1,31 +1,35 @@
 # Century lamp
 from time import sleep
-from random import randrange
+from random import randrange, choice
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
+from behaviours.social import SocialGreeting
 from lamp_core.behaviour import AnimatedBehaviour, AnimationState
 from lamp_core.standard_lamp import StandardLamp
 from components.motion.motion_6050 import MotionMPU6050
 from components.temperature.temperature_6050 import TemperatureMPU6050
 from utils.color_tools import brighten, darken
 from utils.gradient import create_gradient
-from utils.fade import fade
+from utils.fade import fade, pingpong_fade
 from utils.temperature import get_temperature_index
 from vendor.easing import pingpong_ease
 
+# making flashing a little easier reboot->upload
 sleep(1)
 
 # for ease of use, you can define a config to flow into all the components
 config = {
     "shade": { "pin": 12, "pixels": 40, "bpp": 3 },
     "base": { "pin": 13, "pixels": 60, "bpp": 3 },
-    "lamp": { "fade_in": False, "debug": True },
+    "lamp": { "default_behaviours": False, "debug": True },
     "motion": { "pin_sda": 21, "pin_scl": 22 },
-    "sunset": {"temperature_low": 30, "temperature_high": 40 },
+    "sunset": {"low": 30, "high": 40 },
 }
 
 # knockout and brighten some pixels for all scenes
 def post_process(pixels):
+    for j in range(1,8):
+        pixels[j] = darken(pixels[j], percentage=40)
     for j in range(32,37):
         pixels[j] = darken(pixels[j], percentage=85)
     for j in range(20,25):
@@ -51,7 +55,7 @@ class Sunset(AnimatedBehaviour):
             { "start": (150, 10, 0, 0), "end": (220, 80, 8, 0) },
         ]
         self.scene_change = False
-        self.current_scene = 6
+        self.current_scene = -1
         self.previous_scene_pixels = self.create_scene(self.current_scene)
         self.current_scene_pixels = self.create_scene(self.current_scene)
 
@@ -66,28 +70,22 @@ class Sunset(AnimatedBehaviour):
             if self.frame == self.frames-1:
                 self.scene_change = False
         else:
-            self.lamp.base.buffer = self.current_scene_pixels
+            self.lamp.base.buffer = self.current_scene_pixels.copy()
 
         await self.next_frame()
 
     async def control(self):
-        scene = self.current_scene
-
         while True:
             if (self.scene_change or
                self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
                 await asyncio.sleep(0)
                 continue
 
-            #scene = self.get_scene_for_temperature()
-            scene += 1
-            if scene > 6:
-                scene = 0
+            scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
 
             if scene != self.current_scene:
-                print("Scene change {}".format(scene))
+                print("Scene change {}: Temperature: {}".format(scene, self.lamp.temperature.get_temperature_value()))
 
-                # precompute the scenes
                 self.previous_scene_pixels = self.create_scene(self.current_scene)
                 self.current_scene_pixels = self.create_scene(scene)
 
@@ -107,10 +105,7 @@ class DanceReaction(AnimatedBehaviour):
         self.pixel_list = []
 
     def within_range(self, value, baseline, threshold):
-        if baseline - threshold > value < baseline + threshold:
-            return True
-
-        return False
+        return baseline - threshold > value < baseline + threshold
 
     async def draw(self):
         percentage = pingpong_ease(0, 100, 0, self.frames, self.frame)
@@ -140,8 +135,52 @@ class DanceReaction(AnimatedBehaviour):
 
             await asyncio.sleep_ms(self.polling_interval)
 
-century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset]))
+# Add some sunlight
+class Sun(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sun_position = 12
+
+    async def draw(self):
+        self.lamp.base.buffer[self.sun_position] = pingpong_fade(self.lamp.base.buffer[self.sun_position], (255, 180, 40, 0), self.lamp.base.buffer[self.sun_position], self.frame, self.frames)
+        await self.next_frame()
+
+    async def control(self):
+        while True:
+            if self.frame == 0:
+                self.sun_position = choice(range(12, 20))
+            await asyncio.sleep(0)
+
+# Add some point lights to the scenes and move em around
+class EveningSky(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cloud_positions = []
+        self.cloud_brightness = 145
+
+    async def draw(self):
+        percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
+
+        for i in self.cloud_positions:
+            self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
+
+        await self.next_frame()
+
+    async def control(self):
+        while True:
+            if self.frame == 0:
+                self.cloud_brightness = choice(range(145, 185))
+                self.cloud_positions = [randrange(22, 30, 1) for i in range(1)]
+                self.cloud_positions += [randrange(43, 57, 1) for i in range(2)]
+                self.cloud_positions += [randrange(48, 60, 1) for i in range(1)]
+
+            await asyncio.sleep(0)
+
+century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset, Sun, EveningSky]))
 century.add_behaviour(Sunset(century, frames=2000))
+century.add_behaviour(Sun(century, frames=1860))
+century.add_behaviour(EveningSky(century, frames=820))
+century.add_behaviour(SocialGreeting(century, frames=300))
 century.add_behaviour(DanceReaction(century, frames=10))
 
 century.wake()

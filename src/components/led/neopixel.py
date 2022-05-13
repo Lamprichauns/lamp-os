@@ -17,30 +17,12 @@ class NeoPixel:
         self.pin.init(self.pin.OUT)
         self.n = n
         self.bpp = bpp
-        self.buffer = bytearray(n * bpp)
-        self.previous_data = None
         self.timing = timing
         self.color_order = color_order
 
-    # send bitmap to the led strip if there are changes
+    # send bitmap to the led strip
     def write(self, data):
-        if data == self.previous_data:
-            return
-
-        self.previous_data = data
-
         if self.bpp == 3:
-            for p in range(self.n):
-                self.buffer[(p*3)] = data[p][1]
-                self.buffer[(p*3)+1] = data[p][0]
-                self.buffer[(p*3)+2] = data[p][2]
-
-        if self.bpp == 4:
-            for p in range(self.n):
-                self.buffer[(p*4)] = data[p][1]
-                self.buffer[(p*4)+1] = data[p][0]
-                self.buffer[(p*4)+2] = data[p][2]
-                self.buffer[(p*4)+3] = data[p][3]
-
-        # BITSTREAM_TYPE_HIGH_LOW = 0
-        bitstream(self.pin, 0, self.timing, self.buffer)
+            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(g, r, b) for r, g, b, _ in data] for item in t]))
+        else:
+            bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(g, r, b, w) for r, g, b, w in data] for item in t]))
