@@ -184,7 +184,7 @@ class EveningSky(AnimatedBehaviour):
             await asyncio.sleep(0)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset, Sun, EveningSky]))
-century.add_behaviour(Sunset(century, frames=300))
+century.add_behaviour(Sunset(century, frames=2000))
 century.add_behaviour(Sun(century, frames=1860))
 century.add_behaviour(EveningSky(century, frames=820))
 century.add_behaviour(SocialGreeting(century, frames=300))
