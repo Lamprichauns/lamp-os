@@ -1,7 +1,6 @@
 import gc
 from behaviours.lamp_fade_in import LampFadeIn
 from behaviours.lamp_idle import LampIdle
-from behaviours.social import SocialGreeting
 from components.led.neopixel import NeoPixel
 from components.network.bluetooth import Bluetooth
 from components.touch.touch import Touch
@@ -45,7 +44,6 @@ class StandardLamp(Lamp):
         if config["lamp"]["default_behaviours"] is True:
             self.add_behaviour(LampFadeIn(self, frames=30, chained_behaviors = [LampIdle]))
             self.add_behaviour(LampIdle(self, frames=1))
-            self.add_behaviour(SocialGreeting(self, frames=3000))
 
         # pylint: disable=no-member
         if self.debug is True:

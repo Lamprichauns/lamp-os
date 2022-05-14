@@ -6,6 +6,6 @@ def create_gradient(color_start, color_end, steps, easing_function=linear):
     color_list = [(0, 0, 0, 0)] * steps
 
     for i in range(steps):
-        color_list[i] = fade(color_start, color_end, i, steps, easing_function = easing_function)
+        color_list[i] = fade(color_start, color_end, steps, i, easing_function = easing_function)
 
     return color_list

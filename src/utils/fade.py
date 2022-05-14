@@ -1,7 +1,7 @@
 from vendor.easing import ease, quad_ease_in_out
 
 # a basic fade over a number of steps
-def fade(start, end, current_step, steps, easing_function = quad_ease_in_out):
+def fade(start, end, steps, current_step, easing_function = quad_ease_in_out):
     return (
         end[0] if start[0] == end[0] else ease(start = start[0], end = end[0], duration = steps, current_step = current_step, easing_function = easing_function),
         end[1] if start[1] == end[1] else ease(start = start[1], end = end[1], duration = steps, current_step = current_step, easing_function = easing_function),
@@ -10,9 +10,9 @@ def fade(start, end, current_step, steps, easing_function = quad_ease_in_out):
     )
 
 # A pingpong effect for your fades start color -> middle color -> end color
-def pingpong_fade(start, middle, end, current_step, steps, easing_function_in = quad_ease_in_out, easing_function_out = quad_ease_in_out):
+def pingpong_fade(start, middle, end, steps, current_step, easing_function_in = quad_ease_in_out, easing_function_out = quad_ease_in_out):
     loop_point = int(steps/2)
     if current_step < loop_point:
-        return fade(start, middle, current_step, loop_point, easing_function_in)
+        return fade(start, middle, loop_point, current_step, easing_function_in)
 
-    return fade(middle, end, current_step-loop_point, loop_point, easing_function_out)
+    return fade(middle, end, loop_point, current_step-loop_point, easing_function_out)
