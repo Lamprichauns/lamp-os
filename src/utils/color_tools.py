@@ -1,10 +1,15 @@
+import micropython
+
+@micropython.native
 def level_brighten(val):
     return 255 if val > 254 else val
 
+@micropython.native
 def level_darken(val):
     return 0 if val < 1 else val
 
 # Brighten an rgbw value by a percentage
+@micropython.native
 def brighten(color, percentage):
     p = ((percentage)/100)+1
 
@@ -16,6 +21,7 @@ def brighten(color, percentage):
     )
 
 # Reduce the rgbw intensity of a value by a percentage
+@micropython.native
 def darken (color, percentage):
     p = 1-(percentage/100)
 

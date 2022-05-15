@@ -1,6 +1,8 @@
+import micropython
 from vendor.easing import ease, quad_ease_in_out
 
 # a basic fade over a number of steps
+@micropython.native
 def fade(start, end, steps, current_step, easing_function = quad_ease_in_out):
     return (
         end[0] if start[0] == end[0] else ease(start = start[0], end = end[0], duration = steps, current_step = current_step, easing_function = easing_function),
@@ -10,6 +12,7 @@ def fade(start, end, steps, current_step, easing_function = quad_ease_in_out):
     )
 
 # A pingpong effect for your fades start color -> middle color -> end color
+@micropython.native
 def pingpong_fade(start, middle, end, steps, current_step, easing_function_in = quad_ease_in_out, easing_function_out = quad_ease_in_out):
     loop_point = int(steps/2)
     if current_step < loop_point:
