@@ -3,6 +3,7 @@ NeoPixel driver based on the NeoPixel driver in MicroPython
 Adds better support for RGB(W) types and for working with the
 color types in this lib
 '''
+import micropython
 from machine import bitstream, Pin
 
 class ColorOrder:
@@ -21,6 +22,7 @@ class NeoPixel:
         self.color_order = color_order
 
     # send bitmap to the led strip
+    @micropython.native
     def write(self, data):
         if self.bpp == 3:
             bitstream(self.pin, 0, self.timing, bytearray([int(item) for t in [(g, r, b) for r, g, b, _ in data] for item in t]))

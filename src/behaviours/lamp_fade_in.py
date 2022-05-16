@@ -6,10 +6,10 @@ from utils.fade import fade
 class LampFadeIn(AnimatedBehaviour):
     async def draw(self):
         for i in range(self.lamp.base.num_pixels):
-            self.lamp.base.buffer[i] = fade((0, 0, 0, 0), self.lamp.base.default_pixels[i], self.frame, self.frames)
+            self.lamp.base.buffer[i] = fade((0, 0, 0, 0), self.lamp.base.default_pixels[i], self.frames, self.frame)
 
         for i in range(self.lamp.shade.num_pixels):
-            self.lamp.shade.buffer[i] = fade((0, 0, 0, 0), self.lamp.shade.default_pixels[i], self.frame, self.frames)
+            self.lamp.shade.buffer[i] = fade((0, 0, 0, 0), self.lamp.shade.default_pixels[i], self.frames, self.frame)
 
         await self.next_frame()
 
