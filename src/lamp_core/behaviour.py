@@ -80,7 +80,6 @@ class AnimatedBehaviour(Behaviour):
 
         if self.animation_state not in (AnimationState.PAUSED, AnimationState.STOPPED):
             self.frame += 1
-            gc.collect()
 
         if self.frame >= self.frames:
             self.frame = 0
@@ -104,7 +103,7 @@ class DrawBehaviour(Behaviour):
             t = utime.ticks_us()
             self.lamp.base.flush()
             self.lamp.shade.flush()
-
+            gc.collect()
             await asyncio.sleep(0)
 
             avg_duration += utime.ticks_diff(utime.ticks_us(), t)

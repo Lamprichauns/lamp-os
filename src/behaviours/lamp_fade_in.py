@@ -20,11 +20,9 @@ class LampFadeIn(AnimatedBehaviour):
         while True:
             #component will be in the stopped state twice: once on init and once above
             if self.animation_state == AnimationState.STOPPED and self.current_loop > 0:
-                #land on the exact default pixel color
                 self.lamp.base.buffer = self.lamp.base.default_pixels.copy()
                 self.lamp.base.previous_buffer = self.lamp.base.default_pixels.copy()
 
-                # run next behavior if configured
                 for behaviour in self.chained_behaviors:
                     self.lamp.behaviour(behaviour).play()
                 break

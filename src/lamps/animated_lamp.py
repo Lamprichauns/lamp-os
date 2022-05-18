@@ -8,7 +8,7 @@ from utils.fade import pingpong_fade
 config = {
     "base":  { "pin": 12, "pixels": 60, "bpp": 4},
     "shade": { "pin": 13, "pixels": 40, "bpp": 4},
-    "lamp":  { "default_behaviours": False },
+    "lamp":  { "default_behaviours": False, "debug": True },
     "touch": { "pin": 32 }
 }
 

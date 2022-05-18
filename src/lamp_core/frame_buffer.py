@@ -1,3 +1,5 @@
+import micropython
+
 # Allow all behaviors to contribute their pixels to the scene
 #  - self.buffer holds a list of RGBW tuples for the scene
 #  - write it to the LED driver using flush
@@ -21,6 +23,7 @@ class FrameBuffer():
         self.buffer = [color] * self.num_pixels
 
     # Write the final scene to the driver as a list of int 4-tuples in RGBW order
+    @micropython.native
     def flush(self):
         # fast sanity check before doing computation
         if self.previous_buffer == self.buffer:
