@@ -6,8 +6,8 @@ from utils.fade import pingpong_fade
 
 # for ease of use, you can define a config to flow into all the components
 config = {
-    "base":  { "pin": 12, "pixels": 60, "bpp": 4},
-    "shade": { "pin": 13, "pixels": 40, "bpp": 4},
+    "base":  { "pin": 12, "pixels": 60, "bpp": 4 },
+    "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
     "lamp":  { "default_behaviours": False },
     "touch": { "pin": 32 }
 }

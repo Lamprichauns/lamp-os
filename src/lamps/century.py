@@ -4,15 +4,17 @@ from random import randrange, choice
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
 from behaviours.social import SocialGreeting
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState
+from lamp_core.behaviour import AnimatedBehaviour, AnimationState, BackgroundBehavior
 from lamp_core.standard_lamp import StandardLamp
 from components.motion.motion_6050 import MotionMPU6050
+from components.network.access_point import AccessPoint
 from components.temperature.temperature_6050 import TemperatureMPU6050
 from utils.color_tools import brighten, darken
 from utils.gradient import create_gradient
 from utils.fade import fade, pingpong_fade
 from utils.temperature import get_temperature_index
-from vendor.easing import pingpong_ease
+from utils.easing import pingpong_ease
+from vendor import tinyweb
 
 # making flashing a little easier reboot->upload
 sleep(1)
@@ -28,8 +30,6 @@ config = {
 
 # knockout and brighten some pixels for all scenes
 def post_process(ko_pixels):
-    for l in range(1,8):
-        ko_pixels[l] = darken(ko_pixels[l], percentage=50)
     for l in range(32,36):
         ko_pixels[l] = darken(ko_pixels[l], percentage=85)
     for l in range(49, 57):
@@ -39,10 +39,35 @@ def post_process(ko_pixels):
 century = StandardLamp("century", "#931702", "#FFFFFF", config, post_process_function = post_process)
 century.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 century.temperature = TemperatureMPU6050(century.motion.accelerometer)
+century.access_point = AccessPoint(ssid="century-lamp", password="123456789")
 century.base.default_pixels = create_gradient((150, 10, 0, 0), (220, 100, 8, 0), steps=config["base"]["pixels"])
 for j in range(20,25):
-    pixels = brighten(century.base.default_pixels[j], percentage=155)
+    pixels = brighten(century.base.default_pixels[j], percentage=200)
     century.base.default_pixels[j] = (pixels[0], pixels[1], pixels[2], 40)
+
+# Web svc init
+app = tinyweb.webserver()
+
+# Handle new values
+class Configurator():
+    def post(self, data):
+        #set as an override
+        config["sunset"]["low"] = int(data["temperature_low"])
+        config["sunset"]["high"] = int(data["temperature_high"])
+
+        print(data)
+        return {'message': 'OK'}, 200
+
+@app.route('/')
+async def index(_, resp):
+    await resp.send_file("/lamps/files/century/configurator.html")
+
+#app.add_resource(Configurator, '/settings')
+
+# Start listening for connections on port 80
+class WebListener(BackgroundBehavior):
+    async def run(self):
+        app.run(host='0.0.0.0', port=80)
 
 # A very slow cooling/warming color change in reaction the ambient temperature
 class Sunset(AnimatedBehaviour):
@@ -76,25 +101,34 @@ class Sunset(AnimatedBehaviour):
             self.lamp.base.buffer = self.current_scene_pixels.copy()
 
         for k in range(20,25):
-            glow_pixels = brighten(self.lamp.base.buffer[k], percentage=155)
+            glow_pixels = brighten(self.lamp.base.buffer[k], percentage=200)
             self.lamp.base.buffer[k] = (glow_pixels[0], glow_pixels[1], glow_pixels[2], 40)
 
         await self.next_frame()
 
     async def control(self):
+        scene = -1
         while True:
             if (self.scene_change or
                self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
                 await asyncio.sleep(0)
                 continue
 
-            scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
+            #scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
+            scene += 1
+            if scene > 6:
+                scene = 0
 
             if scene != self.current_scene:
                 print("Scene change {}: Temperature: {}".format(scene, self.lamp.temperature.get_temperature_value()))
 
                 self.previous_scene_pixels = self.create_scene(self.current_scene)
                 self.current_scene_pixels = self.create_scene(scene)
+
+                if scene < 3:
+                    self.lamp.behaviour(StarShade).play()
+                else:
+                    self.lamp.behaviour(StarShade).stop()
 
                 self.current_scene = scene
                 self.frame = 0
@@ -164,12 +198,22 @@ class EveningSky(AnimatedBehaviour):
         super().__init__(*args, **kwargs)
         self.cloud_positions = []
         self.cloud_brightness = 145
+        self.cloud_color = (240, 17, 220, 0)
+        self.cloud_style = 0
 
     async def draw(self):
-        percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
 
-        for i in self.cloud_positions:
-            self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
+        if self.cloud_style == 0:
+            percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
+
+            for i in self.cloud_positions:
+                self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
+
+        else:
+            for i in self.cloud_positions:
+                self.lamp.base.buffer[i] = pingpong_fade(self.lamp.base.buffer[i], self.cloud_color, self.lamp.base.buffer[i], self.frames, self.frame)
+
+        self.lamp.shade.buffer = self.lamp.shade.default_pixels.copy()
 
         await self.next_frame()
 
@@ -180,14 +224,36 @@ class EveningSky(AnimatedBehaviour):
                 self.cloud_positions = [randrange(22, 30, 1) for i in range(1)]
                 self.cloud_positions += [randrange(43, 57, 1) for i in range(2)]
                 self.cloud_positions += [randrange(48, 60, 1) for i in range(1)]
+                self.cloud_style = choice(range(0, 1))
+            await asyncio.sleep(0)
+
+# have the shade change and dance with the temperature
+class StarShade(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.star_positions = []
+        self.star_color = (110, 170, 250, 10)
+
+    async def draw(self):
+        for i in self.star_positions:
+            self.lamp.shade.buffer[i] = pingpong_fade(self.lamp.shade.buffer[i], self.star_color, self.lamp.shade.buffer[i], self.frames, self.frame)
+
+        await self.next_frame()
+
+    async def control(self):
+        while True:
+            if self.frame == 0:
+                self.star_positions = [randrange(0, 15, 1) for i in range(3,7)]
 
             await asyncio.sleep(0)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset, Sun, EveningSky]))
-century.add_behaviour(Sunset(century, frames=2000))
+century.add_behaviour(Sunset(century, frames=3000))
 century.add_behaviour(Sun(century, frames=1860))
-century.add_behaviour(EveningSky(century, frames=820))
+century.add_behaviour(EveningSky(century, frames=300))
+century.add_behaviour(StarShade(century, frames=220))
 century.add_behaviour(SocialGreeting(century, frames=300))
-century.add_behaviour(DanceReaction(century, frames=10))
+century.add_behaviour(DanceReaction(century, frames=16))
+century.add_behaviour(WebListener(century))
 
 century.wake()
