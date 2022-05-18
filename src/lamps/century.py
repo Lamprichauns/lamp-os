@@ -69,7 +69,6 @@ class WebListener(BackgroundBehavior):
     async def run(self):
         app.run(host='0.0.0.0', port=80)
 
-
 # A very slow cooling/warming color change in reaction the ambient temperature
 class Sunset(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
@@ -125,6 +124,11 @@ class Sunset(AnimatedBehaviour):
 
                 self.previous_scene_pixels = self.create_scene(self.current_scene)
                 self.current_scene_pixels = self.create_scene(scene)
+
+                if scene < 3:
+                    self.lamp.behaviour(StarShade).play()
+                else:
+                    self.lamp.behaviour(StarShade).stop()
 
                 self.current_scene = scene
                 self.frame = 0
@@ -194,12 +198,22 @@ class EveningSky(AnimatedBehaviour):
         super().__init__(*args, **kwargs)
         self.cloud_positions = []
         self.cloud_brightness = 145
+        self.cloud_color = (240, 17, 220, 0)
+        self.cloud_style = 0
 
     async def draw(self):
-        percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
 
-        for i in self.cloud_positions:
-            self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
+        if self.cloud_style == 0:
+            percentage = pingpong_ease(0, self.cloud_brightness, 0, self.frames, self.frame)
+
+            for i in self.cloud_positions:
+                self.lamp.base.buffer[i] = brighten(self.lamp.base.buffer[i], percentage)
+
+        else:
+            for i in self.cloud_positions:
+                self.lamp.base.buffer[i] = pingpong_fade(self.lamp.base.buffer[i], self.cloud_color, self.lamp.base.buffer[i], self.frames, self.frame)
+
+        self.lamp.shade.buffer = self.lamp.shade.default_pixels.copy()
 
         await self.next_frame()
 
@@ -210,13 +224,34 @@ class EveningSky(AnimatedBehaviour):
                 self.cloud_positions = [randrange(22, 30, 1) for i in range(1)]
                 self.cloud_positions += [randrange(43, 57, 1) for i in range(2)]
                 self.cloud_positions += [randrange(48, 60, 1) for i in range(1)]
+                self.cloud_style = choice(range(0, 1))
+            await asyncio.sleep(0)
+
+# have the shade change and dance with the temperature
+class StarShade(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.star_positions = []
+        self.star_color = (110, 170, 250, 10)
+
+    async def draw(self):
+        for i in self.star_positions:
+            self.lamp.shade.buffer[i] = pingpong_fade(self.lamp.shade.buffer[i], self.star_color, self.lamp.shade.buffer[i], self.frames, self.frame)
+
+        await self.next_frame()
+
+    async def control(self):
+        while True:
+            if self.frame == 0:
+                self.star_positions = [randrange(0, 15, 1) for i in range(3,7)]
 
             await asyncio.sleep(0)
 
 century.add_behaviour(LampFadeIn(century, frames=30, chained_behaviors=[Sunset, Sun, EveningSky]))
 century.add_behaviour(Sunset(century, frames=3000))
 century.add_behaviour(Sun(century, frames=1860))
-century.add_behaviour(EveningSky(century, frames=820))
+century.add_behaviour(EveningSky(century, frames=300))
+century.add_behaviour(StarShade(century, frames=220))
 century.add_behaviour(SocialGreeting(century, frames=300))
 century.add_behaviour(DanceReaction(century, frames=16))
 century.add_behaviour(WebListener(century))
