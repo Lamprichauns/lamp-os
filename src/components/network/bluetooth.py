@@ -147,7 +147,7 @@ class Bluetooth:
         self.ble.gap_advertise(_GAP_ADV_INTERVAL_US, self.adv_payload, connectable=False)
         asyncio.create_task(self.network.monitor())
 
-        print("BT enabled (scaning & advertising)")
+        print("BT enabled (scanning & advertising)")
 
 
     # pylint: disable=too-many-arguments,unused-argument

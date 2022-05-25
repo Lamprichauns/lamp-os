@@ -21,22 +21,23 @@ sleep(1)
 
 # for ease of use, you can define a config to flow into all the components
 config = {
-    "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
-    "base": { "pin": 12, "pixels": 60, "bpp": 4 },
-    "lamp": { "default_behaviours": False, "debug": True },
-    "motion": { "pin_sda": 21, "pin_scl": 22 },
-    "sunset": {"low": 30, "high": 40 },
+    "shade": { "pin": 13, "pixels": 40, "bpp": 4, "color":"#FFFFFF"},
+    "base": { "pin": 12, "pixels": 50, "bpp": 4,  "color":"#931702"},
+    "lamp": { "default_behaviours": False, "debug": True, "name": "century" },
+    "motion": { "pin_sda": 21, "pin_scl": 22, "threshold": 3000 },
+    "sunset": {"low": 30, "high": 40, "current": 0 },
 }
 
 # knockout and brighten some pixels for all scenes
+# add some gamma correction to save power
 def post_process(ko_pixels):
-    for l in range(32,36):
+    for l in range(30,36):
         ko_pixels[l] = darken(ko_pixels[l], percentage=85)
-    for l in range(49, 57):
-        ko_pixels[l] = (0, 0, 0, 0)
+    for l in range(0, config["base"]["pixels"]):
+        ko_pixels[l] = darken(ko_pixels[l], percentage=20)
 
 # Compose all the components
-century = StandardLamp("century", "#931702", "#FFFFFF", config, post_process_function = post_process)
+century = StandardLamp(config["lamp"]["name"], config["base"]["color"], config["shade"]["color"], config, post_process_function = post_process)
 century.motion = MotionMPU6050(config["motion"]["pin_sda"], config["motion"]["pin_scl"])
 century.temperature = TemperatureMPU6050(century.motion.accelerometer)
 century.access_point = AccessPoint(ssid="century-lamp", password="123456789")
@@ -44,17 +45,18 @@ century.base.default_pixels = create_gradient((150, 10, 0, 0), (220, 100, 8, 0),
 for j in range(20,25):
     pixels = brighten(century.base.default_pixels[j], percentage=200)
     century.base.default_pixels[j] = (pixels[0], pixels[1], pixels[2], 40)
+century.shade.default_pixels = [(0,0,0,180)]*config["shade"]["pixels"]
 
 # Web svc init
 app = tinyweb.webserver()
 
 # Handle new values
 class Configurator():
-    def post(self, data):
-        #set as an override
-        config["sunset"]["low"] = int(data["temperature_low"])
-        config["sunset"]["high"] = int(data["temperature_high"])
+    def get(self, _):
+        config["sunset"]["current"] = century.temperature.get_temperature_value()
+        return config
 
+    def post(self, data):
         print(data)
         return {'message': 'OK'}, 200
 
@@ -62,7 +64,7 @@ class Configurator():
 async def index(_, resp):
     await resp.send_file("/lamps/files/century/configurator.html")
 
-#app.add_resource(Configurator, '/settings')
+app.add_resource(Configurator, '/settings')
 
 # Start listening for connections on port 80
 class WebListener(BackgroundBehavior):
@@ -75,10 +77,10 @@ class Sunset(AnimatedBehaviour):
         super().__init__(*args, **kwargs)
         self.sunset_stages = [
             { "start": (5, 33, 90, 0), "end": (30, 30, 12, 20) },
-            { "start": (16, 7, 142, 0), "end": (85, 95, 16, 0) },
-            { "start": (52, 4, 107, 0), "end": (104, 100, 15, 0) },
-            { "start": (107, 5, 57, 0), "end": (155, 100, 30, 0) },
-            { "start": (108, 4, 23, 0), "end": (181, 96, 14, 0) },
+            { "start": (16, 7, 142, 0), "end": (85, 42, 16, 0) },
+            { "start": (52, 4, 107, 0), "end": (104, 40, 15, 0) },
+            { "start": (107, 5, 57, 0), "end": (155, 50, 30, 0) },
+            { "start": (108, 4, 23, 0), "end": (181, 60, 14, 0) },
             { "start": (108, 13, 3, 0), "end": (217, 68, 30, 0) },
             { "start": (150, 10, 0, 0), "end": (220, 100, 8, 0) },
         ]
@@ -115,9 +117,9 @@ class Sunset(AnimatedBehaviour):
                 continue
 
             #scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
-            scene += 1
-            if scene > 6:
-                scene = 0
+            scene -= 1
+            if scene < 0:
+                scene = 6
 
             if scene != self.current_scene:
                 print("Scene change {}: Temperature: {}".format(scene, self.lamp.temperature.get_temperature_value()))
@@ -125,7 +127,7 @@ class Sunset(AnimatedBehaviour):
                 self.previous_scene_pixels = self.create_scene(self.current_scene)
                 self.current_scene_pixels = self.create_scene(scene)
 
-                if scene < 3:
+                if scene < 2:
                     self.lamp.behaviour(StarShade).play()
                 else:
                     self.lamp.behaviour(StarShade).stop()
@@ -142,7 +144,7 @@ class DanceReaction(AnimatedBehaviour):
         super().__init__(*args, **kwargs)
         self.last_accelerometer_value = 0
         self.polling_interval = 100
-        self.dance_gesture_peak = 3000
+        self.dance_gesture_peak = config["motion"]["threshold"]
         self.pixel_list = []
 
     def within_range(self, value, baseline, threshold):
@@ -166,7 +168,6 @@ class DanceReaction(AnimatedBehaviour):
             value = self.lamp.motion.get_movement_intensity_value()
 
             if (value >= self.dance_gesture_peak and value is not self.within_range(value, self.last_accelerometer_value, 100)):
-                print(value)
                 self.last_accelerometer_value = value
 
                 self.pixel_list = [randrange(0, self.lamp.base.num_pixels, 1) for i in range(int(self.lamp.base.num_pixels/2))]
@@ -222,8 +223,6 @@ class EveningSky(AnimatedBehaviour):
             if self.frame == 0:
                 self.cloud_brightness = choice(range(145, 185))
                 self.cloud_positions = [randrange(22, 30, 1) for i in range(1)]
-                self.cloud_positions += [randrange(43, 57, 1) for i in range(2)]
-                self.cloud_positions += [randrange(48, 60, 1) for i in range(1)]
                 self.cloud_style = choice(range(0, 1))
             await asyncio.sleep(0)
 
