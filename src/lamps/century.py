@@ -1,6 +1,7 @@
 # Century lamp
 from time import sleep
 from random import randrange, choice
+from ujson import dump, load
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
 from behaviours.social import SocialGreeting
@@ -14,6 +15,7 @@ from utils.gradient import create_gradient
 from utils.fade import fade, pingpong_fade
 from utils.temperature import get_temperature_index
 from utils.easing import pingpong_ease
+from utils.config import merge_configs
 from vendor import tinyweb
 
 # making flashing a little easier reboot->upload
@@ -27,6 +29,9 @@ config = {
     "motion": { "pin_sda": 21, "pin_scl": 22, "threshold": 3000 },
     "sunset": {"low": 30, "high": 40, "current": 0 },
 }
+
+with open("/lamps/files/century/db", "r", encoding="utf8") as settings:
+    merge_configs(config, load(settings))
 
 # knockout and brighten some pixels for all scenes
 # add some gamma correction to save power
@@ -50,7 +55,7 @@ century.shade.default_pixels = [(0,0,0,180)]*config["shade"]["pixels"]
 # Web svc init
 app = tinyweb.webserver()
 
-# Handle new values
+# Read and amend the config object
 class Configurator():
     def get(self, _):
         config["sunset"]["current"] = century.temperature.get_temperature_value()
@@ -58,6 +63,19 @@ class Configurator():
 
     def post(self, data):
         print(data)
+        config["shade"]["color"] = data["shade"]
+        config["base"]["color"] = data["base"]
+        config["lamp"]["name"] = data["name"]
+        config["motion"]["threshold"] = int(data["threshold"])
+        config["sunset"]["low"] = int(data["low"])
+        config["sunset"]["high"] = int(data["high"])
+
+        try:
+            with open("/lamps/files/century/db", "w", encoding="utf8") as flash:
+                dump(config, flash)
+        except Exception as e:
+            print(e)
+
         return {'message': 'OK'}, 200
 
 @app.route('/')
@@ -69,6 +87,7 @@ app.add_resource(Configurator, '/settings')
 # Start listening for connections on port 80
 class WebListener(BackgroundBehavior):
     async def run(self):
+        await asyncio.sleep(5)
         app.run(host='0.0.0.0', port=80)
 
 # A very slow cooling/warming color change in reaction the ambient temperature

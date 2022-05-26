@@ -7,6 +7,7 @@ from components.touch.touch import Touch
 from lamp_core.lamp import Lamp
 from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
+from utils.config import merge_configs
 
 default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
@@ -21,13 +22,8 @@ class StandardLamp(Lamp):
         super().__init__(name)
 
         config = default_config.copy()
-        if isinstance(config_opts, dict):
-            for key in config_opts:
-                try:
-                    if isinstance(config[key], dict):
-                        config[key].update(config_opts[key])
-                except KeyError:
-                    pass
+
+        merge_configs(config, config_opts)
 
         if post_process_function is not None:
             self.base = FrameBuffer(hex_to_rgbw(base_color), config["base"]["pixels"], NeoPixel(config["base"]["pin"], config["base"]["pixels"], config["base"]["bpp"]), post_process_function=post_process_function)
