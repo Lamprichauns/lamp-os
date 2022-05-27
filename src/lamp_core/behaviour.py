@@ -107,13 +107,14 @@ class DrawBehaviour(Behaviour):
             gc.collect()
 
             # Add a framerate cap to save power in light loads
-            wait_ms = 28-last_duration
-            last_duration = utime.ticks_diff(utime.ticks_ms(), t)
+            wait_ms = 33-last_duration
             if wait_ms < 1:
                 await asyncio.sleep(0)
+                last_duration = utime.ticks_diff(utime.ticks_ms(), t)
             else:
-                utime.sleep_ms(wait_ms)
                 await asyncio.sleep(0)
+                last_duration = utime.ticks_diff(utime.ticks_ms(), t)
+                utime.sleep_ms(wait_ms)
 
             avg_duration += utime.ticks_diff(utime.ticks_ms(), t)
             if ticks % 60 == 0:
