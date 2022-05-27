@@ -6,7 +6,8 @@ class SocialGreeting(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.arrived = None
-        self.ease_frames = 5
+        self.frames = 1200
+        self.ease_frames = 60
 
     async def draw(self):
         for i in range(self.lamp.shade.num_pixels):
