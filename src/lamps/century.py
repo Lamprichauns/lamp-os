@@ -4,6 +4,7 @@ from random import randrange, choice
 from ujson import dump, load
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
+from behaviours.lamp_fade_out import LampFadeOut
 from behaviours.social import SocialGreeting
 from lamp_core.behaviour import AnimatedBehaviour, AnimationState, BackgroundBehavior
 from lamp_core.standard_lamp import StandardLamp
@@ -76,6 +77,8 @@ class Configurator():
         except Exception as e:
             print(e)
 
+        century.behaviour(LampFadeOut).play()
+
         return {'message': 'OK'}, 200
 
 @app.route('/')
@@ -128,17 +131,13 @@ class Sunset(AnimatedBehaviour):
         await self.next_frame()
 
     async def control(self):
-        scene = -1
         while True:
             if (self.scene_change or
                self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
                 await asyncio.sleep(0)
                 continue
 
-            #scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
-            scene -= 1
-            if scene < 0:
-                scene = 6
+            scene = get_temperature_index(self.lamp.temperature.get_temperature_value(), config["sunset"]["low"], config["sunset"]["high"], 7)
 
             if scene != self.current_scene:
                 print("Scene change {}: Temperature: {}".format(scene, self.lamp.temperature.get_temperature_value()))
@@ -273,5 +272,6 @@ century.add_behaviour(StarShade(century, frames=220))
 century.add_behaviour(SocialGreeting(century, frames=300))
 century.add_behaviour(DanceReaction(century, frames=16))
 century.add_behaviour(WebListener(century))
+century.add_behaviour(LampFadeOut(century, frames=30))
 
 century.wake()
