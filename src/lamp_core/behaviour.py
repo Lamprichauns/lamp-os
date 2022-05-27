@@ -98,20 +98,30 @@ class DrawBehaviour(Behaviour):
         self.lamp.base.fill((0, 0, 0, 0))
         self.lamp.shade.fill((0, 0, 0, 0))
         ticks = 0
+        last_duration = 0
         avg_duration = 0
         while True:
-            t = utime.ticks_us()
+            t = utime.ticks_ms()
             self.lamp.base.flush()
             self.lamp.shade.flush()
             gc.collect()
-            await asyncio.sleep(0)
 
-            avg_duration += utime.ticks_diff(utime.ticks_us(), t)
+            # Add a framerate cap to save power in light loads
+            wait_ms = 28-last_duration
+            last_duration = utime.ticks_diff(utime.ticks_ms(), t)
+            if wait_ms < 1:
+                await asyncio.sleep(0)
+            else:
+                utime.sleep_ms(wait_ms)
+                await asyncio.sleep(0)
+
+            avg_duration += utime.ticks_diff(utime.ticks_ms(), t)
             if ticks % 60 == 0:
                 if self.lamp.debug is True:
-                    print('Average Draw Duration = {:6.3f}ms'.format(avg_duration/60000))
-                    print('Framerate: {}Hz'.format(1000/(avg_duration/60000)))
-                    # pylint: disable=no-member
-                    print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
+                    if avg_duration//60 > 0:
+                        print('Average Draw Duration = {}ms'.format(avg_duration//60))
+                        print('Framerate: {}Hz'.format(1000//(avg_duration//60)))
+                        # pylint: disable=no-member
+                        print('Memory: {}, Free: {}'.format(gc.mem_alloc(), gc.mem_free()))
                 avg_duration = 0
             ticks += 1
