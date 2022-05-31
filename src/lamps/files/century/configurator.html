@@ -97,7 +97,7 @@
           <div class="icon">💡</div>
         </div>
         <div id="message"></div>
-        <form action="/settings" method="post" class="my-form">
+        <form action="/settings" method="post" class="my-form" id="my-form">
           <h3>Lamp Name</h3>
           <input id="name" name="name"/>
 
@@ -121,14 +121,13 @@
           <select id="low" name="low"></select><br/>
           <label for="high">High</label>
           <select id="high" name="high"></select><br/>
-
-          <input type="submit" value="Submit">
+          <input type="submit" id="submit-button" value="Submit">
         </form>
       </div>
       <script type="text/javascript">
         (() => {
           const getData = async () => {
-            return fetch('/settings', { mode: 'no-cors'})
+            return fetch('/settings')
               .then(response => {
                 return response.json()
               });
@@ -160,6 +159,26 @@
             .catch(err => {
               document.getElementById("message").innerHTML = err;
             });
+
+          const myForm = document.getElementById('my-form');
+          myForm.addEventListener('submit', e => {
+            e.preventDefault();
+            const submit = document.getElementById("submit-button");
+            const formData = new FormData(event.target);
+
+            submit.value = "Saving...";
+            fetch(myForm.action, {
+              method:'post',
+              body: new URLSearchParams(formData)
+            })
+              .then(data=> {
+                submit.value = "Submit";
+              })
+              .catch(err => {
+                submit.value = "Submit";
+                document.getElementById("message").innerHTML = err;
+              });
+          });
         })();
       </script>
     </body>
