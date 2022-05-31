@@ -25,7 +25,7 @@ sleep(1)
 # for ease of use, you can define a config to flow into all the components
 config = {
     "shade": { "pin": 13, "pixels": 40, "bpp": 4, "color":"#FFFFFF"},
-    "base": { "pin": 12, "pixels": 50, "bpp": 4,  "color":"#931702"},
+    "base": { "pin": 12, "pixels": 60, "bpp": 4,  "color":"#931702"},
     "lamp": { "default_behaviours": False, "debug": True, "name": "century" },
     "motion": { "pin_sda": 21, "pin_scl": 22, "threshold": 3000 },
     "sunset": {"low": 30, "high": 40, "current": 0 },
@@ -39,7 +39,7 @@ with open("/lamps/files/century/db", "r", encoding="utf8") as settings:
 def post_process(ko_pixels):
     for l in range(30,36):
         ko_pixels[l] = darken(ko_pixels[l], percentage=85)
-    for l in range(0, config["base"]["pixels"]):
+    for l in range(0, 40):
         ko_pixels[l] = darken(ko_pixels[l], percentage=20)
 
 # Compose all the components
@@ -119,7 +119,7 @@ class Sunset(AnimatedBehaviour):
             for i in range(config["base"]["pixels"]):
                 self.lamp.base.buffer[i] = fade(self.previous_scene_pixels[i], self.current_scene_pixels[i], self.frames, self.frame)
 
-            if self.frame == self.frames-1:
+            if self.is_last_frame():
                 self.scene_change = False
         else:
             self.lamp.base.buffer = self.current_scene_pixels.copy()
@@ -132,8 +132,7 @@ class Sunset(AnimatedBehaviour):
 
     async def control(self):
         while True:
-            if (self.scene_change or
-               self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
+            if self.scene_change:
                 await asyncio.sleep(0)
                 continue
 
@@ -178,8 +177,7 @@ class DanceReaction(AnimatedBehaviour):
 
     async def control(self):
         while True:
-            if (self.animation_state in(AnimationState.PLAYING, AnimationState.STOPPING) or
-               self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
+            if self.animation_state in(AnimationState.PLAYING, AnimationState.STOPPING):
                 await asyncio.sleep_ms(self.polling_interval)
                 continue
 

@@ -11,7 +11,8 @@ class LampFadeOut(AnimatedBehaviour):
         for i in range(self.lamp.shade.num_pixels):
             self.lamp.shade.buffer[i] = fade(self.lamp.shade.buffer[i], (0, 0, 0, 0), self.frames, self.frame)
 
-        if self.frame == self.frames-1:
+        if self.is_last_frame():
+            self.stop()
             reset()
 
         await self.next_frame()

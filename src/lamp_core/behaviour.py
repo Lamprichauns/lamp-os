@@ -33,6 +33,11 @@ class AnimationState:
     STOPPED = 5
 
 # An animation behavior that will loop indefinitely
+# frames = animations run at 30fps max, so divide the time by that number
+# frame = the current frame of the animation
+# current_loop = a counter of the number of loops played
+# chained_behaviors = play other behaviors when the controller is finished its work
+# immediate_control = True to start the control block immediately. defaults to 5 seconds after wake
 class AnimatedBehaviour(Behaviour):
     def __init__(self, lamp, frames=60, chained_behaviors=None):
         super().__init__(lamp)
@@ -41,6 +46,7 @@ class AnimatedBehaviour(Behaviour):
         self.current_loop = 0
         self.animation_state = AnimationState.STOPPED
         self.chained_behaviors = chained_behaviors if isinstance(chained_behaviors, list) else []
+        self.immediate_control = False
         gc.collect()
 
     async def control(self):
@@ -57,9 +63,16 @@ class AnimatedBehaviour(Behaviour):
 
             await self.draw()
 
+    async def run_control(self):
+        if self.immediate_control:
+            await self.control()
+        else:
+            await asyncio.sleep(5)
+            await self.control()
+
     async def run(self):
         await asyncio.gather(
-            asyncio.create_task(self.control()),
+            asyncio.create_task(self.run_control()),
             asyncio.create_task(self.animate())
         )
 
@@ -73,6 +86,9 @@ class AnimatedBehaviour(Behaviour):
 
     def play(self):
         self.animation_state = AnimationState.PLAYING
+
+    def is_last_frame(self):
+        return self.frame == self.frames-1
 
     async def next_frame(self):
         if self.animation_state == AnimationState.PAUSING:
