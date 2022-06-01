@@ -1,6 +1,7 @@
 # Century lamp
 from time import sleep
 from random import randrange, choice
+import re
 from ujson import dump, load
 import uasyncio as asyncio
 from behaviours.lamp_fade_in import LampFadeIn
@@ -18,9 +19,6 @@ from utils.temperature import get_temperature_index
 from utils.easing import pingpong_ease
 from utils.config import merge_configs
 from vendor import tinyweb
-
-# making flashing a little easier reboot->upload
-sleep(1)
 
 # for ease of use, you can define a config to flow into all the components
 config = {
@@ -64,12 +62,16 @@ class Configurator():
 
     def post(self, data):
         print(data)
+        regex = re.compile('[^a-z]')
         config["shade"]["color"] = data["shade"]
         config["base"]["color"] = data["base"]
-        config["lamp"]["name"] = data["name"]
+        config["lamp"]["name"] = regex.sub('', data["name"])
         config["motion"]["threshold"] = int(data["threshold"])
         config["sunset"]["low"] = int(data["low"])
         config["sunset"]["high"] = int(data["high"])
+
+        if not config["lamp"]["name"]:
+            return {'message': 'bad name'}, 500
 
         try:
             with open("/lamps/files/century/db", "w", encoding="utf8") as flash:
