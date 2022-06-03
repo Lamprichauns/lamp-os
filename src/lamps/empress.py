@@ -6,5 +6,5 @@ config = {
     "shade": { "pin": 13 }
 }
 
-empress = StandardLamp("empress", "#068f13", "#c10ff7", config)
+empress = StandardLamp("empress", "#259872", "#876799", config)
 empress.wake()
