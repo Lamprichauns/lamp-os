@@ -1,5 +1,4 @@
 # Century lamp
-from time import sleep
 from random import randrange, choice
 import re
 from ujson import dump, load
@@ -23,7 +22,7 @@ from vendor import tinyweb
 # for ease of use, you can define a config to flow into all the components
 config = {
     "shade": { "pin": 13, "pixels": 40, "bpp": 4, "color":"#FFFFFF"},
-    "base": { "pin": 12, "pixels": 60, "bpp": 4,  "color":"#931702"},
+    "base": { "pin": 12, "pixels": 50, "bpp": 4,  "color":"#931702"},
     "lamp": { "default_behaviours": False, "debug": True, "name": "century" },
     "motion": { "pin_sda": 21, "pin_scl": 22, "threshold": 3000 },
     "sunset": {"low": 30, "high": 40, "current": 0 },

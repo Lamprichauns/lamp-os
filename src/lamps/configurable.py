@@ -1,20 +1,21 @@
 # An example of a lamp that can be setup using a web app
+import re
 from ujson import load, dump
 import uasyncio as asyncio
 from components.network.access_point import AccessPoint
 from lamp_core.behaviour import BackgroundBehavior
 from lamp_core.standard_lamp import StandardLamp
 from utils.config import merge_configs
+from utils.color_tools import darken
 from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_out import LampFadeOut
 from vendor import tinyweb
-import re
 
 # Define what we'll be setting in the web app
 config = {
     "shade": { "pixels": 40, "color":"#220000"},
     "base": { "pixels": 40, "color":"#002200"},
-    "lamp": { "name": "configurable", "debug": True },
+    "lamp": { "name": "configurable" },
     "wifi": { "ssid": "lamp-290309" }
 }
 
@@ -26,6 +27,22 @@ with open("/lamps/files/configurable/db", "r", encoding="utf8") as settings:
 # Start a standard lamp and extend it to be a Wifi Access Point
 configurable = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["shade"]["color"], config_opts=config)
 configurable.access_point = AccessPoint(ssid=config["wifi"]["ssid"], password="123456789")
+
+# To handle pastel colors and cool whites, we can darken the rgb values for a normal 40x40 lamp to not draw too much current
+# tested with shade: #D486FE (pastel purple), base: #FF9494 (pastel rose) to get a 5V voltage of 4.8V
+# This will ensure lamps can stay electrically stable for many hours even on extreme color settings
+# This routine won't modify warm white values
+for i in range(config["base"]["pixels"]):
+    if configurable.base.default_pixels[i][3] == 255:
+        break
+
+    configurable.base.default_pixels[i] = darken(configurable.base.default_pixels[i], 30)
+
+for i in range(config["shade"]["pixels"]):
+    if configurable.shade.default_pixels[i][3] == 255:
+        break
+
+    configurable.shade.default_pixels[i] = darken(configurable.shade.default_pixels[i], 30)
 
 # Web service init
 app = tinyweb.webserver()
