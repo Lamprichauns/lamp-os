@@ -61,13 +61,14 @@ class Configurator():
 
     def post(self, data):
         print(data)
-        regex = re.compile('[^a-z]')
+        name_sanitizer = re.compile('[^a-z]')
+        number_sanitizer = re.compile('[^0-9]+')
         config["shade"]["color"] = data["shade"]
         config["base"]["color"] = data["base"]
-        config["lamp"]["name"] = regex.sub('', data["name"])
-        config["motion"]["threshold"] = int(data["threshold"])
-        config["sunset"]["low"] = int(data["low"])
-        config["sunset"]["high"] = int(data["high"])
+        config["lamp"]["name"] = name_sanitizer.sub("", data["name"])
+        config["motion"]["threshold"] = abs(int(number_sanitizer.sub("", data["threshold"])))
+        config["sunset"]["low"] = abs(int(number_sanitizer.sub("", data["low"])))
+        config["sunset"]["high"] = abs(int(number_sanitizer.sub("", data["high"])))
 
         if not config["lamp"]["name"]:
             return {'message': 'bad name'}, 500
