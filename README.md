@@ -47,7 +47,7 @@ Finally erase and flash the board with (with the ESP32 Thing you need to hold re
 
 ```bash
 esptool.py --port /dev/tty.usbserial-0246D45F erase_flash
-esptool.py --chip esp8266 --port /dev/tty.usbserial-0246D45F --baud 460800 write_flash --flash_size=detect -fm dout 0 esp8266-20210902-v1.17.bin
+esptool.py --chip esp32 --port COM7 write_flash -z 0x1000 esp8266-20210902-v1.17.bin
 
 ```
 

@@ -11,7 +11,7 @@ from utils.config import merge_configs
 
 default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
-    "shade": { "pin": 13, "pixels": 40, "bpp": 4 },
+    "shade": { "pin": 14, "pixels": 40, "bpp": 4 },
     "touch": { "pin": 32 },
     "lamp":  { "default_behaviours": True, "debug": False },
 }
