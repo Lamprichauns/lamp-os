@@ -14,7 +14,7 @@ config = {
     "shade": { "pin": 14 }
 }
 
-lamp = StandardLamp("broody", "#ff0000", "#54011d", config)
+lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
 
 
 class ColorFade(AnimatedBehaviour):
@@ -26,9 +26,10 @@ class ColorFade(AnimatedBehaviour):
 
         self.palettes = [
             [(255,0,0,0)] * self.lamp.base.num_pixels,
-            create_gradient((255,0,0,0), (0,100,50,0), self.lamp.base.num_pixels),
-            create_gradient((255,0,0,0), (0,0,50,0), self.lamp.base.num_pixels),
-            [(87,9,97,0)] * self.lamp.base.num_pixels,
+            [(164, 122, 255)] * self.lamp.base.num_pixels,
+            [(94, 3, 36, 0)] * self.lamp.base.num_pixels,
+            [(38, 1, 7, 0)] * self.lamp.base.num_pixels,
+            create_gradient((40, 61, 255, 0), (255, 0, 0, 0), self.lamp.base.num_pixels),
         ]
 
     async def draw(self):
@@ -48,7 +49,6 @@ class ColorFade(AnimatedBehaviour):
             if self.palette_change is True:
                 await asyncio.sleep(0)
                 continue
-
             palette_options = list(range(len(self.palettes)))
             palette_options.remove(self.current_palette)
             choice = random.choice(palette_options)
@@ -58,9 +58,9 @@ class ColorFade(AnimatedBehaviour):
             self.previous_palette = self.current_palette
             self.current_palette = choice
 
-            await asyncio.sleep(20)
+            await asyncio.sleep(range(500,1800)
 
 lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
-lamp.add_behaviour(ColorFade(lamp, frames=300))
+lamp.add_behaviour(ColorFade(lamp, frames=10000))
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()
