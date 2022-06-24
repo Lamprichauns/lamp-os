@@ -1,10 +1,11 @@
 # A barebones lamp with configuration and social features
-from behaviours.social import SocialGreeting
-from lamp_core.standard_lamp import StandardLamp
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState, BackgroundBehavior
 import random
-from utils.fade import fade
 import uasyncio as asyncio
+from behaviours.social import SocialGreeting
+from behaviours.lamp_fade_in import LampFadeIn
+from lamp_core.standard_lamp import StandardLamp
+from lamp_core.behaviour import AnimatedBehaviour
+from utils.fade import fade
 from utils.gradient import create_gradient
 
 # Override the standard lamp configs if necessary
@@ -36,37 +37,30 @@ class ColorFade(AnimatedBehaviour):
                 self.lamp.base.buffer[i] = fade(self.palettes[self.previous_palette][i], self.palettes[self.current_palette][i], self.frames, self.frame)
 
             if self.is_last_frame():
-                print("last frame")
                 self.palette_change = False
         else:
-            print("default")
             self.lamp.base.buffer = self.palettes[self.current_palette].copy()
 
         await self.next_frame()
 
     async def control(self):
         while True:
-            if (self.palette_change or
-               self.lamp.behaviour(ColorFade).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
+            if self.palette_change is True:
                 await asyncio.sleep(0)
                 continue
-
-            print("Changing")
 
             palette_options = list(range(len(self.palettes)))
             palette_options.remove(self.current_palette)
             choice = random.choice(palette_options)
 
             self.frame = 0
+            self.palette_change = True
             self.previous_palette = self.current_palette
             self.current_palette = choice
-            self.palette_change = True
-
-            self.play()
-            self.stop()
 
             await asyncio.sleep(20)
 
+lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
 lamp.add_behaviour(ColorFade(lamp, frames=300))
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()
