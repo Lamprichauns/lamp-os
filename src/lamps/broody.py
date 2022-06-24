@@ -11,7 +11,8 @@ from utils.gradient import create_gradient
 # Override the standard lamp configs if necessary
 config = {
     "base":  { "pin": 12 },
-    "shade": { "pin": 14 }
+    "shade": { "pin": 14 },
+    "lamp":  { "default_behaviours": False }
 }
 
 lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
