@@ -31,8 +31,6 @@ A 10Ah battery pack with USB will run this device portably for around 7 hours
 
 ## Software Prerequisites
 
-### Install Atom, Python 3, Pip and NodeJS on your machine
-
 <https://www.python.org/downloads>
 <https://nodejs.org/en/>
 <https://atom.io>
@@ -213,7 +211,7 @@ my_lamp.wake()
 
 Sometimes drivers and 3rd party libraries are a good choice for simple implementation of sensor handling, LED strip compatibility, Color and graphics utilities etc.
 
-The `vendor` folder is used for unmodified micropython source. Anything modified or proxied should go in the config folder
+The `vendor` folder is used for unmodified micropython source. Anything modified or proxied for lamp use should go in the components folder
 
 The `components` folder contains glue logic or implementations for addressing all of the attached IO. Generally, it's good practice to add to the components so others can integrate with similar sensors and LED strips
 
