@@ -36,21 +36,24 @@ class ColorShuffle(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.new_pixels = []
-        self.old_pixels = []
+        self.current_pixels = []
 
     async def draw(self):
         if self.new_pixels:
             for i in range(self.lamp.base.num_pixels):
-                self.lamp.base.buffer[i] = fade(self.palettes[self.old_pixels[i], self.new_pixels[i], self.frames, self.frame)
+                self.lamp.base.buffer[i] = fade(self.palettes[self.current_pixels[i], self.new_pixels[i], self.frames, self.frame)
             if self.is_last_frame():
                 self.new_pixels = []
-                self.old_pixels = []
+                self.current_pixels = self.new_pixels.copy()
+        else:
+            # Keep current pixels
+            self.lamp.base.buffer = self.current_pixels.copy()
 
         await self.next_frame()
 
     async def control(self):
         while True:
-            self.old_pixels = list(self.lamp.base.pixels)
+            self.current_pixels = list(self.lamp.base.pixels)
             self.new_pixels = sorted(self.lamp.base.pixels, key=lambda x: random.random())
 
             print("Shuffling pixels")
