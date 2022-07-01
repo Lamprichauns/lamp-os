@@ -14,7 +14,7 @@ from vendor import tinyweb
 # Define what we'll be setting in the web app
 config = {
     "shade": { "pixels": 40, "color":"#FF0074"},
-    "base": { "pixels": 40, "color":"#23FF00", "pin": 27 },
+    "base": { "pixels": 40, "color":"#23FF00" },
     "lamp": { "name": "configurable" },
     "wifi": { "ssid": "lamp-400001" }
 
