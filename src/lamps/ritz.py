@@ -29,40 +29,53 @@ class BaseColorFade(AnimatedBehaviour):
         ]
 
     async def draw(self):
-        if self.palette_change:
-            print("Palette Change:")
+        if self.palette_change is True:
             for i in range(self.lamp.base.num_pixels):
                 self.lamp.base.buffer[i] = fade(self.palettes[self.previous_palette][i], self.palettes[self.current_palette][i], self.frames, self.frame)
 
-            if self.frame == self.frames-1:
+            if self.is_last_frame():
                 self.palette_change = False
         else:
-            print("No palette change")
             self.lamp.base.buffer = self.palettes[self.current_palette].copy()
+
         await self.next_frame()
 
 
     async def control(self):
-
         while True:
-            if (self.palette_change or
-               self.lamp.behaviour(LampFadeIn).animation_state in(AnimationState.PLAYING, AnimationState.STOPPING)):
+            if self.palette_change is True:
                 await asyncio.sleep(0)
                 continue
-
-            print("Changing")
-            self.play()
             palette_options = list(range(len(self.palettes)))
             palette_options.remove(self.current_palette)
             choice = random.choice(palette_options)
 
             self.frame = 0
-            self.active_palette = choice
             self.palette_change = True
+            self.previous_palette = self.current_palette
+            self.current_palette = choice
 
-            await asyncio.sleep(20)
+            await asyncio.sleep(range(500,1800)
 
 
-#lamp.add_behaviour(BaseColorFade(lamp, frames=50))
-lamp.add_behaviour(SocialGreeting(lamp))
+    async def control(self):
+        while True:
+            if self.palette_change is True:
+                await asyncio.sleep(0)
+                continue
+            palette_options = list(range(len(self.palettes)))
+            palette_options.remove(self.current_palette)
+            choice = random.choice(palette_options)
+
+            self.frame = 0
+            self.palette_change = True
+            self.previous_palette = self.current_palette
+            self.current_palette = choice
+
+            await asyncio.sleep(range(500,1800)
+
+            
+lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
+lamp.add_behaviour(ColorFade(lamp, frames=10000))
+lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()

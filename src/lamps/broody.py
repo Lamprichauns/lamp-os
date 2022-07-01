@@ -17,7 +17,6 @@ config = {
 
 lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
 
-
 class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
