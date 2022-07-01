@@ -45,9 +45,6 @@ class ColorShuffle(AnimatedBehaviour):
             if self.is_last_frame():
                 self.new_pixels = []
                 self.old_pixels = []
-        else:
-            # Keep current pixels
-            self.lamp.base.buffer = list(self.lamp.base.pixels)
 
         await self.next_frame()
 

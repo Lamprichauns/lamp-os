@@ -39,6 +39,8 @@ class ColorFade(AnimatedBehaviour):
 
             if self.is_last_frame():
                 self.palette_change = False
+        else:
+            self.lamp.base.buffer = self.palettes[self.current_palette].copy()
 
         await self.next_frame()
 
