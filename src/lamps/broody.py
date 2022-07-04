@@ -17,6 +17,7 @@ config = {
 
 lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
 
+
 class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -26,9 +27,11 @@ class ColorFade(AnimatedBehaviour):
 
         self.palettes = [
             [(255,0,0,0)] * self.lamp.base.num_pixels,
-            [(164, 122, 255)] * self.lamp.base.num_pixels,
+            [(164, 122, 255, 0)] * self.lamp.base.num_pixels,
             [(94, 3, 36, 0)] * self.lamp.base.num_pixels,
+            [(62, 42, 117, 0)] * self.lamp.base.num_pixels,
             [(38, 1, 7, 0)] * self.lamp.base.num_pixels,
+            create_gradient((38, 1, 200, 0), (94, 3, 36, 0), self.lamp.base.num_pixels),
             create_gradient((40, 61, 255, 0), (255, 0, 0, 0), self.lamp.base.num_pixels),
         ]
 
@@ -49,6 +52,9 @@ class ColorFade(AnimatedBehaviour):
             if self.palette_change is True:
                 await asyncio.sleep(0)
                 continue
+
+            await asyncio.sleep(random.choice(range(100,1800)))
+
             palette_options = list(range(len(self.palettes)))
             palette_options.remove(self.current_palette)
             choice = random.choice(palette_options)
@@ -58,7 +64,9 @@ class ColorFade(AnimatedBehaviour):
             self.previous_palette = self.current_palette
             self.current_palette = choice
 
-            await asyncio.sleep(range(500,1800)
+            print("Changing colors to palette %s" % (choice))
+
+
 
 lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
 lamp.add_behaviour(ColorFade(lamp, frames=10000))

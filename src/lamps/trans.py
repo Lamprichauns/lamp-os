@@ -22,13 +22,13 @@ lamp = StandardLamp("broody", "#0077bb", "#ffffff", config)
 pixels = lamp.base.default_pixels
 
 for i in [20,27,29,30,32,33,34,36,38,39]:
-    lamp[i] = (200,0,200,0)
+    pixels[i] = (200,0,200,0)
 
 for i in [22, 10, 15, 14, 13]:
-    lamp[i] = (0,50,190, 0)
+    pixels[i] = (0,50,190, 0)
 
-lamp[25] = (0,40,240,0)
-lamp[23] = (100,40,240,0)
+pixels[25] = (0,40,240,0)
+pixels[23] = (100,40,240,0)
 
 lamp.base.default_pixels = pixels
 
@@ -41,7 +41,7 @@ class ColorShuffle(AnimatedBehaviour):
     async def draw(self):
         if self.new_pixels:
             for i in range(self.lamp.base.num_pixels):
-                self.lamp.base.buffer[i] = fade(self.palettes[self.current_pixels[i], self.new_pixels[i], self.frames, self.frame)
+                self.lamp.base.buffer[i] = fade(self.palettes[self.current_pixels[i]], self.new_pixels[i], self.frames, self.frame)
             if self.is_last_frame():
                 self.new_pixels = []
                 self.current_pixels = self.new_pixels.copy()
@@ -53,13 +53,13 @@ class ColorShuffle(AnimatedBehaviour):
 
     async def control(self):
         while True:
-            self.current_pixels = list(self.lamp.base.pixels)
-            self.new_pixels = sorted(self.lamp.base.pixels, key=lambda x: random.random())
+            self.current_pixels = list(self.lamp.base.buffer)
+            self.new_pixels = sorted(self.lamp.base.buffer, key=lambda x: random.random())
 
             print("Shuffling pixels")
             await asyncio.sleep(300)
 
-lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
+lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorShuffle]))
 lamp.add_behaviour(ColorShuffle(lamp, frames=32000))
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()
