@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Run an OSC server with asynchroneous I/O handling via the uasync framwork.
+"""Run an OSC server with asynchronous I/O handling via the uasync framework.
 """
 import socket
 import uasyncio as asyncio
