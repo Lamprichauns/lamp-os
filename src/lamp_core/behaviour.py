@@ -87,6 +87,9 @@ class AnimatedBehaviour(Behaviour):
     def play(self):
         self.animation_state = AnimationState.PLAYING
 
+    def reset(self):
+        self.frame = 0
+
     def is_last_frame(self):
         return self.frame == self.frames-1
 

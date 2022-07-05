@@ -112,7 +112,7 @@
           </div>
 
           <h3>Dance Threshold</h3>
-          <input id="threshold" name="threshold"/>
+          <input id="threshold" name="threshold" pattern="[0-9]+"/>
 
           <h3>Temperature Settings</h3>
           <h5>Current: <span id="current"></span></h5>
@@ -134,7 +134,7 @@
           }
 
           const appendOptions = (selector, currentValue) => {
-            for (i=0; i<=50; i++) {
+            for (i=0; i<=60; i++) {
               const option = document.createElement('option');
               option.value = i;
               option.innerHTML = i;

@@ -13,11 +13,10 @@ from vendor import tinyweb
 
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#FF0074"},
-    "base": { "pixels": 40, "color":"#23FF00" },
+    "shade": { "pixels": 40, "color":"#220000"},
+    "base": { "pixels": 40, "color":"#002200"},
     "lamp": { "name": "configurable" },
-    "wifi": { "ssid": "lamp-400001" }
-
+    "wifi": { "ssid": "lamp-290309" }
 }
 
 # merge data from the database into the current config
