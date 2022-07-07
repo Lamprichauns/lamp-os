@@ -10,14 +10,22 @@ from utils.color_tools import darken
 from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_out import LampFadeOut
 from vendor import tinyweb
+from lamp_core.behaviour import AnimatedBehaviour, AnimationState
+from lamp_core.standard_lamp import StandardLamp
+from behaviours.lamp_fade_in import LampFadeIn
+from utils.gradient import create_gradient
+from utils.fade import pingpong_fade, fade
+from machine import Pin
+
 
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#6f08ff", "pin": 13},
-    "base": { "pixels": 40, "color":"#ffffff", "pin": 12},
-    "lamp": { "name": "configurable" },
-    "wifi": { "ssid": "lamp-400001" }
+    "shade": { "pixels": 40, "color":"#FF0000", "pin": 12 },
+    "base": { "pixels": 40, "color":"#FF0000", "pin": 14 },
+    "lamp": { "name": "staff", "default_behaviours": False },
+    "wifi": { "ssid": "lamp-290319" }
 }
+# 27 is the button
 
 # merge data from the database into the current config
 # db is initially an empty json object to initialize the flash
@@ -27,22 +35,6 @@ with open("/lamps/files/configurable/db", "r", encoding="utf8") as settings:
 # Start a standard lamp and extend it to be a Wifi Access Point
 configurable = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["shade"]["color"], config_opts=config)
 configurable.access_point = AccessPoint(ssid=config["wifi"]["ssid"], password="123456789")
-
-# To handle pastel colors and cool whites, we can darken the rgb values for a normal 40x40 lamp to not draw too much current
-# tested with shade: #D486FE (pastel purple), base: #FF9494 (pastel rose) to get a 5V voltage of 4.8V
-# This will ensure lamps can stay electrically stable for many hours even on extreme color settings
-# This routine won't modify warm white values
-for i in range(config["base"]["pixels"]):
-    if configurable.base.default_pixels[i][3] == 255:
-        break
-
-    configurable.base.default_pixels[i] = darken(configurable.base.default_pixels[i], 30)
-
-for i in range(config["shade"]["pixels"]):
-    if configurable.shade.default_pixels[i][3] == 255:
-        break
-
-    configurable.shade.default_pixels[i] = darken(configurable.shade.default_pixels[i], 30)
 
 # Web service init
 app = tinyweb.webserver()
@@ -87,6 +79,62 @@ class WebListener(BackgroundBehavior):
         await asyncio.sleep(5)
         app.run(host='0.0.0.0', port=80)
 
+class Rainbow(AnimatedBehaviour):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        red = (255,0,0,0)
+        orange = (255, 20, 0, 0)
+        yellow = (255, 60, 0, 0)
+        green = (0, 255, 0, 0)
+        blue = (0, 0, 255, 0)
+        indigo = (60, 0, 255, 0)
+        violet = (255, 0, 255, 0)
+        self.colors = [red, orange, yellow, green, blue, indigo, violet]
+        self.previous_color = 0
+        self.current_color = 0
+
+    async def draw(self):
+        for i in range(self.lamp.shade.num_pixels):
+            self.lamp.shade.buffer[i] = fade(self.colors[self.previous_color], self.colors[self.current_color], self.frames, self.frame)
+            self.lamp.base.buffer[i] = fade(self.colors[self.previous_color], self.colors[self.current_color], self.frames, self.frame)
+
+        await self.next_frame()
+
+    async def control(self):
+        push_button = Pin(4, Pin.IN, Pin.PULL_UP)
+
+        while True:
+            button_state = push_button.value()
+
+            if button_state:
+                print("Pushed %s" % (button_state))
+            else:
+                print("Not pushed %s" % (button_state))
+
+            if self.animation_state == AnimationState.STOPPED:
+                self.previous_color = self.current_color
+                self.current_color += 1
+
+                if self.current_color > 6:
+                    self.current_color = 0
+
+                color_rgb = self.colors[self.current_color]
+                color_rgb = color_rgb[:-1]
+
+                color = self.lamp.bluetooth._rgb_to_hex(color_rgb)
+
+                print("Color set to %s" % (color))
+
+                self.lamp.bluetooth.set_payload(self.lamp.name, color, color)
+                self.lamp.bluetooth.restart()
+
+                self.play()
+                self.stop()
+
+            await asyncio.sleep(3)
+
+configurable.add_behaviour(LampFadeIn(configurable, frames=30))
+configurable.add_behaviour(Rainbow(configurable, frames=500))
 configurable.add_behaviour(SocialGreeting(configurable, frames=300))
 configurable.add_behaviour(LampFadeOut(configurable, frames=30))
 configurable.add_behaviour(WebListener(configurable))
