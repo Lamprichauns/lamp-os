@@ -14,9 +14,7 @@ config = {
     "shade": { "pin": 14 },
     "lamp":  { "default_behaviours": False }
 }
-
-lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
-
+lamp = StandardLamp("broody", "#ff000d", "#d94f00", config)
 
 class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
@@ -26,13 +24,16 @@ class ColorFade(AnimatedBehaviour):
         self.palette_change = False
 
         self.palettes = [
-            [(255,0,0,0)] * self.lamp.base.num_pixels,
-            [(164, 122, 255, 0)] * self.lamp.base.num_pixels,
+            [(255, 0, 13, 0)] * self.lamp.base.num_pixels,
+            [(255, 0, 0, 0)] * self.lamp.base.num_pixels,
+            [(255, 0, 23, 0)] * self.lamp.base.num_pixels,
+            [(255, 0, 0, 0)] * self.lamp.base.num_pixels,
+            [(31, 20, 56, 0)] * self.lamp.base.num_pixels,
             [(94, 3, 36, 0)] * self.lamp.base.num_pixels,
-            [(62, 42, 117, 0)] * self.lamp.base.num_pixels,
+            [(51, 23, 0, 0)] * self.lamp.base.num_pixels,
             [(38, 1, 7, 0)] * self.lamp.base.num_pixels,
             create_gradient((38, 1, 200, 0), (94, 3, 36, 0), self.lamp.base.num_pixels),
-            create_gradient((40, 61, 255, 0), (255, 0, 0, 0), self.lamp.base.num_pixels),
+            create_gradient((40, 61, 50, 0), (255, 0, 0, 0), self.lamp.base.num_pixels),
         ]
 
     async def draw(self):
@@ -69,6 +70,6 @@ class ColorFade(AnimatedBehaviour):
 
 
 lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
-lamp.add_behaviour(ColorFade(lamp, frames=10000))
+lamp.add_behaviour(ColorFade(lamp, frames=20000))
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()
