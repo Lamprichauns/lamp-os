@@ -100,6 +100,21 @@ class Rainbow(AnimatedBehaviour):
 
         await self.next_frame()
 
+
+    def bt_update_colors(color):
+        color_rgb = self.lamp.shade.buffer[0]
+        color_rgb = color_rgb[:-1]
+
+        color = self.lamp.bluetooth._rgb_to_hex(color_rgb)
+
+        print("Color set to %s" % (color))
+
+        self.lamp.bluetooth.ble.active(False)
+        await asyncio.sleep(4)
+        self.lamp.bluetooth = Bluetooth(self.lamp.name, color, color)
+        self.lamp.network = self.lamp.bluetooth.network
+        self.lamp.bluetooth.enable()
+
     async def control(self):
         push_button = Pin(4, Pin.IN, Pin.PULL_UP)
 
@@ -108,8 +123,11 @@ class Rainbow(AnimatedBehaviour):
 
             if button_state:
                 print("Pushed %s" % (button_state))
+                bt_update_colors(color)
+                self.pause()
             else:
                 print("Not pushed %s" % (button_state))
+                self.play()
 
             if self.animation_state == AnimationState.STOPPED:
                 self.previous_color = self.current_color
@@ -117,16 +135,6 @@ class Rainbow(AnimatedBehaviour):
 
                 if self.current_color > 6:
                     self.current_color = 0
-
-                color_rgb = self.colors[self.current_color]
-                color_rgb = color_rgb[:-1]
-
-                color = self.lamp.bluetooth._rgb_to_hex(color_rgb)
-
-                print("Color set to %s" % (color))
-
-                self.lamp.bluetooth.set_payload(self.lamp.name, color, color)
-                self.lamp.bluetooth.restart()
 
                 self.play()
                 self.stop()
