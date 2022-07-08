@@ -1,21 +1,22 @@
-# An example of a simple lamp on standard housing hardware with all basic behaviors enabled
-from lamp_core.standard_lamp import StandardLamp
-from lamp_core.behaviour import Behaviour
-from lamp_core.behaviour import AnimatedBehaviour, AnimationState, BackgroundBehavior
-from behaviours.lamp_fade_in import LampFadeIn
-from behaviours.social import SocialGreeting
-from utils.fade import fade
-import uasyncio as asyncio
+# A barebones lamp with configuration and social features
 import random
+import uasyncio as asyncio
+from behaviours.social import SocialGreeting
+from behaviours.lamp_fade_in import LampFadeIn
+from lamp_core.standard_lamp import StandardLamp
+from lamp_core.behaviour import AnimatedBehaviour
+from utils.fade import fade
+from utils.gradient import create_gradient
 
+# Override the standard lamp configs if necessary
 config = {
-    "base":  { "pin": 12 },
-    "shade": { "pin": 13 }
+    "base":  { "pin": 14 },
+    "shade": { "pin": 12 },
+    "lamp":  { "default_behaviours": False }
 }
+lamp = StandardLamp("ritz", "#c21563", "#000044", config)
 
-lamp = StandardLamp("ritz", "#eF2700", "#4B0082", config)
-
-class BaseColorFade(AnimatedBehaviour):
+class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_palette = 0
@@ -23,9 +24,13 @@ class BaseColorFade(AnimatedBehaviour):
         self.palette_change = False
 
         self.palettes = [
-            [(86,29,95,0) * self.lamp.base.num_pixels],
-            [(72,209,204,0) * self.lamp.base.num_pixels],
-            [(87,9,97,0) * self.lamp.base.num_pixels]
+            [(194, 21, 99, 0)] * self.lamp.base.num_pixels,
+            [(79, 19, 46, 0)] * self.lamp.base.num_pixels,
+            [(179, 48, 186, 0)] * self.lamp.base.num_pixels,
+            [(116, 32, 212, 0)] * self.lamp.base.num_pixels,
+            [(94, 3, 0, 0)] * self.lamp.base.num_pixels,
+            create_gradient((79, 19, 46, 0), (237, 7, 168, 0), self.lamp.base.num_pixels),
+            create_gradient((50, 2, 0, 0), (200, 0, 100, 0), self.lamp.base.num_pixels),
         ]
 
     async def draw(self):
@@ -40,12 +45,14 @@ class BaseColorFade(AnimatedBehaviour):
 
         await self.next_frame()
 
-
     async def control(self):
         while True:
             if self.palette_change is True:
                 await asyncio.sleep(0)
                 continue
+
+            await asyncio.sleep(random.choice(range(100,1800)))
+
             palette_options = list(range(len(self.palettes)))
             palette_options.remove(self.current_palette)
             choice = random.choice(palette_options)
@@ -55,27 +62,11 @@ class BaseColorFade(AnimatedBehaviour):
             self.previous_palette = self.current_palette
             self.current_palette = choice
 
-            await asyncio.sleep(range(500,1800)
+            print("Changing colors to palette %s" % (choice))
 
 
-    async def control(self):
-        while True:
-            if self.palette_change is True:
-                await asyncio.sleep(0)
-                continue
-            palette_options = list(range(len(self.palettes)))
-            palette_options.remove(self.current_palette)
-            choice = random.choice(palette_options)
 
-            self.frame = 0
-            self.palette_change = True
-            self.previous_palette = self.current_palette
-            self.current_palette = choice
-
-            await asyncio.sleep(range(500,1800)
-
-            
 lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
-lamp.add_behaviour(ColorFade(lamp, frames=10000))
+lamp.add_behaviour(ColorFade(lamp, frames=20000))
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()

@@ -16,7 +16,7 @@ from behaviours.lamp_fade_in import LampFadeIn
 from utils.gradient import create_gradient
 from utils.fade import pingpong_fade, fade
 from machine import Pin
-
+from components.network.bluetooth import Bluetooth
 
 # Define what we'll be setting in the web app
 config = {
@@ -92,6 +92,7 @@ class Rainbow(AnimatedBehaviour):
         self.colors = [red, orange, yellow, green, blue, indigo, violet]
         self.previous_color = 0
         self.current_color = 0
+        self.is_paused = False
 
     async def draw(self):
         for i in range(self.lamp.shade.num_pixels):
@@ -100,36 +101,35 @@ class Rainbow(AnimatedBehaviour):
 
         await self.next_frame()
 
-
-    def bt_update_colors(color):
-        color_rgb = self.lamp.shade.buffer[0]
-        color_rgb = color_rgb[:-1]
-
-        color = self.lamp.bluetooth._rgb_to_hex(color_rgb)
-
-        print("Color set to %s" % (color))
-
-        self.lamp.bluetooth.ble.active(False)
-        await asyncio.sleep(4)
-        self.lamp.bluetooth = Bluetooth(self.lamp.name, color, color)
-        self.lamp.network = self.lamp.bluetooth.network
-        self.lamp.bluetooth.enable()
-
     async def control(self):
-        push_button = Pin(4, Pin.IN, Pin.PULL_UP)
+        push_button = Pin(4, Pin.IN, Pin.PULL_DOWN)
 
         while True:
             button_state = push_button.value()
 
-            if button_state:
+            if button_state == 0:
                 print("Pushed %s" % (button_state))
-                bt_update_colors(color)
-                self.pause()
-            else:
-                print("Not pushed %s" % (button_state))
-                self.play()
 
-            if self.animation_state == AnimationState.STOPPED:
+                #if AnimationState.PAUSED:
+                #    print("Unpause")
+                #    self.is_paused = False
+                #    self.play()
+                #else:
+                color_rgb = self.lamp.shade.buffer[0]
+                color_rgb = color_rgb[:-1]
+
+                color = self.lamp.bluetooth._rgb_to_hex(color_rgb)
+
+                print("Color set to %s" % (color))
+
+                self.lamp.bluetooth.ble.active(False)
+                await asyncio.sleep(4)
+                self.lamp.bluetooth = Bluetooth(self.lamp.name, color, color)
+                self.lamp.network = self.lamp.bluetooth.network
+                self.lamp.bluetooth.enable()
+
+
+            if self.animation_state in (AnimationState.STOPPED, AnimationState.PAUSED):
                 self.previous_color = self.current_color
                 self.current_color += 1
 
@@ -139,7 +139,7 @@ class Rainbow(AnimatedBehaviour):
                 self.play()
                 self.stop()
 
-            await asyncio.sleep(3)
+            await asyncio.sleep_ms(50)
 
 configurable.add_behaviour(LampFadeIn(configurable, frames=30))
 configurable.add_behaviour(Rainbow(configurable, frames=500))

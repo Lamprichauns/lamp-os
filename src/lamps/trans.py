@@ -11,12 +11,12 @@ import random
 
 # Override the standard lamp configs if necessary
 config = {
-    "base":  { "pin": 12 },
-    "shade": { "pin": 14 },
+    "base":  { "pin": 14 },
+    "shade": { "pin": 12 },
     "lamp":  { "default_behaviours": False }
 }
 
-lamp = StandardLamp("broody", "#0077bb", "#ffffff", config)
+lamp = StandardLamp("trans", "#0077bb", "#ffffff", config)
 
 # Set the default pixels to a mixture of blue and purple
 pixels = lamp.base.default_pixels
