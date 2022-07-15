@@ -134,13 +134,17 @@ class Bluetooth:
         self.ble.irq(self.bt_irq)
         self.network = LampNetwork()
 
+        self.set_payload(name, base_color, shade_color)
+
+        print("BT Initialized")
+
+    def set_payload(self, name, base_color, shade_color):
         custom_field = self._pack_colors_field(base_color, shade_color)
 
         self.adv_payload = blea.advertising_payload(
             name = name,
             custom_fields=( (0xFF, custom_field), )
             )
-        print("BT Initialized")
 
     def enable(self):
         self.ble.gap_scan(0, _GAP_SCAN_INTERVAL_US, _GAP_SCAN_WINDOW_US, False)
