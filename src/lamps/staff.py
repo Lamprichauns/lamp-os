@@ -123,7 +123,7 @@ class Rainbow(AnimatedBehaviour):
                 print("Color set to %s" % (color))
 
                 self.lamp.bluetooth.ble.active(False)
-                await asyncio.sleep(4)
+                await asyncio.sleep(5)
                 self.lamp.bluetooth = Bluetooth(self.lamp.name, color, color)
                 self.lamp.network = self.lamp.bluetooth.network
                 self.lamp.bluetooth.enable()
