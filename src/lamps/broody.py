@@ -25,11 +25,9 @@ class ColorFade(AnimatedBehaviour):
 
         self.palettes = [
             [(255, 0, 13, 0)] * self.lamp.base.num_pixels,
-            [(255, 0, 0, 0)] * self.lamp.base.num_pixels,
+            [(255, 100, 0, 0)] * self.lamp.base.num_pixels,
             [(255, 0, 23, 0)] * self.lamp.base.num_pixels,
             [(255, 0, 0, 0)] * self.lamp.base.num_pixels,
-            [(31, 20, 56, 0)] * self.lamp.base.num_pixels,
-            [(94, 3, 36, 0)] * self.lamp.base.num_pixels,
             [(51, 23, 0, 0)] * self.lamp.base.num_pixels,
             [(38, 1, 7, 0)] * self.lamp.base.num_pixels,
             create_gradient((38, 1, 200, 0), (94, 3, 36, 0), self.lamp.base.num_pixels),
