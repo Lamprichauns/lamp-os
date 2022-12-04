@@ -11,24 +11,24 @@ import random
 
 # Override the standard lamp configs if necessary
 config = {
-    "base":  { "pin": 14 },
+    "base":  { "pin": 13 },
     "shade": { "pin": 12 },
-    "lamp":  { "default_behaviours": False }
+    #"lamp":  { "default_behaviours": False }
 }
-
-lamp = StandardLamp("trans", "#0077bb", "#ffffff", config)
+# Sarah Tonin's lamp - simlar to Trans, but diff colors
+lamp = StandardLamp("tonin", "#9A0E82", "#9A0E82", config)
 
 # Set the default pixels to a mixture of blue and purple
 pixels = lamp.base.default_pixels
 
 for i in [20,27,29,30,32,33,34,36,38,39]:
-    pixels[i] = (200,0,200,0)
+    pixels[i] = (255, 100, 100, 0)
 
 for i in [22, 10, 15, 14, 13]:
-    pixels[i] = (0,50,190, 0)
+    pixels[i] = (108, 129, 232, 0)
 
-pixels[25] = (0,40,240,0)
-pixels[23] = (100,40,240,0)
+#pixels[25] = (0,40,240,0)
+#pixels[23] = (100,40,240,0)
 
 lamp.base.default_pixels = pixels
 
@@ -52,15 +52,14 @@ class ColorShuffle(AnimatedBehaviour):
         await self.next_frame()
 
     async def control(self):
-        lamp.base.buffer = self.lamp.base.default_pixels
         while True:
-            self.current_pixels = list(self.lamp.base.default_pixels)
+            self.current_pixels = list(self.lamp.base.default_pixels).copy()
             self.new_pixels = sorted(self.current_pixels, key=lambda x: random.random())
 
             print("Shuffling pixels")
-            await asyncio.sleep(300)
+            await asyncio.sleep(30) #300
 
-lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorShuffle]))
-lamp.add_behaviour(ColorShuffle(lamp, frames=32000))
+#lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorShuffle]))
+#lamp.add_behaviour(ColorShuffle(lamp, frames=32)) #32000
 lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
 lamp.wake()

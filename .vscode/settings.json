@@ -7,5 +7,11 @@
     "python.autoComplete.typeshedPaths":  [".micropy/BradenM-micropy-stubs-4ca262f/frozen", ".micropy/BradenM-micropy-stubs-4f5a52a/frozen", ".micropy/BradenM-micropy-stubs-4ca262f/stubs", ".micropy/lamp-os"],
     "python.analysis.typeshedPaths":  [".micropy/BradenM-micropy-stubs-4ca262f/frozen", ".micropy/BradenM-micropy-stubs-4f5a52a/frozen", ".micropy/BradenM-micropy-stubs-4ca262f/stubs", ".micropy/lamp-os"],
 
-    "python.linting.pylintEnabled": true
+    "python.linting.pylintEnabled": true,
+    "python.analysis.extraPaths": [
+        ".micropy/BradenM-micropy-stubs-4ca262f/frozen",
+        ".micropy/BradenM-micropy-stubs-4f5a52a/frozen",
+        ".micropy/BradenM-micropy-stubs-4ca262f/stubs",
+        ".micropy/lamp-os"
+    ]
 }
