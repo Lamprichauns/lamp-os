@@ -14,10 +14,10 @@ from vendor import tinyweb
 # c21563
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#ff0000", "pin": 12},
+    "shade": { "pixels": 40, "color":"#ffffff", "pin": 13},
     "base": { "pixels": 40, "color":"#00ff00", "pin": 14},
     "lamp": { "name": "configurable" },
-    "wifi": { "ssid": "lamp-400001" }
+    "wifi": { "ssid": "lamp-twamp1" }
 }
 
 # merge data from the database into the current config
@@ -89,6 +89,6 @@ class WebListener(BackgroundBehavior):
         app.run(host='0.0.0.0', port=80)
 
 configurable.add_behaviour(SocialGreeting(configurable, frames=300))
-configurable.add_behaviour(LampFadeOut(configurable, frames=30))
+configurable.add_behaviour(LampFadeOut(configurable, frames=100))
 configurable.add_behaviour(WebListener(configurable))
 configurable.wake()

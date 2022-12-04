@@ -3,6 +3,7 @@ import random
 import uasyncio as asyncio
 from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_in import LampFadeIn
+
 from lamp_core.standard_lamp import StandardLamp
 from lamp_core.behaviour import AnimatedBehaviour
 from utils.fade import fade
@@ -14,7 +15,7 @@ config = {
     "shade": { "pin": 12 },
     "lamp":  { "default_behaviours": False }
 }
-lamp = StandardLamp("ritz", "#c21563", "#000044", config)
+lamp = StandardLamp("ritz", "#C21563", "#ff0907", config)
 
 class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
@@ -65,8 +66,7 @@ class ColorFade(AnimatedBehaviour):
             print("Changing colors to palette %s" % (choice))
 
 
-
 lamp.add_behaviour(LampFadeIn(lamp, frames=30, chained_behaviors=[ColorFade]))
 lamp.add_behaviour(ColorFade(lamp, frames=20000))
-lamp.add_behaviour(SocialGreeting(lamp, frames=3000))
+lamp.add_behaviour(SocialGreeting(lamp, frames=1000))
 lamp.wake()
