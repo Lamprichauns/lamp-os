@@ -6,10 +6,11 @@ class SocialGreeting(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.arrived = None
-        self.frames = 1200
+        self.frames = self.frames or 1200
         self.ease_frames = 60
 
     async def draw(self):
+        #print(self.frame)
         for i in range(self.lamp.shade.num_pixels):
             if self.frame < self.ease_frames:
                 self.lamp.shade.buffer[i] = fade(self.lamp.shade.buffer[i], self.arrived["base_color"], self.ease_frames, self.frame)
@@ -19,7 +20,6 @@ class SocialGreeting(AnimatedBehaviour):
 
             else:
                 self.lamp.shade.buffer[i] = self.arrived["base_color"]
-
         await self.next_frame()
 
     async def control(self):
