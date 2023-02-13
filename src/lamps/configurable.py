@@ -11,13 +11,14 @@ from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_out import LampFadeOut
 from vendor import tinyweb
 
+
 # c21563
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#ffffff", "pin": 13},
-    "base": { "pixels": 40, "color":"#00ff00", "pin": 14},
+    "shade": { "pixels": 40, "color":"#ffffff", "pin": 12},
+    "base": { "pixels": 40, "color":"34ff2f", "pin": 14},
     "lamp": { "name": "configurable" },
-    "wifi": { "ssid": "lamp-twamp1" }
+    "wifi": { "ssid": "lamp-quadra" }
 }
 
 # merge data from the database into the current config

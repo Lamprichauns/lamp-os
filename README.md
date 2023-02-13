@@ -46,12 +46,32 @@ To setup the ESP32 You'll need to flash a fresh Micropython on the board. First 
 pip install esptool
 ```
 
-Next download the latest Micropython firmware and follow the instructions for flashing the board on the download page for your device:
+To erase and flash, run 
+
+```inv erase PORT
+inv flash PORT
+```
+
+To upload all the code to the device: 
+
+```inv upload PORT```
+
+and to update a specific lamp (the files in `src/lamps`) you can: 
+
+```inv update PORT LAMP``` 
+
+
+
+You can also do this manually following the instructions here: 
 
 | Chip | Download |
 | --- | --- |
 | ESP-WROOM-32 | Use the ESP32 OTA download <https://micropython.org/download/esp32-ota/> |
 | ESP32 | Use the ESP32 download <https://micropython.org/download/esp32/> |
+
+
+
+
 
 ## Development Setup
 

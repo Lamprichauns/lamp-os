@@ -16,7 +16,7 @@ config = {
     "lamp":  { "default_behaviours": False }
 }
 
-lamp = StandardLamp("trans", "#0077bb", "#ffffff", config)
+lamp = StandardLamp("terryslamp", "#0077bb", "#990005", config)
 
 # Set the default pixels to a mixture of blue and purple
 pixels = lamp.base.default_pixels
