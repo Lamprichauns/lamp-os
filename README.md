@@ -40,10 +40,10 @@ Once these are installed, reboot your machine to update all the paths. If they d
 
 ### Install Micropython on your ESP32
 
-To setup the ESP32 You'll need to flash a fresh Micropython on the board. First you'll need esptool:
+To setup the ESP32 You'll need to flash a fresh Micropython on the board. First you'll need esptool and invoke
 
 ```bash
-pip install esptool
+pip install esptool invoke
 ```
 
 To erase and flash, run 
