@@ -54,12 +54,14 @@ inv flash PORT
 
 To upload all the code to the device: 
 
-```inv upload PORT
+```
+inv upload PORT
 ```
 
 and to update a specific lamp (the files in `src/lamps`) you can: 
 
-```inv update PORT LAMP
+```
+inv update PORT LAMP
 ``` 
 
 
