@@ -16,9 +16,9 @@ from vendor import tinyweb
 # Define what we'll be setting in the web app
 config = {
     "shade": { "pixels": 40, "color":"#ffffff", "pin": 12},
-    "base": { "pixels": 40, "color":"34ff2f", "pin": 14},
+    "base": { "pixels": 40, "color":"ff3423f", "pin": 14},
     "lamp": { "name": "configurable" },
-    "wifi": { "ssid": "lamp-quadra" }
+    "wifi": { "ssid": "lamp-eli" }
 }
 
 # merge data from the database into the current config
@@ -26,9 +26,12 @@ config = {
 with open("/lamps/files/configurable/db", "r", encoding="utf8") as settings:
     merge_configs(config, load(settings))
 
+config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
+
 # Start a standard lamp and extend it to be a Wifi Access Point
 configurable = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["shade"]["color"], config_opts=config)
 configurable.access_point = AccessPoint(ssid=config["wifi"]["ssid"], password="123456789")
+
 
 # To handle pastel colors and cool whites, we can darken the rgb values for a normal 40x40 lamp to not draw too much current
 # tested with shade: #D486FE (pastel purple), base: #FF9494 (pastel rose) to get a 5V voltage of 4.8V
