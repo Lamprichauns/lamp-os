@@ -49,6 +49,7 @@ pip install esptool invoke
 To erase and flash, run 
 
 ```inv erase PORT
+inv erase PORT
 inv flash PORT
 ```
 
