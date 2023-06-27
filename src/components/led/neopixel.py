@@ -11,7 +11,6 @@ class ColorOrder:
 
 class NeoPixel:
     TIMING_800kHz = (400, 850, 800, 450)
-    TIMING_400hKz = (800, 1700, 1600, 900)
 
     def __init__(self, pin, n, bpp=4, color_order = ColorOrder.GRBW, timing=TIMING_800kHz):
         self.pin = Pin(pin)
