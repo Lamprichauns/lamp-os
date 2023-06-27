@@ -13,13 +13,14 @@ from utils.fade import pingpong_fade
 from utils.gradient import create_gradient
 from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_out import LampFadeOut
+from behaviours.lamp_brightness import LampBrightness
 from vendor import tinyweb
 
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#ffffff", "pin": 12},
-    "base": { "pixels": 40, "color":"#300783", "pin": 14},
-    "lamp": { "name": "nite"},
+    "shade": { "pixels": 40, "color":"#ffffff", "pin": 12 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 14 },
+    "lamp": { "name": "nite", "brightness": 100 },
     "wifi": { "ssid": "lamp-nite" }
 }
 
@@ -74,6 +75,7 @@ class Configurator():
         config["shade"]["pixels"] = abs(int(number_sanitizer.sub("", data["shade_pixels"])))
         config["base"]["pixels"] = abs(int(number_sanitizer.sub("", data["base_pixels"])))
         config["lamp"]["name"] = name_sanitizer.sub("", data["name"])
+        config["lamp"]["brightness"] = abs(int(number_sanitizer.sub("", data["brightness"])))
 
         if not config["lamp"]["name"]:
             return {'message': 'bad name'}, 500
@@ -150,5 +152,6 @@ configurable.add_behaviour(SocialGreeting(configurable, frames=300))
 configurable.add_behaviour(Sun(configurable, frames=1860, auto_play=True))
 configurable.add_behaviour(EveningSky(configurable, frames=180, auto_play=True))
 configurable.add_behaviour(LampFadeOut(configurable, frames=100))
+configurable.add_behaviour(LampBrightness(configurable, frames=1, brightness=configurable.brightness))
 configurable.add_behaviour(WebListener(configurable))
 configurable.wake()

@@ -117,6 +117,18 @@
             <input type="color" id="base" name="base"/>
             <div><label for="base_pixels"># LEDs</label><input type="text" id="base_pixels" name="base_pixels" pattern="[0-9]+" class="pixel_count"/></div>
           </div>
+
+          <h3>Lamp Brightness</h3>
+          <div>
+            <div class="two-column">
+              <div style="text-align: left">Darker</div>
+            </div>
+            <div class="two-column">
+              <div style="text-align: right">Brighter</div>
+            </div>
+          </div>
+          <input id="brightness" name="brightness" pattern="[0-9]+" type="range" min="10" max="100" step="5"/>
+
           <input type="submit" id="submit-button" value="Submit">
         </form>
       </div>
@@ -140,6 +152,7 @@
               document.getElementById("shade").value = data.shade.color;
               document.getElementById("base_pixels").value = data.base.pixels;
               document.getElementById("shade_pixels").value = data.shade.pixels;
+              document.getElementById("brightness").value = data.lamp.brightness;
               submit.value = "Submit";
               submit.disabled = false;
             })

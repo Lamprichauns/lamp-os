@@ -9,15 +9,14 @@ from utils.config import merge_configs
 from utils.color_tools import darken
 from behaviours.social import SocialGreeting
 from behaviours.lamp_fade_out import LampFadeOut
+from behaviours.lamp_brightness import LampBrightness
 from vendor import tinyweb
 
-
-# c21563
 # Define what we'll be setting in the web app
 config = {
-    "shade": { "pixels": 40, "color":"#ffffff", "pin": 12},
-    "base": { "pixels": 40, "color":"#300783", "pin": 14},
-    "lamp": { "name": "configurable" },
+    "shade": { "pixels": 40, "color":"#ffffff", "pin": 12 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 14 },
+    "lamp": { "name": "configurable", "brightness": 100 },
     "wifi": { "ssid": "lamp-configurable" }
 }
 
@@ -66,6 +65,7 @@ class Configurator():
         config["shade"]["pixels"] = abs(int(number_sanitizer.sub("", data["shade_pixels"])))
         config["base"]["pixels"] = abs(int(number_sanitizer.sub("", data["base_pixels"])))
         config["lamp"]["name"] = name_sanitizer.sub("", data["name"])
+        config["lamp"]["brightness"] = abs(int(number_sanitizer.sub("", data["brightness"])))
 
         if not config["lamp"]["name"]:
             return {'message': 'bad name'}, 500
@@ -94,5 +94,6 @@ class WebListener(BackgroundBehavior):
 
 configurable.add_behaviour(SocialGreeting(configurable, frames=300))
 configurable.add_behaviour(LampFadeOut(configurable, frames=100))
+configurable.add_behaviour(LampBrightness(configurable, frames=1, brightness=configurable.brightness))
 configurable.add_behaviour(WebListener(configurable))
 configurable.wake()
