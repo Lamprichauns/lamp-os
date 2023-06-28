@@ -13,7 +13,7 @@ default_config = {
     "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
     "shade": { "pin": 27, "pixels": 40, "bpp": 4 },
     "touch": { "pin": 32 },
-    "lamp":  { "default_behaviours": True, "debug": False },
+    "lamp":  { "default_behaviours": True, "debug": False, "brightness": 100 },
 }
 
 # Use standard lamp to startup a lamp that uses the kicad connection layout
@@ -36,6 +36,7 @@ class StandardLamp(Lamp):
         self.bluetooth.enable()
         self.touch = Touch(pin=config["touch"]["pin"])
         self.debug = config["lamp"]["debug"]
+        self.brightness = config["lamp"]["brightness"]
 
         if config["lamp"]["default_behaviours"] is True:
             self.add_behaviour(LampFadeIn(self, frames=30, chained_behaviors = [LampIdle]))

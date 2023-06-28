@@ -1,3 +1,4 @@
+# Handle a dimmer effect when a magnet is held close to the ESP32 hall effect sensor
 import esp32
 import uasyncio as asyncio
 from lamp_core.behaviour import AnimatedBehaviour
