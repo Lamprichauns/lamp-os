@@ -13,6 +13,7 @@ class Lamp():
             raise NameError('Name must be lowercase alpha')
         self.name = name
         self.debug = False
+        self.home_mode = False
         self.behaviours = []
 
     # Return a behaviour instance
@@ -21,8 +22,10 @@ class Lamp():
 
     # Add a behaviour
     def add_behaviour(self, behaviour_class):
-        self.behaviours.append(behaviour_class)
-        if self.debug is True:
+        if self.home_mode is True and behaviour_class.use_in_home_mode is False:
+            print("Behaviour rejected in home mode: %s" % (behaviour_class))
+        else:
+            self.behaviours.append(behaviour_class)
             print("Behaviour added: %s" % (behaviour_class))
 
     # Called once all components and behaviours added to begin all async tasks

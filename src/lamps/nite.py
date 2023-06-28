@@ -20,7 +20,7 @@ from vendor import tinyweb
 config = {
     "shade": { "pixels": 40, "color":"#ffffff", "pin": 12 },
     "base": { "pixels": 40, "color":"#300783", "pin": 14 },
-    "lamp": { "name": "nite", "brightness": 100 },
+    "lamp": { "name": "nite", "brightness": 100, "home_mode": False },
     "wifi": { "ssid": "lamp-nite" }
 }
 
@@ -76,6 +76,7 @@ class Configurator():
         config["base"]["pixels"] = abs(int(number_sanitizer.sub("", data["base_pixels"])))
         config["lamp"]["name"] = name_sanitizer.sub("", data["name"])
         config["lamp"]["brightness"] = abs(int(number_sanitizer.sub("", data["brightness"])))
+        config["lamp"]["home_mode"] = data.get("home_mode") == "on"
 
         if not config["lamp"]["name"]:
             return {'message': 'bad name'}, 500

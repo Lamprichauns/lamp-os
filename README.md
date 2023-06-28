@@ -46,37 +46,31 @@ To setup the ESP32 You'll need to flash a fresh Micropython on the board. First 
 pip install esptool invoke
 ```
 
-To erase and flash, run 
+To erase and flash, run
 
 ```inv erase PORT
 inv erase PORT
 inv flash PORT
 ```
 
-To upload all the code to the device: 
+To upload all the code to the device:
 
 ```
 inv upload PORT
 ```
 
-and to update a specific lamp (the files in `src/lamps`) you can: 
+and to update a specific lamp (the files in `src/lamps`) you can:
 
 ```
 inv update PORT LAMP
-``` 
+```
 
-
-
-You can also do this manually following the instructions here: 
+You can also do this manually following the instructions here:
 
 | Chip | Download |
 | --- | --- |
 | ESP-WROOM-32 | Use the ESP32 OTA download <https://micropython.org/download/esp32-ota/> |
 | ESP32 | Use the ESP32 download <https://micropython.org/download/esp32/> |
-
-
-
-
 
 ## Development Setup
 
@@ -194,9 +188,9 @@ config = {
 my_lamp = StandardLamp('mylamp', "#FF0000", "#FF0000", config)
 
 # add your AnimatedBehaviours 
-my_lamp.add_behaviour(LampFadeIn(my_lamp, frames=30, chained_behaviors=[LampIdle, Sun]))
+my_lamp.add_behaviour(LampFadeIn(my_lamp, frames=30, chained_behaviors=[LampIdle]))
 my_lamp.add_behaviour(LampIdle(my_lamp, frames=1))
-my_lamp.add_behaviour(Sun(my_lamp, frames=200))
+my_lamp.add_behaviour(Sun(my_lamp, frames=200, auto_play=True))
 
 # instruct the lamp to turn on
 my_lamp.wake()
@@ -221,6 +215,10 @@ my_lamp.wake()
 **chained_behaviours** - In the cases where a Behaviour plays another one, this variable collects all AnimatedBehaviours to `play()` as a list
 
 **immediate_control** - If set to True, the control phase will startup with the lamp instead of waiting 5 seconds. defaults to False
+
+**use_in_home_mode** - if set to False, the behaviour will not be loaded to save lamp owners from distracting animations while the lamp is at home
+
+**auto_play** - if set to True, the animation will start 5 seconds after boot. use this instead of chained behaviors where a seamless transition is not needed
 
 **play()** - play the animation
 

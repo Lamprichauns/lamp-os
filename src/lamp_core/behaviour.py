@@ -6,6 +6,7 @@ import utime
 class Behaviour:
     def __init__(self, lamp):
         self.lamp = lamp
+        self.use_in_home_mode = True
 
     def __str__(self):
         return self.__class__.__name__

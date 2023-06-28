@@ -77,6 +77,13 @@
           box-sizing: border-box;
           display: inline-block;
         }
+        .my-form input[type=checkbox] {
+          appearance: auto;
+          width: 2em;
+          height: 2em;
+          margin: 0 12px 0 0;
+          padding: 0;
+        }
         .my-form select {
           background-repeat: no-repeat;
           background-position: center right 12px;
@@ -91,6 +98,14 @@
         .my-form input.pixel_count {
           margin-left: 1em;
           width: 3em;
+        }
+        p.checkbox-wrapper {
+          margin: 0 0 2em 0;
+        }
+        p.checkbox-wrapper input {
+          vertical-align: middle;
+          position: relative;
+          top: -1px;
         }
       </style>
     </head>
@@ -129,6 +144,11 @@
           </div>
           <input id="brightness" name="brightness" pattern="[0-9]+" type="range" min="20" max="100" step="5"/>
 
+          <h3>At Home Mode</h3>
+          <p class="checkbox-wrapper">
+            <input id="home_mode" name="home_mode" type="checkbox" />Check to disable animations
+          </p>
+
           <input type="submit" id="submit-button" value="Submit">
         </form>
       </div>
@@ -153,6 +173,7 @@
               document.getElementById("base_pixels").value = data.base.pixels;
               document.getElementById("shade_pixels").value = data.shade.pixels;
               document.getElementById("brightness").value = data.lamp.brightness;
+              document.getElementById("home_mode").checked = data.lamp.home_mode === true && 'checked';
               submit.value = "Submit";
               submit.disabled = false;
             })
