@@ -8,6 +8,7 @@ class SocialGreeting(AnimatedBehaviour):
         self.arrived = None
         self.frames = self.frames or 1200
         self.ease_frames = 60
+        self.use_in_home_mode = False
 
     async def draw(self):
         for i in range(self.lamp.shade.num_pixels):
