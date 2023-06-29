@@ -4,3 +4,4 @@ adafruit-ampy
 pytest
 pytest-asyncio
 pylint
+esptool
