@@ -1,10 +1,10 @@
 import struct
 import binascii
+import time
 import bluetooth
 from micropython import const
-import components.network.ble_advertising as blea
-import time
 import uasyncio as asyncio
+import components.network.ble_advertising as blea
 
 _IRQ_SCAN_RESULT = const(5)
 _IRQ_SCAN_DONE = const(6)
@@ -40,26 +40,25 @@ class LampNetwork:
 
     # returns departed lamps. Optionally pass the name of a lamp to only look for that lamp
     @classmethod
-    async def _await_lamps(cls, name, list):
-        if name == None:
-            while not any(list):
+    async def _await_lamps(cls, name, lst):
+        if name is None:
+            while not any(lst):
                 await asyncio.sleep(0)
 
-            lamp = list.popitem()
+            lamp = lst.popitem()
         else:
-            while name not in list:
+            while name not in lst:
                 await asyncio.sleep(0)
 
-            lamp = (name, list.pop(name))
+            lamp = (name, lst.pop(name))
 
         return {"name": lamp[0], "base_color": lamp[1]["base_color"], "shade_color": lamp[1]["shade_color"]}
 
     @classmethod
-    def _prune_lamp_list(cls, list, field, timeout):
-        for name, data in list.items():
-            if time.time() - list[name][field] >= timeout:
-                #print("BT: %s is stale (%s), removing" % (field, name))
-                list.pop(name)
+    def _prune_lamp_list(cls, lst, field, timeout):
+        for name in lst.items():
+            if time.time() - lst[name][field] >= timeout:
+                lst.pop(name)
 
     # await for and return departed lamps. Optionally specify the name to look for a specific lamp
     async def departed(self, name = None):
@@ -74,7 +73,7 @@ class LampNetwork:
             await asyncio.sleep(1)
 
             # Add timed out lamps to departed list
-            for name, data in self.lamps.items():
+            for name in self.lamps.items():
                 if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
                     self.departed_lamps[name] = self.lamps.pop(name)
                     print("BT: %s has left, removing" % (name))
@@ -111,7 +110,7 @@ class Bluetooth:
 
     @classmethod
     def _unpack_colors_field(cls, field_data):
-        # pylint: disable=unpacking-non-sequence
+        # pylint: disable=unpacking-non-sequence,invalid-name
         (magic, br, bg, bb, sr, sg, sb) = struct.unpack("<H3B3B", field_data)
         if not magic == cls.MAGIC_NUM:
             raise ValueError("Invalid magic number!")
@@ -156,14 +155,18 @@ class Bluetooth:
 
     # pylint: disable=too-many-arguments,unused-argument
     def handle_scan_result(self, addr_type, addr, adv_type, rssi, adv_data):
-        adv_bytes = bytes(adv_data)
-        name = blea.decode_name(adv_bytes)
+        try:
+            adv_bytes = bytes(adv_data)
+            name = blea.decode_name(adv_bytes)
 
-        custom_fields = blea.decode_field(adv_bytes, 0xFF)
-        for field in custom_fields:
-            if self._is_lamp(field):
-                (base_color, shade_color) = self._unpack_colors_field(field)
-                self.network.found(name, base_color, shade_color, rssi)
+            custom_fields = blea.decode_field(adv_bytes, 0xFF)
+            for field in custom_fields:
+                if self._is_lamp(field):
+                    (base_color, shade_color) = self._unpack_colors_field(field)
+                    self.network.found(name, base_color, shade_color, rssi)
+
+        except Exception as err:
+            print("IRQ handler failed to decode scan result: ", err)
 
     def bt_irq(self, event, data):
         if event == _IRQ_SCAN_RESULT:
