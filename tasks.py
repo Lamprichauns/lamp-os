@@ -19,7 +19,10 @@ def upload(c, port):
     for path in Path('src').rglob('*'):
         dest_path = Path(*path.parts[1:])
 
-        c.run(f"ampy --port {port} put {path} {dest_path}", echo=True)
+        if os.path.isdir(path):
+            c.run(f"ampy -d 1 --port {port} --baud 115200 mkdir {dest_path} ", echo=True)
+        else:
+            c.run(f"ampy -d 1 --port {port} --baud 115200 put {path} {dest_path}", echo=True)
     print("Done!")
 
 @task 
