@@ -29,3 +29,10 @@ def upload(c, port):
 def update(c, port, lamp): 
     c.run(f"ampy --port {port} put src/lamps/{lamp}.py lamps/{lamp}.py", echo=True)
     print("Done!")  
+
+@task
+def setup(c, port):
+    erase(c,port)
+    flash(c,port)
+    upload(c,port)
+    

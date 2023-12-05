@@ -46,7 +46,12 @@ To setup the ESP32 You'll need to flash a fresh Micropython on the board. First 
 pip install esptool invoke
 ```
 
-To erase and flash, run
+
+To setup a new board, run: 
+
+```inv setup PORT```
+
+Seperate tasks are also available:
 
 ```inv erase PORT
 inv erase PORT
