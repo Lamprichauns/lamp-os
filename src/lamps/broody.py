@@ -14,7 +14,7 @@ config = {
     "shade": { "pin": 14 },
     "lamp":  { "default_behaviours": False }
 }
-lamp = StandardLamp("broody", "#ff0000", "#d94f00", config)
+lamp = StandardLamp("brody", "#ff0000", "#d94f00", config)
 
 class ColorFade(AnimatedBehaviour):
     def __init__(self, *args, **kwargs):

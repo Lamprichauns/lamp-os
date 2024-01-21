@@ -27,6 +27,7 @@ def upload(c, port):
 
 @task 
 def update(c, port, lamp): 
+    c.run(f"ampy --port {port} put src/main.py main.py", echo=True)    
     c.run(f"ampy --port {port} put src/lamps/{lamp}.py lamps/{lamp}.py", echo=True)
     print("Done!")  
 
