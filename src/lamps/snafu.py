@@ -194,8 +194,8 @@ class GlitchedSocialGreeting(AnimatedBehaviour):
 
 configurable.add_behaviour(LampFadeIn(configurable, frames=30, chained_behaviors=[LampIdle, BackgroundColorFade, PaintSpots]))
 configurable.add_behaviour(LampIdle(configurable, frames=1))
-configurable.add_behaviour(BackgroundColorFade(configurable, frames=2400))
-configurable.add_behaviour(PaintSpots(configurable, frames=1200))
+configurable.add_behaviour(BackgroundColorFade(configurable, frames=2700))
+configurable.add_behaviour(PaintSpots(configurable, frames=1440))
 configurable.add_behaviour(GlitchedSocialGreeting(configurable, frames=300))
 configurable.add_behaviour(LampBrightness(configurable, frames=1, brightness=configurable.brightness))
 configurable.add_behaviour(Configurator(configurable, config=config))

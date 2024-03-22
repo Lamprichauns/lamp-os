@@ -25,7 +25,7 @@ class Router():
 
     def post(self, data):
         print(data)
-        name_sanitizer = re.compile('[^a-z]')
+        name_sanitizer = re.compile('[^a-z]{4,15}')
         number_sanitizer = re.compile('[^0-9]+')
         self.config["shade"]["color"] = data["shade"]
         self.config["base"]["color"] = data["base"]
