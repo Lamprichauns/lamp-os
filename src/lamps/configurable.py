@@ -9,7 +9,7 @@ from behaviours.lamp_brightness import LampBrightness
 # Define what we'll be setting in the web app
 config = configurator_load_data({
     "shade": { "pixels": 36, "color":"#ffffff", "pin": 12 },
-    "base": { "pixels": 40, "color":"#300783", "pin": 14 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 14, "bpp": 4 },
     "lamp": { "name": "configurable", "brightness": 100, "home_mode": False },
     "wifi": { "ssid": "lamp-configurable" }
 })
