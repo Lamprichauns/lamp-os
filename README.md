@@ -12,9 +12,7 @@ With these sorts of subtle changes, people may begin to realize things are not a
 
 ## Lamp Hardware Requirements
 
-This software is intended for the ESP32 platform. Our preferred dev board is here: <https://www.digikey.ca/en/products/detail/espressif-systems/ESP32-DEVKITC-32D/9356990>
-
-Other ESP32 and ESP32 WROOM dev boards will work given they have more than 360kb of RAM. Avoid ESP32-S2/S3/C3 and ESP-8266 boards as they are severely limited on SRAM and missing some wireless features
+This software is intended for the ESP32 platform. Our preferred dev board is an ESP32-WROOM32 30 Pin board variant measuring no wider than 28mm with a chip antenna. Unsoldered/unwelded pins are preferred if possible. This space requirement is so the board can fit comfortably into a standard lamp socket. The boards can be had easily from Amazon and AliExpress for $5-10. The model we use has this pinout <https://lastminuteengineers.com/esp32-pinout-reference/>
 
 By default, a lamp will use about 80 LEDs. The limiting factor at the moment is current draw. generally over 100 LEDs you may have stability issues with a conventional USB source. We recommend purchasing LEDs strips with the following specs:
 
@@ -46,8 +44,7 @@ To setup the ESP32 You'll need to flash a fresh Micropython on the board. First 
 pip install esptool invoke
 ```
 
-
-To setup a new board, run: 
+To setup a new board, run:
 
 ```inv setup PORT```
 
@@ -243,6 +240,28 @@ The `vendor` folder is used for unmodified micropython source. Anything modified
 
 The `components` folder contains glue logic or implementations for addressing all of the attached IO. Generally, it's good practice to add to the components so others can integrate with similar sensors and LED strips
 
+### DMX Details
+
+Lamps can receive DMX signals for those looking to synchronize them with a stage. The LampDmx behavior will listen for 10 channels of DMX given a start address between 1-502. The start channel is configurable in the web portal on the lamp
+
+The DMX channel/address scheme is:
+
+- 1-4  RGBW Shade
+- 5-8  RGBW Base
+- 9-10 Accessory 1 and 2
+
+You will need to purchase a MAX3485 dev board (the 3.3V compatible version of the popular RS-485 serial driver). The board size should be: 19.3mmx13.3mm. The pinout is:
+
+```
+3485 TX  -> ESP Pin D19 and ESP PIN D21
+3485 EN  -> ESP Pin D5
+3485 VCC -> ESP 3V3
+3485 GND -> ESP GND
+3485 B   -> Black Wire  -> XLR Pin 2
+3485 A   -> Yellow Wire -> XLR Pin 3
+3485 Gnd -> Red Wire    -> XLR Pin 1
+```
+
 ## Social Features  
 
 The lamps are aware of how many other lamps are nearby, as well as their names and configured base and shade colors. Some examples of things that can be done with this:
@@ -252,5 +271,4 @@ The lamps are aware of how many other lamps are nearby, as well as their names a
 - A lamp could be shy, and get much dimmer when too many other lamps are around.
 - A lamp could be afraid of a specific lamp and flicker erratically when that lamp initially shows up, and then going more dim while it's around.
 - A lamp could be a trickster and simply at random switch colors for very brief (half seconds) periods. Maybe occasionally drift its colors over the course of the night.
-- A lamp could steal the base color of the most recent lamp that has showed up.
 - A lamp could collect base colors of nearby lamps and comprise its base color as a stacked rainbow of those colors instead of a solid color
