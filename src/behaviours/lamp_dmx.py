@@ -57,7 +57,6 @@ class LampDmx(AnimatedBehaviour):
         if not self.mab_present and self.break_present and MIN_BREAK_TIME_US <= utime.ticks_diff(utime.ticks_us(), self.last_break_time) <= MAX_BREAK_TIME_US:
             self.mab_present = True
             self.irq_enable = False
-
             return
 
     async def draw(self):
@@ -103,8 +102,10 @@ class LampDmx(AnimatedBehaviour):
 
                         bytes_to_read = DMX_MESSAGE_SIZE - message_length
 
-                    # convert message to tuple of ints
+                    # convert message to tuple of ints from a given channel
                     dmx_message =  tuple(message[self.channel:self.channel + LAMP_CHANNEL_COUNT])
+
+                    # copy the values to the lamp's buffers for immediate draw on next frame
                     self.lamp.shade.buffer = [dmx_message[:4]] * self.lamp.shade.num_pixels
                     self.lamp.base.buffer = [dmx_message[4:8]] * self.lamp.base.num_pixels
                 self.break_present = False
