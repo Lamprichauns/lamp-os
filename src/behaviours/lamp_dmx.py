@@ -17,6 +17,7 @@ DMX_MESSAGE_SIZE = 513
 DMX_SYNC_POOL = 400
 DMX_BREAK_SIGNAL = b"\xff\x00\x00"
 DMX_BAUD_RATE = 250000
+LAMP_CHANNEL_COUNT = 10
 EN_PIN = 5
 ISR_PIN = 21
 
@@ -59,6 +60,10 @@ class LampDmx(AnimatedBehaviour):
 
             return
 
+    async def draw(self):
+        # fade back to default lamp once connection is lost
+        await self.next_frame()
+
     async def control(self):
         while True:
             if self.mab_present:
@@ -98,9 +103,11 @@ class LampDmx(AnimatedBehaviour):
 
                         bytes_to_read = DMX_MESSAGE_SIZE - message_length
 
-                    print(message[0:32])
+                    # convert message to tuple of ints
+                    dmx_message =  tuple(message[self.channel:self.channel + LAMP_CHANNEL_COUNT])
+                    self.lamp.shade.buffer = [dmx_message[:4]] * self.lamp.shade.num_pixels
+                    self.lamp.base.buffer = [dmx_message[4:8]] * self.lamp.base.num_pixels
                 self.break_present = False
-                self.last_break_time = 0
                 self.mab_present = False
                 self.irq_enable = True
 
