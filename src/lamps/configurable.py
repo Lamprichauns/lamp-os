@@ -5,13 +5,15 @@ from utils.color_tools import darken
 from behaviours.configurator import Configurator, configurator_load_data
 from behaviours.social import SocialGreeting
 from behaviours.lamp_brightness import LampBrightness
+from behaviours.lamp_dmx import LampDmx
 
 # Define what we'll be setting in the web app
 config = configurator_load_data({
     "shade": { "pixels": 36, "color":"#ffffff", "pin": 12 },
     "base": { "pixels": 40, "color":"#300783", "pin": 14, "bpp": 4 },
-    "lamp": { "name": "configurable", "brightness": 100, "home_mode": False },
-    "wifi": { "ssid": "lamp-configurable" }
+    "lamp": { "name": "configurable", "brightness": 100, "home_mode": False, "debug": True },
+    "wifi": { "ssid": "lamp-configurable" },
+    "dmx": { "channel": 1 }
 })
 
 config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
@@ -36,6 +38,7 @@ for i in range(config["shade"]["pixels"]):
 
     configurable.shade.default_pixels[i] = darken(configurable.shade.default_pixels[i], 30)
 
+configurable.add_behaviour(LampDmx(configurable, frames=1, config=config))
 configurable.add_behaviour(SocialGreeting(configurable, frames=300))
 configurable.add_behaviour(LampBrightness(configurable, frames=1, brightness=configurable.brightness))
 configurable.add_behaviour(Configurator(configurable, config=config))
