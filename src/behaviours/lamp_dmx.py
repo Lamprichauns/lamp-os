@@ -11,7 +11,7 @@ import utime
 from lamp_core.behaviour import AnimatedBehaviour
 
 MIN_BREAK_TIME_US = 88
-MAX_BREAK_TIME_US = 5000
+MAX_BREAK_TIME_US = 6000
 RX_BUFFER_SIZE = 1024
 DMX_MESSAGE_SIZE = 513
 DMX_SYNC_POOL = 400
@@ -70,7 +70,7 @@ class LampDmx(AnimatedBehaviour):
                 # slow to react, so loop through the buffer to catch up
                 # These functions do yield to RTOS, so they don't block the
                 # lamp's other functions
-                while True:
+                while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < 100000:
                     res = self.uart.read(DMX_SYNC_POOL)
                     if res is not None:
                         sync_offset = bytes(res).find(DMX_BREAK_SIGNAL)
@@ -82,10 +82,10 @@ class LampDmx(AnimatedBehaviour):
                 # fill the buffer to the appropriate DMX channel data size
                 # to prevent UART overflows, copy all of the dmx data into the
                 # message buffer
-                if sync_offset >= 0  and bytes_to_read > 0:
+                if sync_offset >= 0  and bytes_to_read >= 0:
                     message += res[sync_offset:DMX_SYNC_POOL]
 
-                    while True:
+                    while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < 100000:
                         tmp = self.uart.read(bytes_to_read)
 
                         if tmp is not None:
@@ -98,6 +98,7 @@ class LampDmx(AnimatedBehaviour):
 
                         bytes_to_read = DMX_MESSAGE_SIZE - message_length
 
+                    print(message[0:32])
                 self.break_present = False
                 self.last_break_time = 0
                 self.mab_present = False
