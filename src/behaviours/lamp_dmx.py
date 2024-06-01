@@ -18,6 +18,7 @@ DMX_MESSAGE_SIZE = 512
 DMX_SYNC_POOL = 400
 DMX_BREAK_SIGNAL = b"\xB0\x0B"
 DMX_BAUD_RATE = 250000
+DMX_FRAME_TIMEOUT = 40000
 LAMP_CHANNEL_COUNT = 10
 EN_PIN = 5
 ISR_PIN = 21
@@ -79,7 +80,7 @@ class LampDmx(AnimatedBehaviour):
                 # slow to react, so loop through the buffer to catch up
                 # These functions do yield to RTOS, so they don't block the
                 # lamp's other functions
-                while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < 100000:
+                while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < DMX_FRAME_TIMEOUT:
                     res = self.uart.read(DMX_SYNC_POOL)
                     if res is not None:
                         sync_offset = bytes(res).find(DMX_BREAK_SIGNAL)
@@ -94,7 +95,7 @@ class LampDmx(AnimatedBehaviour):
                 if sync_offset >= 0  and bytes_to_read >= 0:
                     message += res[sync_offset:DMX_SYNC_POOL]
 
-                    while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < 100000:
+                    while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < DMX_FRAME_TIMEOUT:
                         tmp = self.uart.read(bytes_to_read)
 
                         if tmp is not None:
