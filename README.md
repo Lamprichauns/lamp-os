@@ -242,7 +242,9 @@ The `components` folder contains glue logic or implementations for addressing al
 
 ### DMX Details
 
-Lamps can receive DMX signals for those looking to synchronize them with a stage. The LampDmx behavior will listen for 10 channels of DMX given a start address between 1-502. The start channel is configurable in the web portal on the lamp
+Lamps can receive DMX signals for those looking to synchronize them with a stage. The LampDmx behavior will listen for 10 channels of DMX given a start address between 3-502. The start channel is configurable in the web portal on the lamp, but the default is channel 3
+
+You will also need to define a fixture that broadcasts [176, 11] on channel 1 and 2 to activate the lamps. They derive a clock from channel 1 and 2. If the clock is absent, they will revert to their own personality after a few seconds
 
 The DMX channel/address scheme is:
 
@@ -257,9 +259,9 @@ You will need to purchase a MAX3485 dev board (the 3.3V compatible version of th
 3485 EN  -> ESP Pin D5
 3485 VCC -> ESP 3V3
 3485 GND -> ESP GND
-3485 B   -> Black Wire  -> XLR Pin 2
-3485 A   -> Yellow Wire -> XLR Pin 3
-3485 Gnd -> Red Wire    -> XLR Pin 1
+3485 B   -> Black Wire  -> XLR & MiniXLR Pin 2 / Tip
+3485 A   -> Yellow Wire -> XLR & MiniXLR Pin 3 / Ring
+3485 Gnd -> Red Wire    -> XLR & MiniXLR Pin 1 / Sleeve
 ```
 
 ## Social Features  

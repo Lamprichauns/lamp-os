@@ -2,20 +2,21 @@
 # the lamp will alow addressing a single color to all leds in the base and shade
 # when a DMX signal is received on the configured channels
 # Each lamp will use 10 dmx channels: shade(r,g,b,w),base(r,g,b,w), acc1, acc2
-# from a start address set in the initializer
-# Since this is hacky, I'd refrain from using full channel values #FF
-# keep lamps in their own dmx universe
+#
+# Also configure a 2 channel fixture at channel 1 with constant value of [176, 11]
+# as the lamps will use this to sync. If this signal ends, the lamps will return
+# to themselves.
 import uasyncio as asyncio
 from machine import Pin, UART
 import utime
 from lamp_core.behaviour import AnimatedBehaviour
 
 MIN_BREAK_TIME_US = 88
-MAX_BREAK_TIME_US = 6000
+MAX_BREAK_TIME_US = 15000
 RX_BUFFER_SIZE = 1024
-DMX_MESSAGE_SIZE = 513
+DMX_MESSAGE_SIZE = 512
 DMX_SYNC_POOL = 400
-DMX_BREAK_SIGNAL = b"\xff\x00\x00"
+DMX_BREAK_SIGNAL = b"\xB0\x0B"
 DMX_BAUD_RATE = 250000
 LAMP_CHANNEL_COUNT = 10
 EN_PIN = 5
@@ -29,6 +30,7 @@ class LampDmx(AnimatedBehaviour):
         self.last_break_time = 0
         self.mab_present = False
         self.irq_enable = True
+        self.last_dmx_message = None
 
         # enable the RS485 interface - active low
         enable = Pin(EN_PIN)
@@ -60,7 +62,10 @@ class LampDmx(AnimatedBehaviour):
             return
 
     async def draw(self):
-        # fade back to default lamp once connection is lost
+        if self.last_dmx_message is not None:
+            self.lamp.shade.buffer = [self.last_dmx_message[:4]] * self.lamp.shade.num_pixels
+            self.lamp.base.buffer = [self.last_dmx_message[4:8]] * self.lamp.base.num_pixels
+
         await self.next_frame()
 
     async def control(self):
@@ -103,11 +108,8 @@ class LampDmx(AnimatedBehaviour):
                         bytes_to_read = DMX_MESSAGE_SIZE - message_length
 
                     # convert message to tuple of ints from a given channel
-                    dmx_message =  tuple(message[self.channel:self.channel + LAMP_CHANNEL_COUNT])
+                    self.last_dmx_message = tuple(message[self.channel-1:self.channel + LAMP_CHANNEL_COUNT])
 
-                    # copy the values to the lamp's buffers for immediate draw on next frame
-                    self.lamp.shade.buffer = [dmx_message[:4]] * self.lamp.shade.num_pixels
-                    self.lamp.base.buffer = [dmx_message[4:8]] * self.lamp.base.num_pixels
                 self.break_present = False
                 self.mab_present = False
                 self.irq_enable = True
