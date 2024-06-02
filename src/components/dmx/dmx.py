@@ -22,9 +22,10 @@ EN_PIN = 5
 
 class Dmx:
     def __init__(self, channel = DMX_DEFAULT_CHANNEL):
-        self.last_dmx_message = None
         self.last_break_time = 0
         self.channel = channel
+        self.update_callbacks = []
+        self.timeout_callbacks = []
 
         # enable the RS485 interface - active low
         enable = Pin(EN_PIN)
@@ -37,6 +38,13 @@ class Dmx:
 
         # add to greater event loops on enable
         self.loop = asyncio.get_event_loop()
+
+    def _timeout(self):
+        pass
+
+    def _update(self, message):
+        for cb in self.update_callbacks:
+            cb(message)
 
     async def _control_loop_coro(self):
         while True:
@@ -81,10 +89,16 @@ class Dmx:
                     bytes_to_read = DMX_MESSAGE_SIZE - message_length
 
                 # convert message to tuple of ints from a given channel
-                self.last_dmx_message = tuple(message[self.channel-1:self.channel + LAMP_CHANNEL_COUNT])
-                print(self.last_dmx_message)
+                self._update(tuple(message[self.channel-1:self.channel + LAMP_CHANNEL_COUNT]))
 
             await asyncio.sleep(0)
 
+    def add_update_callback(self, cb):
+        self.update_callbacks.append(cb)
+
+    def add_timeout_callback(self, cb):
+        self.timeout_callbacks.append(cb)
+
     def enable(self):
+        print("Starting DMX")
         self.loop.create_task(self._control_loop_coro())

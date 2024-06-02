@@ -1,6 +1,5 @@
 # An example of a lamp that can be setup using a web app
 from components.network.access_point import AccessPoint
-from components.dmx.dmx import Dmx
 from lamp_core.standard_lamp import StandardLamp
 from utils.color_tools import darken
 from behaviours.configurator import Configurator, configurator_load_data
@@ -22,8 +21,6 @@ config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
 # Start a standard lamp and extend it to be a Wifi Access Point
 configurable = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["shade"]["color"], config_opts=config)
 configurable.access_point = AccessPoint(ssid=config["wifi"]["ssid"], password="123456789")
-configurable.dmx = Dmx(channel=config["dmx"]["channel"])
-configurable.dmx.enable()
 
 # To handle pastel colors and cool whites, we can darken the rgb values for a normal 40x40 lamp to not draw too much current
 # tested with shade: #D486FE (pastel purple), base: #FF9494 (pastel rose) to get a 5V voltage of 4.8V
