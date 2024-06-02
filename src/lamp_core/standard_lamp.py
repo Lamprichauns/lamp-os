@@ -10,10 +10,10 @@ from utils.hex_to_rgbw import hex_to_rgbw
 from utils.config import merge_configs
 
 default_config = {
-    "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
-    "shade": { "pin": 27, "pixels": 40, "bpp": 4 },
+    "shade": { "pixels": 36, "color":"#ffffff", "pin": 12, "bpp": 4 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 14, "bpp": 4 },
     "touch": { "pin": 32 },
-    "lamp":  { "default_behaviours": True, "debug": False, "brightness": 100, "home_mode": False },
+    "lamp":  { "default_behaviours": True, "debug": False, "brightness": 100, "home_mode": False }
 }
 
 # pylint: disable=R0902
