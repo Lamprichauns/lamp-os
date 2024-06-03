@@ -10,13 +10,12 @@ import uasyncio as asyncio
 from machine import Pin, UART
 import utime
 
-RX_BUFFER_SIZE = 1024
+RX_BUFFER_SIZE = 2048
 DMX_DEFAULT_CHANNEL = 3
-DMX_MESSAGE_SIZE = 512
-DMX_SYNC_POOL = 400
+DMX_MESSAGE_SIZE = 511
+DMX_SYNC_POOL = 256
 DMX_SYNC_SIGNAL = b"\xB0\x0B"
 DMX_BAUD_RATE = 250000
-DMX_FRAME_TIMEOUT = 550000
 LAMP_CHANNEL_COUNT = 10
 EN_PIN = 5
 
@@ -26,6 +25,7 @@ class Dmx:
         self.channel = channel
         self.update_callbacks = []
         self.timeout_callbacks = []
+        self.last_message_time = 0
 
         # enable the RS485 interface - active low
         enable = Pin(EN_PIN)
@@ -57,10 +57,13 @@ class Dmx:
             res = None
             message = b""
 
+            self.last_message_time = utime.ticks_ms()
+
             while True:
                 res = self.uart.read(DMX_SYNC_POOL)
+
                 if res is not None:
-                    sync_offset = bytes(res).find(DMX_SYNC_SIGNAL)
+                    sync_offset = res.find(DMX_SYNC_SIGNAL)
 
                     if sync_offset >= 0:
                         self.last_break_time = utime.ticks_us()
@@ -72,10 +75,10 @@ class Dmx:
             # fill the buffer to the appropriate DMX channel data size
             # to prevent UART overflows, copy all of the dmx data into the
             # message buffer
-            if sync_offset >= 0  and bytes_to_read >= 0:
+            if sync_offset >= 0 and bytes_to_read >= 0:
                 message += res[sync_offset:DMX_SYNC_POOL]
 
-                while utime.ticks_diff(utime.ticks_us(), self.last_break_time) < DMX_FRAME_TIMEOUT:
+                while True:
                     tmp = self.uart.read(bytes_to_read)
 
                     if tmp is not None:
@@ -83,13 +86,15 @@ class Dmx:
 
                     message_length = len(message)
 
-                    if message_length == DMX_MESSAGE_SIZE:
+                    if message_length >= DMX_MESSAGE_SIZE:
                         break
 
                     bytes_to_read = DMX_MESSAGE_SIZE - message_length
+                    asyncio.sleep(0)
 
                 # convert message to tuple of ints from a given channel
                 self._update(tuple(message[self.channel-1:self.channel + LAMP_CHANNEL_COUNT]))
+                print("processed callback", utime.ticks_diff(utime.ticks_ms(), self.last_message_time))
 
             await asyncio.sleep(0)
 

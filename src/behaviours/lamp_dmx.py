@@ -1,4 +1,5 @@
 import uasyncio as asyncio
+import utime
 from lamp_core.behaviour import AnimatedBehaviour
 
 class LampDmx(AnimatedBehaviour):
