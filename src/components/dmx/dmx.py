@@ -11,11 +11,13 @@ from machine import Pin, UART
 import utime
 
 RX_BUFFER_SIZE = 2048
-DMX_DEFAULT_CHANNEL = 3
+DMX_DEFAULT_CHANNEL = 4
 DMX_MESSAGE_SIZE = 511
 DMX_SYNC_POOL = 256
-DMX_SYNC_SIGNAL = b"\xB0\x0B"
+DMX_SYNC_SIGNAL = b"\xB0\x0B\x0F"
 DMX_BAUD_RATE = 250000
+DMX_TIMEOUT = 40
+CALLBACK_TIMEOUT = 1000
 LAMP_CHANNEL_COUNT = 10
 EN_PIN = 5
 
@@ -25,7 +27,6 @@ class Dmx:
         self.channel = channel
         self.update_callbacks = []
         self.timeout_callbacks = []
-        self.last_message_time = 0
 
         # enable the RS485 interface - active low
         enable = Pin(EN_PIN)
@@ -40,11 +41,13 @@ class Dmx:
         self.loop = asyncio.get_event_loop()
 
     def _timeout(self):
-        pass
+        for cb in self.timeout_callbacks:
+            cb()
 
     def _update(self, message):
-        for cb in self.update_callbacks:
-            cb(message)
+        if message is not None:
+            for cb in self.update_callbacks:
+                cb(message)
 
     async def _control_loop_coro(self):
         while True:
@@ -57,18 +60,21 @@ class Dmx:
             res = None
             message = b""
 
-            self.last_message_time = utime.ticks_ms()
-
             while True:
+                if self.last_break_time > 0 and utime.ticks_diff(utime.ticks_ms(), self.last_break_time) > CALLBACK_TIMEOUT:
+                    self._timeout()
+                    self.last_break_time = 0
+
                 res = self.uart.read(DMX_SYNC_POOL)
 
                 if res is not None:
                     sync_offset = res.find(DMX_SYNC_SIGNAL)
 
                     if sync_offset >= 0:
-                        self.last_break_time = utime.ticks_us()
+                        self.last_break_time = utime.ticks_ms()
                         bytes_to_read = DMX_MESSAGE_SIZE - DMX_SYNC_POOL - sync_offset
-                        break
+                        if bytes_to_read >= 0:
+                            break
 
                 await asyncio.sleep(0)
 
@@ -78,7 +84,7 @@ class Dmx:
             if sync_offset >= 0 and bytes_to_read >= 0:
                 message += res[sync_offset:DMX_SYNC_POOL]
 
-                while True:
+                while utime.ticks_diff(utime.ticks_ms(), self.last_break_time) < DMX_TIMEOUT:
                     tmp = self.uart.read(bytes_to_read)
 
                     if tmp is not None:
@@ -92,9 +98,8 @@ class Dmx:
                     bytes_to_read = DMX_MESSAGE_SIZE - message_length
                     asyncio.sleep(0)
 
-                # convert message to tuple of ints from a given channel
-                self._update(tuple(message[self.channel-1:self.channel + LAMP_CHANNEL_COUNT]))
-                print("processed callback", utime.ticks_diff(utime.ticks_ms(), self.last_message_time))
+            # convert message to tuple of ints from a given channel
+            self._update(tuple(message[self.channel-1:self.channel + (LAMP_CHANNEL_COUNT - 1)]))
 
             await asyncio.sleep(0)
 
