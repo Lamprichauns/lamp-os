@@ -16,7 +16,7 @@ class LampDmx(AnimatedBehaviour):
         self.last_dmx_message = message
 
     def dmx_timeout(self):
-        print("timeout")
+        print("DMX Timeout")
         self.timeout = True
 
     async def draw(self):
