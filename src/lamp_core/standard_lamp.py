@@ -15,7 +15,7 @@ default_config = {
     "base": { "pixels": 40, "color":"#300783", "pin": 14, "bpp": 4 },
     "touch": { "pin": 32 },
     "lamp":  { "default_behaviours": True, "debug": False, "brightness": 100, "home_mode": False },
-    "dmx": { "channel": 3 }
+    "dmx": { "channel": 4 }
 }
 
 # pylint: disable=R0902

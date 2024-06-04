@@ -13,7 +13,7 @@ config = configurator_load_data({
     "base": { "pixels": 40, "color":"#300783", "pin": 14 },
     "lamp": { "name": "configurable", "brightness": 100, "home_mode": False },
     "wifi": { "ssid": "lamp-configurable" },
-    "dmx": { "channel": 3 }
+    "dmx": { "channel": 4 }
 })
 
 config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
