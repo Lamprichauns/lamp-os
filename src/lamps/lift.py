@@ -19,12 +19,14 @@ config = configurator_load_data({
     "base": { "pixels": 40, "color":"#249147", "pin": 14 },
     "lamp": { "name": "lift", "brightness": 100, "home_mode": False },
     "wifi": { "ssid": "lamp-lift" },
-    "dmx": { "channel": 3 }
+    "dmx": { "channel": 4 }
 })
 
 def post_process(ko_pixels):
     for l in range(23,40):
         ko_pixels[l] = darken(ko_pixels[l], percentage=90)
+
+    ko_pixels[19]  = (0,0,0,0)
 
 config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
 
