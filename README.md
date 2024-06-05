@@ -131,7 +131,7 @@ class MyAnimation(AnimatedBehaviour):
         #initialize your animation's variables here
 
     async def draw(self):
-        # change individual LED pixels here 
+        # change individual LED pixels here
 
         await self.next_frame()
 
@@ -189,7 +189,7 @@ config = {
 # Begin a clean lamp with no built ins and a deep red color
 my_lamp = StandardLamp('mylamp', "#FF0000", "#FF0000", config)
 
-# add your AnimatedBehaviours 
+# add your AnimatedBehaviours
 my_lamp.add_behaviour(LampFadeIn(my_lamp, frames=30, chained_behaviors=[LampIdle]))
 my_lamp.add_behaviour(LampIdle(my_lamp, frames=1))
 my_lamp.add_behaviour(Sun(my_lamp, frames=200, auto_play=True))
@@ -242,9 +242,9 @@ The `components` folder contains glue logic or implementations for addressing al
 
 ### DMX Details
 
-Lamps can receive DMX signals for those looking to synchronize them with a stage. The LampDmx behavior will listen for 10 channels of DMX given a start address between 3-502. The start channel is configurable in the web portal on the lamp, but the default is channel 3
+Lamps can receive DMX signals for those looking to synchronize them with a stage. The LampDmx behavior will listen for 10 channels of DMX given a start address between 3-502. The start channel is configurable in the web portal on the lamp, but the default is channel 4
 
-You will also need to define a fixture that broadcasts [176, 11] on channel 1 and 2 to activate the lamps. They derive a clock from channel 1 and 2. If the clock is absent, they will revert to their own personality after a few seconds
+You will also need to define a fixture that broadcasts [176, 11, 21] on channel 1-3 to activate the lamps. They derive a clock from these channels and if the clock is absent, they will revert to their own personality after a second
 
 The DMX channel/address scheme is:
 
