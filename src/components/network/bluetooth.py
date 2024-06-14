@@ -56,8 +56,8 @@ class LampNetwork:
 
     @classmethod
     def _prune_lamp_list(cls, lst, field, timeout):
-        for name in lst.items():
-            if time.time() - lst[name][field] >= timeout:
+        for name, lamp in lst.items():
+            if time.time() - lamp[field] >= timeout:
                 lst.pop(name)
 
     # await for and return departed lamps. Optionally specify the name to look for a specific lamp
@@ -73,8 +73,8 @@ class LampNetwork:
             await asyncio.sleep(1)
 
             # Add timed out lamps to departed list
-            for name in self.lamps.items():
-                if time.time() - self.lamps[name]["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
+            for name, lamp in self.lamps.items():
+                if time.time() - lamp["last_seen"] >= 5: # Currently with less timeout than this it will sometimes get un-seen/re-seen
                     self.departed_lamps[name] = self.lamps.pop(name)
                     print("BT: %s has left, removing" % (name))
 

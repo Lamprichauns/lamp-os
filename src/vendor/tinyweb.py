@@ -1,11 +1,9 @@
-# https://github.com/belyalov/tinyweb
 """
 Tiny Web - pretty simple and powerful web server for tiny platforms like ESP8266 / ESP32
 MIT license
 (C) Konstantin Belyalov 2017-2018
 """
 import uasyncio as asyncio
-import uasyncio.core
 import ujson as json
 import gc
 import uos as os
@@ -20,13 +18,16 @@ class Log():
 
     def error(self, e):
         print(e)
+
 log = Log()
 
 type_gen = type((lambda: (yield))())
 
-# uasyncio v3 is shipped with MicroPython 1.13, and contains some subtle
+# with v1.21.0 release all u-modules where renamend without the u prefix
+# -> uasyncio no named asyncio
+# asyncio v3 is shipped with MicroPython 1.13, and contains some subtle
 # but breaking changes. See also https://github.com/peterhinch/micropython-async/blob/master/v3/README.md
-IS_UASYNCIO_V3 = hasattr(asyncio, "__version__") and asyncio.__version__ >= (3,)
+IS_ASYNCIO_V3 = hasattr(asyncio, "__version__") and asyncio.__version__ >= (3,)
 
 
 def urldecode_plus(s):
@@ -122,7 +123,7 @@ class request:
             frags = line.split(b':', 1)
             if len(frags) != 2:
                 raise HTTPException(400)
-            if frags[0] in save_headers:
+            if frags[0].lower() in save_headers:
                 self.headers[frags[0]] = frags[1].strip()
 
     async def read_parse_form_data(self):
@@ -533,8 +534,8 @@ class webserver:
         params.update(kwargs)
         params['allowed_access_control_methods'] = ', '.join(params['methods'])
         # Convert methods/headers to bytestring
-        params['methods'] = [x.encode() for x in params['methods']]
-        params['save_headers'] = [x.encode() for x in params['save_headers']]
+        params['methods'] = [x.encode().upper() for x in params['methods']]
+        params['save_headers'] = [x.encode().lower() for x in params['save_headers']]
         # If URL has a parameter
         if url.endswith('>'):
             idx = url.rfind('<')
@@ -651,8 +652,8 @@ class webserver:
         sock.listen(backlog)
         try:
             while True:
-                if IS_UASYNCIO_V3:
-                    yield uasyncio.core._io_queue.queue_read(sock)
+                if IS_ASYNCIO_V3:
+                    yield asyncio.core._io_queue.queue_read(sock)
                 else:
                     yield asyncio.IORead(sock)
                 csock, caddr = sock.accept()

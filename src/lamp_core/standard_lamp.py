@@ -4,16 +4,18 @@ from behaviours.lamp_idle import LampIdle
 from components.led.neopixel import NeoPixel
 from components.network.bluetooth import Bluetooth
 from components.touch.touch import Touch
+from components.dmx.dmx import Dmx
 from lamp_core.lamp import Lamp
 from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
 from utils.config import merge_configs
 
 default_config = {
-    "base":  { "pin": 12, "pixels": 40, "bpp": 4 },
-    "shade": { "pin": 27, "pixels": 40, "bpp": 4 },
+    "shade": { "pixels": 36, "color":"#ffffff", "pin": 12, "bpp": 4 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 14, "bpp": 4 },
     "touch": { "pin": 32 },
     "lamp":  { "default_behaviours": True, "debug": False, "brightness": 100, "home_mode": False },
+    "dmx": { "channel": 4 }
 }
 
 # pylint: disable=R0902
@@ -38,6 +40,8 @@ class StandardLamp(Lamp):
         self.debug = config["lamp"]["debug"]
         self.brightness = config["lamp"]["brightness"]
         self.home_mode = config["lamp"]["home_mode"]
+        self.dmx = Dmx(channel=config["dmx"]["channel"])
+        self.dmx.enable()
 
         if config["lamp"]["default_behaviours"] is True:
             self.add_behaviour(LampFadeIn(self, frames=30, chained_behaviors = [LampIdle]))

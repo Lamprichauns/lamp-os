@@ -149,6 +149,13 @@
             <input id="home_mode" name="home_mode" type="checkbox" />Check to disable animations
           </p>
 
+          <h3>DMX Options</h3>
+          Addressing<br/>
+          shade(r,g,b,w) base(r,g,b,w) acc1 acc2<br/><br/>
+          <div>
+            <label for="dmx_channel">Channel ID: </label><input type="text" id="dmx_channel" name="dmx_channel" pattern="[0-9]+"/>
+          </div>
+
           <input type="submit" id="submit-button" value="Submit">
         </form>
       </div>
@@ -174,6 +181,7 @@
               document.getElementById("shade_pixels").value = data.shade.pixels;
               document.getElementById("brightness").value = data.lamp.brightness;
               document.getElementById("home_mode").checked = data.lamp.home_mode === true && 'checked';
+              document.getElementById("dmx_channel").value = data.dmx.channel;
               submit.value = "Submit";
               submit.disabled = false;
             })
