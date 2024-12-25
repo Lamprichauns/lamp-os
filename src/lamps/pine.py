@@ -16,52 +16,22 @@ from lamp_core.behaviour import AnimatedBehaviour
 # Define what we'll be setting in the web app
 config = configurator_load_data({
     "shade": { "pixels": 40, "color":"#ffffff", "pin": 12 },
-    "base": { "pixels": 40, "color":"#249147", "pin": 14 },
-    "lamp": { "name": "lift", "brightness": 100, "home_mode": False },
-    "wifi": { "ssid": "lamp-lift" },
+    "base": { "pixels": 40, "color":"#ff7a00", "pin": 14 },
+    "lamp": { "name": "pine", "brightness": 100, "home_mode": False },
+    "wifi": { "ssid": "lamp-pine" },
     "dmx": { "channel": 4 }
 })
-
-def post_process(ko_pixels):
-    for l in range(23,40):
-        ko_pixels[l] = darken(ko_pixels[l], percentage=90)
-
-    ko_pixels[19]  = (0,0,0,0)
 
 config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
 
 # Start a standard lamp and extend it to be a Wifi Access Point
 configurable = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["shade"]["color"], config_opts=config)
 configurable.access_point = AccessPoint(ssid=config["wifi"]["ssid"], password="123456789")
-configurable.base.default_pixels = create_gradient((14, 100, 48, 0), (36, 145, 71, 21), steps=config["base"]["pixels"])
-configurable.shade.default_pixels = [(136,61,0,180)] * configurable.shade.num_pixels
-
-class LampBubbles(AnimatedBehaviour):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.motor_pin = PWM(Pin(27))
-        self.last_dmx_message = None
-        self.lamp.dmx.add_update_callback(self.dmx_update)
-        self.lamp.dmx.add_timeout_callback(self.dmx_timeout)
-
-    def dmx_update(self, message):
-        self.last_dmx_message = message
-        self.motor_pin.duty(self.last_dmx_message[9]*4)
-
-    def dmx_timeout(self):
-        self.motor_pin.duty(0)
-
-    async def draw(self):
-        await self.next_frame()
-
-    async def control(self):
-        while True:
-
-            await asyncio.sleep(0)
+configurable.base.default_pixels = create_gradient((200, 0, 0, 0), (200, 100, 0, 30), steps=config["base"]["pixels"])
+configurable.shade.default_pixels = [(178,125,0,178)] * configurable.shade.num_pixels
 
 configurable.add_behaviour(LampDmx(configurable, frames=30, auto_play=True))
 configurable.add_behaviour(SocialGreeting(configurable, frames=300))
-configurable.add_behaviour(LampBubbles(configurable, frames=1, auto_play=True))
 configurable.add_behaviour(LampBrightness(configurable, frames=1, brightness=configurable.brightness))
 configurable.add_behaviour(Configurator(configurable, config=config))
 configurable.wake()
