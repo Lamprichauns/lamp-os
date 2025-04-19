@@ -150,6 +150,10 @@ Now to wire the base. Connect the striped or ridged lamp cord to the black wire.
 
 ![Base wiring](images/photo_2025-04-13_17-59-47.jpg)
 
-Note: this build includes DMX wiring - the large black cable - which is optional
+> Note: this build includes DMX wiring, the large black cable, which is based on an optional prototype
+
+Add the lampshade and plug the lamp in! With any luck, it'll spin up with the built in colors. From here, you can update your lamp by finding `lamp-configurable` in your wifi list and visiting <http://192.168.4.1> from any web browser to configure the lamp's name and colors.
+
+![Finished lamp](images/IMG_9844.jpg)
 
 This ends the tutorial for the basic build for the lamps
