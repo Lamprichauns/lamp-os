@@ -12,7 +12,11 @@ With these sorts of subtle changes, people may begin to realize things are not a
 
 ## Lamp Hardware Requirements
 
+![Main Lamp Components](hardware/build/images/important-lamp-parts.jpg)
+
 This software is intended for the ESP32 platform. Our preferred dev board is an ESP32-WROOM32 30 Pin board variant measuring no wider than 28mm with a chip antenna. Unsoldered/unwelded pins are preferred if possible. This space requirement is so the board can fit comfortably into a standard lamp socket. The boards can be had easily from Amazon and AliExpress for $5-10. The model we use has this pinout <https://lastminuteengineers.com/esp32-pinout-reference/>
+
+The USB connector is a USB type A metal shell crimp on connector. These tend to be the most robust.
 
 By default, a lamp will use about 80 LEDs. The limiting factor at the moment is current draw. generally over 100 LEDs you may have stability issues with a conventional USB source. We recommend purchasing LEDs strips with the following specs:
 
@@ -23,9 +27,11 @@ By default, a lamp will use about 80 LEDs. The limiting factor at the moment is 
 - RGBWW (warm white) LED Strips
 - Spacing of 60 LEDs/m
 
-The motion sensor used in our examples is an MPU-6050 development board
+A 10000mAh battery pack with USB will run this device portably for around 7 hours
 
-A 10Ah battery pack with USB will run this device portably for around 7 hours
+You'll also need some basic workshop tools, heat shrink, wire connectors, a soldering iron and a way to print the plastic bulb
+
+There's a handy [build guide with images here](hardware/build/README.md)
 
 ## Software Prerequisites
 
@@ -34,7 +40,7 @@ A 10Ah battery pack with USB will run this device portably for around 7 hours
 <https://atom.io>
 <https://git-scm.com/downloads>
 
-Once these are installed, reboot your machine to update all the paths. If they don't update, please manually add node, python and pip manually to your environment  
+Once these are installed, reboot your machine to update all the paths. If they don't update, please manually add node, python and pip manually to your environment
 
 ### Install Micropython on your ESP32
 
@@ -48,7 +54,7 @@ To setup a new board, run:
 
 ```inv setup PORT```
 
-Seperate tasks are also available:
+Separate tasks are also available:
 
 ```inv erase PORT
 inv erase PORT
@@ -76,9 +82,9 @@ You can also do this manually following the instructions here:
 
 ## Development Setup
 
-- Install the linter-pylint package in Atom IDE
-- Install pymakr package in Atom IDE
-- while in settings, go to the Pymakr package under installed packages and configure Pymakr to use your device addresses. On Windows you can type in COM3 or COM4. On Mac/*nux, you can add the path to the tty device.
+- Atom's package manager has stopped working, so you can install the tools by adding [the contents of this zip file's .atom dir](https://drive.google.com/file/d/1cjapOdo9d4c3ATLT5HVQdXs5Ky0LMCqp/view?usp=sharing) to your `%HOMEPATH%/.atom` dir (only works on Windows)
+- while in settings, go to the Pymakr package under installed packages and configure Pymakr to use your device addresses. On Windows you can type in COM3 or COM4
+- If pylint refuses to work, disable it
 
 ## Loading Data on the ESP32s
 
@@ -137,7 +143,7 @@ class MyAnimation(AnimatedBehaviour):
 
     async def control(self):
         while True:
-            # control your animation here             
+            # control your animation here
 
             await asyncio.sleep(0)
 ```
@@ -155,7 +161,7 @@ Example: Applying a single color to the lamp's base and shade. `default_pixels` 
             await self.next_frame()
 ```
 
-A slightly more complicated Example: adding a randomized point of light and fading it in and out. The control block is responsible for picking a random location for the light between pixels 12 and 20 every time the drawing phase ends.  
+A slightly more complicated Example: adding a randomized point of light and fading it in and out. The control block is responsible for picking a random location for the light between pixels 12 and 20 every time the drawing phase ends.
 
 ```python
     class Sun(AnimatedBehaviour):
@@ -254,7 +260,7 @@ The DMX channel/address scheme is:
 
 You will need to purchase a MAX3485 dev board (the 3.3V compatible version of the popular RS-485 serial driver). The board size should be: 19.3mmx13.3mm. The pinout is:
 
-```
+```txt
 3485 TX  -> ESP Pin D19 and ESP PIN D21
 3485 EN  -> ESP Pin D5
 3485 VCC -> ESP 3V3
@@ -264,7 +270,7 @@ You will need to purchase a MAX3485 dev board (the 3.3V compatible version of th
 3485 Gnd -> Red Wire    -> XLR & MiniXLR Pin 1 / Sleeve
 ```
 
-## Social Features  
+## Social Features
 
 The lamps are aware of how many other lamps are nearby, as well as their names and configured base and shade colors. Some examples of things that can be done with this:
 
