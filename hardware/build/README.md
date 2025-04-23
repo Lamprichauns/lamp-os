@@ -8,7 +8,7 @@ To begin your build, you'll need a number of parts and tools ready to go
 
 ### Lamp Parts
 
-More technical details of the parts you'll need to purchase can be found on the main readme
+More technical details of the parts you'll need to purchase can be found on the [main readme](../../README.md)
 
 - A working lamp and shade
 - USB Type A plug
@@ -20,6 +20,8 @@ More technical details of the parts you'll need to purchase can be found on the 
 - a pack of 24ga marettes (optional)
 - a pack of lamp hardware (extra nuts/bolts/washers)
 - a multimeter
+- heat shrink tubing: 2, 3 and 10mm diameter
+- a USB power bank (10000mAh or more)
 
 ### Tools
 
@@ -108,13 +110,17 @@ Cut and remove the lamp cord from the socket
 
 ![Cut the lamp cord to prepare to convert it to USB](images/photo_2025-04-13_17-59-28.jpg)
 
-Strip the cable and solder it to the USB connector. The ribbed or striped side of the cable should be ground
+Strip the cable and solder it to the USB connector. The ribbed or striped side of the cable should be ground. Keep the solder as low profile as possible so it doesn't touch the metal on the top side of the connector. Close the connector by clipping in the top metal can part.
 
 ![Solder the USB connector](images/photo_2025-04-13_17-59-30.jpg)
 
-Double check your work on soldering the connector with a multimeter. Plug the connector into the battery. Connect the black lead to the ribbed/striped side of the lamp cord and the red lead to the other. In DC voltage mode, make sure 2-5V is coming out of the connector and in the right polarity.
+Double check your work on soldering the connector with a multimeter. Plug the connector into the battery. Connect the black lead to the ribbed/striped side of the lamp cord and the red lead to the other. In DC voltage mode, make sure 2-5V is coming out of the connector and in the right polarity
 
 ![Check for 2-5V on the other end of the lamp cord](images/photo_2025-04-13_17-59-32.jpg)
+
+Crimp the connector firmly to the wire using locking pliers or a crimp tool. Retest the connector once assembled and crimped. Apply heat shrink tubing (10mm diameter) up to about the midpoint of the usb connector and heat til it's tight. The lamp cord is now complete
+
+![finishing touches for the lamp plug](images/lamp-cord-finished.jpg)
 
 On the base LED strip, solder 3 wires:
 

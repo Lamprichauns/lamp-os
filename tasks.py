@@ -8,11 +8,11 @@ from invoke import task
 
 @task
 def erase(c, port):
-    c.run(f"esptool --port {port} erase_flash")
+    c.run(f"esptool.py --port {port} erase_flash")
 
 @task
 def flash(c, port):
-    c.run(f"esptool --chip esp32 --port {port} write_flash -z 0x1000 esp32-20230426-v1.20.0.bin")
+    c.run(f"esptool.py --chip esp32 --port {port} write_flash -z 0x1000 esp32-20230426-v1.20.0.bin")
 
 @task
 def upload(c, port):
