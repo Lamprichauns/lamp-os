@@ -10,6 +10,10 @@ Within this vision there is room for the lamps to have personality, shown throug
 
 With these sorts of subtle changes, people may begin to realize things are not as static as they seem, creating a somewhat complex puzzle for people to solve and talk about.
 
+## Selecting a lamp to convert
+
+![Preferred lamp guidelines](hardware/build/images/Lamp-Selection-Guide.jpg)
+
 ## Lamp Hardware Requirements
 
 ![Main Lamp Components](hardware/build/images/important-lamp-parts.jpg)
@@ -82,9 +86,24 @@ You can also do this manually following the instructions here:
 
 ## Development Setup
 
-- Atom's package manager has stopped working, so you can install the tools by adding [the contents of this zip file's .atom dir](https://drive.google.com/file/d/1cjapOdo9d4c3ATLT5HVQdXs5Ky0LMCqp/view?usp=sharing) to your `%HOMEPATH%/.atom` dir (only works on Windows)
-- while in settings, go to the Pymakr package under installed packages and configure Pymakr to use your device addresses. On Windows you can type in COM3 or COM4
-- If pylint refuses to work, disable it
+Note that the Dev tools only work in Windows for no
+
+Install the following prerequisites:
+
+- [Nodejs 20+](https://nodejs.org/en)
+- [Python 3.12+](https://www.python.org/downloads/windows/)
+- [CP2102 Driver](https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads)
+- [Atom IDE](https://atom-editor.cc/)
+- [Git for Windows](https://git-scm.com/downloads/win)
+
+Setting up Atom IDE
+
+- Add Python to your windows path
+- Open Git Bash
+- type `pip install invoke esptool`
+- Atom's package manager has stopped working, so you can install the tools by adding [the contents of this zip file's .atom dir](https://drive.google.com/file/d/1cjapOdo9d4c3ATLT5HVQdXs5Ky0LMCqp/view?usp=sharing) to your `%HOMEPATH%/.atom` dir and restart Atom
+- file > settings, go to the Pymakr package under installed packages and configure Pymakr to use your device addresses. On Windows you can type in COM3 or COM4
+- Go into extensions and disable `pylint`
 
 ## Loading Data on the ESP32s
 
@@ -106,7 +125,7 @@ The left side bar will go green once connected. Use the upload button on the lef
 
 ## Lamp creation
 
-To create a lamp, create `src/lamps/my_lampname.py`.
+To create a lamp source file, create `src/lamps/my_lampname.py`.
 
 Reference your lamp by making a copy of `src/main_sample.py` to `src/main.py` and update the reference to your lamp name `import lamps.my_lampname`
 
