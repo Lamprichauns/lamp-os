@@ -128,6 +128,9 @@ class DrawBehaviour(Behaviour):
             t = utime.ticks_ms()
             self.lamp.base.flush()
             self.lamp.shade.flush()
+            self.lamp.strip_large_spots.flush()
+            self.lamp.strip_medium_spots.flush()
+            self.lamp.strip_small_spots.flush()
             gc.collect()
 
             # Add a framerate cap to save power in light loads

@@ -6,4 +6,4 @@ import machine
 gc.collect()
 gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
 
-machine.freq(240000000)
+machine.freq(160000000)

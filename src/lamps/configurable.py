@@ -9,8 +9,8 @@ from behaviours.lamp_dmx import LampDmx
 
 # Define what we'll be setting in the web app
 config = configurator_load_data({
-    "shade": { "pixels": 36, "color":"#ffffff", "pin": 12 },
-    "base": { "pixels": 40, "color":"#300783", "pin": 14 },
+    "shade": { "pixels": 36, "color":"#ffffff", "pin": 10 },
+    "base": { "pixels": 40, "color":"#300783", "pin": 9 },
     "lamp": { "name": "configurable", "brightness": 100, "home_mode": False },
     "wifi": { "ssid": "lamp-configurable" },
     "dmx": { "channel": 4 }

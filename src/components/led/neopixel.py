@@ -8,6 +8,7 @@ from machine import bitstream, Pin
 
 class ColorOrder:
     GRBW = (1, 0, 2, 3)
+    RGBW = (0, 1, 2, 3)
 
 class NeoPixel:
     TIMING_800kHz = (400, 850, 800, 450)
@@ -24,6 +25,6 @@ class NeoPixel:
     @micropython.native
     def write(self, data):
         if self.bpp == 3:
-            bitstream(self.pin, 0, self.timing, bytearray([item for t in [(g, r, b) for r, g, b, _ in data] for item in t]))
+            bitstream(self.pin, 0, self.timing, bytearray([item for t in [(r, g, b) for r, g, b, _ in data] for item in t]))
         else:
             bitstream(self.pin, 0, self.timing, bytearray([item for t in [(g, r, b, w) for r, g, b, w in data] for item in t]))
