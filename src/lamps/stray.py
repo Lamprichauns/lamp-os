@@ -12,25 +12,46 @@ from behaviours.lamp_brightness import LampBrightness
 from lamp_core.frame_buffer import FrameBuffer
 from utils.hex_to_rgbw import hex_to_rgbw
 from components.led.neopixel import NeoPixel, ColorOrder
+from utils.color_tools import darken
+
+def calculate_vibrance(r, g, b):
+    return (
+        (max(r, g) - min(r, g)) +
+        (max(g, b) - min(g, b)) +
+        (max(b, r) - min(b, r))
+    ) / 3
 
 def generate_color():
-    valid = False
+    r = random.random()
+    g = random.random()
+    b = random.random()
+
+    max_val = max(r, g, b)
+    r = r / max_val
+    g = g / max_val
+    b = b / max_val
+
+    vibrance = calculate_vibrance(r, g, b)
     count = 0
-    while not valid and count < 200:
+
+    # SETTING for color vibrance constraint
+    min_vibrance = round(random.random() * 0.7) + 0.3
+
+    while vibrance < min_vibrance and count < 50:
         count += 1
-        r = round(random.random() * 75) + 15
-        g = round(random.random() * 75) + 15
-        b = round(random.random() * 75) + 15
-        sum_rgb = r + g + b
-        if 45 < sum_rgb < 270:
-            vibrance = (
-                (max(r, g) - min(r, g)) +
-                (max(g, b) - min(g, b)) +
-                (max(b, r) - min(b, r))
-            ) / (255 * 3)
-            if vibrance > 0.15:
-                return (r, g, b, 0)
-    return (20, 20, 20, 0)  # default color
+        r = r * r
+        g = g * g
+        b = b * b
+        vibrance = calculate_vibrance(r, g, b)
+
+    # SETTING for color brightness constraint
+    scale = random.random() * 50
+
+    r = round(r * (scale + 20) * 1.2)
+    g = round(g * (scale + 20) * 0.9)
+    b = round(b * (scale + 20) * 0.75)
+
+    return (r, g, b, 0)  # default color
 
 # Define what we'll be setting in the web app
 config = configurator_load_data({
@@ -47,7 +68,7 @@ config["wifi"]["ssid"] = "lamp-%s" % (config["lamp"]["name"])
 stray = StandardLamp(name=config["lamp"]["name"], base_color=config["base"]["color"], shade_color=config["strip_large_spots"]["color"], config_opts=config)
 stray.strip_large_spots = FrameBuffer(hex_to_rgbw(config["strip_large_spots"]["color"]), config["strip_large_spots"]["pixels"], NeoPixel(config["strip_large_spots"]["pin"], config["strip_large_spots"]["pixels"], 4))
 stray.strip_medium_spots = FrameBuffer(hex_to_rgbw(config["strip_medium_spots"]["color"]), config["strip_medium_spots"]["pixels"], NeoPixel(config["strip_medium_spots"]["pin"], config["strip_medium_spots"]["pixels"], 4))
-stray.strip_small_spots = FrameBuffer(hex_to_rgbw(config["strip_small_spots"]["color"]), config["strip_small_spots"]["pixels"], NeoPixel(config["strip_small_spots"]["pin"], config["strip_small_spots"]["pixels"], 3, ColorOrder.RGBW))
+stray.strip_small_spots = FrameBuffer(hex_to_rgbw(config["strip_small_spots"]["color"]), config["strip_small_spots"]["pixels"], NeoPixel(config["strip_small_spots"]["pin"], config["strip_small_spots"]["pixels"], 3))
 stray.strip_large_spots.default_pixels = create_gradient(generate_color(), generate_color(), config["strip_large_spots"]["pixels"])
 stray.strip_medium_spots.default_pixels = create_gradient(generate_color(), generate_color(), config["strip_medium_spots"]["pixels"])
 stray.strip_small_spots.default_pixels = create_gradient(generate_color(), generate_color(), config["strip_small_spots"]["pixels"])
@@ -70,12 +91,14 @@ class PaintSpots(AnimatedBehaviour):
         if self.scene_change is True:
             for j, i in enumerate(range(0, self.spot_count)):
                 self.strip.buffer[i] = fade(self.previous_scene_pixels[j], self.current_scene_pixels[j], self.frames, self.frame)
+                self.strip.buffer[i] = darken(self.strip.buffer[i], self.percentage)
 
             if self.is_last_frame():
                 self.scene_change = False
         else:
             for j, i in enumerate(range(0,  self.spot_count)):
                 self.strip.buffer[i] = self.current_scene_pixels[j]
+                self.strip.buffer[i] = darken(self.strip.buffer[i], self.percentage)
 
         await self.next_frame()
 
@@ -94,12 +117,19 @@ class PaintSpots(AnimatedBehaviour):
 
             await asyncio.sleep(1)
 
+class PaintSpotsLarge(PaintSpots):
+    def __init__(self, *args, **kwargs):
+        self.percentage = 0
+        super().__init__(*args, **kwargs)
+
 class PaintSpotsMedium(PaintSpots):
     def __init__(self, *args, **kwargs):
+        self.percentage = 50
         super().__init__(*args, **kwargs)
 
 class PaintSpotsSmall(PaintSpots):
     def __init__(self, *args, **kwargs):
+        self.percentage = 70
         super().__init__(*args, **kwargs)
 
 class GlitchedSocialGreeting(AnimatedBehaviour):
@@ -213,9 +243,9 @@ class LampFadeIn(AnimatedBehaviour):
 
             await asyncio.sleep(0)
 
-stray.add_behaviour(LampFadeIn(stray, frames=30, chained_behaviors=[LampIdle, PaintSpots, PaintSpotsMedium, PaintSpotsSmall]))
+stray.add_behaviour(LampFadeIn(stray, frames=30, chained_behaviors=[LampIdle, PaintSpotsLarge, PaintSpotsMedium, PaintSpotsSmall]))
 stray.add_behaviour(LampIdle(stray, frames=1))
-stray.add_behaviour(PaintSpots(stray.strip_large_spots, stray, frames=3200))
+stray.add_behaviour(PaintSpotsLarge(stray.strip_large_spots, stray, frames=3200))
 stray.add_behaviour(PaintSpotsMedium(stray.strip_medium_spots, stray, frames=4500))
 stray.add_behaviour(PaintSpotsSmall(stray.strip_small_spots, stray, frames=2500))
 stray.add_behaviour(GlitchedSocialGreeting(stray, frames=300))
