@@ -128,9 +128,13 @@ class DrawBehaviour(Behaviour):
             t = utime.ticks_ms()
             self.lamp.base.flush()
             self.lamp.shade.flush()
-            self.lamp.strip_large_spots.flush()
-            self.lamp.strip_medium_spots.flush()
-            self.lamp.strip_small_spots.flush()
+            if hasattr(self.lamp, "strip_large_spots"):
+                self.lamp.strip_large_spots.flush()
+                self.lamp.strip_medium_spots.flush()
+                self.lamp.strip_small_spots.flush()
+            if hasattr(self.lamp, "strip1"):
+                self.lamp.strip1.flush()
+                self.lamp.strip2.flush()
             gc.collect()
 
             # Add a framerate cap to save power in light loads
