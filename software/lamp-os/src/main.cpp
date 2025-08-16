@@ -1,11 +1,2 @@
-#include <Arduino.h>
-
-
-
-void setup() {
-
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-}
+#include "globals.hpp"
+#include "lamps/standard_lamp.hpp" 
