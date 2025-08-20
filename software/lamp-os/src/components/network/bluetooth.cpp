@@ -20,6 +20,7 @@ public:
     LampColor baseColor = LampColor(0);
     LampColor shadeColor = LampColor(0);
     unsigned long timeFoundMs;
+    boolean acknowledged;
 
     LampBluetoothRecord(
         std::__cxx11::string inName,
@@ -31,6 +32,7 @@ public:
         baseColor = inBaseColor;
         shadeColor = inShadeColor;
         timeFoundMs = inTimeFoundMs;
+        acknowledged = false;
     }
 };
 
@@ -40,13 +42,28 @@ class LampBluetoothPool {
 public:
     static void addLamp(LampBluetoothRecord lamp) {
         if (pool.size() < MAX_POOL_SIZE) {
+            // skip familiar lamp names that are already found
+            for(int i=0; i<pool.size(); i++) {
+                if(pool[i].name == lamp.name) {
+                    return;
+                }
+            }
+
             pool.push_back(lamp);
         }
     }
 
     static void listLamps() {
         for(int i=0; i<pool.size(); i++) {
-            Serial.printf("List Item Name: %s - time found: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs);
+            Serial.printf("List Item Name: %s - time found: %d - acknowledged: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs, pool[i].acknowledged);
+        }
+    }
+
+    static void acknowledgeLamp(std::__cxx11::string name) {
+        for(int i=0; i<pool.size(); i++) {
+            if (pool[i].name == name) {
+                pool[i].acknowledged = true;
+            }
         }
     }
 } lampBluetoothPool;
@@ -79,6 +96,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     void onScanEnd(const NimBLEScanResults& results, int reason) override {
         Serial.printf("Scan Ended\n");
         lampBluetoothPool.listLamps();
+        lampBluetoothPool.acknowledgeLamp("century");
         NimBLEDevice::getScan()->start(BLE_GAP_SCAN_TIME);
     }
 } scanCallbacks;
