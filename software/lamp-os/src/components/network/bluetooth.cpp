@@ -14,16 +14,71 @@
 #include "./bluetooth.hpp"
 #include "../../util/lamp_color.hpp"
 
+class LampBluetoothRecord {
+public:
+    std::__cxx11::string name;
+    LampColor baseColor = LampColor(0);
+    LampColor shadeColor = LampColor(0);
+    unsigned long timeFoundMs;
+
+    LampBluetoothRecord(
+        std::__cxx11::string inName,
+        LampColor inBaseColor,
+        LampColor inShadeColor,
+        unsigned long inTimeFoundMs
+    ){
+        name = inName;
+        baseColor = inBaseColor;
+        shadeColor = inShadeColor;
+        timeFoundMs = inTimeFoundMs;
+    }
+};
+
+static std::vector<LampBluetoothRecord> pool;
+
+class LampBluetoothPool {
+public:
+    static void addLamp(LampBluetoothRecord lamp) {
+        if (pool.size() < MAX_POOL_SIZE) {
+            pool.push_back(lamp);
+        }
+    }
+
+    static void listLamps() {
+        for(int i=0; i<pool.size(); i++) {
+            Serial.printf("List Item Name: %s - time found: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs);
+        }
+    }
+} lampBluetoothPool;
+
 class ScanCallbacks : public NimBLEScanCallbacks {
+    bool isLamp(const char *data) {
+        if(data[0] == (BLE_MAGIC_NUMBER & 0xff) && data[1] == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
+            return true;
+        }
+
+        return false;
+    }
+
     void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
-        Serial.printf("Advertised Device found: %s\n", advertisedDevice->toString().c_str());
-        if (advertisedDevice->haveName() && advertisedDevice->getName() == "NimBLE-Server") {
-            Serial.printf("Found Our Device\n");
+        if (advertisedDevice->haveName() && advertisedDevice->haveManufacturerData()) {
+            const char *data = advertisedDevice->getManufacturerData().c_str();
+            if(advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE && isLamp(data)) {
+                Serial.printf("Found Lamp: %s\n", advertisedDevice->getName().c_str());
+                LampBluetoothRecord lamp = LampBluetoothRecord(
+                    advertisedDevice->getName(),
+                    LampColor(0),
+                    LampColor(0),
+                    millis()
+                );
+                lampBluetoothPool.addLamp(lamp);
+            }
         }
     }
 
     void onScanEnd(const NimBLEScanResults& results, int reason) override {
         Serial.printf("Scan Ended\n");
+        lampBluetoothPool.listLamps();
         NimBLEDevice::getScan()->start(BLE_GAP_SCAN_TIME);
     }
 } scanCallbacks;
@@ -32,7 +87,6 @@ LampBluetoothComponent::LampBluetoothComponent(std::__cxx11::string name, LampCo
     Serial.printf("Starting Bluetooth Async Client\n");
     NimBLEDevice::init(name);
     NimBLEDevice::setPower(BLE_POWER_LEVEL);
-
 
     // Scan for all bluetooth devices and filter the list
     // for lamps by manufacturer ID. If a lamp is found, add
@@ -54,14 +108,15 @@ LampBluetoothComponent::LampBluetoothComponent(std::__cxx11::string name, LampCo
     std::vector<unsigned char> data{
         static_cast<unsigned char>(BLE_MAGIC_NUMBER & 0xff),
         static_cast<unsigned char>((BLE_MAGIC_NUMBER >> 8) & 0xff),
-        static_cast<unsigned char>((base_color.R())),
-        static_cast<unsigned char>((base_color.G())),
-        static_cast<unsigned char>((base_color.B())),
-        static_cast<unsigned char>((shade_color.R())),
-        static_cast<unsigned char>((shade_color.G())),
-        static_cast<unsigned char>((shade_color.B())),
+        static_cast<unsigned char>(base_color.r),
+        static_cast<unsigned char>(base_color.g),
+        static_cast<unsigned char>(base_color.b),
+        static_cast<unsigned char>(shade_color.r),
+        static_cast<unsigned char>(shade_color.g),
+        static_cast<unsigned char>(shade_color.b),
     };
     pAdvertising->setManufacturerData(data);
+    pAdvertising->setConnectableMode(0);
     pAdvertising->start();
 }
 

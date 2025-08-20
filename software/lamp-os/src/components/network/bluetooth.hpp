@@ -20,6 +20,12 @@
 // Power level in DB
 #define BLE_POWER_LEVEL 4
 
+// Minimum RSSI to be included in the lamp pool
+#define BLE_MINIMUM_RSSI_VALUE -94
+
+// Max lamp pool size
+#define MAX_POOL_SIZE 10
+
 class LampBluetoothComponent {
     public:
         LampBluetoothComponent(std::__cxx11::string name, LampColor base_color, LampColor shade_color);

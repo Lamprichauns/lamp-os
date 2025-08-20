@@ -6,11 +6,7 @@ class LampColor {
 private:
     uint32_t color;
 public:
+    uint8_t r,g,b,w;
     LampColor(uint32_t in_color);
-
-    int R();
-    int G();
-    int B();
-    int W();
 };
 #endif

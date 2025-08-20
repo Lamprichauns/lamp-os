@@ -3,20 +3,8 @@
 
 LampColor::LampColor(uint32_t in_color) {
     color = in_color;
-}
-
-int LampColor::R() {
-    return (color >> 24) & 0xff;
-}
-
-int LampColor::G() {
-    return (color >> 16) & 0xff;
-}
-
-int LampColor::B() {
-    return (color >> 8) & 0xff;
-}
-
-int LampColor::W() {
-    return color & 0xff;
+    r = (in_color >> 24) & 0xff;
+    g = (in_color >> 16) & 0xff;
+    b = (in_color >> 8) & 0xff;
+    w = in_color & 0xff;
 }

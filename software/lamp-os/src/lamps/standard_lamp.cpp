@@ -5,6 +5,7 @@
 void setup() {
     Serial.begin(115200);
     LampBluetoothComponent bt("configurable", LampColor(95690659), LampColor(0));
+
 }
 
 void loop() {
