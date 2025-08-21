@@ -2,6 +2,7 @@
 #define LAMP_BLUETOOTH_COMPONENT_H
 
 #include <Arduino.h>
+#include <vector>
 #include "../../util/lamp_color.hpp"
 
 // Lamp Identifier
@@ -20,16 +21,39 @@
 // Power level in DB
 #define BLE_POWER_LEVEL 4
 
-// Minimum RSSI to be included in the lamp pool
+// Minimum RSSI to be included/updated in the lamp pool
 #define BLE_MINIMUM_RSSI_VALUE -94
 
 // Max lamp pool size
-#define MAX_POOL_SIZE 10
+#define MAX_POOL_SIZE 20
+
+class LampBluetoothRecord {
+public:
+    std::__cxx11::string name;
+    LampColor baseColor = LampColor(0);
+    LampColor shadeColor = LampColor(0);
+    unsigned long timeFoundMs;
+    boolean acknowledged;
+
+    LampBluetoothRecord(
+        std::__cxx11::string inName,
+        LampColor inBaseColor,
+        LampColor inShadeColor,
+        unsigned long inTimeFoundMs
+    );
+};
+
+class LampBluetoothPool {
+public:
+    void addLamp(LampBluetoothRecord lamp);
+    void listLamps();
+    void acknowledgeLamp(std::__cxx11::string name);
+};
 
 class LampBluetoothComponent {
-    public:
-        LampBluetoothComponent(std::__cxx11::string name, LampColor base_color, LampColor shade_color);
-        int get_found_lamps();
+public:
+    LampBluetoothComponent(std::__cxx11::string name, LampColor base_color, LampColor shade_color);
+    std::vector<LampBluetoothRecord> get_all_lamps();
 };
 
 #endif

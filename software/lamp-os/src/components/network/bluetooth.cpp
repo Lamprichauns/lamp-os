@@ -14,59 +14,50 @@
 #include "./bluetooth.hpp"
 #include "../../util/lamp_color.hpp"
 
-class LampBluetoothRecord {
-public:
-    std::__cxx11::string name;
-    LampColor baseColor = LampColor(0);
-    LampColor shadeColor = LampColor(0);
-    unsigned long timeFoundMs;
-    boolean acknowledged;
-
-    LampBluetoothRecord(
-        std::__cxx11::string inName,
-        LampColor inBaseColor,
-        LampColor inShadeColor,
-        unsigned long inTimeFoundMs
-    ){
-        name = inName;
-        baseColor = inBaseColor;
-        shadeColor = inShadeColor;
-        timeFoundMs = inTimeFoundMs;
-        acknowledged = false;
-    }
+LampBluetoothRecord::LampBluetoothRecord(
+    std::__cxx11::string inName,
+    LampColor inBaseColor,
+    LampColor inShadeColor,
+    unsigned long inTimeFoundMs
+){
+    name = inName;
+    baseColor = inBaseColor;
+    shadeColor = inShadeColor;
+    timeFoundMs = inTimeFoundMs;
+    acknowledged = false;
 };
 
 static std::vector<LampBluetoothRecord> pool;
 
-class LampBluetoothPool {
-public:
-    static void addLamp(LampBluetoothRecord lamp) {
-        if (pool.size() < MAX_POOL_SIZE) {
-            // skip familiar lamp names that are already found
-            for(int i=0; i<pool.size(); i++) {
-                if(pool[i].name == lamp.name) {
-                    return;
-                }
-            }
-
-            pool.push_back(lamp);
-        }
-    }
-
-    static void listLamps() {
+void LampBluetoothPool::addLamp(LampBluetoothRecord lamp) {
+    if (pool.size() < MAX_POOL_SIZE) {
+        // skip familiar lamp names that are already found
         for(int i=0; i<pool.size(); i++) {
-            Serial.printf("List Item Name: %s - time found: %d - acknowledged: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs, pool[i].acknowledged);
-        }
-    }
-
-    static void acknowledgeLamp(std::__cxx11::string name) {
-        for(int i=0; i<pool.size(); i++) {
-            if (pool[i].name == name) {
-                pool[i].acknowledged = true;
+            if(pool[i].name == lamp.name) {
+                lamp.timeFoundMs = millis();
+                return;
             }
         }
+
+        pool.push_back(lamp);
     }
-} lampBluetoothPool;
+};
+
+void LampBluetoothPool::listLamps() {
+    for(int i=0; i<pool.size(); i++) {
+        Serial.printf("List Item Name: %s - time found: %d - acknowledged: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs, pool[i].acknowledged);
+    }
+};
+
+void LampBluetoothPool::acknowledgeLamp(std::__cxx11::string name) {
+    for(int i=0; i<pool.size(); i++) {
+        if (pool[i].name == name) {
+            pool[i].acknowledged = true;
+        }
+    }
+};
+
+LampBluetoothPool lampBluetoothPool;
 
 class ScanCallbacks : public NimBLEScanCallbacks {
     bool isLamp(const char *data) {
@@ -138,6 +129,6 @@ LampBluetoothComponent::LampBluetoothComponent(std::__cxx11::string name, LampCo
     pAdvertising->start();
 }
 
-int LampBluetoothComponent::get_found_lamps() {
-    return 0;
+std::vector<LampBluetoothRecord> LampBluetoothComponent::get_all_lamps() {
+    return pool;
 }
