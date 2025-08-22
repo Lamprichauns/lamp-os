@@ -1,10 +1,23 @@
 #include <Arduino.h>
 #include "./lamp_color.hpp"
 
-LampColor::LampColor(uint32_t in_color) {
-    color = in_color;
-    r = (in_color >> 24) & 0xff;
-    g = (in_color >> 16) & 0xff;
-    b = (in_color >> 8) & 0xff;
-    w = in_color & 0xff;
-}
+LampColor::LampColor(uint32_t inColor) {
+    color = inColor;
+    r = (inColor >> 24) & 0xff;
+    g = (inColor >> 16) & 0xff;
+    b = (inColor >> 8) & 0xff;
+    w = inColor & 0xff;
+};
+
+LampColor::LampColor(
+    uint8_t inR,
+    uint8_t inG,
+    uint8_t inB,
+    uint8_t inW
+){
+    r = inR;
+    g = inG;
+    b = inB;
+    w = inW;
+    color = (uint32_t)((inR<<24) | (inG<<16) | (inB<<8) | (inW));
+};

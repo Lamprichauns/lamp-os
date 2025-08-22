@@ -2,58 +2,40 @@
 #define LAMP_BLUETOOTH_COMPONENT_H
 
 #include <Arduino.h>
-#include <vector>
-#include "../../util/lamp_color.hpp"
+#include "./lamp_pool.hpp"
 
-// Lamp Identifier
-#define BLE_MAGIC_NUMBER 42069 //unsigned short - packed as little endian from original Python
+// Lamp manufacturer identifier
+#define BLE_MAGIC_NUMBER 42069
 
 // Scan every INTERVAL for WINDOW
 #define BLE_GAP_SCAN_INTERVAL_MS 20
 #define BLE_GAP_SCAN_WINDOW_MS 10
 
 // Advertise every INTERVAL
-#define BLE_GAP_ADV_INTERVAL_MS 10
+#define BLE_GAP_ADV_INTERVAL_MS 500
 
 // Scan time
 #define BLE_GAP_SCAN_TIME 500
 
-// Power level in DB
+// Tx power level in DB
+// @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
 #define BLE_POWER_LEVEL 4
 
 // Minimum RSSI to be included/updated in the lamp pool
 #define BLE_MINIMUM_RSSI_VALUE -94
 
-// Max lamp pool size
-#define MAX_POOL_SIZE 20
-
-class LampBluetoothRecord {
-public:
-    std::__cxx11::string name;
-    LampColor baseColor = LampColor(0);
-    LampColor shadeColor = LampColor(0);
-    unsigned long timeFoundMs;
-    boolean acknowledged;
-
-    LampBluetoothRecord(
-        std::__cxx11::string inName,
-        LampColor inBaseColor,
-        LampColor inShadeColor,
-        unsigned long inTimeFoundMs
-    );
-};
-
-class LampBluetoothPool {
-public:
-    void addLamp(LampBluetoothRecord lamp);
-    void listLamps();
-    void acknowledgeLamp(std::__cxx11::string name);
-};
-
+/**
+ * @brief Entrypoint class to advertise and track lamps by Bluetooth LE
+ */
 class LampBluetoothComponent {
 public:
     LampBluetoothComponent(std::__cxx11::string name, LampColor base_color, LampColor shade_color);
-    std::vector<LampBluetoothRecord> get_all_lamps();
+
+    /**
+     * @brief get a listing of all lamps within acceptable signal strength limits
+     * @return vector of all found lamps
+     */
+    void get_all_lamps();
 };
 
 #endif

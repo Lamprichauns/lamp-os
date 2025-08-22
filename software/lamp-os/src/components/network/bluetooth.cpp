@@ -13,55 +13,13 @@
 #include <NimBLEDevice.h>
 #include "./bluetooth.hpp"
 #include "../../util/lamp_color.hpp"
-
-LampBluetoothRecord::LampBluetoothRecord(
-    std::__cxx11::string inName,
-    LampColor inBaseColor,
-    LampColor inShadeColor,
-    unsigned long inTimeFoundMs
-){
-    name = inName;
-    baseColor = inBaseColor;
-    shadeColor = inShadeColor;
-    timeFoundMs = inTimeFoundMs;
-    acknowledged = false;
-};
-
-static std::vector<LampBluetoothRecord> pool;
-
-void LampBluetoothPool::addLamp(LampBluetoothRecord lamp) {
-    if (pool.size() < MAX_POOL_SIZE) {
-        // skip familiar lamp names that are already found
-        for(int i=0; i<pool.size(); i++) {
-            if(pool[i].name == lamp.name) {
-                lamp.timeFoundMs = millis();
-                return;
-            }
-        }
-
-        pool.push_back(lamp);
-    }
-};
-
-void LampBluetoothPool::listLamps() {
-    for(int i=0; i<pool.size(); i++) {
-        Serial.printf("List Item Name: %s - time found: %d - acknowledged: %d\n", pool[i].name.c_str(), pool[i].timeFoundMs, pool[i].acknowledged);
-    }
-};
-
-void LampBluetoothPool::acknowledgeLamp(std::__cxx11::string name) {
-    for(int i=0; i<pool.size(); i++) {
-        if (pool[i].name == name) {
-            pool[i].acknowledged = true;
-        }
-    }
-};
+#include "./lamp_pool.hpp"
 
 LampBluetoothPool lampBluetoothPool;
 
 class ScanCallbacks : public NimBLEScanCallbacks {
-    bool isLamp(const char *data) {
-        if(data[0] == (BLE_MAGIC_NUMBER & 0xff) && data[1] == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
+    bool isLamp(std::__cxx11::string data) {
+        if(data.length() == 8 && data.at(0) == (BLE_MAGIC_NUMBER & 0xff) && data.at(1) == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
             return true;
         }
 
@@ -70,16 +28,15 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
     void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
         if (advertisedDevice->haveName() && advertisedDevice->haveManufacturerData()) {
-            const char *data = advertisedDevice->getManufacturerData().c_str();
+            std::__cxx11::string data = advertisedDevice->getManufacturerData();
             if(advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE && isLamp(data)) {
-                Serial.printf("Found Lamp: %s\n", advertisedDevice->getName().c_str());
                 LampBluetoothRecord lamp = LampBluetoothRecord(
                     advertisedDevice->getName(),
-                    LampColor(0),
-                    LampColor(0),
+                    LampColor(data.at(2), data.at(3), data.at(4), 0),
+                    LampColor(data.at(5), data.at(6), data.at(7), 0),
                     millis()
                 );
-                lampBluetoothPool.addLamp(lamp);
+                lampBluetoothPool.addOrUpdateLamp(lamp);
             }
         }
     }
@@ -87,7 +44,6 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     void onScanEnd(const NimBLEScanResults& results, int reason) override {
         Serial.printf("Scan Ended\n");
         lampBluetoothPool.listLamps();
-        lampBluetoothPool.acknowledgeLamp("century");
         NimBLEDevice::getScan()->start(BLE_GAP_SCAN_TIME);
     }
 } scanCallbacks;
@@ -129,6 +85,6 @@ LampBluetoothComponent::LampBluetoothComponent(std::__cxx11::string name, LampCo
     pAdvertising->start();
 }
 
-std::vector<LampBluetoothRecord> LampBluetoothComponent::get_all_lamps() {
-    return pool;
+void LampBluetoothComponent::get_all_lamps() {
+    lampBluetoothPool.listLamps();
 }
