@@ -1,8 +1,8 @@
-#ifndef LAMP_BLUETOOTH_COMPONENT_H
-#define LAMP_BLUETOOTH_COMPONENT_H
+#ifndef LAMP_COMPONENTS_NETWORK_BLUETOOTH_H
+#define LAMP_COMPONENTS_NETWORK_BLUETOOTH_H
 
 #include <Arduino.h>
-#include "./lamp_pool.hpp"
+#include "./bluetooth_pool.hpp"
 
 // Lamp manufacturer identifier
 #define BLE_MAGIC_NUMBER 42069
@@ -15,7 +15,7 @@
 #define BLE_GAP_ADV_INTERVAL_MS 500
 
 // Scan time
-#define BLE_GAP_SCAN_TIME 500
+#define BLE_GAP_SCAN_TIME_MS 1000
 
 // Tx power level in DB
 // @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
@@ -24,18 +24,28 @@
 // Minimum RSSI to be included/updated in the lamp pool
 #define BLE_MINIMUM_RSSI_VALUE -94
 
-/**
- * @brief Entrypoint class to advertise and track lamps by Bluetooth LE
- */
-class LampBluetoothComponent {
-public:
-    LampBluetoothComponent(std::__cxx11::string name, LampColor base_color, LampColor shade_color);
-
+namespace lamp {
     /**
-     * @brief get a listing of all lamps within acceptable signal strength limits
-     * @return vector of all found lamps
+     * @brief Entrypoint class to advertise and track lamps by Bluetooth LE
      */
-    void get_all_lamps();
-};
+    class BluetoothComponent {
+    public:
+        BluetoothComponent();
+
+        /**
+         * @brief initialize bluetooth with the user's lamp name and colors
+         * @param [in] name max. 13 character string representing the lamp's name
+         * @param [in] inBaseColor the base color RGB value. W is ommitted
+         * @param [in] inShadeColor the shade color RGB value. W is ommitted
+         */
+        void begin(std::__cxx11::string name, Color inBaseColor, Color inShadeColor);
+
+        /**
+         * @brief get a listing of all lamps within acceptable signal strength limits
+         * @return vector of all found lamps
+         */
+        std::vector<BluetoothRecord> getLamps();
+    };
+}
 
 #endif
