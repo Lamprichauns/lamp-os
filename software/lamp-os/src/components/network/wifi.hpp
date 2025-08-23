@@ -5,22 +5,20 @@
 
 #define UNIVERSE 1
 
-namespace lamp
-{
-  class WifiComponent
-  {
-  public:
-    /**
-     * @brief initializer for setup
-     * @param [in] name max. 13 character string representing the lamp's name
-     */
-    void begin(std::__cxx11::string name);
+namespace lamp {
+class WifiComponent {
+ public:
+  /**
+   * @brief initializer for setup
+   * @param [in] name max. 13 character string representing the lamp's name
+   */
+  void begin(std::__cxx11::string name);
 
-    /**
-     * @brief process to call in the main loop
-     */
-    void tick();
-  };
-}
+  /**
+   * @brief process to call in the main loop
+   */
+  void tick();
+};
+}  // namespace lamp
 
 #endif
