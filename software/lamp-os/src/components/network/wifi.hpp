@@ -3,8 +3,9 @@
 
 #include <Arduino.h>
 
+#define COORDINATOR_SSID ""
+#define COORDINATOR_SHARED_PASS ""
 #define UNIVERSE 1
-#define UNIVERSE_COUNT 2
 
 namespace lamp {
     class WifiComponent {
