@@ -3,6 +3,7 @@
 #include <AsyncTCP.h>
 #include "ESPAsyncWebServer.h"
 #include "./wifi.hpp"
+#include "../../secrets.hpp"
 #include "SPIFFS.h"
 #include "ArtnetWifi.h"
 
@@ -54,7 +55,7 @@ namespace lamp {
   };
 
   void WifiComponent::begin(std::__cxx11::string name) {
-    WiFi.begin(COORDINATOR_SSID, COORDINATOR_SHARED_PASS);
+    WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS);
     artnet.setArtDmxCallback(onDmxFrame);
     artnet.begin();
 

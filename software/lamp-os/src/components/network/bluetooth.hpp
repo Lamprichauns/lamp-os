@@ -24,27 +24,29 @@
 // Minimum RSSI to be included/updated in the lamp pool
 #define BLE_MINIMUM_RSSI_VALUE -94
 
-namespace lamp {
+namespace lamp
+{
+  /**
+   * @brief Entrypoint class to advertise and track lamps by Bluetooth LE
+   */
+  class BluetoothComponent
+  {
+  public:
+    BluetoothComponent();
+
     /**
-     * @brief Entrypoint class to advertise and track lamps by Bluetooth LE
+     * @brief initialize bluetooth with the user's lamp name and colors
+     * @param [in] name max. 13 character string representing the lamp's name
+     * @param [in] inBaseColor the base color RGB value. W is ommitted
+     * @param [in] inShadeColor the shade color RGB value. W is ommitted
      */
-    class BluetoothComponent {
-    public:
-        BluetoothComponent();
+    void begin(std::__cxx11::string name, Color inBaseColor, Color inShadeColor);
 
-        /**
-         * @brief initialize bluetooth with the user's lamp name and colors
-         * @param [in] name max. 13 character string representing the lamp's name
-         * @param [in] inBaseColor the base color RGB value. W is ommitted
-         * @param [in] inShadeColor the shade color RGB value. W is ommitted
-         */
-        void begin(std::__cxx11::string name, Color inBaseColor, Color inShadeColor);
-
-        /**
-         * @brief get a listing of all lamps within acceptable signal strength limits
-         * @return vector of all found lamps
-         */
-        std::vector<BluetoothRecord> getLamps();
-    };
+    /**
+     * @brief get a listing of all lamps within acceptable signal strength limits
+     * @return vector of all found lamps
+     */
+    std::vector<BluetoothRecord> getLamps();
+  };
 }
 #endif
