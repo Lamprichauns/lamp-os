@@ -3,6 +3,10 @@
 
 #include <Arduino.h>
 
+#include <vector>
+
+#include "../../util/color.hpp"
+
 #define UNIVERSE 1
 
 namespace lamp {
@@ -18,6 +22,18 @@ class WifiComponent {
    * @brief process to call in the main loop
    */
   void tick();
+
+  /**
+   * @brief get last Artnet UDP data from the buffer
+   * @return vector of shade and base colors
+   */
+  std::vector<Color> getArtnetData();
+
+  /**
+   * @brief get last Artnet UDP frame time
+   * @return timestamp of last frame in milliseconds
+   */
+  unsigned long getLastArtnetFrameTimeMs();
 };
 }  // namespace lamp
 
