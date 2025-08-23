@@ -1,26 +1,36 @@
-#include <Arduino.h>
-#include <WiFi.h>
-#include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
-#include "wifi.hpp"
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include "ESPAsyncWebServer.h"
+#include "./wifi.hpp"
+#include "SPIFFS.h"
 
-AsyncWebServer server(80);
-DNSServer dnsServer;
-bool apActive = false;
+namespace lamp {
+  DNSServer dnsServer;
+  AsyncWebServer server(80);
 
-void init(const String ssid, const String password)
-{
-  WiFi.softAPConfig(IPAddress(4, 3, 2, 1), IPAddress(4, 3, 2, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP(ssid, password);
-  WiFi.setTxPower(wifi_power_t(WIFI_POWER_19_5dBm));
+  class CaptiveRequestHandler : public AsyncWebHandler {
+  public:
+    CaptiveRequestHandler() {};
+    virtual ~CaptiveRequestHandler() {};
 
-  if (!apActive) // start captive portal if AP active
-  {
-    server.begin();
+    bool canHandle(AsyncWebServerRequest *request){
+      return true;
+    };
 
-    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    void handleRequest(AsyncWebServerRequest *request) {
+      request->send(SPIFFS, "/configurator.html", String(), false);
+    };
+  };
+
+  void WifiComponent::begin(std::__cxx11::string name) {
+    WiFi.softAP(name.c_str());
     dnsServer.start(53, "*", WiFi.softAPIP());
-  }
+    server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
+    server.begin();
+  };
 
-  apActive = true;
+  void WifiComponent::tick(){
+    dnsServer.processNextRequest();
+  }
 }

@@ -47,5 +47,4 @@ namespace lamp {
         std::vector<BluetoothRecord> getLamps();
     };
 }
-
 #endif
