@@ -23,8 +23,8 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence,
                 uint8_t *data) {
   lastDmxFrameMs = millis();
   if (universe == 1) {
-    artnetData = {Color(data[1], data[2], data[3], data[4]),
-                  Color(data[5], data[6], data[7], data[8])};
+    artnetData = {Color(data[0], data[1], data[2], data[3]),
+                  Color(data[4], data[5], data[6], data[7])};
   }
 }
 
