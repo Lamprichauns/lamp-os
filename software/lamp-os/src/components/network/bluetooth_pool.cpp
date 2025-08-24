@@ -1,9 +1,11 @@
 #include "./bluetooth_pool.hpp"
 
+#include <string>
+
 #include "../../util/color.hpp"
 
 namespace lamp {
-BluetoothRecord::BluetoothRecord(std::__cxx11::string inName, Color inBaseColor,
+BluetoothRecord::BluetoothRecord(std::string inName, Color inBaseColor,
                                  Color inShadeColor,
                                  unsigned long inLastSeenTimeMs) {
   name = inName;
@@ -32,19 +34,7 @@ void BluetoothPool::addOrUpdateLamp(BluetoothRecord lamp) {
   addLamp(lamp);
 };
 
-std::vector<BluetoothRecord> BluetoothPool::getLamps() {
-  for (int i = 0; i < pool.size(); i++) {
-    Serial.printf("List Item Name: %s time found: %d - acknowledged: %d\n",
-                  pool[i].name.c_str(), pool[i].lastSeenTimeMs,
-                  pool[i].acknowledged);
-    Serial.printf("Color base: #%02x%02x%02x\n", pool[i].baseColor.r,
-                  pool[i].baseColor.g, pool[i].baseColor.b);
-    Serial.printf("Color shade: #%02x%02x%02x\n", pool[i].shadeColor.r,
-                  pool[i].shadeColor.g, pool[i].shadeColor.b);
-  }
-
-  return pool;
-};
+std::vector<BluetoothRecord> BluetoothPool::getLamps() { return pool; };
 
 void BluetoothPool::pruneLamps() {
   unsigned long timeNow = millis();

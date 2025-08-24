@@ -14,6 +14,8 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
+#include <string>
+
 #include "../../util/color.hpp"
 #include "./bluetooth_pool.hpp"
 
@@ -21,7 +23,7 @@ namespace lamp {
 BluetoothPool lampBluetoothPool;
 
 class ScanCallbacks : public NimBLEScanCallbacks {
-  bool isLamp(std::__cxx11::string data) {
+  bool isLamp(std::string data) {
     if (data.length() == 8 && data.at(0) == (BLE_MAGIC_NUMBER & 0xff) &&
         data.at(1) == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
       return true;
@@ -33,7 +35,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
   void onResult(const NimBLEAdvertisedDevice *advertisedDevice) override {
     if (advertisedDevice->haveName() &&
         advertisedDevice->haveManufacturerData()) {
-      std::__cxx11::string data = advertisedDevice->getManufacturerData();
+      std::string data = advertisedDevice->getManufacturerData();
       if (advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE &&
           isLamp(data)) {
         BluetoothRecord lamp = BluetoothRecord(
@@ -46,6 +48,19 @@ class ScanCallbacks : public NimBLEScanCallbacks {
   };
 
   void onScanEnd(const NimBLEScanResults &results, int reason) override {
+#ifdef LAMP_DEBUG
+    Serial.printf("Bluetooth scan ended\n");
+    std::vector<BluetoothRecord> lampsFound = lampBluetoothPool.getLamps();
+    for (int i = 0; i < lampsFound.size(); i++) {
+      Serial.printf("Lamp Name: %s time found: %d - acknowledged: %d\n",
+                    lampsFound[i].name.c_str(), lampsFound[i].lastSeenTimeMs,
+                    lampsFound[i].acknowledged);
+      Serial.printf("Color base: #%02x%02x%02x\n", lampsFound[i].baseColor.r,
+                    lampsFound[i].baseColor.g, lampsFound[i].baseColor.b);
+      Serial.printf("Color shade: #%02x%02x%02x\n", lampsFound[i].shadeColor.r,
+                    lampsFound[i].shadeColor.g, lampsFound[i].shadeColor.b);
+    }
+#endif
     lampBluetoothPool.pruneLamps();
     NimBLEDevice::getScan()->start(BLE_GAP_SCAN_TIME_MS);
   }
@@ -53,9 +68,11 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
 BluetoothComponent::BluetoothComponent() {};
 
-void BluetoothComponent::begin(std::__cxx11::string name, Color inBaseColor,
+void BluetoothComponent::begin(std::string name, Color inBaseColor,
                                Color inShadeColor) {
+#ifdef LAMP_DEBUG
   Serial.printf("Starting Bluetooth Async Client\n");
+#endif
   NimBLEDevice::init(name);
   NimBLEDevice::setPower(BLE_POWER_LEVEL);
 

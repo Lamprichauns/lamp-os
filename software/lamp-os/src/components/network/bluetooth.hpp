@@ -39,7 +39,7 @@ class BluetoothComponent {
    * @param [in] inBaseColor the base color RGB value. W is ommitted
    * @param [in] inShadeColor the shade color RGB value. W is ommitted
    */
-  void begin(std::__cxx11::string name, Color inBaseColor, Color inShadeColor);
+  void begin(std::string name, Color inBaseColor, Color inShadeColor);
 
   /**
    * @brief get a listing of all lamps within acceptable signal strength limits

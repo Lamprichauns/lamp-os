@@ -1,6 +1,7 @@
 #ifndef LAMP_COMPONENTS_NETWORK_BLUETOOTH_POOL_H
 #define LAMP_COMPONENTS_NETWORK_BLUETOOTH_POOL_H
 
+#include <string>
 #include <vector>
 
 #include "../../util/color.hpp"
@@ -17,14 +18,14 @@ namespace lamp {
  */
 class BluetoothRecord {
  public:
-  std::__cxx11::string name;
+  std::string name;
   Color baseColor = Color(0);
   Color shadeColor = Color(0);
   unsigned long lastSeenTimeMs;
   boolean acknowledged;
 
-  BluetoothRecord(std::__cxx11::string inName, Color inBaseColor,
-                  Color inShadeColor, unsigned long inTimeFoundMs);
+  BluetoothRecord(std::string inName, Color inBaseColor, Color inShadeColor,
+                  unsigned long inTimeFoundMs);
 };
 
 /**

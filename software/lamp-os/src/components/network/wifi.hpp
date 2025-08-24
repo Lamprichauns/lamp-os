@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 
+#include <string>
 #include <vector>
 
 #include "../../util/color.hpp"
@@ -16,7 +17,7 @@ class WifiComponent {
    * @brief initializer for setup
    * @param [in] name max. 13 character string representing the lamp's name
    */
-  void begin(std::__cxx11::string name);
+  void begin(std::string name);
 
   /**
    * @brief process to call in the main loop
