@@ -3,6 +3,10 @@
 #include <Arduino.h>
 
 namespace lamp {
+Color::Color() {
+  color = 0;
+  r = g = b = w = 0;
+}
 Color::Color(uint32_t inColor) {
   color = inColor;
   r = (inColor >> 24) & 0xff;

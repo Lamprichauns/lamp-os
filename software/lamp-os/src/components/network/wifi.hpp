@@ -8,8 +8,6 @@
 
 #include "../../util/color.hpp"
 
-#define UNIVERSE 1
-
 namespace lamp {
 class WifiComponent {
  public:
@@ -33,7 +31,7 @@ class WifiComponent {
 
   /**
    * @brief get last Artnet UDP data from the buffer
-   * @return vector of shade and base colors
+   * @return vector of shade[0] and base[1] colors
    */
   std::vector<Color> getArtnetData();
 

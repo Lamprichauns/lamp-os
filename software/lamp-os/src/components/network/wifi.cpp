@@ -26,17 +26,18 @@ bool newDmxData = false;
 void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence,
                 uint8_t *data) {
   lastDmxFrameMs = millis();
-#ifdef LAMP_DEBUG
-  if (universe == 1 && sequence != (seq + 1)) {
-    Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence, seq);
-  }
-#endif
   if (universe == 1) {
-    seq = sequence;
     artnetData = {Color(data[0], data[1], data[2], data[3]),
                   Color(data[4], data[5], data[6], data[7])};
+    newDmxData = true;
+#ifdef LAMP_DEBUG
+    if (sequence != 1 && sequence != (seq + 1)) {
+      Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence,
+                    seq);
+    }
+#endif
+    seq = sequence;
   }
-  newDmxData = true;
 }
 
 class CaptiveRequestHandler : public AsyncWebHandler {
@@ -46,7 +47,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
   }
 
   void handleRequest(AsyncWebServerRequest *request) {
-    request->send(SPIFFS, "/configurator.html", String(), false);
+    request->send(SPIFFS, "/configurator.html", "text/html", false);
   }
 };
 
@@ -66,10 +67,7 @@ void WifiComponent::begin(std::string name) {
   server.begin();
 };
 
-void WifiComponent::tick() {
-  dnsServer.processNextRequest();
-  // artnet.read();
-}
+void WifiComponent::tick() { dnsServer.processNextRequest(); }
 
 bool WifiComponent::hasArtnetData() { return newDmxData; }
 

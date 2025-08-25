@@ -10,6 +10,7 @@ class Color {
  public:
   uint32_t color;
   uint8_t r, g, b, w;
+  Color();
   Color(uint32_t inColor);
   Color(uint8_t inR, uint8_t inG, uint8_t inB, uint8_t inW);
 };
