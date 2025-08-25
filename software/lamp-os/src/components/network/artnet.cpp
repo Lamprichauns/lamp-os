@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 /**
- * Converted to Async using the same basic algorithm
+ * Converted to Async UDP using the same basic algorithm
  */
 #include "./artnet.hpp"
 
@@ -37,7 +37,7 @@ const char ArtnetWifi::artnetId[] = ART_NET_ID;
 
 ArtnetWifi::ArtnetWifi() : artDmxCallback(nullptr) {}
 
-void ArtnetWifi::begin(String hostname) {
+void ArtnetWifi::begin() {
   udp.listen(ART_NET_PORT);
   udp.onPacket([&](AsyncUDPPacket packet) {
     packetSize = packet.length();
@@ -49,7 +49,6 @@ void ArtnetWifi::begin(String hostname) {
 
       if (opcode == ART_DMX) {
         incomingUniverse = artnetPacket[14] | artnetPacket[15] << 8;
-
         sequence = artnetPacket[12];
         dmxDataLength = artnetPacket[17] | artnetPacket[16] << 8;
 

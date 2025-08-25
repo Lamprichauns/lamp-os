@@ -59,27 +59,7 @@ namespace lamp {
 class ArtnetWifi {
  public:
   ArtnetWifi();
-
-  void begin(String hostname = "");
-  // IRAM_ATTR void ArtnetWifi::read(AsyncUDPPacket &packet);
-
-  // Return a pointer to the start of the DMX data
-  inline uint8_t* getDmxFrame(void) { return artnetPacket + ART_DMX_START; }
-
-  inline uint16_t getOpcode(void) { return opcode; }
-
-  inline uint8_t getSequence(void) { return sequence; }
-
-  inline uint16_t getUniverse(void) { return incomingUniverse; }
-
-  inline void setUniverse(uint16_t universe) { outgoingUniverse = universe; }
-
-  inline void setPhysical(uint8_t port) { physical = port; }
-
-  inline uint16_t getLength(void) { return dmxDataLength; }
-
-  inline void setLength(uint16_t len) { dmxDataLength = len; }
-
+  void begin();
   inline void setArtDmxCallback(void (*fptr)(uint16_t universe, uint16_t length,
                                              uint8_t sequence, uint8_t* data)) {
     artDmxCallback = fptr;
@@ -92,13 +72,10 @@ class ArtnetWifi {
   uint16_t packetSize;
   uint16_t opcode;
   uint8_t sequence;
-  uint8_t physical;
   uint16_t incomingUniverse;
-  uint16_t outgoingUniverse;
   uint16_t dmxDataLength;
   void (*artDmxCallback)(uint16_t universe, uint16_t length, uint8_t sequence,
                          uint8_t* data);
-  StdFuncDmx_t artDmxFunc;
   static const char artnetId[];
 };
 }  // namespace lamp
