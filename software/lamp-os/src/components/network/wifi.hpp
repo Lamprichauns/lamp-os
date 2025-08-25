@@ -25,6 +25,13 @@ class WifiComponent {
   void tick();
 
   /**
+   * @brief Check if there's new Artnet data to consume to save unnecessary
+   *        LED updates
+   * @return true if there's recent data in the buffer
+   */
+  bool hasArtnetData();
+
+  /**
    * @brief get last Artnet UDP data from the buffer
    * @return vector of shade and base colors
    */

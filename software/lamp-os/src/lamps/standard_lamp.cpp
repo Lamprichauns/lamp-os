@@ -26,10 +26,20 @@ void setup() {
 }
 
 void loop() {
-  std::vector<lamp::Color> artnetData = wifi.getArtnetData();
-  strip.fill((uint32_t)((artnetData[0].w << 24) | (artnetData[0].r << 16) |
-                        (artnetData[0].g << 8) | (artnetData[0].b)));
-  strip.show();
+#ifdef LAMP_DEBUG
+  long microtime = micros();
+#endif
+  if (wifi.hasArtnetData()) {
+    std::vector<lamp::Color> artnetData = wifi.getArtnetData();
+    strip.fill((uint32_t)((artnetData[0].w << 24) | (artnetData[0].r << 16) |
+                          (artnetData[0].g << 8) | (artnetData[0].b)));
+    strip.show();
+  }
 
   wifi.tick();
+#ifdef LAMP_DEBUG
+  if (millis() % 500 == 0) {
+    Serial.printf("Main loop took: %duS\n", micros() - microtime);
+  }
+#endif
 }
