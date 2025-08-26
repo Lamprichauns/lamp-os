@@ -17,7 +17,8 @@ void FrameBuffer::begin(Color inDefaultColor, uint8_t inPixelCount,
   buffer = std::vector<Color>(inPixelCount);
   driver = inDriver;
   driver->begin();
-  fill(inDefaultColor);
+  driver->fill(0);
+  driver->show();
 };
 
 void FrameBuffer::fill(Color inColor) {
