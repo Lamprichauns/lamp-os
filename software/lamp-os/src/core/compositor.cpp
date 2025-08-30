@@ -20,7 +20,12 @@ void Compositor::tick() {
     if (startupComplete) {
       for (int i = 0; i < behaviors.size(); i++) {
         behaviors.at(i)->control();
-        behaviors.at(i)->draw();
+        if (behaviors.at(i)->animationState == STOPPED ||
+            behaviors.at(i)->animationState == PAUSED) {
+          behaviors.at(i)->nextFrame();
+        } else {
+          behaviors.at(i)->draw();
+        }
       }
     } else {
       for (int i = 0; i < startupBehaviors.size(); i++) {

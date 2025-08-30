@@ -32,6 +32,8 @@ void AnimatedBehavior::stop() {
 
 void AnimatedBehavior::play() { animationState = PLAYING; };
 
+void AnimatedBehavior::playOnce() { animationState = STOPPING; };
+
 bool AnimatedBehavior::isLastFrame() { return (frame == frames - 1); };
 
 void AnimatedBehavior::nextFrame() {
@@ -44,12 +46,13 @@ void AnimatedBehavior::nextFrame() {
   }
 
   if (frame >= frames) {
-    frame = 0;
-    currentLoop += 1;
-
     if (animationState == STOPPING) {
+      Serial.print("Stopped\n");
       animationState = STOPPED;
     }
+
+    frame = 0;
+    currentLoop += 1;
   }
 };
 }  // namespace lamp

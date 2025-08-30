@@ -45,7 +45,7 @@ class BluetoothComponent {
    * @brief get a listing of all lamps within acceptable signal strength limits
    * @return vector of all found lamps
    */
-  std::vector<BluetoothRecord> getLamps();
+  std::vector<BluetoothRecord>* getLamps();
 };
 }  // namespace lamp
 #endif

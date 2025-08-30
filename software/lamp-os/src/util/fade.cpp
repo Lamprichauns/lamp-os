@@ -23,13 +23,14 @@ uint8_t ease(uint8_t start, uint8_t end, uint32_t duration,
   uint16_t factor =
       quadEaseInOut.at((int)((current_step * 100 / duration * 100) / 100));
 
-  return ((end - start) * factor / 10000) + start;
+  return (((end - start) * factor) / 10000) + start;
 };
 
 Color fade(Color start, Color end, uint32_t steps, uint32_t currentStep) {
-  return Color(ease(start.r, end.r, steps, currentStep),
-               ease(start.g, end.g, steps, currentStep),
-               ease(start.b, end.b, steps, currentStep),
-               ease(start.w, end.w, steps, currentStep));
+  return Color(
+      (start.r == end.r) ? end.r : ease(start.r, end.r, steps, currentStep),
+      (start.g == end.g) ? end.g : ease(start.g, end.g, steps, currentStep),
+      (start.b == end.b) ? end.b : ease(start.b, end.b, steps, currentStep),
+      (start.w == end.w) ? end.w : ease(start.w, end.w, steps, currentStep));
 };
 }  // namespace lamp

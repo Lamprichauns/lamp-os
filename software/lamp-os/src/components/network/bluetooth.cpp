@@ -108,7 +108,7 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
   pAdvertising->start();
 };
 
-std::vector<BluetoothRecord> BluetoothComponent::getLamps() {
-  return lampBluetoothPool.getLamps();
+std::vector<BluetoothRecord> *BluetoothComponent::getLamps() {
+  return &lampBluetoothPool.pool;
 };
 }  // namespace lamp

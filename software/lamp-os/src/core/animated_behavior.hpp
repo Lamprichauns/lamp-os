@@ -77,9 +77,14 @@ class AnimatedBehavior {
   void stop();
 
   /**
-   * @brief Play the animation
+   * @brief Play the animation in a loop
    */
   void play();
+
+  /**
+   * @brief Play the animation for one full frame cycle
+   */
+  void playOnce();
 
   /**
    * @brief Check for the last frame
