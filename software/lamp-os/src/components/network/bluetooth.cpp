@@ -24,8 +24,8 @@ BluetoothPool lampBluetoothPool;
 
 class ScanCallbacks : public NimBLEScanCallbacks {
   bool isLamp(std::string data) {
-    if (data.length() == 8 && data.at(0) == (BLE_MAGIC_NUMBER & 0xff) &&
-        data.at(1) == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
+    if (data.length() == 8 && data[0] == (BLE_MAGIC_NUMBER & 0xff) &&
+        data[1] == ((BLE_MAGIC_NUMBER >> 8) & 0xff)) {
       return true;
     }
 
@@ -39,9 +39,8 @@ class ScanCallbacks : public NimBLEScanCallbacks {
       if (advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE &&
           isLamp(data)) {
         BluetoothRecord lamp = BluetoothRecord(
-            advertisedDevice->getName(),
-            Color(data.at(2), data.at(3), data.at(4), 0),
-            Color(data.at(5), data.at(6), data.at(7), 0), millis());
+            advertisedDevice->getName(), Color(data[2], data[3], data[4], 0),
+            Color(data[5], data[6], data[7], 0), millis());
         lampBluetoothPool.addOrUpdateLamp(lamp);
       }
     }

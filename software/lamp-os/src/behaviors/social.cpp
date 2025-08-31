@@ -23,15 +23,15 @@ class SocialBehavior : public AnimatedBehavior {
 
   void draw() {
     for (int i = 0; i < fb->pixelCount; i++) {
-      Color buf = fb->buffer.at(i);
+      Color buf = fb->buffer[i];
       if (frame < easeFrames) {
-        fb->buffer.at(i) =
+        fb->buffer[i] =
             fade(fb->defaultColor, foundLampColor, easeFrames, frame);
       } else if (frame > (frames - easeFrames)) {
-        fb->buffer.at(i) = fade(foundLampColor, fb->defaultColor, easeFrames,
-                                frame % easeFrames);
+        fb->buffer[i] = fade(foundLampColor, fb->defaultColor, easeFrames,
+                             frame % easeFrames);
       } else {
-        fb->buffer.at(i) = foundLampColor;
+        fb->buffer[i] = foundLampColor;
       }
     }
 

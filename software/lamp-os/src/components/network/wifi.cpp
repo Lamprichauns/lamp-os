@@ -55,13 +55,14 @@ void WifiComponent::begin(std::string name) {
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Wifi Async Client\n");
 #endif
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS);
   WiFi.softAP(name.c_str());
   dnsServer.start(53, "*", WiFi.softAPIP());
   server.addHandler(new CaptiveRequestHandler())
       .setFilter(ON_AP_FILTER);  // only when requested from AP
   server.begin();
 
-  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS);
   artnet.setArtDmxCallback(onDmxFrame);
   artnet.begin();
 };

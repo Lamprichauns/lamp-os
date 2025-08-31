@@ -5,7 +5,6 @@
 #include "../components/network/wifi.hpp"
 #include "../util/color.hpp"
 #include "./behaviors/dmx.cpp"
-#include "./behaviors/idle.cpp"
 #include "./behaviors/social.cpp"
 #include "./core/animated_behavior.hpp"
 #include "./core/compositor.hpp"
@@ -34,27 +33,24 @@ void setup() {
   SPIFFS.begin(true);
   bt.begin("configurable", lamp::Color(0x30, 0x07, 0x83, 0x00),
            lamp::Color(0x00, 0x00, 0x00, 0xFF));
-  wifi.begin("configurable");
+  wifi.begin("lamp-configurable");
   shade.begin(lamp::Color(0x00, 0x00, 0x00, 0xFF), LAMP_DEFAULT_NUMBER_PIXELS,
               &shadeStrip);
   base.begin(lamp::Color(0x30, 0x07, 0x83, 0x00), LAMP_DEFAULT_NUMBER_PIXELS,
              &baseStrip);
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
   baseDmxBehavior = lamp::DmxBehavior(&base, 0);
-  shadeSocialBehavior = lamp::SocialBehavior(&shade, 480);
-  compositor.begin(
-      {new lamp::IdleBehavior(&shade, 0, false, true),
-       new lamp::IdleBehavior(&base, 0, false, true), &shadeSocialBehavior},
-      {&shade, &base});
+  shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
+  compositor.begin({&shadeSocialBehavior}, {&shade, &base});
 };
 
 void loop() {
   shadeSocialBehavior.updateFoundLamps(bt.getLamps());
   if (wifi.hasArtnetData()) {
     std::vector<lamp::Color> artnetData = wifi.getArtnetData();
-    shadeDmxBehavior.setColor(artnetData.at(0));
+    shadeDmxBehavior.setColor(artnetData[0]);
     shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
-    baseDmxBehavior.setColor(artnetData.at(1));
+    baseDmxBehavior.setColor(artnetData[1]);
     baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
   }
   wifi.tick();

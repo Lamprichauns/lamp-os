@@ -40,6 +40,9 @@ You can auto format your code by changing the vscode settings (ctrl + shift + p 
 
 ## Flashing
 
- Currently the flash process is 2 steps. First click the checkmark to upload the filesystem items (some html pages etc) and then click the upload icon to flash the firmware to an ESP32 board.
+ Currently the flash process is a few steps:
+  - Pioarduino in the VSCode sidebar -> project tasks -> platform -> build filesystem image
+  - Pioarduino in the VSCode sidebar -> project tasks -> platform -> upload filesystem image
+  - Pioarduino in the VSCode sidebar -> project tasks -> general -> upload
 
  Note that depending on the board, you may need to hold the boot button in order to flash the board.

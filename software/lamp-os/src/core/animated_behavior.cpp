@@ -47,7 +47,6 @@ void AnimatedBehavior::nextFrame() {
 
   if (frame >= frames) {
     if (animationState == STOPPING) {
-      Serial.print("Stopped\n");
       animationState = STOPPED;
     }
 

@@ -1,17 +1,25 @@
 #include "./compositor.hpp"
 
 #include "./behaviors/fade_in.cpp"
+#include "./behaviors/idle.cpp"
 
 namespace lamp {
 Compositor::Compositor() {};
 
 void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors,
                        std::vector<FrameBuffer*> inFrameBuffers) {
-  behaviors = inBehaviors;
   frameBuffers = inFrameBuffers;
+
+  // Adds some basic behavior layers that are common to all framebuffers
   for (int i = 0; i < frameBuffers.size(); i++) {
     startupBehaviors.push_back(new FadeInBehavior(
-        frameBuffers.at(i), STARTUP_ANIMATION_FRAMES, false, true));
+        frameBuffers[i], STARTUP_ANIMATION_FRAMES, false, true));
+    behaviors.push_back(new IdleBehavior(frameBuffers[i], 0, false, true));
+  }
+
+  // append all of the non critical behaviors
+  for (int i = 0; i < inBehaviors.size(); i++) {
+    behaviors.push_back(inBehaviors[i]);
   }
 };
 
@@ -19,19 +27,19 @@ void Compositor::tick() {
   if (!behaviorsComputed) {
     if (startupComplete) {
       for (int i = 0; i < behaviors.size(); i++) {
-        behaviors.at(i)->control();
-        if (behaviors.at(i)->animationState == STOPPED ||
-            behaviors.at(i)->animationState == PAUSED) {
-          behaviors.at(i)->nextFrame();
+        behaviors[i]->control();
+        if (behaviors[i]->animationState == STOPPED ||
+            behaviors[i]->animationState == PAUSED) {
+          behaviors[i]->nextFrame();
         } else {
-          behaviors.at(i)->draw();
+          behaviors[i]->draw();
         }
       }
     } else {
       for (int i = 0; i < startupBehaviors.size(); i++) {
-        startupBehaviors.at(i)->control();
-        startupBehaviors.at(i)->draw();
-        if (startupBehaviors.at(i)->isLastFrame()) {
+        startupBehaviors[i]->control();
+        startupBehaviors[i]->draw();
+        if (startupBehaviors[i]->isLastFrame()) {
           startupComplete = true;
         }
       }
@@ -45,7 +53,7 @@ void Compositor::tick() {
     lastDrawTimeMs = millis();
     behaviorsComputed = false;
     for (int i = 0; i < frameBuffers.size(); i++) {
-      frameBuffers.at(i)->flush();
+      frameBuffers[i]->flush();
     }
   };
 }

@@ -23,7 +23,7 @@ void FrameBuffer::begin(Color inDefaultColor, uint8_t inPixelCount,
 
 void FrameBuffer::fill(Color inColor) {
   for (int i = 0; i < pixelCount; i++) {
-    buffer.at(i) = inColor;
+    buffer[i] = inColor;
   }
 };
 

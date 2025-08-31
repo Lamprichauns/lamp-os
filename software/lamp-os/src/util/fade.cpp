@@ -21,7 +21,7 @@ std::vector<uint16_t> quadEaseInOut = {
 uint8_t ease(uint8_t start, uint8_t end, uint32_t duration,
              uint32_t current_step) {
   uint16_t factor =
-      quadEaseInOut.at((int)((current_step * 100 / duration * 100) / 100));
+      quadEaseInOut[(int)((current_step * 100 / duration * 100) / 100)];
 
   return (((end - start) * factor) / 10000) + start;
 };
