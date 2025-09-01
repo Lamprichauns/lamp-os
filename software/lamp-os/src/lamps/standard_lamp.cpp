@@ -1,3 +1,5 @@
+#include "./standard_lamp.hpp"
+
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 
@@ -9,8 +11,8 @@
 #include "./core/animated_behavior.hpp"
 #include "./core/compositor.hpp"
 #include "./core/frame_buffer.hpp"
+#include "./globals.hpp"
 #include "SPIFFS.h"
-#include "globals.hpp"
 
 Adafruit_NeoPixel shadeStrip(LAMP_DEFAULT_NUMBER_PIXELS, LAMP_SHADE_PIN,
                              NEO_GRBW + NEO_KHZ800);
@@ -31,9 +33,9 @@ void setup() {
   Serial.begin(115200);
 #endif
   SPIFFS.begin(true);
-  bt.begin("configurable", lamp::Color(0x30, 0x07, 0x83, 0x00),
+  bt.begin("standard", lamp::Color(0x30, 0x07, 0x83, 0x00),
            lamp::Color(0x00, 0x00, 0x00, 0xFF));
-  wifi.begin("lamp-configurable");
+  wifi.begin("lamp-standard");
   shade.begin(lamp::Color(0x00, 0x00, 0x00, 0xFF), LAMP_DEFAULT_NUMBER_PIXELS,
               &shadeStrip);
   base.begin(lamp::Color(0x30, 0x07, 0x83, 0x00), LAMP_DEFAULT_NUMBER_PIXELS,

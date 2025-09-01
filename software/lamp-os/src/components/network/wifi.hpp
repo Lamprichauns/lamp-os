@@ -8,7 +8,25 @@
 
 #include "../../util/color.hpp"
 
+#define ARTNET_NETWORK_SCAN_MS 5000
+#define MAX_WIFI_CONNNECTION_TIME_MS 200
+
 namespace lamp {
+
+/**
+ * The async states of the wifi station connection
+ */
+enum StaState {
+  // not connected to a router
+  DISCONNECTED = 1,
+
+  // testing for wifi connnectivity
+  CONNECTING,
+
+  // successfully connected to wifi
+  CONNECTED
+};
+
 class WifiComponent {
  public:
   /**

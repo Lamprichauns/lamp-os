@@ -18,6 +18,8 @@ namespace lamp {
 DNSServer dnsServer;
 WiFiUDP UdpSend;
 ArtnetWifi artnet;
+uint32_t lastWifiScanMs = 0;
+StaState staStatus = DISCONNECTED;
 std::vector<Color> artnetData = {Color(0), Color(0)};
 unsigned long lastDmxFrameMs;
 uint8_t seq = 0;
@@ -40,6 +42,38 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence,
   }
 }
 
+void scanForRouter() {
+  if (staStatus == DISCONNECTED &&
+      millis() > lastWifiScanMs + ARTNET_NETWORK_SCAN_MS) {
+#ifdef LAMP_DEBUG
+    Serial.println("*****Connecting to artnet enabled Wifi router");
+#endif
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS, 7);
+    lastWifiScanMs = millis();
+    staStatus = CONNECTING;
+  }
+
+  if (staStatus == CONNECTING) {
+    wl_status_t status = WiFi.status();
+
+    if (status == WL_CONNECTED) {
+#ifdef LAMP_DEBUG
+      Serial.println("****Wifi connection to router successful");
+#endif
+      staStatus = CONNECTED;
+    } else if (millis() > lastWifiScanMs + MAX_WIFI_CONNNECTION_TIME_MS ||
+               status == WL_CONNECT_FAILED || status == WL_CONNECTION_LOST) {
+#ifdef LAMP_DEBUG
+      Serial.println("********Wifi Connection attempt failed. Retrying");
+#endif
+      WiFi.mode(WIFI_AP);
+      WiFi.begin();
+      staStatus = DISCONNECTED;
+    }
+  };
+}
+
 class CaptiveRequestHandler : public AsyncWebHandler {
  public:
   bool canHandle(__unused AsyncWebServerRequest *request) const override {
@@ -47,7 +81,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
   }
 
   void handleRequest(AsyncWebServerRequest *request) {
-    request->send(SPIFFS, "/configurator.html", "text/html", false);
+    request->send(SPIFFS, "/configurator.html", String(), false);
   }
 };
 
@@ -55,9 +89,8 @@ void WifiComponent::begin(std::string name) {
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Wifi Async Client\n");
 #endif
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS);
-  WiFi.softAP(name.c_str());
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(name.c_str(), emptyString, 7);
   dnsServer.start(53, "*", WiFi.softAPIP());
   server.addHandler(new CaptiveRequestHandler())
       .setFilter(ON_AP_FILTER);  // only when requested from AP
@@ -67,7 +100,10 @@ void WifiComponent::begin(std::string name) {
   artnet.begin();
 };
 
-void WifiComponent::tick() { dnsServer.processNextRequest(); }
+void WifiComponent::tick() {
+  dnsServer.processNextRequest();
+  scanForRouter();
+};
 
 bool WifiComponent::hasArtnetData() { return newDmxData; }
 
