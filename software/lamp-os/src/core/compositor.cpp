@@ -12,8 +12,8 @@ void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors,
 
   // Adds some basic behavior layers that are common to all framebuffers
   for (int i = 0; i < frameBuffers.size(); i++) {
-    startupBehaviors.push_back(new FadeInBehavior(
-        frameBuffers[i], STARTUP_ANIMATION_FRAMES, false, true));
+    startupBehaviors.push_back(
+        new FadeInBehavior(frameBuffers[i], STARTUP_ANIMATION_FRAMES));
     behaviors.push_back(new IdleBehavior(frameBuffers[i], 0, false, true));
   }
 
@@ -28,18 +28,19 @@ void Compositor::tick() {
     if (startupComplete) {
       for (int i = 0; i < behaviors.size(); i++) {
         behaviors[i]->control();
-        if (behaviors[i]->animationState == STOPPED ||
-            behaviors[i]->animationState == PAUSED) {
-          behaviors[i]->nextFrame();
-        } else {
+        if (behaviors[i]->animationState != STOPPED &&
+            behaviors[i]->animationState != PAUSED) {
           behaviors[i]->draw();
         }
       }
     } else {
       for (int i = 0; i < startupBehaviors.size(); i++) {
         startupBehaviors[i]->control();
-        startupBehaviors[i]->draw();
-        if (startupBehaviors[i]->isLastFrame()) {
+        if (startupBehaviors[i]->animationState != STOPPED &&
+            startupBehaviors[i]->animationState != PAUSED) {
+          startupBehaviors[i]->draw();
+        }
+        if (millis() > 3000) {
           startupComplete = true;
         }
       }

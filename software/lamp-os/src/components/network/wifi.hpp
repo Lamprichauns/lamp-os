@@ -8,8 +8,7 @@
 
 #include "../../util/color.hpp"
 
-#define ARTNET_NETWORK_SCAN_MS 5000
-#define MAX_WIFI_CONNNECTION_TIME_MS 200
+#define ARTNET_NETWORK_SCAN_MS 10000
 
 namespace lamp {
 

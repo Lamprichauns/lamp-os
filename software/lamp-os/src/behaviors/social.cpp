@@ -1,8 +1,9 @@
 #include "../components/network/bluetooth.hpp"
 #include "../core/animated_behavior.hpp"
-#include "../globals.hpp"
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
+
+#define LAMP_TIME_BETWEEN_ACKNOWLEDGEMENT_MS 30000
 
 /**
  * @brief social color exchange
@@ -15,8 +16,7 @@ class SocialBehavior : public AnimatedBehavior {
   // how many frames to ease when greeting and returning to the lamp's
   // personality- the total frame count must be a multiple of the ease frames
   uint32_t easeFrames = 120;
-  uint32_t lastAcknowledgedTimeMs = 0;
-  uint32_t timeBetweenAcknowledgementMs = LAMP_TIME_BETWEEN_ACKNOWLEDGEMENT_MS;
+  uint32_t nextAcknowledgeTimeMs = 0;
   Color foundLampColor;
 
   std::vector<BluetoothRecord>* foundLamps;
@@ -39,7 +39,8 @@ class SocialBehavior : public AnimatedBehavior {
   };
 
   void control() {
-    if (animationState == STOPPED) {
+    if (animationState == STOPPED &&
+        millis() > nextAcknowledgeTimeMs) {
       for (std::vector<BluetoothRecord>::reverse_iterator revIter =
                foundLamps->rbegin();
            revIter != foundLamps->rend(); ++revIter) {
@@ -49,6 +50,7 @@ class SocialBehavior : public AnimatedBehavior {
 #endif
           revIter->acknowledged = true;
           foundLampColor = revIter->baseColor;
+          nextAcknowledgeTimeMs = millis() + LAMP_TIME_BETWEEN_ACKNOWLEDGEMENT_MS;
           playOnce();
           break;
         }

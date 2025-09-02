@@ -19,8 +19,8 @@ class FadeInBehavior : public AnimatedBehavior {
   };
 
   void control() {
-    if (isLastFrame()) {
-      stop();
+    if (animationState == STOPPED && currentLoop == 0) {
+      playOnce();
     }
   };
 };

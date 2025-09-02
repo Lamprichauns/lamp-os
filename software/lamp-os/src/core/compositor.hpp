@@ -35,7 +35,7 @@ class Compositor {
              std::vector<FrameBuffer*> inFrameBuffers);
 
   /**
-   * @brief manage building frames and drawing them
+   * @brief manage building frames and drawing them on the LEDs
    */
   void tick();
 };

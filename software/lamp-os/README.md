@@ -38,6 +38,10 @@ You can auto format your code by changing the vscode settings (ctrl + shift + p 
     "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 2 }"
 ```
 
+## Project Setup 
+
+copy the file `secrets_sample.hpp` to `secrets.hpp` and add any artnet credentials you want. otherwise leave it blank
+
 ## Flashing
 
  Currently the flash process is a few steps:
