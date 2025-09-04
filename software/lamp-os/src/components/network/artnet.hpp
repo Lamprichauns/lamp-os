@@ -38,6 +38,8 @@ THE SOFTWARE.
 
 #include <functional>
 
+#include "../../util/color.hpp"
+
 // UDP specific
 #define ART_NET_PORT 6454
 // Opcodes
@@ -50,20 +52,16 @@ THE SOFTWARE.
 #define ART_NET_ID "Art-Net"
 #define ART_DMX_START 18
 
-#define DMX_FUNC_PARAM \
-  uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *data
-#if !defined(ARDUINO_AVR_UNO_WIFI_REV2)
-typedef std::function<void(DMX_FUNC_PARAM)> StdFuncDmx_t;
-#endif
 namespace lamp {
 class ArtnetWifi {
  public:
+  std::vector<Color> artnetData = {Color(0), Color(0)};
+  unsigned long lastDmxFrameMs;
+  uint8_t seq = 0;
+  bool newDmxData = false;
+
   ArtnetWifi();
   void begin();
-  inline void setArtDmxCallback(void (*fptr)(uint16_t universe, uint16_t length,
-                                             uint8_t sequence, uint8_t* data)) {
-    artDmxCallback = fptr;
-  }
 
  private:
   AsyncUDP udp;
@@ -74,9 +72,9 @@ class ArtnetWifi {
   uint8_t sequence;
   uint16_t incomingUniverse;
   uint16_t dmxDataLength;
-  void (*artDmxCallback)(uint16_t universe, uint16_t length, uint8_t sequence,
-                         uint8_t* data);
   static const char artnetId[];
+  void updateDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence,
+                      uint8_t* data);
 };
 }  // namespace lamp
 #endif

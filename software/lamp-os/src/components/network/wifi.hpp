@@ -28,6 +28,8 @@ enum StaState {
 
 class WifiComponent {
  public:
+  WifiComponent();
+
   /**
    * @brief initializer for setup
    * @param [in] name max. 13 character string representing the lamp's name

@@ -32,10 +32,29 @@ THE SOFTWARE.
 
 #include <AsyncUDP.h>
 
+#include "../../util/color.hpp"
+
 namespace lamp {
 const char ArtnetWifi::artnetId[] = ART_NET_ID;
 
-ArtnetWifi::ArtnetWifi() : artDmxCallback(nullptr) {}
+ArtnetWifi::ArtnetWifi() {};
+
+void ArtnetWifi::updateDmxFrame(uint16_t universe, uint16_t length,
+                                uint8_t sequence, uint8_t* data) {
+  lastDmxFrameMs = millis();
+  if (universe == 1) {
+    artnetData = {Color(data[0], data[1], data[2], data[3]),
+                  Color(data[4], data[5], data[6], data[7])};
+    newDmxData = true;
+#ifdef LAMP_DEBUG
+    if (sequence != 1 && sequence != (seq + 1)) {
+      Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence,
+                    seq);
+    }
+#endif
+    seq = sequence;
+  }
+};
 
 void ArtnetWifi::begin() {
   udp.listen(ART_NET_PORT);
@@ -52,9 +71,8 @@ void ArtnetWifi::begin() {
         sequence = artnetPacket[12];
         dmxDataLength = artnetPacket[17] | artnetPacket[16] << 8;
 
-        if (artDmxCallback)
-          (*artDmxCallback)(incomingUniverse, dmxDataLength, sequence,
-                            artnetPacket + ART_DMX_START);
+        updateDmxFrame(incomingUniverse, dmxDataLength, sequence,
+                       artnetPacket + ART_DMX_START);
       }
     }
   });
