@@ -19,7 +19,7 @@ jobs:
     - name: Install PlatformIO
       run: pip install -r requirements.txt
     - name: Get default environments
-      working-directory: software/lamp-os
+      working-directory: ./software/lamp-os
       id: envs
       run: |
         echo "environments=$(pio project config --json-output | jq -cr '.[0][1][0][1]')" >> $GITHUB_OUTPUT
@@ -55,7 +55,7 @@ jobs:
       run: pip install -r requirements.txt
 
     - name: Build firmware
-      working-directory: software/lamp-os
+      working-directory: ./software/lamp-os
       run: pio run -e ${{ matrix.environment }}
     - uses: actions/upload-artifact@v4
       with:
