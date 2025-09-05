@@ -19,6 +19,7 @@ jobs:
     - name: Install PlatformIO
       run: pip install -r requirements.txt
     - name: Get default environments
+      working-directory: software/lamp-os
       id: envs
       run: |
         echo "environments=$(pio project config --json-output | jq -cr '.[0][1][0][1]')" >> $GITHUB_OUTPUT
@@ -44,7 +45,7 @@ jobs:
               ~/.buildcache
               build_output
         key: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('platformio.ini', 'pio-scripts/output_bins.py') }}-${{ hashFiles('software/lamp-os/**') }}
-        restore-keys: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('platformio.ini', 'pio-scripts/output_bins.py') }}-
+        restore-keys: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('software/lamp-os/platformio.ini', 'pio-scripts/output_bins.py') }}-
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -54,6 +55,7 @@ jobs:
       run: pip install -r requirements.txt
 
     - name: Build firmware
+      working-directory: software/lamp-os
       run: pio run -e ${{ matrix.environment }}
     - uses: actions/upload-artifact@v4
       with:

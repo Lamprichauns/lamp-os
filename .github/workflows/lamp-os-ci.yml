@@ -8,5 +8,5 @@ on:
   pull_request:
 
 jobs:
-  wled_build:
+  lamp_os_build:
     uses: ./.github/workflows/build.yml
