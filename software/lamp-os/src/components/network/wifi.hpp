@@ -8,24 +8,7 @@
 
 #include "../../util/color.hpp"
 
-#define ARTNET_NETWORK_SCAN_MS 10000
-
 namespace lamp {
-
-/**
- * The async states of the wifi station connection
- */
-enum StaState {
-  // not connected to a router
-  DISCONNECTED = 1,
-
-  // testing for wifi connnectivity
-  CONNECTING,
-
-  // successfully connected to wifi
-  CONNECTED
-};
-
 class WifiComponent {
  public:
   WifiComponent();

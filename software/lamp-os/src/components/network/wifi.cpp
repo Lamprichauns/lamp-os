@@ -1,23 +1,23 @@
 #include "./wifi.hpp"
 
+#include <Arduino.h>
 #include <AsyncTCP.h>
 #include <DNSServer.h>
+#include <ESPAsyncWebServer.h>
 #include <WiFi.h>
-#include <WiFiMulti.h>
 
 #include "../../secrets.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
 #include "./wifi.hpp"
-#include "ESPAsyncWebServer.h"
 #include "SPIFFS.h"
 
 static DNSServer dnsServer;
 static AsyncWebServer server(80);
+static AsyncWebSocketMessageHandler wsHandler;
+static AsyncWebSocket ws("/ws", wsHandler.eventHandler());
 
 namespace lamp {
-DNSServer dnsServer;
-WiFiUDP UdpSend;
 ArtnetWifi artnet;
 
 void onWiFiEvent(WiFiEvent_t event) {
@@ -43,14 +43,47 @@ void WifiComponent::begin(std::string name) {
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Wifi Async Client\n");
 #endif
+  Serial.begin(115200);
   WiFi.mode(WIFI_AP);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.disconnect();
-  WiFi.softAP(name.c_str(), emptyString, 7);
+  WiFi.softAP(name.c_str());
   dnsServer.start(53, "*", WiFi.softAPIP());
-  server.addHandler(new CaptiveRequestHandler())
-      .setFilter(ON_AP_FILTER);  // only when requested from AP
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(SPIFFS, "/configurator.html", String(), false);
+  });
+
+  wsHandler.onConnect([](AsyncWebSocket *server, AsyncWebSocketClient *client) {
+    Serial.printf("Client %" PRIu32 " connected\n", client->id());
+    server->textAll("New client: " + String(client->id()));
+  });
+
+  wsHandler.onDisconnect([](AsyncWebSocket *server, uint32_t clientId) {
+    Serial.printf("Client %" PRIu32 " disconnected\n", clientId);
+    server->textAll("Client " + String(clientId) + " disconnected");
+  });
+
+  wsHandler.onError([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                       uint16_t errorCode, const char *reason, size_t len) {
+    Serial.printf("Client %" PRIu32 " error: %" PRIu16 ": %s\n", client->id(),
+                  errorCode, reason);
+  });
+
+  wsHandler.onMessage([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                         const uint8_t *data, size_t len) {
+    Serial.printf("Client %" PRIu32 " data: %s\n", client->id(),
+                  (const char *)data);
+  });
+
+  wsHandler.onFragment([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                          const AwsFrameInfo *frameInfo, const uint8_t *data,
+                          size_t len) {
+    Serial.printf("Client %" PRIu32 " fragment %" PRIu32 ": %s\n", client->id(),
+                  frameInfo->num, (const char *)data);
+  });
+
+  server.addHandler(&ws);
   server.begin();
+
   artnet.begin();
 };
 

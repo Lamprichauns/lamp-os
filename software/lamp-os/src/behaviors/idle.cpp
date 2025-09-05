@@ -1,22 +1,17 @@
-#include "../core/animated_behavior.hpp"
-#include "../util/color.hpp"
+
+#include "./idle.hpp"
 
 /**
  * @brief a base layer of the lamp's default color to prevent blackout
  */
 namespace lamp {
-class IdleBehavior : public AnimatedBehavior {
-  using AnimatedBehavior::AnimatedBehavior;
+void IdleBehavior::draw() {
+  for (int i = 0; i < fb->pixelCount; i++) {
+    fb->fill(fb->defaultColor);
+  }
 
- public:
-  void draw() {
-    for (int i = 0; i < fb->pixelCount; i++) {
-      fb->fill(fb->defaultColor);
-    }
-
-    nextFrame();
-  };
-
-  void control() {};
+  nextFrame();
 };
+
+void IdleBehavior::control() {};
 }  // namespace lamp

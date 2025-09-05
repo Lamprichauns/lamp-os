@@ -1,7 +1,7 @@
 #include "./compositor.hpp"
 
-#include "./behaviors/fade_in.cpp"
-#include "./behaviors/idle.cpp"
+#include "./behaviors/fade_in.hpp"
+#include "./behaviors/idle.hpp"
 
 namespace lamp {
 Compositor::Compositor() {};

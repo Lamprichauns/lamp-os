@@ -1,29 +1,19 @@
-#include "../components/network/wifi.hpp"
-#include "../core/animated_behavior.hpp"
+#include "./dmx.hpp"
+
 #include "../util/color.hpp"
 
-/**
- * @brief a layer to display dmx data from Artnet
- */
 namespace lamp {
-class DmxBehavior : public AnimatedBehavior {
-  using AnimatedBehavior::AnimatedBehavior;
+void DmxBehavior::draw() {
+  fb->fill(currentColor);
+  nextFrame();
+};
 
- public:
-  Color currentColor = Color(0);
-  unsigned long lastArtnetFrameTimeMs = 0;
+void DmxBehavior::control() {};
 
-  void draw() {
-    fb->fill(currentColor);
-    nextFrame();
-  };
+void DmxBehavior::setColor(Color inColor) { currentColor = inColor; };
 
-  void control() {};
-
-  void setColor(Color inColor) { currentColor = inColor; };
-
-  void setLastArtnetFrameTimeMs(unsigned long inLastArtnetFrameTimeMs) {
-    lastArtnetFrameTimeMs = inLastArtnetFrameTimeMs;
-  };
+void DmxBehavior::setLastArtnetFrameTimeMs(
+    unsigned long inLastArtnetFrameTimeMs) {
+  lastArtnetFrameTimeMs = inLastArtnetFrameTimeMs;
 };
 }  // namespace lamp

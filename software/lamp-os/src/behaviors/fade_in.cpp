@@ -1,4 +1,5 @@
-#include "../core/animated_behavior.hpp"
+#include "./fade_in.hpp"
+
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
 
@@ -6,22 +7,17 @@
  * @brief animation to fade from black to the lamp default color
  */
 namespace lamp {
-class FadeInBehavior : public AnimatedBehavior {
-  using AnimatedBehavior::AnimatedBehavior;
+void FadeInBehavior::draw() {
+  for (int i = 0; i < fb->pixelCount; i++) {
+    fb->buffer[i] = fade(Color(0, 0, 0, 0), fb->defaultColor, frames, frame);
+  }
 
- public:
-  void draw() {
-    for (int i = 0; i < fb->pixelCount; i++) {
-      fb->buffer[i] = fade(Color(0, 0, 0, 0), fb->defaultColor, frames, frame);
-    }
+  nextFrame();
+};
 
-    nextFrame();
-  };
-
-  void control() {
-    if (animationState == STOPPED && currentLoop == 0) {
-      playOnce();
-    }
-  };
+void FadeInBehavior::control() {
+  if (animationState == STOPPED && currentLoop == 0) {
+    playOnce();
+  }
 };
 }  // namespace lamp
