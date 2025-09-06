@@ -7,10 +7,13 @@
 #include <vector>
 
 #include "../../util/color.hpp"
+#define WEBSOCKET_CLEAN_TIME_MS 2000
 
 namespace lamp {
 class WifiComponent {
  public:
+  unsigned long lastWebSocketCleanTimeMs = 0;
+
   WifiComponent();
 
   /**
