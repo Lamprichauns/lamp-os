@@ -21,6 +21,11 @@ jobs:
           cache: 'pip'
     - name: Install PlatformIO
       run: pip install -r requirements.txt
+    - name: Add Secrets
+      working-directory: ./software/lamp-os
+      run:
+        run: |
+          cp "src/secrets_sample.hpp" "src/secrets.hpp"  
     - name: Build firmware
       working-directory: ./software/lamp-os
       run: pio run --environment upesy_wroom

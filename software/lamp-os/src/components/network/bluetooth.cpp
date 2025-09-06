@@ -51,7 +51,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
     Serial.printf("Bluetooth scan ended\n");
     std::vector<BluetoothRecord> lampsFound = lampBluetoothPool.getLamps();
     for (int i = 0; i < lampsFound.size(); i++) {
-      Serial.printf("Lamp Name: %s time found: %d - acknowledged: %d\n",
+      Serial.printf("Lamp Name: %s time found: %ld - acknowledged: %ld\n",
                     lampsFound[i].name.c_str(), lampsFound[i].lastSeenTimeMs,
                     lampsFound[i].acknowledged);
       Serial.printf("Color base: #%02x%02x%02x\n", lampsFound[i].baseColor.r,
