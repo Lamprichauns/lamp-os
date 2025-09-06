@@ -38,4 +38,4 @@ jobs:
       with:
         name: firmware
         path: |
-          distribution.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/distribution.bin
