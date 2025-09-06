@@ -24,8 +24,6 @@ jobs:
     - name: Build firmware
       working-directory: ./software/lamp-os
       run: pio run --environment upesy_wroom
-      with:
-        entryPoint: "./software/lamp-os"
     - uses: actions/upload-artifact@v4
       with:
         name: firmware
