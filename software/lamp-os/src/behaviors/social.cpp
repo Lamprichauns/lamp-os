@@ -12,7 +12,6 @@
 namespace lamp {
 void SocialBehavior::draw() {
   for (int i = 0; i < fb->pixelCount; i++) {
-    Color buf = fb->buffer[i];
     if (frame < easeFrames) {
       fb->buffer[i] = fade(fb->defaultColor, foundLampColor, easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
