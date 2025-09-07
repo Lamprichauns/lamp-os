@@ -55,7 +55,7 @@ THE SOFTWARE.
 namespace lamp {
 class ArtnetWifi {
  public:
-  std::vector<Color> artnetData = {Color(0), Color(0)};
+  std::vector<Color> artnetData = {Color(), Color()};
   unsigned long lastDmxFrameMs;
   uint8_t seq = 0;
   bool newDmxData = false;

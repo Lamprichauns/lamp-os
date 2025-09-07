@@ -13,7 +13,7 @@ class DmxBehavior : public AnimatedBehavior {
   using AnimatedBehavior::AnimatedBehavior;
 
  public:
-  Color currentColor = Color(0);
+  Color currentColor = Color();
   unsigned long lastArtnetFrameTimeMs = 0;
 
   void draw();

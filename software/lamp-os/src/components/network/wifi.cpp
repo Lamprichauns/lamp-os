@@ -1,11 +1,13 @@
 #include "./wifi.hpp"
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <AsyncTCP.h>
 #include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 
+#include "../../config/config.hpp"
 #include "../../secrets.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
@@ -57,20 +59,22 @@ class CaptiveRequestHandler : public AsyncWebHandler {
   };
 
   void handleRequest(AsyncWebServerRequest *request) {
-    request->send(SPIFFS, "/configurator.html", String(), false);
+    request->send(SPIFFS, "/index.html.gz", String(), false);
   };
 };
 
 WifiComponent::WifiComponent() {};
 
-void WifiComponent::begin(std::string name) {
+void WifiComponent::begin(Config *inConfig) {
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Wifi Async Client\n");
 #endif
   Serial.begin(115200);
+  config = inConfig;
+  serializeJson(config->asJsonDocument(), doc);
   WiFi.mode(WIFI_AP);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(name.c_str());
+  WiFi.softAP(inConfig->lamp.name.c_str());
   dnsServer.start(53, "*", WiFi.softAPIP());
 
 #ifdef LAMP_DEBUG
@@ -82,7 +86,16 @@ void WifiComponent::begin(std::string name) {
                   (const char *)data);
   });
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(SPIFFS, "/configurator.html", String(), false);
+    AsyncWebServerResponse *response =
+        request->beginResponse(SPIFFS, "/index.html.gz", "text/html");
+    response->addHeader("Content-Encoding", "gzip");
+    request->send(response);
+  });
+  server.on("/settings", HTTP_GET, [&](AsyncWebServerRequest *request) {
+    AsyncResponseStream *response =
+        request->beginResponseStream("application/json");
+    response->print(doc.c_str());
+    request->send(response);
   });
   server.addHandler(&ws);
   server.begin();

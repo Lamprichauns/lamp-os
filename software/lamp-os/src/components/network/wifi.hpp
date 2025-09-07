@@ -6,21 +6,24 @@
 #include <string>
 #include <vector>
 
+#include "../../config/config.hpp"
 #include "../../util/color.hpp"
 #define WEBSOCKET_CLEAN_TIME_MS 2000
 
 namespace lamp {
 class WifiComponent {
  public:
+  Config* config;
   unsigned long lastWebSocketCleanTimeMs = 0;
+  std::string doc;
 
   WifiComponent();
 
   /**
    * @brief initializer for setup
-   * @param [in] name max. 13 character string representing the lamp's name
+   * @param [in] config a reference to a lamp config
    */
-  void begin(std::string name);
+  void begin(Config* inConfig);
 
   /**
    * @brief process to call in the main loop

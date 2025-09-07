@@ -8,6 +8,7 @@
 #include "../util/color.hpp"
 #include "./behaviors/dmx.hpp"
 #include "./behaviors/social.hpp"
+#include "./config/config.hpp"
 #include "./core/animated_behavior.hpp"
 #include "./core/compositor.hpp"
 #include "./core/frame_buffer.hpp"
@@ -33,13 +34,11 @@ void setup() {
   Serial.begin(115200);
 #endif
   SPIFFS.begin(true);
-  bt.begin("standard", lamp::Color(0x30, 0x07, 0x83, 0x00),
-           lamp::Color(0x00, 0x00, 0x00, 0xFF));
-  wifi.begin("lamp-standard");
-  shade.begin(lamp::Color(0x00, 0x00, 0x00, 0xFF), LAMP_DEFAULT_NUMBER_PIXELS,
-              &shadeStrip);
-  base.begin(lamp::Color(0x30, 0x07, 0x83, 0x00), LAMP_DEFAULT_NUMBER_PIXELS,
-             &baseStrip);
+  lamp::Config config = lamp::Config();
+  bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
+  wifi.begin(&config);
+  shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
+  base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
   baseDmxBehavior = lamp::DmxBehavior(&base, 0);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);

@@ -19,8 +19,8 @@ namespace lamp {
 class BluetoothRecord {
  public:
   std::string name;
-  Color baseColor = Color(0);
-  Color shadeColor = Color(0);
+  Color baseColor = Color();
+  Color shadeColor = Color();
   unsigned long lastSeenTimeMs;
   boolean acknowledged;
 
