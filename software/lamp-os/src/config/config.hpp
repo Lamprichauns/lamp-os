@@ -1,6 +1,8 @@
 #ifndef LAMP_CONFIG_CONFIG_H
 #define LAMP_CONFIG_CONFIG_H
+#include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 
 #include "./config_types.hpp"
 
@@ -13,6 +15,9 @@ namespace lamp {
  * @property shade - details about the neopixels in the lamp bulb
  */
 class Config {
+ private:
+  Preferences* prefs;
+
  public:
   LampSettings lamp;
   BaseSettings base;
@@ -22,9 +27,9 @@ class Config {
 
   /**
    * @brief create a config based on information in the user's storage
-   * @param [in] inJson startup settings from flash/spiffs
+   * @param [in] inPrefs preferences container for nvs values
    */
-  Config(JsonDocument inJson);
+  Config(Preferences* inPrefs);
 
   /**
    * @brief create a streamable json doc to send configs to the webserver

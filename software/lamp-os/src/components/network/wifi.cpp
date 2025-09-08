@@ -2,9 +2,11 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <AsyncJson.h>
 #include <AsyncTCP.h>
 #include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
+#include <Preferences.h>
 #include <WiFi.h>
 
 #include "../../config/config.hpp"
@@ -20,6 +22,7 @@ static DNSServer dnsServer;
 static AsyncWebServer server(80);
 static AsyncWebSocketMessageHandler wsHandler;
 static AsyncWebSocket ws("/ws", wsHandler.eventHandler());
+Preferences prefs;
 
 #ifdef LAMP_DEBUG
 void wsMonitor() {
@@ -91,12 +94,37 @@ void WifiComponent::begin(Config *inConfig) {
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
   });
-  server.on("/settings", HTTP_GET, [&](AsyncWebServerRequest *request) {
+  server.on("/settings", HTTP_GET, [this](AsyncWebServerRequest *request) {
     AsyncResponseStream *response =
         request->beginResponseStream("application/json");
     response->print(doc.c_str());
     request->send(response);
   });
+  server.on(
+      "/settings", HTTP_PUT, [](AsyncWebServerRequest *request) {}, nullptr,
+      [&](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+          size_t index, size_t total) mutable {
+        try {
+          String buf;
+          for (size_t i = 0; i < len; i++) {
+            buf.concat((char)data[i]);
+          }
+          prefs.begin("lamp", false);
+          size_t status = prefs.putString("cfg", buf);
+          prefs.end();
+
+          if (status) {
+            request->send(200);
+            return;
+          }
+        } catch (int e) {
+          request->send(500);
+          return;
+        }
+
+        request->send(500);
+        return;
+      });
   server.addHandler(&ws);
   server.begin();
   artnet.begin();

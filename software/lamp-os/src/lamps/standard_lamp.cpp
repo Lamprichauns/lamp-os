@@ -2,6 +2,9 @@
 
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
+#include <Preferences.h>
+
+#include <string>
 
 #include "../components/network/bluetooth.hpp"
 #include "../components/network/wifi.hpp"
@@ -19,7 +22,7 @@ Adafruit_NeoPixel shadeStrip(LAMP_DEFAULT_NUMBER_PIXELS, LAMP_SHADE_PIN,
                              NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel baseStrip(LAMP_DEFAULT_NUMBER_PIXELS, LAMP_BASE_PIN,
                             NEO_GRBW + NEO_KHZ800);
-
+Preferences prefs;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -34,7 +37,7 @@ void setup() {
   Serial.begin(115200);
 #endif
   SPIFFS.begin(true);
-  lamp::Config config = lamp::Config();
+  lamp::Config config = lamp::Config(&prefs);
   bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
   wifi.begin(&config);
   shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);

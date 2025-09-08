@@ -1,38 +1,89 @@
 #include "./config.hpp"
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
+
+#include "../util/color.hpp"
 
 namespace lamp {
-Config::Config(JsonDocument inJson) {};
+Config::Config(Preferences* inPrefs) {
+  JsonDocument doc;
+  prefs = inPrefs;
+  prefs->begin("lamp", true);
+  String json = prefs->getString("cfg", "{}");
+  DeserializationError error = deserializeJson(doc, json);
+  prefs->end();
+
+#ifdef LAMP_DEBUG
+  Serial.println(json);
+#endif
+
+  if (error) {
+#ifdef LAMP_DEBUG
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+#endif
+    return;  // use class defaults
+  }
+
+  JsonObject lampNode = doc["lamp"];
+  lamp.name = std::string(lampNode["name"] | "standard");
+  lamp.brightness = lampNode["brightness"] | 100;
+  lamp.homeMode = lampNode["homeMode"] | false;
+
+  JsonObject baseNode = doc["base"];
+  base.px = baseNode["px"] | 35;
+  base.ac = baseNode["ac"] | 0;
+  JsonArray baseColors = baseNode["colors"];
+  if (baseColors.size()) {
+    base.colors.clear();
+    for (JsonVariant baseColor : baseColors) {
+      base.colors.push_back(hexStringToColor(baseColor));
+    }
+  }
+
+  JsonObject shadeNode = doc["shade"];
+  shade.px = shadeNode["px"] | 35;
+  JsonArray shadeColors = shadeNode["colors"];
+  if (shadeColors.size()) {
+    shade.colors.clear();
+    for (JsonVariant shadeColor : shadeColors) {
+      shade.colors.push_back(hexStringToColor(shadeColor));
+    }
+  }
+};
 
 JsonDocument Config::asJsonDocument() {
   JsonDocument doc;
 
-  doc["lamp"] = JsonObject();
-  doc["lamp"]["name"] = lamp.name;
-  doc["lamp"]["brightness"] = lamp.brightness;
-  doc["lamp"]["homeMode"] = lamp.homeMode;
+  JsonObject lampNode = doc["lamp"].to<JsonObject>();
+  lampNode["name"] = lamp.name;
+  lampNode["brightness"] = lamp.brightness;
+  lampNode["homeMode"] = lamp.homeMode;
 
-  doc["base"] = JsonObject();
-  doc["base"]["px"] = base.px;
-  doc["base"]["ac"] = base.ac;
-  doc["base"]["colors"] = JsonArray();
+  JsonObject baseNode = doc["base"].to<JsonObject>();
+  baseNode["px"] = base.px;
+  baseNode["ac"] = base.ac;
+  JsonArray baseColorsNode = baseNode["colors"].to<JsonArray>();
   for (int i = 0; i < base.colors.size(); i++) {
-    doc["base"]["colors"][i] = colorToHexString(base.colors[i]);
+    baseColorsNode[i] = colorToHexString(base.colors[i]);
   }
-  doc["base"]["knockout"] = JsonArray();
+  JsonArray baseKnockoutNode = baseNode["knockout"].to<JsonArray>();
   for (int i = 0; i < base.knockoutPixels.size(); i++) {
-    doc["base"]["knockout"][i]["p"] = base.knockoutPixels[i].p;
-    doc["base"]["knockout"][i]["b"] = base.knockoutPixels[i].b;
+    JsonObject baseKnockoutObjectNode = baseKnockoutNode[i].to<JsonObject>();
+    baseKnockoutObjectNode["p"] = base.knockoutPixels[i].p;
+    baseKnockoutObjectNode["b"] = base.knockoutPixels[i].b;
   }
 
-  doc["shade"] = JsonObject();
-  doc["shade"]["px"] = shade.px;
-  doc["shade"]["colors"] = JsonArray();
+  JsonObject shadeNode = doc["shade"].to<JsonObject>();
+  shadeNode["px"] = 35;
+  JsonArray shadeColorsNode = shadeNode["colors"].to<JsonArray>();
   for (int i = 0; i < shade.colors.size(); i++) {
-    doc["shade"]["colors"][i] = colorToHexString(shade.colors[i]);
+    shadeColorsNode[i] = colorToHexString(shade.colors[i]);
   }
 
   return doc;
 };
+
 }  // namespace lamp

@@ -17,5 +17,6 @@ class Color {
 };
 
 std::string colorToHexString(Color inColor);
+Color hexStringToColor(std::string inHexString);
 }  // namespace lamp
 #endif
