@@ -6,9 +6,6 @@
 
 #define LAMP_TIME_BETWEEN_ACKNOWLEDGEMENT_MS 30000
 
-/**
- * @brief social color exchange
- */
 namespace lamp {
 void SocialBehavior::draw() {
   for (int i = 0; i < fb->pixelCount; i++) {

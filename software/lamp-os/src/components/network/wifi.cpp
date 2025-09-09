@@ -26,14 +26,6 @@ Preferences prefs;
 
 #ifdef LAMP_DEBUG
 void wsMonitor() {
-  wsHandler.onConnect([](AsyncWebSocket *server, AsyncWebSocketClient *client) {
-    Serial.printf("Client %" PRIu32 " connected\n", client->id());
-  });
-
-  wsHandler.onDisconnect([](AsyncWebSocket *server, uint32_t clientId) {
-    Serial.printf("Client %" PRIu32 " disconnected\n", clientId);
-  });
-
   wsHandler.onError([](AsyncWebSocket *server, AsyncWebSocketClient *client,
                        uint16_t errorCode, const char *reason, size_t len) {
     Serial.printf("Client %" PRIu32 " error: %" PRIu16 ": %s\n", client->id(),
@@ -85,8 +77,37 @@ void WifiComponent::begin(Config *inConfig) {
 #endif
   wsHandler.onMessage([&](AsyncWebSocket *server, AsyncWebSocketClient *client,
                           const uint8_t *data, size_t len) {
+#ifdef LAMP_DEBUG
     Serial.printf("Client %" PRIu32 " data: %s\n", client->id(),
                   (const char *)data);
+#endif
+    lastWebSocketUpdateTimeMs = millis();
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, data);
+
+    if (error) {
+#ifdef LAMP_DEBUG
+      Serial.print("ws deserializeJson() failed: ");
+      Serial.println(error.c_str());
+#endif
+      return;  // use class defaults
+    }
+
+    newWebSocketData = true;
+    lastWebSocketData = doc;
+  });
+  wsHandler.onConnect(
+      [&](AsyncWebSocket *server, AsyncWebSocketClient *client) {
+#ifdef LAMP_DEBUG
+        Serial.printf("Client %" PRIu32 " connected\n", client->id());
+#endif
+        lastWebSocketUpdateTimeMs = millis();
+      });
+  wsHandler.onDisconnect([&](AsyncWebSocket *server, uint32_t clientId) {
+#ifdef LAMP_DEBUG
+    Serial.printf("Client %" PRIu32 " disconnected\n", clientId);
+#endif
+    lastWebSocketUpdateTimeMs = millis();
   });
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response =
@@ -114,6 +135,7 @@ void WifiComponent::begin(Config *inConfig) {
           prefs.end();
 
           if (status) {
+            requiresReboot = true;
             request->send(200);
             return;
           }
@@ -152,5 +174,16 @@ std::vector<Color> WifiComponent::getArtnetData() {
 
 unsigned long WifiComponent::getLastArtnetFrameTimeMs() {
   return artnet.lastDmxFrameMs;
+};
+
+bool WifiComponent::hasWebSocketData() { return newWebSocketData; };
+
+unsigned long WifiComponent::getLastWebSocketUpdateTimeMs() {
+  return lastWebSocketUpdateTimeMs;
+};
+
+JsonDocument WifiComponent::getWebSocketData() {
+  newWebSocketData = false;
+  return lastWebSocketData;
 };
 }  // namespace lamp

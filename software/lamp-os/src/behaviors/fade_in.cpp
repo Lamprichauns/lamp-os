@@ -3,9 +3,6 @@
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
 
-/**
- * @brief animation to fade from black to the lamp default color
- */
 namespace lamp {
 void FadeInBehavior::draw() {
   for (int i = 0; i < fb->pixelCount; i++) {

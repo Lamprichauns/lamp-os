@@ -3,9 +3,5 @@
 
 #define LAMP_SHADE_PIN 12
 #define LAMP_BASE_PIN 14
-#define LAMP_DEFAULT_NUMBER_PIXELS 40
-#define LAMP_DEFAULT_NAME "standard"
-#define LAMP_DEFAULT_HOME_MODE false
-#define LAMP_DEFAULT_BRIGHTNESS 100
 
 #endif

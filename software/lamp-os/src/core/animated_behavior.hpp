@@ -21,7 +21,10 @@ enum AnimationState {
 
   // Animation will no longer contribute to the scene and it will
   // resume from the beginning of the frame count
-  STOPPED = 5
+  STOPPED = 5,
+
+  // Animation is playing only one loop
+  PLAYING_ONCE = 6
 };
 
 /**
@@ -67,12 +70,12 @@ class AnimatedBehavior {
   virtual void control();
 
   /**
-   * @brief Pause the animation
+   * @brief Pause the animation and redraw the paused frame
    */
   void pause();
 
   /**
-   * @brief Stop the animation
+   * @brief Stop the animation at the last frame
    */
   void stop();
 

@@ -21,7 +21,7 @@ Config::Config(Preferences* inPrefs) {
 
   if (error) {
 #ifdef LAMP_DEBUG
-    Serial.print("deserializeJson() failed: ");
+    Serial.print("cfg deserializeJson() failed: ");
     Serial.println(error.c_str());
 #endif
     return;  // use class defaults

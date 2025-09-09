@@ -1,4 +1,4 @@
-#ifndef LAMP_CONFIG_CONFIG_TYPE_H
+#ifndef LAMP_CONFIG_CONFIG_TYPES_H
 #define LAMP_CONFIG_CONFIG_TYPES_H
 
 #include <Arduino.h>

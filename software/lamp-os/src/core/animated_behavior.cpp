@@ -18,21 +18,13 @@ AnimatedBehavior::AnimatedBehavior(FrameBuffer *inBuffer,
 AnimatedBehavior::~AnimatedBehavior() {};
 void AnimatedBehavior::draw() {};
 void AnimatedBehavior::control() {};
-void AnimatedBehavior::pause() {
-  if (animationState == PLAYING) {
-    animationState = PAUSING;
-  }
-};
+void AnimatedBehavior::pause() { animationState = PAUSING; };
 
-void AnimatedBehavior::stop() {
-  if (animationState == PLAYING) {
-    animationState = STOPPING;
-  }
-};
+void AnimatedBehavior::stop() { animationState = STOPPING; };
 
 void AnimatedBehavior::play() { animationState = PLAYING; };
 
-void AnimatedBehavior::playOnce() { animationState = STOPPING; };
+void AnimatedBehavior::playOnce() { animationState = PLAYING_ONCE; };
 
 bool AnimatedBehavior::isLastFrame() { return (frame == frames - 1); };
 
@@ -41,12 +33,12 @@ void AnimatedBehavior::nextFrame() {
     animationState = PAUSED;
   }
 
-  if (animationState != PAUSED || animationState != STOPPED) {
+  if (animationState != PAUSED) {
     frame += 1;
   }
 
   if (frame >= frames) {
-    if (animationState == STOPPING) {
+    if (animationState == STOPPING || animationState == PLAYING_ONCE) {
       animationState = STOPPED;
     }
 

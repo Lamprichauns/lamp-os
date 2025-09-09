@@ -28,16 +28,14 @@ void Compositor::tick() {
     if (startupComplete) {
       for (int i = 0; i < behaviors.size(); i++) {
         behaviors[i]->control();
-        if (behaviors[i]->animationState != STOPPED &&
-            behaviors[i]->animationState != PAUSED) {
+        if (behaviors[i]->animationState != STOPPED) {
           behaviors[i]->draw();
         }
       }
     } else {
       for (int i = 0; i < startupBehaviors.size(); i++) {
         startupBehaviors[i]->control();
-        if (startupBehaviors[i]->animationState != STOPPED &&
-            startupBehaviors[i]->animationState != PAUSED) {
+        if (startupBehaviors[i]->animationState != STOPPED) {
           startupBehaviors[i]->draw();
         }
         if (millis() > 3000) {

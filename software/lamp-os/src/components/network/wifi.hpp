@@ -8,7 +8,7 @@
 
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
-#define WEBSOCKET_CLEAN_TIME_MS 2000
+#define WEBSOCKET_CLEAN_TIME_MS 5000
 
 namespace lamp {
 class WifiComponent {
@@ -16,6 +16,10 @@ class WifiComponent {
   Config* config;
   unsigned long lastWebSocketCleanTimeMs = 0;
   std::string doc;
+  boolean requiresReboot = false;
+  boolean newWebSocketData = false;
+  unsigned long lastWebSocketUpdateTimeMs = 0;
+  JsonDocument lastWebSocketData;
 
   WifiComponent();
 
@@ -48,7 +52,24 @@ class WifiComponent {
    * @return timestamp of last frame in milliseconds
    */
   unsigned long getLastArtnetFrameTimeMs();
+
+  /**
+   * @brief Check if there's new WebSocket data to consume
+   * @return true if there's recent data in the buffer
+   */
+  bool hasWebSocketData();
+
+  /**
+   * @brief get last Websocket updates time
+   * @return timestamp of last update time in milliseconds
+   */
+  unsigned long getLastWebSocketUpdateTimeMs();
+
+  /**
+   * @brief get the json doc from the buffer
+   * @return JsonDocument
+   */
+  JsonDocument getWebSocketData();
 };
 }  // namespace lamp
-
 #endif

@@ -7,7 +7,8 @@
 #include "./frame_buffer.hpp"
 
 #define MINIMUM_FRAME_DRAW_TIME_MS 15
-#define STARTUP_ANIMATION_FRAMES 60
+#define STARTUP_ANIMATION_FRAMES 120
+#define REBOOT_ANIMATION_FRAMES 120
 
 namespace lamp {
 /**
