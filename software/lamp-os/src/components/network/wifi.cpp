@@ -156,7 +156,8 @@ void WifiComponent::tick() {
   dnsServer.processNextRequest();
   uint32_t now = millis();
 
-  if (now > lastWebSocketCleanTimeMs + WEBSOCKET_CLEAN_TIME_MS) {
+  if (now > lastWebSocketCleanTimeMs + WEBSOCKET_CLEAN_TIME_MS &&
+      now > lastWebSocketUpdateTimeMs + WEBSOCKET_CLEAN_TIME_MS) {
     ws.cleanupClients(1);
     lastWebSocketCleanTimeMs = now;
 #ifdef LAMP_DEBUG

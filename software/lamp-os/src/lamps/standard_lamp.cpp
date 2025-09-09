@@ -93,11 +93,9 @@ void loop() {
       baseStrip.setBrightness(
           lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
-      Serial.println("knockout");
       baseConfiguratorBehavior.knockoutPixels[uint8_t(doc["p"] | 0)] =
           uint8_t(doc["b"] | 100);
     } else if (action == "base") {
-      Serial.println("base");
       JsonArray baseColors = doc["c"];
       if (baseColors.size()) {
         baseConfiguratorBehavior.colors.clear();
@@ -107,7 +105,6 @@ void loop() {
         }
       }
     } else if (action == "shade") {
-      Serial.println("shade");
       JsonArray shadeColors = doc["c"];
       if (shadeColors.size()) {
         shadeConfiguratorBehavior.colors.clear();

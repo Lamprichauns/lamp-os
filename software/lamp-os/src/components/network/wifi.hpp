@@ -8,7 +8,7 @@
 
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
-#define WEBSOCKET_CLEAN_TIME_MS 5000
+#define WEBSOCKET_CLEAN_TIME_MS 60000
 
 namespace lamp {
 class WifiComponent {
