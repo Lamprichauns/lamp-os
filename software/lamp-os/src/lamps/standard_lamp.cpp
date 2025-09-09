@@ -19,6 +19,7 @@
 #include "./core/frame_buffer.hpp"
 #include "./globals.hpp"
 #include "./util/color.hpp"
+#include "./util/levels.hpp"
 #include "SPIFFS.h"
 
 Adafruit_NeoPixel shadeStrip(35, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
@@ -45,8 +46,10 @@ void setup() {
   lamp::Config config = lamp::Config(&prefs);
   bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
   wifi.begin(&config);
-  shadeStrip.setBrightness(180);
-  baseStrip.setBrightness(180);
+  shadeStrip.setBrightness(lamp::calculateBrightnessLevel(
+      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
+  baseStrip.setBrightness(lamp::calculateBrightnessLevel(
+      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
   base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
@@ -57,6 +60,7 @@ void setup() {
       std::vector<lamp::Color>{shade.defaultColor};
   baseConfiguratorBehavior = lamp::ConfiguratorBehavior(&base, 120);
   baseConfiguratorBehavior.colors = std::vector<lamp::Color>{base.defaultColor};
+  // baseConfiguratorBehavior.knockoutPixels = config.base.knockoutPixels;
   shadeFadeOutBehavior = lamp::FadeOutBehavior(&shade, REBOOT_ANIMATION_FRAMES);
   baseFadeOutBehavior = lamp::FadeOutBehavior(&base, REBOOT_ANIMATION_FRAMES);
   compositor.begin(
@@ -83,8 +87,11 @@ void loop() {
     // parse the ws action id into a String
     String action = String(doc["a"]);
     if (action == "bright") {
-      shadeConfiguratorBehavior.brightness = doc["v"] | 100;
-      baseConfiguratorBehavior.brightness = doc["v"] | 100;
+      int level = doc["v"] | 100;
+      shadeStrip.setBrightness(
+          lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
+      baseStrip.setBrightness(
+          lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
       Serial.println("knockout");
       baseConfiguratorBehavior.knockoutPixels[uint8_t(doc["p"] | 0)] =
