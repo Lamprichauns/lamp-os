@@ -45,6 +45,8 @@ void setup() {
   lamp::Config config = lamp::Config(&prefs);
   bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
   wifi.begin(&config);
+  shadeStrip.setBrightness(180);
+  baseStrip.setBrightness(180);
   shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
   base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
@@ -101,7 +103,7 @@ void loop() {
       Serial.println("shade");
       JsonArray shadeColors = doc["c"];
       if (shadeColors.size()) {
-        baseConfiguratorBehavior.colors.clear();
+        shadeConfiguratorBehavior.colors.clear();
         for (JsonVariant shadeColor : shadeColors) {
           shadeConfiguratorBehavior.colors.push_back(
               lamp::hexStringToColor(shadeColor));
