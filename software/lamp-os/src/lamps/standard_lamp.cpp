@@ -81,7 +81,7 @@ void handleArtnet() {
 /**
  * Whole lamp changes from the configuration tool
  */
-void handleWebsocket() {
+void handleWebSocket() {
   if (wifi.hasWebSocketData()) {
     JsonDocument doc = wifi.getWebSocketData();
     shadeConfiguratorBehavior.lastWebSocketUpdateTimeMs =
@@ -141,7 +141,7 @@ void setup() {
 
 void loop() {
   handleArtnet();
-  handleWebsocket();
+  handleWebSocket();
   wifi.tick();
   compositor.tick();
 };

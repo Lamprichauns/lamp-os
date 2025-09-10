@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include <string>
+#include <vector>
 
 namespace lamp {
 /**

@@ -60,7 +60,7 @@ class WifiComponent {
   bool hasWebSocketData();
 
   /**
-   * @brief get last Websocket updates time
+   * @brief get last WebSocket updates time
    * @return timestamp of last update time in milliseconds
    */
   unsigned long getLastWebSocketUpdateTimeMs();
