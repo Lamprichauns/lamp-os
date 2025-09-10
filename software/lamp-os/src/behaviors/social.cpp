@@ -23,6 +23,8 @@ void SocialBehavior::draw() {
 };
 
 void SocialBehavior::control() {
+  foundLamps = bt->getLamps();
+
   if (animationState == STOPPED && millis() > nextAcknowledgeTimeMs) {
     for (std::vector<BluetoothRecord>::reverse_iterator revIter =
              foundLamps->rbegin();
@@ -41,8 +43,7 @@ void SocialBehavior::control() {
   }
 };
 
-void SocialBehavior::updateFoundLamps(
-    std::vector<BluetoothRecord>* inFoundLamps) {
-  foundLamps = inFoundLamps;
+void SocialBehavior::setBluetoothComponent(BluetoothComponent* inBt) {
+  bt = inBt;
 };
 }  // namespace lamp

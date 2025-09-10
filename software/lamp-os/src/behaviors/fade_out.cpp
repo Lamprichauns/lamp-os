@@ -1,5 +1,6 @@
 #include "./fade_out.hpp"
 
+#include "../components/network/wifi.hpp"
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
 
@@ -13,11 +14,17 @@ void FadeOutBehavior::draw() {
 };
 
 void FadeOutBehavior::control() {
+  reboot = wifi->requiresReboot;
+
   if (animationState == STOPPED && reboot) {
     playOnce();
   }
   if (reboot & isLastFrame()) {
     ESP.restart();
   }
+};
+
+void FadeOutBehavior::setWifiComponent(WifiComponent* inWifi) {
+  wifi = inWifi;
 };
 }  // namespace lamp

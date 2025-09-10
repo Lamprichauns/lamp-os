@@ -38,23 +38,15 @@ lamp::ConfiguratorBehavior baseConfiguratorBehavior;
 lamp::FadeOutBehavior shadeFadeOutBehavior;
 lamp::FadeOutBehavior baseFadeOutBehavior;
 
-void setup() {
-#ifdef LAMP_DEBUG
-  Serial.begin(115200);
-#endif
-  SPIFFS.begin(true);
-  lamp::Config config = lamp::Config(&prefs);
-  bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
-  wifi.begin(&config);
-  shadeStrip.setBrightness(lamp::calculateBrightnessLevel(
-      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
-  baseStrip.setBrightness(lamp::calculateBrightnessLevel(
-      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
-  shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
-  base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
+/**
+ * - Initialize all of the lamps behaviors
+ * - Initialize the animation compositor
+ */
+void initBehaviors() {
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
   baseDmxBehavior = lamp::DmxBehavior(&base, 0);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
+  shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
   shadeConfiguratorBehavior.colors =
       std::vector<lamp::Color>{shade.defaultColor};
@@ -62,21 +54,34 @@ void setup() {
   baseConfiguratorBehavior.colors = std::vector<lamp::Color>{base.defaultColor};
   // baseConfiguratorBehavior.knockoutPixels = config.base.knockoutPixels;
   shadeFadeOutBehavior = lamp::FadeOutBehavior(&shade, REBOOT_ANIMATION_FRAMES);
+  shadeFadeOutBehavior.setWifiComponent(&wifi);
   baseFadeOutBehavior = lamp::FadeOutBehavior(&base, REBOOT_ANIMATION_FRAMES);
+  baseFadeOutBehavior.setWifiComponent(&wifi);
+
+  // layers load in priority sequence {lowest, ..., highest}
   compositor.begin(
       {&shadeSocialBehavior, &shadeConfiguratorBehavior,
        &baseConfiguratorBehavior, &baseFadeOutBehavior, &shadeFadeOutBehavior},
       {&shade, &base});
+}
+
+/**
+ * ArtNet DMX actions shared between the base and shade
+ */
+void handleArtnet() {
+  if (wifi.hasArtnetData()) {
+    std::vector<lamp::Color> artnetData = wifi.getArtnetData();
+    shadeDmxBehavior.setColor(artnetData[0]);
+    shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
+    baseDmxBehavior.setColor(artnetData[1]);
+    baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
+  }
 };
 
-void loop() {
-  shadeSocialBehavior.updateFoundLamps(bt.getLamps());
-
-  if (wifi.requiresReboot) {
-    shadeFadeOutBehavior.reboot = true;
-    baseFadeOutBehavior.reboot = true;
-  }
-
+/**
+ * Whole lamp changes from the configuration tool
+ */
+void handleWebsocket() {
   if (wifi.hasWebSocketData()) {
     JsonDocument doc = wifi.getWebSocketData();
     shadeConfiguratorBehavior.lastWebSocketUpdateTimeMs =
@@ -84,7 +89,7 @@ void loop() {
     baseConfiguratorBehavior.lastWebSocketUpdateTimeMs =
         wifi.getLastWebSocketUpdateTimeMs();
 
-    // parse the ws action id into a String
+    // parse the ws action id (a) into a String
     String action = String(doc["a"]);
     if (action == "bright") {
       int level = doc["v"] | 100;
@@ -115,14 +120,28 @@ void loop() {
       }
     }
   }
+}
 
-  if (wifi.hasArtnetData()) {
-    std::vector<lamp::Color> artnetData = wifi.getArtnetData();
-    shadeDmxBehavior.setColor(artnetData[0]);
-    shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
-    baseDmxBehavior.setColor(artnetData[1]);
-    baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
-  }
+void setup() {
+#ifdef LAMP_DEBUG
+  Serial.begin(115200);
+#endif
+  SPIFFS.begin(true);
+  lamp::Config config = lamp::Config(&prefs);
+  bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
+  wifi.begin(&config);
+  shadeStrip.setBrightness(lamp::calculateBrightnessLevel(
+      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
+  baseStrip.setBrightness(lamp::calculateBrightnessLevel(
+      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
+  shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
+  base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
+  initBehaviors();
+};
+
+void loop() {
+  handleArtnet();
+  handleWebsocket();
   wifi.tick();
   compositor.tick();
 };
