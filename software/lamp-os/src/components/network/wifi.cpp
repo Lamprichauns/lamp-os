@@ -119,7 +119,7 @@ void WifiComponent::begin(Config *inConfig) {
   server.on(
       "/settings",
       HTTP_PUT,
-      nullptr,
+      [](AsyncWebServerRequest *request) {},
       nullptr,
       [&](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
         try {

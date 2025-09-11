@@ -15,7 +15,7 @@ namespace lamp {
  */
 class FrameBuffer {
  public:
-  Color defaultColor;
+  std::vector<Color> defaultColors;
   uint8_t pixelCount;
   Adafruit_NeoPixel *driver;
   std::vector<Color> buffer;
@@ -24,11 +24,11 @@ class FrameBuffer {
 
   /**
    * @brief Setup initializer
-   * @param [in] inDefaultColor The user's preferred lamp default color
+   * @param [in] inDefaultColors The user's default lamp colors {Color, ..., n} n <= 40
    * @param [in] inPixelCount the number of neopixels in use
    * @param [in] inDriver the NeoPixel instance to use
    */
-  void begin(Color inDefaultColor, uint8_t inPixelCount, Adafruit_NeoPixel *inDriver);
+  void begin(std::vector<Color> inDefaultColors, uint8_t inPixelCount, Adafruit_NeoPixel *inDriver);
 
   /**
    * @brief fill the framebuffer with a single color

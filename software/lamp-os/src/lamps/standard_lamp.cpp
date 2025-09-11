@@ -19,11 +19,12 @@
 #include "./core/frame_buffer.hpp"
 #include "./globals.hpp"
 #include "./util/color.hpp"
+#include "./util/gradient.hpp"
 #include "./util/levels.hpp"
 #include "SPIFFS.h"
 
-Adafruit_NeoPixel shadeStrip(35, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
-Adafruit_NeoPixel baseStrip(35, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
 Preferences prefs;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
@@ -48,9 +49,9 @@ void initBehaviors() {
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
-  shadeConfiguratorBehavior.colors = std::vector<lamp::Color>{shade.defaultColor};
+  shadeConfiguratorBehavior.colors = shade.defaultColors;
   baseConfiguratorBehavior = lamp::ConfiguratorBehavior(&base, 120);
-  baseConfiguratorBehavior.colors = std::vector<lamp::Color>{base.defaultColor};
+  baseConfiguratorBehavior.colors = base.defaultColors;
   // baseConfiguratorBehavior.knockoutPixels = config.base.knockoutPixels;
   shadeFadeOutBehavior = lamp::FadeOutBehavior(&shade, REBOOT_ANIMATION_FRAMES);
   shadeFadeOutBehavior.setWifiComponent(&wifi);
@@ -99,18 +100,20 @@ void handleWebSocket() {
     } else if (action == "base") {
       JsonArray baseColors = doc["c"];
       if (baseColors.size()) {
-        baseConfiguratorBehavior.colors.clear();
+        std::vector<lamp::Color> updatedColors;
         for (JsonVariant baseColor : baseColors) {
-          baseConfiguratorBehavior.colors.push_back(lamp::hexStringToColor(baseColor));
+          updatedColors.push_back(lamp::hexStringToColor(baseColor));
         }
+        baseConfiguratorBehavior.colors = lamp::buildGradientWithStops(base.pixelCount, updatedColors);
       }
     } else if (action == "shade") {
       JsonArray shadeColors = doc["c"];
       if (shadeColors.size()) {
-        shadeConfiguratorBehavior.colors.clear();
+        std::vector<lamp::Color> updatedColors;
         for (JsonVariant shadeColor : shadeColors) {
-          shadeConfiguratorBehavior.colors.push_back(lamp::hexStringToColor(shadeColor));
+          updatedColors.push_back(lamp::hexStringToColor(shadeColor));
         }
+        shadeConfiguratorBehavior.colors = lamp::buildGradientWithStops(shade.pixelCount, updatedColors);
       }
     }
   }
@@ -126,8 +129,8 @@ void setup() {
   wifi.begin(&config);
   shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
-  shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
-  base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
+  shade.begin(lamp::buildGradientWithStops(config.shade.px, config.shade.colors), config.shade.px, &shadeStrip);
+  base.begin(lamp::buildGradientWithStops(config.base.px, config.base.colors), config.base.px, &baseStrip);
   initBehaviors();
 };
 

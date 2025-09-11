@@ -1,8 +1,8 @@
 #include "./frame_buffer.hpp"
 
 #include <Adafruit_NeoPixel.h>
-#include <Arduino.h>
 
+#include <cstdint>
 #include <vector>
 
 #include "./util/color.hpp"
@@ -10,8 +10,8 @@
 namespace lamp {
 FrameBuffer::FrameBuffer() {};
 
-void FrameBuffer::begin(Color inDefaultColor, uint8_t inPixelCount, Adafruit_NeoPixel *inDriver) {
-  defaultColor = inDefaultColor;
+void FrameBuffer::begin(std::vector<Color> inDefaultColors, uint8_t inPixelCount, Adafruit_NeoPixel *inDriver) {
+  defaultColors = inDefaultColors;
   pixelCount = inPixelCount;
   buffer = std::vector<Color>(inPixelCount);
   driver = inDriver;

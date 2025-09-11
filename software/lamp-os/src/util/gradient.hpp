@@ -13,7 +13,7 @@ namespace lamp {
  * @param [in] inColorStart - the start color
  * @param [in] inColorEnd - the end color
  * @param [in] inSteps - the number of pixels the gradients should span
- * @return a vector of colors
+ * @return a vector of colors for the steps specified
  */
 std::vector<Color> calculateGradient(Color inColorStart, Color inColorEnd,
                                      uint8_t inSteps);
@@ -23,6 +23,7 @@ std::vector<Color> calculateGradient(Color inColorStart, Color inColorEnd,
  * gradient
  * @param [in] inNumberPixels the total Neopixel count to spread the gradient
  * @param [in] inColorSteps up to 5 user colors to fade between
+ * @return gradiented colors for the total strip length specified
  */
 std::vector<Color> buildGradientWithStops(uint8_t inNumberPixels,
                                           std::vector<Color> inColorStops);

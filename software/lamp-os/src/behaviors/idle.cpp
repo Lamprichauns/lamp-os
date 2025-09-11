@@ -3,9 +3,7 @@
 
 namespace lamp {
 void IdleBehavior::draw() {
-  for (int i = 0; i < fb->pixelCount; i++) {
-    fb->fill(fb->defaultColor);
-  }
+  fb->buffer = fb->defaultColors;
 
   nextFrame();
 };

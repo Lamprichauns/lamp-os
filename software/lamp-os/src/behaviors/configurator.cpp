@@ -9,11 +9,11 @@ namespace lamp {
 void ConfiguratorBehavior::draw() {
   for (int i = 0; i < fb->pixelCount; i++) {
     if (frame < easeFrames) {
-      fb->buffer[i] = fade(fb->buffer[i], colors[0], easeFrames, frame);
+      fb->buffer[i] = fade(fb->buffer[i], colors[i], easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
-      fb->buffer[i] = fade(colors[0], fb->buffer[i], easeFrames, frame % easeFrames);
+      fb->buffer[i] = fade(colors[i], fb->buffer[i], easeFrames, frame % easeFrames);
     } else {
-      fb->buffer[i] = colors[0];
+      fb->buffer[i] = colors[i];
     }
   }
 

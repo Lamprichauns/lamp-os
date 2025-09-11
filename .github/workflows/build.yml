@@ -35,5 +35,7 @@ jobs:
         name: firmware
         path: |
           ./software/lamp-os/.pio/build/upesy_wroom/distribution.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/bootloader.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/partitions.bin
           ./software/lamp-os/.pio/build/upesy_wroom/firmware.bin
           ./software/lamp-os/.pio/build/upesy_wroom/spiffs.bin
