@@ -32,10 +32,10 @@ THE SOFTWARE.
 #ifndef LAMP_COMPONENTS_NETWORK_ARTNET_H
 #define LAMP_COMPONENTS_NETWORK_ARTNET_H
 
-#include <Arduino.h>
 #include <AsyncUDP.h>
 #include <WiFi.h>
 
+#include <cstdint>
 #include <functional>
 
 #include "../../util/color.hpp"
@@ -56,7 +56,7 @@ namespace lamp {
 class ArtnetWifi {
  public:
   std::vector<Color> artnetData = {Color(), Color()};
-  unsigned long lastDmxFrameMs;
+  uint32_t lastDmxFrameMs;
   uint8_t seq = 0;
   bool newDmxData = false;
 
@@ -73,7 +73,9 @@ class ArtnetWifi {
   uint16_t incomingUniverse;
   uint16_t dmxDataLength;
   static const char artnetId[];
-  void updateDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence,
+  void updateDmxFrame(uint16_t universe,
+                      uint16_t length,
+                      uint8_t sequence,
                       uint8_t* data);
 };
 }  // namespace lamp

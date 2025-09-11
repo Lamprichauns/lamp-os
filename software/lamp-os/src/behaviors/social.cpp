@@ -1,10 +1,10 @@
 #include "./social.hpp"
 
+#include <Arduino.h>
+
 #include "../components/network/bluetooth.hpp"
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
-
-#define LAMP_TIME_BETWEEN_ACKNOWLEDGEMENT_MS 30000
 
 namespace lamp {
 void SocialBehavior::draw() {
@@ -12,8 +12,7 @@ void SocialBehavior::draw() {
     if (frame < easeFrames) {
       fb->buffer[i] = fade(fb->defaultColor, foundLampColor, easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
-      fb->buffer[i] = fade(foundLampColor, fb->defaultColor, easeFrames,
-                           frame % easeFrames);
+      fb->buffer[i] = fade(foundLampColor, fb->defaultColor, easeFrames, frame % easeFrames);
     } else {
       fb->buffer[i] = foundLampColor;
     }

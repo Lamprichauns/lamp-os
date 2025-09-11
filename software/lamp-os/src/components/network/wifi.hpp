@@ -16,8 +16,8 @@ class WifiComponent {
   Config* config;
   unsigned long lastWebSocketCleanTimeMs = 0;
   std::string doc;
-  boolean requiresReboot = false;
-  boolean newWebSocketData = false;
+  bool requiresReboot = false;
+  bool newWebSocketData = false;
   unsigned long lastWebSocketUpdateTimeMs = 0;
   JsonDocument lastWebSocketData;
 

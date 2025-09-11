@@ -28,8 +28,7 @@ class FrameBuffer {
    * @param [in] inPixelCount the number of neopixels in use
    * @param [in] inDriver the NeoPixel instance to use
    */
-  void begin(Color inDefaultColor, uint8_t inPixelCount,
-             Adafruit_NeoPixel *inDriver);
+  void begin(Color inDefaultColor, uint8_t inPixelCount, Adafruit_NeoPixel *inDriver);
 
   /**
    * @brief fill the framebuffer with a single color

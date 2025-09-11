@@ -1,23 +1,25 @@
 #include "./animated_behavior.hpp"
 
+#include <cstdint>
+
 namespace lamp {
 AnimatedBehavior::AnimatedBehavior() {}
 AnimatedBehavior::AnimatedBehavior(FrameBuffer *inBuffer,
-                                   unsigned long inFrames, bool inHomeMode,
-                                   bool inAutoPlay, bool inImmediateControl) {
+                                   uint32_t inFrames,
+                                   bool inAutoPlay) {
   fb = inBuffer;
   frames = inFrames;
-  homeMode = inHomeMode;
-  autoPlay = inAutoPlay;
-  if (autoPlay) {
+  if (inAutoPlay) {
     animationState = PLAYING;
   }
-  immediateControl = inImmediateControl;
 };
 
 AnimatedBehavior::~AnimatedBehavior() {};
+
 void AnimatedBehavior::draw() {};
+
 void AnimatedBehavior::control() {};
+
 void AnimatedBehavior::pause() { animationState = PAUSING; };
 
 void AnimatedBehavior::stop() { animationState = STOPPING; };

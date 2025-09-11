@@ -1,7 +1,6 @@
 #include "./fade.hpp"
 
-#include <Arduino.h>
-
+#include <cstdint>
 #include <vector>
 
 #include "./color.hpp"

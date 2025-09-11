@@ -30,23 +30,15 @@ You can auto format your code by changing the vscode settings (ctrl + shift + p 
     "cSpell.diagnosticLevel": "Hint",
     "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file",
-    "C_Cpp.vcFormat.newLine.beforeOpenBrace.namespace": "sameLine",
-    "C_Cpp.vcFormat.newLine.beforeOpenBrace.type": "sameLine",
-    "C_Cpp.vcFormat.newLine.scopeBracesOnSeparateLines": false,
-    "C_Cpp.vcFormat.newLine.beforeOpenBrace.block": "sameLine",
-    "C_Cpp.vcFormat.newLine.beforeOpenBrace.function": "sameLine",
-    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 2 }"
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 2, ColumnLimit: 0}"
 ```
-
-## Project Setup 
-
-copy the file `secrets_sample.hpp` to `secrets.hpp` and add any artnet credentials you want. otherwise leave it blank
 
 ## Flashing
 
  Currently the flash process is a few steps:
-  - Pioarduino in the VSCode sidebar -> project tasks -> platform -> build filesystem image
-  - Pioarduino in the VSCode sidebar -> project tasks -> platform -> upload filesystem image
-  - Pioarduino in the VSCode sidebar -> project tasks -> general -> upload
+
+* Pioarduino in the VSCode sidebar -> project tasks -> platform -> build filesystem image
+* Pioarduino in the VSCode sidebar -> project tasks -> platform -> upload filesystem image
+* Pioarduino in the VSCode sidebar -> project tasks -> general -> upload
 
  Note that depending on the board, you may need to hold the boot button in order to flash the board.

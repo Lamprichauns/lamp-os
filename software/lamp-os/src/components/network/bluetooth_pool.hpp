@@ -1,6 +1,8 @@
 #ifndef LAMP_COMPONENTS_NETWORK_BLUETOOTH_POOL_H
 #define LAMP_COMPONENTS_NETWORK_BLUETOOTH_POOL_H
 
+#include <Arduino.h>
+
 #include <string>
 #include <vector>
 
@@ -22,7 +24,7 @@ class BluetoothRecord {
   Color baseColor = Color();
   Color shadeColor = Color();
   unsigned long lastSeenTimeMs;
-  boolean acknowledged;
+  bool acknowledged;
 
   BluetoothRecord(std::string inName, Color inBaseColor, Color inShadeColor,
                   unsigned long inTimeFoundMs);

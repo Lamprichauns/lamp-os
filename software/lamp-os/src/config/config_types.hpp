@@ -1,8 +1,7 @@
 #ifndef LAMP_CONFIG_CONFIG_TYPES_H
 #define LAMP_CONFIG_CONFIG_TYPES_H
 
-#include <Arduino.h>
-
+#include <cstdint>
 #include <string>
 #include <vector>
 

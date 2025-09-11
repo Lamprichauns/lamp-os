@@ -1,6 +1,7 @@
 #ifndef LAMP_UTIL_FADE_H
 #define LAMP_UTIL_FADE_H
-#include <Arduino.h>
+
+#include <cstdint>
 
 #include "./color.hpp"
 

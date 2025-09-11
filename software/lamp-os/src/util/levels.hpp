@@ -1,11 +1,12 @@
 #ifndef LAMP_UTIL_LEVELS_H
 #define LAMP_UTIL_LEVELS_H
-#include <Arduino.h>
+
+#include <cstdint>
 
 namespace lamp {
-int darken(int value, int percentage);
+uint8_t darken(uint8_t value, uint8_t percentage);
 
-int calculateBrightnessLevel(int value, int percentage);
+uint8_t calculateBrightnessLevel(uint8_t value, uint8_t percentage);
 }  // namespace lamp
 
 #endif

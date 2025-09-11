@@ -6,15 +6,13 @@
 namespace lamp {
 Compositor::Compositor() {};
 
-void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors,
-                       std::vector<FrameBuffer*> inFrameBuffers) {
+void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<FrameBuffer*> inFrameBuffers) {
   frameBuffers = inFrameBuffers;
 
   // Adds some basic behavior layers that are common to all framebuffers
   for (int i = 0; i < frameBuffers.size(); i++) {
-    startupBehaviors.push_back(
-        new FadeInBehavior(frameBuffers[i], STARTUP_ANIMATION_FRAMES));
-    behaviors.push_back(new IdleBehavior(frameBuffers[i], 0, false, true));
+    startupBehaviors.push_back(new FadeInBehavior(frameBuffers[i], STARTUP_ANIMATION_FRAMES));
+    behaviors.push_back(new IdleBehavior(frameBuffers[i], 0, true));
   }
 
   // append all of the non critical behaviors
@@ -47,8 +45,7 @@ void Compositor::tick() {
     behaviorsComputed = true;
   }
 
-  if (behaviorsComputed &&
-      millis() >= lastDrawTimeMs + MINIMUM_FRAME_DRAW_TIME_MS) {
+  if (behaviorsComputed && millis() >= lastDrawTimeMs + MINIMUM_FRAME_DRAW_TIME_MS) {
     lastDrawTimeMs = millis();
     behaviorsComputed = false;
     for (int i = 0; i < frameBuffers.size(); i++) {

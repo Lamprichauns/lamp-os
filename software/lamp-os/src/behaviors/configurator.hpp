@@ -1,6 +1,7 @@
 #ifndef LAMP_BEHAVIORS_CONFIGURATOR_H
 #define LAMP_BEHAVIORS_CONFIGURATOR_H
 
+#include <cstdint>
 #include <vector>
 
 #include "../components/network/wifi.hpp"

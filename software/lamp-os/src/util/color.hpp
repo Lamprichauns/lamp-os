@@ -1,7 +1,7 @@
 #ifndef LAMP_UTIL_COLOR_H
 #define LAMP_UTIL_COLOR_H
-#include <Arduino.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

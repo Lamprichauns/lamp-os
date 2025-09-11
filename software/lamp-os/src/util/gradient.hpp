@@ -1,7 +1,7 @@
 #ifndef LAMP_UTIL_GRADIENT_H
 #define LAMP_UTIL_GRADIENT_H
-#include <Arduino.h>
 
+#include <cstdint>
 #include <vector>
 
 #include "./color.hpp"

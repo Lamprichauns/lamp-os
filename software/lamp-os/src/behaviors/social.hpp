@@ -20,7 +20,7 @@ class SocialBehavior : public AnimatedBehavior {
   uint32_t easeFrames = 120;
   uint32_t nextAcknowledgeTimeMs = 0;
   Color foundLampColor;
-  BluetoothComponent *bt;
+  BluetoothComponent* bt;
   std::vector<BluetoothRecord>* foundLamps;
 
   void draw();

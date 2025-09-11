@@ -32,6 +32,8 @@ THE SOFTWARE.
 
 #include <AsyncUDP.h>
 
+#include <cstdint>
+
 #include "../../util/color.hpp"
 
 namespace lamp {
@@ -39,8 +41,10 @@ const char ArtnetWifi::artnetId[] = ART_NET_ID;
 
 ArtnetWifi::ArtnetWifi() {};
 
-void ArtnetWifi::updateDmxFrame(uint16_t universe, uint16_t length,
-                                uint8_t sequence, uint8_t* data) {
+void ArtnetWifi::updateDmxFrame(uint16_t universe,
+                                uint16_t length,
+                                uint8_t sequence,
+                                uint8_t* data) {
   lastDmxFrameMs = millis();
   if (universe == 1) {
     artnetData = {Color(data[0], data[1], data[2], data[3]),
@@ -71,7 +75,9 @@ void ArtnetWifi::begin() {
         sequence = artnetPacket[12];
         dmxDataLength = artnetPacket[17] | artnetPacket[16] << 8;
 
-        updateDmxFrame(incomingUniverse, dmxDataLength, sequence,
+        updateDmxFrame(incomingUniverse,
+                       dmxDataLength,
+                       sequence,
                        artnetPacket + ART_DMX_START);
       }
     }

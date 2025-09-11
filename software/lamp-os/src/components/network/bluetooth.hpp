@@ -1,7 +1,7 @@
 #ifndef LAMP_COMPONENTS_NETWORK_BLUETOOTH_H
 #define LAMP_COMPONENTS_NETWORK_BLUETOOTH_H
 
-#include <Arduino.h>
+#include <string>
 
 #include "./bluetooth_pool.hpp"
 

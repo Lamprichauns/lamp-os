@@ -15,6 +15,7 @@
 #include <NimBLEDevice.h>
 
 #include <string>
+#include <vector>
 
 #include "../../util/color.hpp"
 #include "./bluetooth_pool.hpp"
@@ -33,14 +34,14 @@ class ScanCallbacks : public NimBLEScanCallbacks {
   };
 
   void onResult(const NimBLEAdvertisedDevice *advertisedDevice) override {
-    if (advertisedDevice->haveName() &&
-        advertisedDevice->haveManufacturerData()) {
+    if (advertisedDevice->haveName() && advertisedDevice->haveManufacturerData()) {
       std::string data = advertisedDevice->getManufacturerData();
-      if (advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE &&
-          isLamp(data)) {
+      if (advertisedDevice->getRSSI() > BLE_MINIMUM_RSSI_VALUE && isLamp(data)) {
         BluetoothRecord lamp = BluetoothRecord(
-            advertisedDevice->getName(), Color(data[2], data[3], data[4], 0),
-            Color(data[5], data[6], data[7], 0), millis());
+            advertisedDevice->getName(),
+            Color(data[2], data[3], data[4], 0),
+            Color(data[5], data[6], data[7], 0),
+            millis());
         lampBluetoothPool.addOrUpdateLamp(lamp);
       }
     }

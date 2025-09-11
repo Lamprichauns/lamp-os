@@ -1,6 +1,5 @@
-#include <Arduino.h>
-
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 #include "./color.hpp"
@@ -57,6 +56,7 @@ std::vector<Color> buildGradientWithStops(uint8_t inNumberPixels,
     }
   }
 
+  // with all the breakpoints identified, build the gradients
   std::vector<Color> buf;
   buf.reserve(inNumberPixels);
   for (i = 0; i < breaks.size(); i++) {

@@ -1,5 +1,7 @@
 #include "./configurator.hpp"
 
+#include <cstdint>
+
 #include "../util/color.hpp"
 #include "../util/fade.hpp"
 
@@ -9,8 +11,7 @@ void ConfiguratorBehavior::draw() {
     if (frame < easeFrames) {
       fb->buffer[i] = fade(fb->buffer[i], colors[0], easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
-      fb->buffer[i] =
-          fade(colors[0], fb->buffer[i], easeFrames, frame % easeFrames);
+      fb->buffer[i] = fade(colors[0], fb->buffer[i], easeFrames, frame % easeFrames);
     } else {
       fb->buffer[i] = colors[0];
     }
@@ -20,7 +21,7 @@ void ConfiguratorBehavior::draw() {
 };
 
 void ConfiguratorBehavior::control() {
-  unsigned long now = millis();
+  uint32_t now = millis();
   if (animationState == STOPPED) {
     if (lastWebSocketUpdateTimeMs > 0 &&
         now < lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT) {
@@ -30,8 +31,7 @@ void ConfiguratorBehavior::control() {
   if (animationState == PLAYING_ONCE && frame == easeFrames) {
     pause();
   }
-  if (animationState == PAUSED &&
-      now > lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT) {
+  if (animationState == PAUSED && now > lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT) {
     playOnce();
   }
 };

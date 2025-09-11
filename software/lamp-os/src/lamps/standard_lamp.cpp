@@ -48,8 +48,7 @@ void initBehaviors() {
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
-  shadeConfiguratorBehavior.colors =
-      std::vector<lamp::Color>{shade.defaultColor};
+  shadeConfiguratorBehavior.colors = std::vector<lamp::Color>{shade.defaultColor};
   baseConfiguratorBehavior = lamp::ConfiguratorBehavior(&base, 120);
   baseConfiguratorBehavior.colors = std::vector<lamp::Color>{base.defaultColor};
   // baseConfiguratorBehavior.knockoutPixels = config.base.knockoutPixels;
@@ -59,10 +58,12 @@ void initBehaviors() {
   baseFadeOutBehavior.setWifiComponent(&wifi);
 
   // layers load in priority sequence {lowest, ..., highest}
-  compositor.begin(
-      {&shadeSocialBehavior, &shadeConfiguratorBehavior,
-       &baseConfiguratorBehavior, &baseFadeOutBehavior, &shadeFadeOutBehavior},
-      {&shade, &base});
+  compositor.begin({&shadeSocialBehavior,
+                    &shadeConfiguratorBehavior,
+                    &baseConfiguratorBehavior,
+                    &baseFadeOutBehavior,
+                    &shadeFadeOutBehavior},
+                   {&shade, &base});
 }
 
 /**
@@ -84,29 +85,23 @@ void handleArtnet() {
 void handleWebSocket() {
   if (wifi.hasWebSocketData()) {
     JsonDocument doc = wifi.getWebSocketData();
-    shadeConfiguratorBehavior.lastWebSocketUpdateTimeMs =
-        wifi.getLastWebSocketUpdateTimeMs();
-    baseConfiguratorBehavior.lastWebSocketUpdateTimeMs =
-        wifi.getLastWebSocketUpdateTimeMs();
+    shadeConfiguratorBehavior.lastWebSocketUpdateTimeMs = wifi.getLastWebSocketUpdateTimeMs();
+    baseConfiguratorBehavior.lastWebSocketUpdateTimeMs = wifi.getLastWebSocketUpdateTimeMs();
 
     // parse the ws action id (a) into a String
     String action = String(doc["a"]);
     if (action == "bright") {
       int level = doc["v"] | 100;
-      shadeStrip.setBrightness(
-          lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
-      baseStrip.setBrightness(
-          lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
+      shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
+      baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
-      baseConfiguratorBehavior.knockoutPixels[uint8_t(doc["p"] | 0)] =
-          uint8_t(doc["b"] | 100);
+      baseConfiguratorBehavior.knockoutPixels[uint8_t(doc["p"] | 0)] = uint8_t(doc["b"] | 100);
     } else if (action == "base") {
       JsonArray baseColors = doc["c"];
       if (baseColors.size()) {
         baseConfiguratorBehavior.colors.clear();
         for (JsonVariant baseColor : baseColors) {
-          baseConfiguratorBehavior.colors.push_back(
-              lamp::hexStringToColor(baseColor));
+          baseConfiguratorBehavior.colors.push_back(lamp::hexStringToColor(baseColor));
         }
       }
     } else if (action == "shade") {
@@ -114,8 +109,7 @@ void handleWebSocket() {
       if (shadeColors.size()) {
         shadeConfiguratorBehavior.colors.clear();
         for (JsonVariant shadeColor : shadeColors) {
-          shadeConfiguratorBehavior.colors.push_back(
-              lamp::hexStringToColor(shadeColor));
+          shadeConfiguratorBehavior.colors.push_back(lamp::hexStringToColor(shadeColor));
         }
       }
     }
@@ -130,10 +124,8 @@ void setup() {
   lamp::Config config = lamp::Config(&prefs);
   bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
   wifi.begin(&config);
-  shadeStrip.setBrightness(lamp::calculateBrightnessLevel(
-      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
-  baseStrip.setBrightness(lamp::calculateBrightnessLevel(
-      LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
+  shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
+  baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(config.shade.colors[0], config.shade.px, &shadeStrip);
   base.begin(config.base.colors.at(config.base.ac), config.base.px, &baseStrip);
   initBehaviors();

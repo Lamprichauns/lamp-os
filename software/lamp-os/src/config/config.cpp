@@ -1,6 +1,5 @@
 #include "./config.hpp"
 
-#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 

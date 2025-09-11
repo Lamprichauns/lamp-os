@@ -1,6 +1,8 @@
 #ifndef LAMP_CORE_ANIMATED_BEHAVIOR_H
 #define LAMP_CORE_ANIMATED_BEHAVIOR_H
 
+#include <cstdint>
+
 #include "./frame_buffer.hpp"
 
 namespace lamp {
@@ -34,12 +36,10 @@ enum AnimationState {
 class AnimatedBehavior {
  public:
   FrameBuffer* fb;
-  unsigned long frames = 60;
-  unsigned long frame = 0;
-  unsigned long currentLoop = 0;
-  bool immediateControl = false;
-  bool autoPlay = false;
-  bool homeMode = false;
+  uint32_t frames = 60;
+  uint32_t frame = 0;
+  uint32_t currentLoop = 0;
+  bool allowedInHomeMode = true;
   AnimationState animationState = STOPPED;
 
   /**
@@ -48,16 +48,12 @@ class AnimatedBehavior {
    * @param [in] inBuffer the frame buffer to interact with
    * @param [in] inFrames the frame duration for the behaviour eg (60 frames ~ 2
    *                      seconds of animation)
-   * @param [in] homeMode if true the animation will only play if allowed
    * @param [in] autoPlay if true the animation will begin immediately
-   * @param [in] inImmediateControl if true the control block will start on lamp
-   *                                startup
    */
   AnimatedBehavior();
-  AnimatedBehavior(FrameBuffer* inBuffer, unsigned long inFrames = 60,
-                   bool inHomeMode = false, bool inAutoPlay = false,
-                   bool inImmediateControl = false);
+  AnimatedBehavior(FrameBuffer* inBuffer, uint32_t inFrames = 60, bool inAutoPlay = false);
   virtual ~AnimatedBehavior();
+
   /**
    * @brief A virtual function to make changes to the frame buffer per frame
    */

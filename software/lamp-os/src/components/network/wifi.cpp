@@ -10,7 +10,6 @@
 #include <WiFi.h>
 
 #include "../../config/config.hpp"
-#include "../../secrets.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
 #include "./wifi.hpp"
@@ -75,8 +74,7 @@ void WifiComponent::begin(Config *inConfig) {
 #ifdef LAMP_DEBUG
   wsMonitor();
 #endif
-  wsHandler.onMessage([&](AsyncWebSocket *server, AsyncWebSocketClient *client,
-                          const uint8_t *data, size_t len) {
+  wsHandler.onMessage([&](AsyncWebSocket *server, AsyncWebSocketClient *client, const uint8_t *data, size_t len) {
 #ifdef LAMP_DEBUG
     Serial.printf("Client %" PRIu32 " data: %s\n", client->id(),
                   (const char *)data);
@@ -96,13 +94,12 @@ void WifiComponent::begin(Config *inConfig) {
     newWebSocketData = true;
     lastWebSocketData = doc;
   });
-  wsHandler.onConnect(
-      [&](AsyncWebSocket *server, AsyncWebSocketClient *client) {
+  wsHandler.onConnect([&](AsyncWebSocket *server, AsyncWebSocketClient *client) {
 #ifdef LAMP_DEBUG
-        Serial.printf("Client %" PRIu32 " connected\n", client->id());
+    Serial.printf("Client %" PRIu32 " connected\n", client->id());
 #endif
-        lastWebSocketUpdateTimeMs = millis();
-      });
+    lastWebSocketUpdateTimeMs = millis();
+  });
   wsHandler.onDisconnect([&](AsyncWebSocket *server, uint32_t clientId) {
 #ifdef LAMP_DEBUG
     Serial.printf("Client %" PRIu32 " disconnected\n", clientId);
@@ -110,21 +107,21 @@ void WifiComponent::begin(Config *inConfig) {
     lastWebSocketUpdateTimeMs = millis();
   });
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response =
-        request->beginResponse(SPIFFS, "/index.html.gz", "text/html");
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/index.html.gz", "text/html");
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
   });
   server.on("/settings", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    AsyncResponseStream *response =
-        request->beginResponseStream("application/json");
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
     response->print(doc.c_str());
     request->send(response);
   });
   server.on(
-      "/settings", HTTP_PUT, [](AsyncWebServerRequest *request) {}, nullptr,
-      [&](AsyncWebServerRequest *request, uint8_t *data, size_t len,
-          size_t index, size_t total) mutable {
+      "/settings",
+      HTTP_PUT,
+      nullptr,
+      nullptr,
+      [&](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
         try {
           String buf;
           for (size_t i = 0; i < len; i++) {

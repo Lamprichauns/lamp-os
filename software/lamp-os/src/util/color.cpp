@@ -1,7 +1,6 @@
 #include "./color.hpp"
 
-#include <Arduino.h>
-
+#include <cstdint>
 #include <format>
 #include <string>
 

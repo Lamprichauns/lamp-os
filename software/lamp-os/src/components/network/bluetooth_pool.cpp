@@ -1,5 +1,7 @@
 #include "./bluetooth_pool.hpp"
 
+#include <Arduino.h>
+
 #include <string>
 
 #include "../../util/color.hpp"

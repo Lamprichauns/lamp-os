@@ -32,8 +32,7 @@ class Compositor {
    * @param [in] list of all frame buffers used by the lamp - this helps to
    *             support multi strip lamps
    */
-  void begin(std::vector<AnimatedBehavior*> inBehaviors,
-             std::vector<FrameBuffer*> inFrameBuffers);
+  void begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<FrameBuffer*> inFrameBuffers);
 
   /**
    * @brief manage building frames and drawing them on the LEDs
