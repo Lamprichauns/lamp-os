@@ -23,16 +23,19 @@ class Compositor {
   bool startupComplete = false;
   bool behaviorsComputed = false;
   unsigned long lastDrawTimeMs = 0;
+  bool homeMode = false;
+
   Compositor();
 
   /**
    * @brief initializer
-   * @param [in] list of behaviors to execute in priority sequence. last item
+   * @param [in] inBevaviors list of behaviors to execute in priority sequence. last item
    *             is highest priority
-   * @param [in] list of all frame buffers used by the lamp - this helps to
+   * @param [in] inFrameBuffers of all frame buffers used by the lamp - this helps to
    *             support multi strip lamps
+   * @param [in] homeMode if true only behaviors allowedInHomeMode=true will run to reduce distraction at home
    */
-  void begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<FrameBuffer*> inFrameBuffers);
+  void begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<FrameBuffer*> inFrameBuffers, bool homeMode = false);
 
   /**
    * @brief manage building frames and drawing them on the LEDs

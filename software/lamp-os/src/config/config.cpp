@@ -31,6 +31,7 @@ Config::Config(Preferences* inPrefs) {
   lamp.brightness = lampNode["brightness"] | 100;
   lamp.homeMode = lampNode["homeMode"] | false;
 
+  Serial.printf("%d\n", lamp.homeMode);
   JsonObject baseNode = doc["base"];
   base.px = baseNode["px"] | 35;
   base.ac = baseNode["ac"] | 0;

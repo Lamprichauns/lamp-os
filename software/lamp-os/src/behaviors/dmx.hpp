@@ -17,6 +17,7 @@ class DmxBehavior : public AnimatedBehavior {
  public:
   Color currentColor = Color();
   uint32_t lastArtnetFrameTimeMs = 0;
+  bool allowedInHomeMode = false;
 
   void draw();
 

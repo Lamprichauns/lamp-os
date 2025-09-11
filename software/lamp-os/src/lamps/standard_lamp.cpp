@@ -43,7 +43,7 @@ lamp::FadeOutBehavior baseFadeOutBehavior;
  * - Initialize all of the lamps behaviors
  * - Initialize the animation compositor
  */
-void initBehaviors() {
+void initBehaviors(bool homeMode) {
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
   baseDmxBehavior = lamp::DmxBehavior(&base, 0);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
@@ -64,7 +64,8 @@ void initBehaviors() {
                     &baseConfiguratorBehavior,
                     &baseFadeOutBehavior,
                     &shadeFadeOutBehavior},
-                   {&shade, &base});
+                   {&shade, &base},
+                   homeMode);
 }
 
 /**
@@ -131,7 +132,7 @@ void setup() {
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(lamp::buildGradientWithStops(config.shade.px, config.shade.colors), config.shade.px, &shadeStrip);
   base.begin(lamp::buildGradientWithStops(config.base.px, config.base.colors), config.base.px, &baseStrip);
-  initBehaviors();
+  initBehaviors(config.lamp.homeMode);
 };
 
 void loop() {

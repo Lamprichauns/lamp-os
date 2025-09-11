@@ -12,6 +12,8 @@ class IdleBehavior : public AnimatedBehavior {
   using AnimatedBehavior::AnimatedBehavior;
 
  public:
+  bool allowedInHomeMode = true;
+
   void draw();
   void control();
 };

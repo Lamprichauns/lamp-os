@@ -26,6 +26,7 @@ class ConfiguratorBehavior : public AnimatedBehavior {
   std::vector<Color> colors;
   std::vector<uint8_t> knockoutPixels = std::vector<uint8_t>(50, (uint8_t)100);
   unsigned long lastWebSocketUpdateTimeMs = 0;
+  bool allowedInHomeMode = true;
 
   void draw();
 

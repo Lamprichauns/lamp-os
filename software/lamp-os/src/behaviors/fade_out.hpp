@@ -14,6 +14,7 @@ class FadeOutBehavior : public AnimatedBehavior {
  public:
   WifiComponent* wifi;
   bool reboot = false;
+  bool allowedInHomeMode = true;
 
   void draw();
 
