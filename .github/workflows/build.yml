@@ -1,0 +1,41 @@
+# workflows adapted from the WLED project using PlatformIO
+name: LampOS Build
+
+# Only included into other workflows
+on:
+  workflow_call:
+
+jobs:
+
+  build:
+    name: Build Environment
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+          python-version: '3.12'
+          cache: 'pip'
+    - name: Install PlatformIO
+      run: pip install -r requirements.txt
+    - name: Build firmware
+      working-directory: ./software/lamp-os
+      run: |
+        pio run --environment upesy_wroom
+        pio run --target buildfs --environment upesy_wroom
+    - name: Merge firmware
+      working-directory: ./software/lamp-os/.pio/build/upesy_wroom
+      run: |
+        esptool --chip esp32 merge-bin -o distribution.bin --flash-mode dio --flash-freq 40m --flash-size 4MB 0x1000 bootloader.bin 0x8000 partitions.bin 0x20000 firmware.bin 0x3E0000 spiffs.bin
+    - uses: actions/upload-artifact@v4
+      with:
+        name: firmware
+        path: |
+          ./software/lamp-os/.pio/build/upesy_wroom/distribution.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/bootloader.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/partitions.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/firmware.bin
+          ./software/lamp-os/.pio/build/upesy_wroom/spiffs.bin

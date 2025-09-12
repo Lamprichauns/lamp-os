@@ -1,3 +1,4 @@
+platformio>=6.1.17
 micropy-cli
 invoke
 adafruit-ampy
