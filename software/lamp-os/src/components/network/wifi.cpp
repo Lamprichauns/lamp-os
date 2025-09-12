@@ -121,7 +121,7 @@ void WifiComponent::begin(Config *inConfig) {
       [](AsyncWebServerRequest *request) {},
       nullptr,
       [&](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        size_t status;
+        size_t status = 0;
         try {
           String buf;
           for (size_t i = 0; i < len; i++) {

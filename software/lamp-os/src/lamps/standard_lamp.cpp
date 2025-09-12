@@ -65,8 +65,7 @@ void initBehaviors(lamp::Config* config) {
                     &shadeConfiguratorBehavior,
                     &baseConfiguratorBehavior,
                     &baseFadeOutBehavior,
-                    &shadeFadeOutBehavior,
-                    &baseKnockoutBehavior},
+                    &shadeFadeOutBehavior},
                    {&shade, &base},
                    config->lamp.homeMode);
 
