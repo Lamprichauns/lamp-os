@@ -12,8 +12,9 @@ void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<F
 
   // Adds some basic behavior layers that are common to all framebuffers
   for (int i = 0; i < frameBuffers.size(); i++) {
-    startupBehaviors.push_back(new FadeInBehavior(frameBuffers[i], STARTUP_ANIMATION_FRAMES));
     behaviors.push_back(new IdleBehavior(frameBuffers[i], 0, true));
+    startupBehaviors.push_back(new IdleBehavior(frameBuffers[i], 0, true));
+    startupBehaviors.push_back(new FadeInBehavior(frameBuffers[i], STARTUP_ANIMATION_FRAMES));
   }
 
   // append all of the non critical behaviors
