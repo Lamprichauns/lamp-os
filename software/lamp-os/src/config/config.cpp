@@ -20,8 +20,7 @@ Config::Config(Preferences* inPrefs) {
 
   if (error) {
 #ifdef LAMP_DEBUG
-    Serial.print("cfg deserializeJson() failed: ");
-    Serial.println(error.c_str());
+    Serial.printf("ws deserializeJson() failed: %s\n", error.c_str());
 #endif
     return;  // use class defaults
   }
@@ -31,7 +30,6 @@ Config::Config(Preferences* inPrefs) {
   lamp.brightness = lampNode["brightness"] | 100;
   lamp.homeMode = lampNode["homeMode"] | false;
 
-  Serial.printf("%d\n", lamp.homeMode);
   JsonObject baseNode = doc["base"];
   base.px = baseNode["px"] | 35;
   base.ac = baseNode["ac"] | 0;
@@ -40,6 +38,17 @@ Config::Config(Preferences* inPrefs) {
     base.colors.clear();
     for (JsonVariant baseColor : baseColors) {
       base.colors.push_back(hexStringToColor(baseColor));
+    }
+  }
+  JsonArray baseKnockoutPixels = baseNode["knockout"];
+  if (baseKnockoutPixels.size()) {
+    for (JsonObject baseKnockoutPixel : baseKnockoutPixels) {
+      int pixelIndex = baseKnockoutPixel["p"] | 0;
+      if (pixelIndex > 49) {
+        continue;
+      }
+
+      base.knockoutPixels[pixelIndex] = baseKnockoutPixel["b"] | 100;
     }
   }
 
@@ -70,10 +79,20 @@ JsonDocument Config::asJsonDocument() {
     baseColorsNode[i] = colorToHexString(base.colors[i]);
   }
   JsonArray baseKnockoutNode = baseNode["knockout"].to<JsonArray>();
+  int currentIdx = 0;
   for (int i = 0; i < base.knockoutPixels.size(); i++) {
-    JsonObject baseKnockoutObjectNode = baseKnockoutNode[i].to<JsonObject>();
-    baseKnockoutObjectNode["p"] = base.knockoutPixels[i].p;
-    baseKnockoutObjectNode["b"] = base.knockoutPixels[i].b;
+    int value = base.knockoutPixels[i];
+
+    // only send values that aren't 100% brightness as an optimization
+    if (value == 100) {
+      continue;
+    }
+
+    JsonObject baseKnockoutObjectNode = baseKnockoutNode[currentIdx].to<JsonObject>();
+    baseKnockoutObjectNode["p"] = i;
+    baseKnockoutObjectNode["b"] = value;
+
+    currentIdx++;
   }
 
   JsonObject shadeNode = doc["shade"].to<JsonObject>();

@@ -24,7 +24,7 @@ class FrameBuffer {
 
   /**
    * @brief Setup initializer
-   * @param [in] inDefaultColors The user's default lamp colors {Color, ..., n} n <= 40
+   * @param [in] inDefaultColors The user's default lamp colors {Color, ..., n} n <= 50
    * @param [in] inPixelCount the number of neopixels in use
    * @param [in] inDriver the NeoPixel instance to use
    */

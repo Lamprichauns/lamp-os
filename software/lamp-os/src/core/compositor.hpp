@@ -19,6 +19,7 @@ class Compositor {
  public:
   std::vector<AnimatedBehavior*> startupBehaviors;
   std::vector<AnimatedBehavior*> behaviors;
+  std::vector<AnimatedBehavior*> overlayBehaviors;
   std::vector<FrameBuffer*> frameBuffers;
   bool startupComplete = false;
   bool behaviorsComputed = false;

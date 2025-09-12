@@ -5,7 +5,7 @@
 #define LAMP_SHADE_PIN 12
 #define LAMP_BASE_PIN 14
 #define LAMP_MAX_BRIGHTNESS 180
-#define LAMP_MAX_STRIP_PIXELS 40
+#define LAMP_MAX_STRIP_PIXELS 50
 
 void setup();
 void loop();

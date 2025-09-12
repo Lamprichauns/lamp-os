@@ -9,7 +9,7 @@
 #include "../core/animated_behavior.hpp"
 #include "../util/color.hpp"
 
-#define CONFIGURATOR_WEBSOCKET_TIMEOUT 30000
+#define CONFIGURATOR_WEBSOCKET_TIMEOUT 60000
 
 /**
  * @brief a layer to preview realtime changes from the web
@@ -24,7 +24,6 @@ class ConfiguratorBehavior : public AnimatedBehavior {
   uint32_t easeFrames = 60;
   uint8_t brightness = 100;
   std::vector<Color> colors;
-  std::vector<uint8_t> knockoutPixels = std::vector<uint8_t>(50, (uint8_t)100);
   unsigned long lastWebSocketUpdateTimeMs = 0;
   bool allowedInHomeMode = true;
 

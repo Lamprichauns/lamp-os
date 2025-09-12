@@ -85,8 +85,7 @@ void WifiComponent::begin(Config *inConfig) {
 
     if (error) {
 #ifdef LAMP_DEBUG
-      Serial.print("ws deserializeJson() failed: ");
-      Serial.println(error.c_str());
+      Serial.printf("ws deserializeJson() failed: %s\n", error.c_str());
 #endif
       return;  // use class defaults
     }
@@ -122,13 +121,14 @@ void WifiComponent::begin(Config *inConfig) {
       [](AsyncWebServerRequest *request) {},
       nullptr,
       [&](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        size_t status;
         try {
           String buf;
           for (size_t i = 0; i < len; i++) {
             buf.concat((char)data[i]);
           }
           prefs.begin("lamp", false);
-          size_t status = prefs.putString("cfg", buf);
+          status = prefs.putString("cfg", buf);
           prefs.end();
 
           if (status) {
@@ -137,10 +137,16 @@ void WifiComponent::begin(Config *inConfig) {
             return;
           }
         } catch (int e) {
+#ifdef LAMP_DEBUG
+          Serial.printf("Setting threw with status %d - e: %d\n", status, e);
+#endif
           request->send(500);
           return;
         }
 
+#ifdef LAMP_DEBUG
+        Serial.printf("Setting failed with status %d", status);
+#endif
         request->send(500);
         return;
       });

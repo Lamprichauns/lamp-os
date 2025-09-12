@@ -45,6 +45,11 @@ void Compositor::tick() {
       }
     }
 
+    for (int i = 0; i < overlayBehaviors.size(); i++) {
+      overlayBehaviors[i]->control();
+      overlayBehaviors[i]->draw();
+    }
+
     behaviorsComputed = true;
   }
 

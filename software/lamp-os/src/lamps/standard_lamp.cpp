@@ -12,6 +12,7 @@
 #include "./behaviors/configurator.hpp"
 #include "./behaviors/dmx.hpp"
 #include "./behaviors/fade_out.hpp"
+#include "./behaviors/knockout.hpp"
 #include "./behaviors/social.hpp"
 #include "./config/config.hpp"
 #include "./core/animated_behavior.hpp"
@@ -38,12 +39,12 @@ lamp::ConfiguratorBehavior shadeConfiguratorBehavior;
 lamp::ConfiguratorBehavior baseConfiguratorBehavior;
 lamp::FadeOutBehavior shadeFadeOutBehavior;
 lamp::FadeOutBehavior baseFadeOutBehavior;
-
+lamp::KnockoutBehavior baseKnockoutBehavior;
 /**
  * - Initialize all of the lamps behaviors
  * - Initialize the animation compositor
  */
-void initBehaviors(bool homeMode) {
+void initBehaviors(lamp::Config* config) {
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
   baseDmxBehavior = lamp::DmxBehavior(&base, 0);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
@@ -52,20 +53,24 @@ void initBehaviors(bool homeMode) {
   shadeConfiguratorBehavior.colors = shade.defaultColors;
   baseConfiguratorBehavior = lamp::ConfiguratorBehavior(&base, 120);
   baseConfiguratorBehavior.colors = base.defaultColors;
-  // baseConfiguratorBehavior.knockoutPixels = config.base.knockoutPixels;
   shadeFadeOutBehavior = lamp::FadeOutBehavior(&shade, REBOOT_ANIMATION_FRAMES);
   shadeFadeOutBehavior.setWifiComponent(&wifi);
   baseFadeOutBehavior = lamp::FadeOutBehavior(&base, REBOOT_ANIMATION_FRAMES);
   baseFadeOutBehavior.setWifiComponent(&wifi);
+  baseKnockoutBehavior = lamp::KnockoutBehavior(&base, 0, true);
+  baseKnockoutBehavior.knockoutPixels = config->base.knockoutPixels;
 
   // layers load in priority sequence {lowest, ..., highest}
   compositor.begin({&shadeSocialBehavior,
                     &shadeConfiguratorBehavior,
                     &baseConfiguratorBehavior,
                     &baseFadeOutBehavior,
-                    &shadeFadeOutBehavior},
+                    &shadeFadeOutBehavior,
+                    &baseKnockoutBehavior},
                    {&shade, &base},
-                   homeMode);
+                   config->lamp.homeMode);
+
+  compositor.overlayBehaviors.push_back(&baseKnockoutBehavior);
 }
 
 /**
@@ -97,7 +102,11 @@ void handleWebSocket() {
       shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
       baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
-      baseConfiguratorBehavior.knockoutPixels[uint8_t(doc["p"] | 0)] = uint8_t(doc["b"] | 100);
+      int pixelIndex = doc["p"];
+      int percentage = doc["b"];
+      if (pixelIndex >= 0 && pixelIndex < 50 && percentage >= 0 && percentage <= 100) {
+        baseKnockoutBehavior.knockoutPixels[pixelIndex] = percentage;
+      }
     } else if (action == "base") {
       JsonArray baseColors = doc["c"];
       if (baseColors.size()) {
@@ -124,15 +133,15 @@ void setup() {
 #ifdef LAMP_DEBUG
   Serial.begin(115200);
 #endif
-  SPIFFS.begin(true);
   lamp::Config config = lamp::Config(&prefs);
+  SPIFFS.begin(true);
   bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
   wifi.begin(&config);
   shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(lamp::buildGradientWithStops(config.shade.px, config.shade.colors), config.shade.px, &shadeStrip);
   base.begin(lamp::buildGradientWithStops(config.base.px, config.base.colors), config.base.px, &baseStrip);
-  initBehaviors(config.lamp.homeMode);
+  initBehaviors(&config);
 };
 
 void loop() {
