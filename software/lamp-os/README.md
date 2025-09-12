@@ -1,11 +1,11 @@
-# Lamp OS - C/Arduino Port
+# Lamp OS
 
 ---
-This is an unstable branch for development of a new C++ focused port of the lamp os project. It retains all the same hardware specs.
+This is the main software aboard the lamps. It's a small LED driver focused on slow animations and social behaviors
 
 ## Contributing
 
-This project runs on pioarduino, a VS Code plugin for all platforms. Pioarduino can be found in the VS Code marketplace.
+This project runs on pioarduino, a VS Code plugin for all platforms. Pioarduino can be found in the VS Code marketplace
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ You'll need the following software packages
 
 ## Setting up your editor
 
-We're using google's code style for this application and for now all lamp specific code will be added to a flat `lamp` namespace.
+We're using Google's code style for this application. All lamp specific code will be added to a flat `lamp` namespace.
 
-You can auto format your code by changing the vscode settings (ctrl + shift + p > Open user settings (json)):
+You can auto format your code by changing the Vscode settings (ctrl + shift + p > Open user settings (json)):
 
 ```json
     "cSpell.diagnosticLevel": "Hint",
@@ -42,3 +42,8 @@ You can auto format your code by changing the vscode settings (ctrl + shift + p 
 * Pioarduino in the VSCode sidebar -> project tasks -> general -> upload
 
  Note that depending on the board, you may need to hold the boot button in order to flash the board.
+
+ ## Distribution
+
+ While you can program boards through the IDE, Lamp OS intends to be deployed on the web so anyone can format and
+ maintain their own firmware
