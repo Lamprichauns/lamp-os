@@ -43,7 +43,7 @@ class LampSettings {
  */
 class ShadeSettings {
  public:
-  uint8_t px = 35;
+  uint8_t px = 36;
   std::vector<Color> colors = {Color(0x00, 0x00, 0x00, 0xFF)};
 };
 

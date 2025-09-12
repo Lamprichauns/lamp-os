@@ -4,7 +4,6 @@
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 #include <AsyncTCP.h>
-#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -17,7 +16,6 @@
 
 namespace lamp {
 ArtnetWifi artnet;
-static DNSServer dnsServer;
 static AsyncWebServer server(80);
 static AsyncWebSocketMessageHandler wsHandler;
 static AsyncWebSocket ws("/ws", wsHandler.eventHandler());
@@ -68,8 +66,7 @@ void WifiComponent::begin(Config *inConfig) {
   serializeJson(config->asJsonDocument(), doc);
   WiFi.mode(WIFI_AP);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.c_str());
-  dnsServer.start(53, "*", WiFi.softAPIP());
+  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str());
 
 #ifdef LAMP_DEBUG
   wsMonitor();
@@ -156,7 +153,6 @@ void WifiComponent::begin(Config *inConfig) {
 };
 
 void WifiComponent::tick() {
-  dnsServer.processNextRequest();
   uint32_t now = millis();
 
   if (now > lastWebSocketCleanTimeMs + WEBSOCKET_CLEAN_TIME_MS &&

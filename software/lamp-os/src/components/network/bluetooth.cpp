@@ -73,7 +73,7 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Bluetooth Async Client\n");
 #endif
-  NimBLEDevice::init(name);
+  NimBLEDevice::init(name.substr(0, 12));
   NimBLEDevice::setPower(BLE_POWER_LEVEL);
 
   // Scan for all bluetooth devices and filter the list
