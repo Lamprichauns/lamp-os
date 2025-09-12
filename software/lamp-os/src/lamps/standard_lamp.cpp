@@ -24,8 +24,8 @@
 #include "./util/levels.hpp"
 #include "SPIFFS.h"
 
-Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
-Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS_SHADE, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
 Preferences prefs;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
@@ -134,7 +134,7 @@ void setup() {
 #endif
   lamp::Config config = lamp::Config(&prefs);
   SPIFFS.begin(true);
-  bt.begin(config.lamp.name, config.base.colors[0], config.shade.colors[0]);
+  bt.begin(config.lamp.name, config.base.colors[config.base.ac], config.shade.colors[0]);
   wifi.begin(&config);
   shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));

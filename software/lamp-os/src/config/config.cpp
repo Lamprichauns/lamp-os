@@ -31,10 +31,19 @@ Config::Config(Preferences* inPrefs) {
   lamp.homeMode = lampNode["homeMode"] | false;
 
   JsonObject baseNode = doc["base"];
-  base.px = baseNode["px"] | 35;
+  base.px = baseNode["px"] | 36;
+  if (base.px > 50) {
+    base.px = 50;
+  }
   base.ac = baseNode["ac"] | 0;
+
   JsonArray baseColors = baseNode["colors"];
-  if (baseColors.size()) {
+  int colorCollectionSize = baseColors.size();
+  if (base.ac > colorCollectionSize - 1) {
+    base.ac = 0;
+  }
+
+  if (colorCollectionSize > 0) {
     base.colors.clear();
     for (JsonVariant baseColor : baseColors) {
       base.colors.push_back(hexStringToColor(baseColor));
@@ -53,7 +62,6 @@ Config::Config(Preferences* inPrefs) {
   }
 
   JsonObject shadeNode = doc["shade"];
-  shade.px = shadeNode["px"] | 35;
   JsonArray shadeColors = shadeNode["colors"];
   if (shadeColors.size()) {
     shade.colors.clear();
@@ -96,7 +104,7 @@ JsonDocument Config::asJsonDocument() {
   }
 
   JsonObject shadeNode = doc["shade"].to<JsonObject>();
-  shadeNode["px"] = 35;
+  shadeNode["px"] = shade.px;
   JsonArray shadeColorsNode = shadeNode["colors"].to<JsonArray>();
   for (int i = 0; i < shade.colors.size(); i++) {
     shadeColorsNode[i] = colorToHexString(shade.colors[i]);
