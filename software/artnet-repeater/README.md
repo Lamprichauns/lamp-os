@@ -40,7 +40,12 @@ You can auto format your code by changing the vscode settings (ctrl + shift + p 
 
 ## Project Setup
 
-Copy the file `secrets_sample.hpp` to `secrets.hpp` and add any WiFi credentials you want. Otherwise leave it blank
+Copy the file `secrets_sample.hpp` to `secrets.hpp` and add any WiFi and stage name credentials you want. Otherwise leave it blank
+
+Some restrictions:
+
+* stage name must be under 12 chars and lower case
+* wifi ssid and password must be under 24 chars combined
 
 ## Flashing
 

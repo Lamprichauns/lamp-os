@@ -73,8 +73,7 @@ void WifiComponent::begin(Config *inConfig) {
 #endif
   wsHandler.onMessage([&](AsyncWebSocket *server, AsyncWebSocketClient *client, const uint8_t *data, size_t len) {
 #ifdef LAMP_DEBUG
-    Serial.printf("Client %" PRIu32 " data: %s\n", client->id(),
-                  (const char *)data);
+    Serial.printf("Client %" PRIu32 " data: %s\n", client->id(), (const char *)data);
 #endif
     lastWebSocketUpdateTimeMs = millis();
     JsonDocument doc;

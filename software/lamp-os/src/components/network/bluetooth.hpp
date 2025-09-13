@@ -5,8 +5,11 @@
 
 #include "./bluetooth_pool.hpp"
 
+// Stage manufacturer identifier
+#define BLE_STAGE_MAGIC_NUMBER 42007
+
 // Lamp manufacturer identifier
-#define BLE_MAGIC_NUMBER 42069
+#define BLE_LAMP_MAGIC_NUMBER 42069
 
 // Scan every INTERVAL for WINDOW
 #define BLE_GAP_SCAN_INTERVAL_MS 20
@@ -45,7 +48,13 @@ class BluetoothComponent {
    * @brief get a listing of all lamps within acceptable signal strength limits
    * @return vector of all found lamps
    */
-  std::vector<BluetoothRecord>* getLamps();
+  std::vector<BluetoothLampRecord>* getLamps();
+
+  /**
+   * @brief get a listing of all stages within acceptable signal strength limits
+   * @return vector of all found stages
+   */
+  std::vector<BluetoothStageRecord>* getStages();
 };
 }  // namespace lamp
 #endif

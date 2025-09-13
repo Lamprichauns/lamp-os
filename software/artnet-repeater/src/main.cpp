@@ -1,21 +1,55 @@
 #include <Arduino.h>
 #include <AsyncUDP.h>
+#include <NimBLEDevice.h>
 #include <WiFi.h>
+
+#include <string>
+#include <vector>
 
 #include "./secrets.hpp"
 #define ART_NET_PORT 6454
 #define MAX_BUFFER_ARTNET 530
+#define BLE_MAGIC_NUMBER 42007
+
+// Tx power level in DB
+// @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
+#define BLE_POWER_LEVEL 4
 
 AsyncUDP udp;
 
 void setup() {
+  std::string coordinatorSsid = SECRET_COORDINATOR_SSID;
+  std::string coordinatorPassword = SECRET_COORDINATOR_PASSWORD;
+
+  NimBLEDevice::init(SECRET_COORDINATOR_STAGE_NAME);
+  NimBLEDevice::setPower(BLE_POWER_LEVEL);
+
+  // Stage coordinators advertise the following packet
+  // 2 bytes: coordinator identifier [Manufacturer ID block]
+  // 26 bytes: a null terminated ssid and a null terminated password
+  // combined password and ssid should not be more than 24 chars
+  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+  pAdvertising->setName(SECRET_COORDINATOR_STAGE_NAME);
+  pAdvertising->enableScanResponse(true);
+  std::vector<unsigned char> data;
+  data.reserve(28);
+  std::vector<char> magicBytes{char(BLE_MAGIC_NUMBER & 0xff), char((BLE_MAGIC_NUMBER >> 8) & 0xff)};
+  data.insert(data.end(), magicBytes.begin(), magicBytes.end());
+  std::vector<char> ssidBytes(coordinatorSsid.c_str(), coordinatorSsid.c_str() + coordinatorSsid.size() + 1);
+  data.insert(data.end(), ssidBytes.begin(), ssidBytes.end());
+  std::vector<char> passwordBytes(coordinatorPassword.c_str(), coordinatorPassword.c_str() + coordinatorPassword.size() + 1);
+  data.insert(data.end(), passwordBytes.begin(), passwordBytes.end());
+
+  pAdvertising->setManufacturerData(data);
+  pAdvertising->setConnectableMode(0);
+  pAdvertising->start();
+
   WiFi.mode(WIFI_STA);
   WiFi.config(IPAddress(10, 0, 0, 2), IPAddress(10, 0, 0, 1),
               IPAddress(255, 255, 255, 0), IPAddress(10, 0, 0, 1));
-  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_SHARED_PASS);
+  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD);
   udp.listen(ART_NET_PORT);
   udp.onPacket([](AsyncUDPPacket packet) {
-    uint32_t timeStart = micros();
     uint32_t packetSize = packet.length();
 
     if (packetSize == MAX_BUFFER_ARTNET) {

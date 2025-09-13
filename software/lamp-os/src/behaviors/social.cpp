@@ -25,7 +25,7 @@ void SocialBehavior::control() {
   foundLamps = bt->getLamps();
 
   if (animationState == STOPPED && millis() > nextAcknowledgeTimeMs) {
-    for (std::vector<BluetoothRecord>::reverse_iterator revIter =
+    for (std::vector<BluetoothLampRecord>::reverse_iterator revIter =
              foundLamps->rbegin();
          revIter != foundLamps->rend(); ++revIter) {
       if (!revIter->acknowledged) {
