@@ -54,12 +54,12 @@ export default defineConfig(({ command }) => ({
     command === 'serve' && vueDevTools(),
     // Add compression for production builds
     command === 'build' &&
-      compression({
-        algorithm: 'gzip',
-        ext: '.gz',
-        threshold: 0,
-        deleteOriginFile: false,
-      }),
+    compression({
+      algorithm: 'gzip',
+      ext: '.gz',
+      threshold: 0,
+      deleteOriginFile: false,
+    }),
     // Custom plugin to inline assets
     command === 'build' && inlineAssetsPlugin(),
   ].filter(Boolean),
@@ -89,6 +89,9 @@ export default defineConfig(({ command }) => ({
         unsafe_proto: true,
         unsafe_regexp: true,
         unsafe_undefined: true,
+      },
+      format: {
+        comments: false,
       },
       mangle: {
         safari10: true,

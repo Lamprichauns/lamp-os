@@ -31,10 +31,10 @@ The format is: `#RRGGBBWW` where:
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd lamp-os-ui
+cd software/lamp-ui
 
 # Install dependencies
-npm install
+npm ci
 
 # Start development server
 npm run dev
@@ -110,6 +110,22 @@ npm run build
 # Preview production build
 npm run preview
 ```
+
+### Uploading to your board
+
+Plug your lamp board into a usb port
+
+In VSCode, from the `lamp-os` project, navigate to `Pioarduino > Quick Access > Miscellaneous > pioarduino core CLI`
+
+This will bring up a window in the correct environment to upload
+
+```bash
+cd ../lamp-ui
+npm ci
+npm run build:upload
+```
+
+This process will build a new .spiffs partition and replace it onboard your esp32.
 
 ## Features in Detail
 
