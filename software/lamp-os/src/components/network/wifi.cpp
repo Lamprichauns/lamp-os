@@ -67,7 +67,7 @@ void WifiComponent::begin(Config *inConfig) {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, 7);
+  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
 
 #ifdef LAMP_DEBUG
   wsMonitor();
@@ -189,7 +189,7 @@ JsonDocument WifiComponent::getWebSocketData() {
 
 void WifiComponent::toStageMode(String inSsid, String inPassword) {
   stageMode = true;
-  WiFi.begin(inSsid, inPassword, 7);
+  WiFi.begin(inSsid, inPassword, WIFI_PREFERRED_CHANNEL);
   WiFi.setAutoReconnect(true);
 };
 
@@ -198,6 +198,6 @@ void WifiComponent::toApMode() {
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, 7);
+  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
 }
 }  // namespace lamp

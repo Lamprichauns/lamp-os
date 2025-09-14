@@ -39,8 +39,8 @@ void setup() {
   data.insert(data.end(), ssidBytes.begin(), ssidBytes.end());
   std::vector<char> passwordBytes(coordinatorPassword.c_str(), coordinatorPassword.c_str() + coordinatorPassword.size() + 1);
   data.insert(data.end(), passwordBytes.begin(), passwordBytes.end());
-  pAdvertising->setMinInterval(250);
-  pAdvertising->setMaxInterval(400);
+  pAdvertising->setMinInterval(650);
+  pAdvertising->setMaxInterval(800);
   pAdvertising->setManufacturerData(data);
   pAdvertising->setConnectableMode(0);
   pAdvertising->start();
@@ -48,7 +48,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.config(IPAddress(10, 0, 0, 2), IPAddress(10, 0, 0, 1),
               IPAddress(255, 255, 255, 0), IPAddress(10, 0, 0, 1));
-  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD);
+  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD, 5);
   udp.listen(ART_NET_PORT);
   udp.onPacket([](AsyncUDPPacket packet) {
     uint32_t packetSize = packet.length();
@@ -65,8 +65,6 @@ void setup() {
                   ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24),
                   ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
     }
   });
 }

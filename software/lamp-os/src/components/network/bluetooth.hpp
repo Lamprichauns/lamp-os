@@ -12,7 +12,7 @@
 #define BLE_LAMP_MAGIC_NUMBER 42069
 
 // Scan every INTERVAL for WINDOW
-#define BLE_GAP_SCAN_INTERVAL_MS 100
+#define BLE_GAP_SCAN_INTERVAL_MS 400
 #define BLE_GAP_SCAN_WINDOW_MS 15
 
 // Advertise every INTERVAL
@@ -20,6 +20,10 @@
 
 // Scan time
 #define BLE_GAP_SCAN_TIME_MS 1000
+
+// Advertising intervals
+#define BLE_ADVERTISING_INTERVAL_MIN 250
+#define BLE_ADVERTISING_INTERVAL_MAX 400
 
 // Tx power level in DB
 // @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match

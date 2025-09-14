@@ -151,6 +151,8 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
   };
   pAdvertising->setManufacturerData(data);
   pAdvertising->setConnectableMode(0);
+  pAdvertising->setMinInterval(BLE_ADVERTISING_INTERVAL_MIN);
+  pAdvertising->setMaxInterval(BLE_ADVERTISING_INTERVAL_MAX);
   pAdvertising->start();
 };
 
