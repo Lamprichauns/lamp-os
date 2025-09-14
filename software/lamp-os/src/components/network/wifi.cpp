@@ -165,10 +165,9 @@ void WifiComponent::tick() {
   }
 };
 
-bool WifiComponent::hasArtnetData() { return artnet.newDmxData; }
+bool WifiComponent::hasArtnetData() { return artnet.artnetData.size() > 0; }
 
 std::vector<Color> WifiComponent::getArtnetData() {
-  artnet.newDmxData = false;
   return artnet.artnetData;
 };
 
