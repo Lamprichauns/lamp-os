@@ -49,8 +49,8 @@ lamp::Config config;
  * - Initialize the animation compositor
  */
 void initBehaviors(lamp::Config* config) {
-  shadeDmxBehavior = lamp::DmxBehavior(&shade, 0, true);
-  baseDmxBehavior = lamp::DmxBehavior(&base, 0, true);
+  shadeDmxBehavior = lamp::DmxBehavior(&shade, 240);
+  baseDmxBehavior = lamp::DmxBehavior(&base, 240);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
@@ -99,13 +99,12 @@ void handleStageMode() {
 
   if (config.stage.enabled && now > lastStageModeCheckTimeMs + 2000) {
     lastStageModeCheckTimeMs = now;
+    auto foundStages = bt.getStages();
 
-    if (!wifi.stageMode) {
-      auto foundStages = bt.getStages();
-
-      if (foundStages->size() > 0) {
-        wifi.toStageMode(foundStages->at(0).ssid, foundStages->at(0).password);
-      }
+    if (wifi.stageMode && foundStages->size() == 0) {
+      wifi.toApMode();
+    } else if (!wifi.stageMode && foundStages->size() > 0) {
+      wifi.toStageMode(foundStages->at(0).ssid, foundStages->at(0).password);
     }
   }
 }

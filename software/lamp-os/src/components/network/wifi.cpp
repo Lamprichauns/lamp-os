@@ -192,4 +192,12 @@ void WifiComponent::toStageMode(String inSsid, String inPassword) {
   WiFi.begin(inSsid, inPassword, 7);
   WiFi.setAutoReconnect(true);
 };
+
+void WifiComponent::toApMode() {
+  stageMode = false;
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, 7);
+}
 }  // namespace lamp

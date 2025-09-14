@@ -24,14 +24,14 @@ void ConfiguratorBehavior::control() {
   uint32_t now = millis();
   if (animationState == STOPPED) {
     if (lastWebSocketUpdateTimeMs > 0 &&
-        now < lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT) {
+        now < lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT_MS) {
       playOnce();
     }
   }
   if (animationState == PLAYING_ONCE && frame == easeFrames) {
     pause();
   }
-  if (animationState == PAUSED && now > lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT) {
+  if (animationState == PAUSED && now > lastWebSocketUpdateTimeMs + CONFIGURATOR_WEBSOCKET_TIMEOUT_MS) {
     playOnce();
   }
 };

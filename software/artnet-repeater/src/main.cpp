@@ -39,7 +39,8 @@ void setup() {
   data.insert(data.end(), ssidBytes.begin(), ssidBytes.end());
   std::vector<char> passwordBytes(coordinatorPassword.c_str(), coordinatorPassword.c_str() + coordinatorPassword.size() + 1);
   data.insert(data.end(), passwordBytes.begin(), passwordBytes.end());
-
+  pAdvertising->setMinInterval(250);
+  pAdvertising->setMaxInterval(400);
   pAdvertising->setManufacturerData(data);
   pAdvertising->setConnectableMode(0);
   pAdvertising->start();

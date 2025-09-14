@@ -45,8 +45,9 @@ void ArtnetWifi::updateDmxFrame(uint16_t universe,
                                 uint16_t length,
                                 uint8_t sequence,
                                 uint8_t* data) {
-  lastDmxFrameMs = millis();
   if (universe == 1) {
+    lastDmxFrameMs = millis();
+
     artnetData = {Color(data[0], data[1], data[2], data[3]),
                   Color(data[4], data[5], data[6], data[7])};
     newDmxData = true;

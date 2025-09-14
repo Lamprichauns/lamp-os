@@ -78,6 +78,11 @@ class WifiComponent {
    * @param [in] inPassword the password advertised by the stage
    */
   void toStageMode(String inSsid, String inPassword);
+
+  /**
+   * @brief if the stage is no longer found, disconnect from the STA to restore the SoftAP
+   */
+  void toApMode();
 };
 }  // namespace lamp
 #endif
