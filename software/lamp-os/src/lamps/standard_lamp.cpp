@@ -44,11 +44,7 @@ lamp::FadeOutBehavior baseFadeOutBehavior;
 lamp::KnockoutBehavior baseKnockoutBehavior;
 lamp::Config config;
 
-/**
- * - Initialize all of the lamps behaviors
- * - Initialize the animation compositor
- */
-void initBehaviors(lamp::Config* config) {
+void initBehaviors() {
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 240);
   baseDmxBehavior = lamp::DmxBehavior(&base, 240);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
@@ -62,7 +58,7 @@ void initBehaviors(lamp::Config* config) {
   baseFadeOutBehavior = lamp::FadeOutBehavior(&base, REBOOT_ANIMATION_FRAMES);
   baseFadeOutBehavior.setWifiComponent(&wifi);
   baseKnockoutBehavior = lamp::KnockoutBehavior(&base, 0, true);
-  baseKnockoutBehavior.knockoutPixels = config->base.knockoutPixels;
+  baseKnockoutBehavior.knockoutPixels = config.base.knockoutPixels;
 
   // layers load in priority sequence {lowest, ..., highest}
   compositor.begin({&baseDmxBehavior,
@@ -73,14 +69,11 @@ void initBehaviors(lamp::Config* config) {
                     &baseFadeOutBehavior,
                     &shadeFadeOutBehavior},
                    {&shade, &base},
-                   config->lamp.homeMode);
+                   config.lamp.homeMode);
 
   compositor.overlayBehaviors.push_back(&baseKnockoutBehavior);
 }
 
-/**
- * ArtNet DMX actions shared between the base and shade
- */
 void handleArtnet() {
   if (wifi.hasArtnetData()) {
     std::vector<lamp::Color> artnetData = wifi.getArtnetData();
@@ -91,9 +84,6 @@ void handleArtnet() {
   }
 };
 
-/**
- * Handle wifi mode swaps when a stage router is present
- */
 void handleStageMode() {
   uint32_t now = millis();
 
@@ -109,9 +99,6 @@ void handleStageMode() {
   }
 }
 
-/**
- * Whole lamp changes from the configuration tool
- */
 void handleWebSocket() {
   if (wifi.hasWebSocketData()) {
     JsonDocument doc = wifi.getWebSocketData();
@@ -164,7 +151,7 @@ void setup() {
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(lamp::buildGradientWithStops(config.shade.px, config.shade.colors), config.shade.px, &shadeStrip);
   base.begin(lamp::buildGradientWithStops(config.base.px, config.base.colors), config.base.px, &baseStrip);
-  initBehaviors(&config);
+  initBehaviors();
 };
 
 void loop() {

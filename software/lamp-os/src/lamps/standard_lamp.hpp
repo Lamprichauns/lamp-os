@@ -10,4 +10,25 @@
 
 void setup();
 void loop();
+
+/**
+ * - Initialize all of the lamps behaviors
+ * - Initialize the animation compositor
+ */
+void initBehaviors();
+
+/**
+ * ArtNet DMX actions shared between the base and shade
+ */
+void handleArtnet();
+
+/**
+ * Handle wifi mode swaps when a stage router is present
+ */
+void handleStageMode();
+
+/**
+ * Whole lamp changes from the configuration tool
+ */
+void handleWebSocket();
 #endif
