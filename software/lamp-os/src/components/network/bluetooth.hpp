@@ -16,14 +16,14 @@
 #define BLE_GAP_SCAN_WINDOW_MS 15
 
 // Advertise every INTERVAL
-#define BLE_GAP_ADV_INTERVAL_MS 500
+#define BLE_GAP_ADV_INTERVAL_MS 1000
 
 // Scan time
 #define BLE_GAP_SCAN_TIME_MS 1000
 
 // Advertising intervals
-#define BLE_ADVERTISING_INTERVAL_MIN 250
-#define BLE_ADVERTISING_INTERVAL_MAX 400
+#define BLE_ADVERTISING_INTERVAL_MIN 400
+#define BLE_ADVERTISING_INTERVAL_MAX 650
 
 // Tx power level in DB
 // @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
