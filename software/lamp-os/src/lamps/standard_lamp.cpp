@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+#include <cstdint>
 #include <string>
 
 #include "../components/network/bluetooth.hpp"
@@ -27,6 +28,7 @@
 Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS_SHADE, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
 Preferences prefs;
+uint32_t lastStageModeCheckTimeMs = 0;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -40,13 +42,15 @@ lamp::ConfiguratorBehavior baseConfiguratorBehavior;
 lamp::FadeOutBehavior shadeFadeOutBehavior;
 lamp::FadeOutBehavior baseFadeOutBehavior;
 lamp::KnockoutBehavior baseKnockoutBehavior;
+lamp::Config config;
+
 /**
  * - Initialize all of the lamps behaviors
  * - Initialize the animation compositor
  */
 void initBehaviors(lamp::Config* config) {
-  shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
-  baseDmxBehavior = lamp::DmxBehavior(&base, 0);
+  shadeDmxBehavior = lamp::DmxBehavior(&shade, 0, true);
+  baseDmxBehavior = lamp::DmxBehavior(&base, 0, true);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
@@ -61,7 +65,9 @@ void initBehaviors(lamp::Config* config) {
   baseKnockoutBehavior.knockoutPixels = config->base.knockoutPixels;
 
   // layers load in priority sequence {lowest, ..., highest}
-  compositor.begin({&shadeSocialBehavior,
+  compositor.begin({&baseDmxBehavior,
+                    &shadeDmxBehavior,
+                    &shadeSocialBehavior,
                     &shadeConfiguratorBehavior,
                     &baseConfiguratorBehavior,
                     &baseFadeOutBehavior,
@@ -84,6 +90,25 @@ void handleArtnet() {
     baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
   }
 };
+
+/**
+ * Handle wifi mode swaps when a stage router is present
+ */
+void handleStageMode() {
+  uint32_t now = millis();
+
+  if (now > lastStageModeCheckTimeMs + 2000) {
+    lastStageModeCheckTimeMs = now;
+
+    if (!wifi.stageMode) {
+      auto foundStages = bt.getStages();
+
+      if (foundStages->size() > 0) {
+        wifi.toStageMode(foundStages->at(0).ssid, foundStages->at(0).password);
+      }
+    }
+  }
+}
 
 /**
  * Whole lamp changes from the configuration tool
@@ -132,7 +157,7 @@ void setup() {
 #ifdef LAMP_DEBUG
   Serial.begin(115200);
 #endif
-  lamp::Config config = lamp::Config(&prefs);
+  config = lamp::Config(&prefs);
   SPIFFS.begin(true);
   bt.begin(config.lamp.name, config.base.colors[config.base.ac], config.shade.colors[0]);
   wifi.begin(&config);
@@ -144,6 +169,8 @@ void setup() {
 };
 
 void loop() {
+  if (config.stageMode)
+    handleStageMode();
   handleArtnet();
   handleWebSocket();
   wifi.tick();

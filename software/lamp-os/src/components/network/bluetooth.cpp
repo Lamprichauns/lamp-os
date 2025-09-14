@@ -93,8 +93,8 @@ class ScanCallbacks : public NimBLEScanCallbacks {
                     lampsFound[i].name.c_str(),
                     lampsFound[i].lastSeenTimeMs,
                     lampsFound[i].acknowledged);
-      Serial.printf("Color base: #%02x%02x%02x -", lampsFound[i].baseColor.r, lampsFound[i].baseColor.g, lampsFound[i].baseColor.b);
-      Serial.printf("Color shade: #%02x%02x%02x\n", lampsFound[i].shadeColor.r, lampsFound[i].shadeColor.g, lampsFound[i].shadeColor.b);
+      Serial.printf("color base: #%02x%02x%02x - ", lampsFound[i].baseColor.r, lampsFound[i].baseColor.g, lampsFound[i].baseColor.b);
+      Serial.printf("color shade: #%02x%02x%02x\n", lampsFound[i].shadeColor.r, lampsFound[i].shadeColor.g, lampsFound[i].shadeColor.b);
     }
 
     std::vector<BluetoothStageRecord> stagesFound = lampBluetoothPool.getStages();

@@ -66,12 +66,6 @@ void setup() {
                   ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25),
                   ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 26),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 27),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 28),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
     }
   });
 }

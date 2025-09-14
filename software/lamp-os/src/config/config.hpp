@@ -22,6 +22,7 @@ class Config {
   LampSettings lamp;
   BaseSettings base;
   ShadeSettings shade;
+  StageSettings stage;
 
   Config() {};
 

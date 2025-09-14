@@ -64,9 +64,10 @@ void WifiComponent::begin(Config *inConfig) {
   Serial.begin(115200);
   config = inConfig;
   serializeJson(config->asJsonDocument(), doc);
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str());
+  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, 7);
 
 #ifdef LAMP_DEBUG
   wsMonitor();
@@ -184,5 +185,11 @@ unsigned long WifiComponent::getLastWebSocketUpdateTimeMs() {
 JsonDocument WifiComponent::getWebSocketData() {
   newWebSocketData = false;
   return lastWebSocketData;
+};
+
+void WifiComponent::toStageMode(String inSsid, String inPassword) {
+  stageMode = true;
+  WiFi.begin(inSsid, inPassword, 7);
+  WiFi.setAutoReconnect(true);
 };
 }  // namespace lamp
