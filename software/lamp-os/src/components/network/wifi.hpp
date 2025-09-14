@@ -9,6 +9,7 @@
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
 #define WEBSOCKET_CLEAN_TIME_MS 60000
+#define WIFI_PREFERRED_CHANNEL 6
 
 namespace lamp {
 class WifiComponent {
@@ -18,6 +19,7 @@ class WifiComponent {
   std::string doc;
   bool requiresReboot = false;
   bool newWebSocketData = false;
+  bool stageMode = false;
   unsigned long lastWebSocketUpdateTimeMs = 0;
   JsonDocument lastWebSocketData;
 
@@ -70,6 +72,18 @@ class WifiComponent {
    * @return JsonDocument
    */
   JsonDocument getWebSocketData();
+
+  /**
+   * @brief enable the station mode for receiving ArtNet data
+   * @param [in] inSsid the ssid advertised by the stage
+   * @param [in] inPassword the password advertised by the stage
+   */
+  void toStageMode(String inSsid, String inPassword);
+
+  /**
+   * @brief if the stage is no longer found, disconnect from the STA to restore the SoftAP
+   */
+  void toApMode();
 };
 }  // namespace lamp
 #endif

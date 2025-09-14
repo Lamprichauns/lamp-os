@@ -45,11 +45,11 @@ void ArtnetWifi::updateDmxFrame(uint16_t universe,
                                 uint16_t length,
                                 uint8_t sequence,
                                 uint8_t* data) {
-  lastDmxFrameMs = millis();
   if (universe == 1) {
+    lastDmxFrameMs = millis();
+
     artnetData = {Color(data[0], data[1], data[2], data[3]),
                   Color(data[4], data[5], data[6], data[7])};
-    newDmxData = true;
 #ifdef LAMP_DEBUG
     if (sequence != 1 && sequence != (seq + 1)) {
       Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence,

@@ -61,5 +61,10 @@ class BaseSettings {
   std::vector<uint8_t> knockoutPixels = std::vector<uint8_t>(50, (uint8_t)100);
   uint8_t ac = 0;
 };
+
+class StageSettings {
+ public:
+  bool enabled = true;
+};
 }  // namespace lamp
 #endif

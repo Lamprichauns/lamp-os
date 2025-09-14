@@ -69,6 +69,9 @@ Config::Config(Preferences* inPrefs) {
       shade.colors.push_back(hexStringToColor(shadeColor));
     }
   }
+
+  JsonObject stageNode = doc["stage"];
+  stage.enabled = stageNode["enabled"] | true;
 };
 
 JsonDocument Config::asJsonDocument() {
@@ -109,6 +112,9 @@ JsonDocument Config::asJsonDocument() {
   for (int i = 0; i < shade.colors.size(); i++) {
     shadeColorsNode[i] = colorToHexString(shade.colors[i]);
   }
+
+  JsonObject stageNode = doc["stage"].to<JsonObject>();
+  stageNode["enabled"] = stage.enabled;
 
   return doc;
 };
