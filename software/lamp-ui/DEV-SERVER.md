@@ -15,7 +15,7 @@ A simple Node.js development server for debugging and logging HTTP POST requests
 1. **Install dependencies** (if not already done):
 
    ```bash
-   npm install
+   npm ci
    ```
 
 2. **Start the development server**:
