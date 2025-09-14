@@ -97,7 +97,7 @@ void handleArtnet() {
 void handleStageMode() {
   uint32_t now = millis();
 
-  if (now > lastStageModeCheckTimeMs + 2000) {
+  if (config.stage.enabled && now > lastStageModeCheckTimeMs + 2000) {
     lastStageModeCheckTimeMs = now;
 
     if (!wifi.stageMode) {
@@ -169,8 +169,7 @@ void setup() {
 };
 
 void loop() {
-  if (config.stageMode)
-    handleStageMode();
+  handleStageMode();
   handleArtnet();
   handleWebSocket();
   wifi.tick();
