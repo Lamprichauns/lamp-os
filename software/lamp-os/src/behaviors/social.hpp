@@ -21,7 +21,7 @@ class SocialBehavior : public AnimatedBehavior {
   uint32_t nextAcknowledgeTimeMs = 0;
   Color foundLampColor;
   BluetoothComponent* bt;
-  std::vector<BluetoothRecord>* foundLamps;
+  std::vector<BluetoothLampRecord>* foundLamps;
   bool allowedInHomeMode = false;
 
   void draw();

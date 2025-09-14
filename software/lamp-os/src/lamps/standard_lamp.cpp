@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+#include <cstdint>
 #include <string>
 
 #include "../components/network/bluetooth.hpp"
@@ -27,6 +28,7 @@
 Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS_SHADE, LAMP_SHADE_PIN, NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
 Preferences prefs;
+uint32_t lastStageModeCheckTimeMs = 0;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -40,13 +42,11 @@ lamp::ConfiguratorBehavior baseConfiguratorBehavior;
 lamp::FadeOutBehavior shadeFadeOutBehavior;
 lamp::FadeOutBehavior baseFadeOutBehavior;
 lamp::KnockoutBehavior baseKnockoutBehavior;
-/**
- * - Initialize all of the lamps behaviors
- * - Initialize the animation compositor
- */
-void initBehaviors(lamp::Config* config) {
-  shadeDmxBehavior = lamp::DmxBehavior(&shade, 0);
-  baseDmxBehavior = lamp::DmxBehavior(&base, 0);
+lamp::Config config;
+
+void initBehaviors() {
+  shadeDmxBehavior = lamp::DmxBehavior(&shade, 240);
+  baseDmxBehavior = lamp::DmxBehavior(&base, 240);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
@@ -58,23 +58,22 @@ void initBehaviors(lamp::Config* config) {
   baseFadeOutBehavior = lamp::FadeOutBehavior(&base, REBOOT_ANIMATION_FRAMES);
   baseFadeOutBehavior.setWifiComponent(&wifi);
   baseKnockoutBehavior = lamp::KnockoutBehavior(&base, 0, true);
-  baseKnockoutBehavior.knockoutPixels = config->base.knockoutPixels;
+  baseKnockoutBehavior.knockoutPixels = config.base.knockoutPixels;
 
   // layers load in priority sequence {lowest, ..., highest}
-  compositor.begin({&shadeSocialBehavior,
+  compositor.begin({&baseDmxBehavior,
+                    &shadeDmxBehavior,
+                    &shadeSocialBehavior,
                     &shadeConfiguratorBehavior,
                     &baseConfiguratorBehavior,
                     &baseFadeOutBehavior,
                     &shadeFadeOutBehavior},
                    {&shade, &base},
-                   config->lamp.homeMode);
+                   config.lamp.homeMode);
 
   compositor.overlayBehaviors.push_back(&baseKnockoutBehavior);
 }
 
-/**
- * ArtNet DMX actions shared between the base and shade
- */
 void handleArtnet() {
   if (wifi.hasArtnetData()) {
     std::vector<lamp::Color> artnetData = wifi.getArtnetData();
@@ -85,9 +84,21 @@ void handleArtnet() {
   }
 };
 
-/**
- * Whole lamp changes from the configuration tool
- */
+void handleStageMode() {
+  uint32_t now = millis();
+
+  if (config.stage.enabled && now > lastStageModeCheckTimeMs + 2000) {
+    lastStageModeCheckTimeMs = now;
+    auto foundStages = bt.getStages();
+
+    if (wifi.stageMode && foundStages->size() == 0) {
+      wifi.toApMode();
+    } else if (!wifi.stageMode && foundStages->size() > 0) {
+      wifi.toStageMode(foundStages->at(0).ssid, foundStages->at(0).password);
+    }
+  }
+}
+
 void handleWebSocket() {
   if (wifi.hasWebSocketData()) {
     JsonDocument doc = wifi.getWebSocketData();
@@ -132,7 +143,7 @@ void setup() {
 #ifdef LAMP_DEBUG
   Serial.begin(115200);
 #endif
-  lamp::Config config = lamp::Config(&prefs);
+  config = lamp::Config(&prefs);
   SPIFFS.begin(true);
   bt.begin(config.lamp.name, config.base.colors[config.base.ac], config.shade.colors[0]);
   wifi.begin(&config);
@@ -140,10 +151,11 @@ void setup() {
   baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, config.lamp.brightness));
   shade.begin(lamp::buildGradientWithStops(config.shade.px, config.shade.colors), config.shade.px, &shadeStrip);
   base.begin(lamp::buildGradientWithStops(config.base.px, config.base.colors), config.base.px, &baseStrip);
-  initBehaviors(&config);
+  initBehaviors();
 };
 
 void loop() {
+  handleStageMode();
   handleArtnet();
   handleWebSocket();
   wifi.tick();

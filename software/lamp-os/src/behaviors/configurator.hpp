@@ -9,7 +9,7 @@
 #include "../core/animated_behavior.hpp"
 #include "../util/color.hpp"
 
-#define CONFIGURATOR_WEBSOCKET_TIMEOUT 60000
+#define CONFIGURATOR_WEBSOCKET_TIMEOUT_MS 60000
 
 /**
  * @brief a layer to preview realtime changes from the web

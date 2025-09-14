@@ -64,17 +64,17 @@ void WifiComponent::begin(Config *inConfig) {
   Serial.begin(115200);
   config = inConfig;
   serializeJson(config->asJsonDocument(), doc);
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str());
+  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
 
 #ifdef LAMP_DEBUG
   wsMonitor();
 #endif
   wsHandler.onMessage([&](AsyncWebSocket *server, AsyncWebSocketClient *client, const uint8_t *data, size_t len) {
 #ifdef LAMP_DEBUG
-    Serial.printf("Client %" PRIu32 " data: %s\n", client->id(),
-                  (const char *)data);
+    Serial.printf("Client %" PRIu32 " data: %s\n", client->id(), (const char *)data);
 #endif
     lastWebSocketUpdateTimeMs = millis();
     JsonDocument doc;
@@ -165,10 +165,9 @@ void WifiComponent::tick() {
   }
 };
 
-bool WifiComponent::hasArtnetData() { return artnet.newDmxData; }
+bool WifiComponent::hasArtnetData() { return artnet.artnetData.size() > 0; }
 
 std::vector<Color> WifiComponent::getArtnetData() {
-  artnet.newDmxData = false;
   return artnet.artnetData;
 };
 
@@ -186,4 +185,18 @@ JsonDocument WifiComponent::getWebSocketData() {
   newWebSocketData = false;
   return lastWebSocketData;
 };
+
+void WifiComponent::toStageMode(String inSsid, String inPassword) {
+  stageMode = true;
+  WiFi.begin(inSsid, inPassword, WIFI_PREFERRED_CHANNEL);
+  WiFi.setAutoReconnect(true);
+};
+
+void WifiComponent::toApMode() {
+  stageMode = false;
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
+}
 }  // namespace lamp
