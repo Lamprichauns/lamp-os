@@ -37,13 +37,51 @@ You can auto format your code by changing the Vscode settings (ctrl + shift + p 
 
  Currently the flash process is a few steps:
 
-* Pioarduino in the VSCode sidebar -> project tasks -> platform -> build filesystem image
-* Pioarduino in the VSCode sidebar -> project tasks -> platform -> upload filesystem image
-* Pioarduino in the VSCode sidebar -> project tasks -> general -> upload
+ If you've got a completely new board, it's prudent to run erase flash to completely clear your device:
+
+* Pioarduino in the VSCode sidebar -> Project Tasks -> Platform -> Erase Flash
+
+To push the web app in the data dir, you can run
+
+* Pioarduino in the VSCode sidebar -> Project Tasks -> Platform -> build filesystem image
+* Pioarduino in the VSCode sidebar -> Project Tasks -> Platform -> upload filesystem image
+
+To upload the factory firmware image:
+
+* Pioarduino in the VSCode sidebar -> Project Tasks -> General -> upload
 
  Note that depending on the board, you may need to hold the boot button in order to flash the board.
 
- ## Distribution
+## Updating the web app for development
 
- While you can program boards through the IDE, Lamp OS intends to be deployed on the web so anyone can format and
- maintain their own firmware
+Plug your lamp board into a usb port
+
+In VSCode, navigate to `Pioarduino > Quick Access > Miscellaneous > pioarduino core CLI`
+
+This will bring up a window in the correct environment to upload
+
+```bash
+cd ../lamp-ui
+npm ci
+npm run build:upload
+```
+
+This process will build a new .spiffs partition and replace it onboard your esp32.
+
+## Distribution
+
+While you can program boards through the IDE, Lamp OS intends to be deployed on the web so anyone can format and maintain their own firmware
+
+## OTA Updating
+
+Join your lamp's wifi and navigate to <http://lamp.local/update> and update the following two files in pairs:
+
+Lamp's main firmware:
+
+* file: firmware.bin
+* OTA Mode: Firmware
+
+Lamp's mobile UI:
+
+* file: spiffs.bin
+* OTA Mode: LittleFS/Spiffs

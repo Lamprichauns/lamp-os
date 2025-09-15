@@ -6,13 +6,13 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+#include <ElegantOTA.h>
 #include <Preferences.h>
 #include <WiFi.h>
 
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
-#include "./wifi.hpp"
 #include "SPIFFS.h"
 
 namespace lamp {
@@ -37,7 +37,7 @@ void wsMonitor() {
     Serial.printf("Client %" PRIu32 " fragment %" PRIu32 ": %s\n", client->id(),
                   frameInfo->num, (const char *)data);
   });
-}
+};
 #endif
 
 void onWiFiEvent(WiFiEvent_t event) {
@@ -150,7 +150,14 @@ void WifiComponent::begin(Config *inConfig) {
         request->send(500);
         return;
       });
+
   cors.setMethods("POST, PUT, GET, OPTIONS, DELETE");
+  ElegantOTA.begin(&server);
+  ElegantOTA.onEnd([this](bool success) {
+    if (success) {
+      requiresReboot = true;
+    }
+  });
   server.addMiddleware(&cors);
   server.addHandler(&ws);
   server.begin();
