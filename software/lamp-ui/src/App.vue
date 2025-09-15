@@ -8,7 +8,7 @@ import TextInput from '@/components/TextInput.vue'
 import BooleanInput from '@/components/BooleanInput.vue'
 import FormField from '@/components/FormField.vue'
 import TopNavigation from '@/components/TopNavigation.vue'
-import logoUrl from '@/assets/logo.svg'
+import Logo from '@/components/Logo.vue'
 
 // ts =========================
 
@@ -21,10 +21,6 @@ interface LampSettings {
   name?: string
   brightness?: number
   homeMode?: boolean
-}
-
-interface StageSettings {
-  enabled?: boolean
 }
 
 interface ShadeSettings {
@@ -41,7 +37,6 @@ interface BaseSettings {
 
 interface Settings {
   lamp?: LampSettings
-  stage?: StageSettings
   shade?: ShadeSettings
   base?: BaseSettings
 }
@@ -333,14 +328,6 @@ onUnmounted(() => {
                   :disabled="disabled"
                 />
               </FormField>
-
-              <FormField label="Stage Mode" id="stageMode">
-                <BooleanInput
-                  :model-value="settings.stage?.enabled || false"
-                  @update:model-value="(value) => updateSetting('stage.enabled', value)"
-                  :disabled="disabled"
-                />
-              </FormField>
             </div>
 
             <FormField label="Shade Color" id="shadeColors">
@@ -421,7 +408,7 @@ onUnmounted(() => {
           <div v-if="activeTab === 'info'" class="tab-panel">
             <div class="info-content">
               <div class="logo-container">
-                <img :src="logoUrl" alt="Lamplit Logo" class="logo" style="margin-" />
+                <Logo/>
               </div>
               <p>
                 Lamplit Art Society is a non-profit collective dedicated to sparking inspiration and
