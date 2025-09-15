@@ -6,7 +6,7 @@
 #include "./animated_behavior.hpp"
 #include "./frame_buffer.hpp"
 
-#define MINIMUM_FRAME_DRAW_TIME_MS 15
+#define MINIMUM_FRAME_DRAW_TIME_MS 16
 #define STARTUP_ANIMATION_FRAMES 120
 #define REBOOT_ANIMATION_FRAMES 120
 

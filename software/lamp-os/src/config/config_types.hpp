@@ -43,7 +43,7 @@ class LampSettings {
  */
 class ShadeSettings {
  public:
-  uint8_t px = 36;
+  uint8_t px = 38;
   std::vector<Color> colors = {Color(0x00, 0x00, 0x00, 0xFF)};
 };
 
@@ -60,11 +60,6 @@ class BaseSettings {
   std::vector<Color> colors = {Color(0x30, 0x07, 0x83, 0x00)};
   std::vector<uint8_t> knockoutPixels = std::vector<uint8_t>(50, (uint8_t)100);
   uint8_t ac = 0;
-};
-
-class StageSettings {
- public:
-  bool enabled = true;
 };
 }  // namespace lamp
 #endif
