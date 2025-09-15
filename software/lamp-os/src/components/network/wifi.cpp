@@ -5,6 +5,7 @@
 #include <AsyncJson.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
 #include <Preferences.h>
 #include <WiFi.h>
 
@@ -19,6 +20,7 @@ ArtnetWifi artnet;
 static AsyncWebServer server(80);
 static AsyncWebSocketMessageHandler wsHandler;
 static AsyncWebSocket ws("/ws", wsHandler.eventHandler());
+static AsyncCorsMiddleware cors;
 Preferences prefs;
 
 #ifdef LAMP_DEBUG
@@ -68,7 +70,8 @@ void WifiComponent::begin(Config *inConfig) {
   WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
   WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
-
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  MDNS.begin("lamp");
 #ifdef LAMP_DEBUG
   wsMonitor();
 #endif
@@ -147,6 +150,8 @@ void WifiComponent::begin(Config *inConfig) {
         request->send(500);
         return;
       });
+  cors.setMethods("POST, PUT, GET, OPTIONS, DELETE");
+  server.addMiddleware(&cors);
   server.addHandler(&ws);
   server.begin();
   artnet.begin();
