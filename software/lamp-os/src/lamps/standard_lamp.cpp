@@ -29,6 +29,7 @@ Adafruit_NeoPixel shadeStrip(LAMP_MAX_STRIP_PIXELS_SHADE, LAMP_SHADE_PIN, NEO_GR
 Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW + NEO_KHZ800);
 Preferences prefs;
 uint32_t lastStageModeCheckTimeMs = 0;
+uint32_t lastDmxCheckTimeMs = 0;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -75,7 +76,10 @@ void initBehaviors() {
 }
 
 void handleArtnet() {
-  if (wifi.hasArtnetData()) {
+  uint32_t now = millis();
+
+  if (now > lastDmxCheckTimeMs + 2) {
+    lastDmxCheckTimeMs = now;
     std::vector<lamp::Color> artnetData = wifi.getArtnetData();
     shadeDmxBehavior.setColor(artnetData[0]);
     shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
@@ -87,7 +91,7 @@ void handleArtnet() {
 void handleStageMode() {
   uint32_t now = millis();
 
-  if (config.stage.enabled && now > lastStageModeCheckTimeMs + 2000) {
+  if (now > lastStageModeCheckTimeMs + 2000) {
     lastStageModeCheckTimeMs = now;
     auto foundStages = bt.getStages();
 

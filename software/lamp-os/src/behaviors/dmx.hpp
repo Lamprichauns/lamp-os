@@ -21,7 +21,7 @@ class DmxBehavior : public AnimatedBehavior {
   uint32_t easeFrames = 120;
   Color currentColor = Color();
   uint32_t lastArtnetFrameTimeMs = 0;
-  bool allowedInHomeMode = false;
+  bool allowedInHomeMode = true;
 
   void draw();
 

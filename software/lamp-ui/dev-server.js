@@ -21,9 +21,6 @@ let settings = {
     brightness: 60,
     homeMode: false,
   },
-  stage: {
-    enabled: true,
-  },
   shade: {
     leds: 20,
     colors: ['#4B00634B'],
