@@ -46,8 +46,8 @@ lamp::KnockoutBehavior baseKnockoutBehavior;
 lamp::Config config;
 
 void initBehaviors() {
-  shadeDmxBehavior = lamp::DmxBehavior(&shade, 240);
-  baseDmxBehavior = lamp::DmxBehavior(&base, 240);
+  shadeDmxBehavior = lamp::DmxBehavior(&shade, 480);
+  baseDmxBehavior = lamp::DmxBehavior(&base, 480);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
