@@ -22,11 +22,11 @@ let settings = {
     homeMode: false,
   },
   shade: {
-    leds: 20,
+    px: 38,
     colors: ['#4B00634B'],
   },
   base: {
-    leds: 24,
+    px: 36,
     colors: ['#9B2E09C5', '#C3520A3D', '#6717005E'],
     ac: 1,
     knockout: [
