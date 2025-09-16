@@ -1,1 +1,107 @@
-<p>Hello World</p>
+<!doctype html>
+<html dir="ltr" lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>New Tab</title>
+    <style>
+      /* Brand Color Palette */
+      :root {
+        /* Core Colors */
+        --brand-midnight-black: #0d0d0d;
+        --brand-lamp-white: #fdfdfd;
+        --brand-aurora-blue: #446c9c;
+        --brand-glow-pink: #efa3c8;
+        --brand-lumen-green: #8dcda6;
+        --brand-amber-gold: #e1a44a;
+
+        /* Neutral Greys */
+        --brand-soft-grey: #f5f5f5;
+        --brand-cloud-grey: #e0e0e0;
+        --brand-slate-grey: #888888;
+        --brand-ash-grey: #555555;
+        --brand-fog-grey: #cccccc;
+
+        /* Legacy variables for compatibility */
+        --vt-c-white: var(--brand-lamp-white);
+        --vt-c-black: var(--brand-midnight-black);
+        --vt-c-black-soft: #1a1a1a;
+        --vt-c-black-mute: #2a2a2a;
+        --vt-c-indigo: var(--brand-aurora-blue);
+        --vt-c-divider-light-1: rgba(253, 253, 253, 0.1);
+        --vt-c-divider-light-2: rgba(253, 253, 253, 0.05);
+        --vt-c-text-light-1: var(--brand-lamp-white);
+      }
+
+      /* Semantic color variables for this project */
+      :root {
+        --color-background: var(--brand-midnight-black);
+        --color-background-soft: var(--vt-c-black-soft);
+        --color-background-mute: var(--vt-c-black-mute);
+        --color-border: var(--vt-c-divider-light-2);
+        --color-border-hover: var(--vt-c-divider-light-1);
+        --color-heading: var(--brand-lamp-white);
+        --color-text: var(--brand-lamp-white);
+        --color-text-secondary: var(--brand-fog-grey);
+        --color-accent: var(--brand-aurora-blue);
+        --color-accent-hover: #5a7ba8;
+        --color-success: var(--brand-lumen-green);
+        --color-warning: var(--brand-amber-gold);
+        --color-error: #f87171;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        font-weight: normal;
+      }
+
+      body {
+        min-height: 100vh;
+        color: var(--color-text);
+        background: var(--color-background);
+        transition:
+          color 0.5s,
+          background-color 0.5s;
+        line-height: 1.6;
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Oxygen,
+          Ubuntu,
+          Cantarell,
+          'Fira Sans',
+          'Droid Sans',
+          'Helvetica Neue',
+          sans-serif;
+        font-size: 15px;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="padding:20px;">
+      Upload the base lamp firmware using the Chrome browser:
+      <br/><br/>
+      <ul>
+        <li>Make sure serial is enabled in the browser settings</li>
+        <li>Plug your board into a USB slot</li>
+        <li>Click the connect button and find your device</li>
+      </ul>
+      <br/><br/>
+      <esp-web-install-button
+        manifest="manifest_format.json"
+      ></esp-web-install-button>
+    </div>
+  <script
+    type="module"
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+  ></script>
+  </body>
+</html>
