@@ -46,7 +46,7 @@ interface Settings {
 const maxReconnectAttempts = 60
 const reconnectInterval = 2500
 const websocketDebounceInterval = 25
-const maxLedsShade = 50
+const maxLedsShade = 38
 const maxLedsBase = 50
 
 // state ======================
@@ -353,20 +353,9 @@ onUnmounted(() => {
 
           <!-- Lamp Setup Tab -->
           <div v-if="activeTab === 'lamp-setup'" class="tab-panel">
-            <FormField label="Shade LED Count" id="shadeLeds">
-              <NumberInput
-                :model-value="settings.shade?.px || 18"
-                @update:model-value="(value) => updateSetting('shade.px', value)"
-                :min="1"
-                :max="maxLedsShade"
-                placeholder="Number of LEDs"
-                :disabled="disabled"
-              />
-            </FormField>
-
             <FormField label="Base LED Count" id="baseLeds">
               <NumberInput
-                :model-value="settings.base?.px || 24"
+                :model-value="settings.base?.px || 36"
                 @update:model-value="(value) => updateSetting('base.px', value)"
                 :min="5"
                 :max="maxLedsBase"
@@ -379,8 +368,8 @@ onUnmounted(() => {
               <div class="pixel-grid">
                 <div
                   v-for="ledIndex in Array.from(
-                    { length: settings.base?.px || 24 },
-                    (_, i) => (settings.base?.px || 24) - i,
+                    { length: settings.base?.px || 36 },
+                    (_, i) => (settings.base?.px || 36) - i,
                   )"
                   :key="ledIndex - 1"
                   class="pixel-row"
