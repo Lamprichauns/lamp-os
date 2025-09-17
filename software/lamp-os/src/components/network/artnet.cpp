@@ -37,6 +37,15 @@ THE SOFTWARE.
 #include "../../util/color.hpp"
 
 namespace lamp {
+ArtnetDetail::ArtnetDetail() {};
+
+ArtnetDetail::ArtnetDetail(Color inShadeColor, Color inBaseColor, uint8_t inMode, uint8_t inParameter) {
+  shadeColor = inShadeColor,
+  baseColor = inBaseColor,
+  mode = inMode;
+  parameter = inParameter;
+};
+
 const char ArtnetWifi::artnetId[] = ART_NET_ID;
 
 ArtnetWifi::ArtnetWifi() {};
@@ -48,8 +57,17 @@ void ArtnetWifi::updateDmxFrame(uint16_t universe,
   if (universe == 1) {
     lastDmxFrameMs = millis();
 
-    artnetData = {Color(data[0], data[1], data[2], data[3]),
-                  Color(data[4], data[5], data[6], data[7])};
+    /**
+     * Artnet lds should be sending 8 lamp channels
+     * the lamps will have picked one based on their colors
+     */
+    int index = lampNumber * 10;
+    artnetData = ArtnetDetail(
+        Color(data[index + 0], data[index + 1], data[index + 2], data[index + 3]),  // shade color
+        Color(data[index + 4], data[index + 5], data[index + 6], data[index + 7]),  // base color
+        data[index + 8],                                                            // mode
+        data[index + 9]);                                                           // parameter
+
 #ifdef LAMP_DEBUG
     if (sequence != 1 && sequence != (seq + 1)) {
       Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence,
@@ -62,6 +80,10 @@ void ArtnetWifi::updateDmxFrame(uint16_t universe,
 
 void ArtnetWifi::begin() {
   udp.listen(ART_NET_PORT);
+  lampNumber = random(0, 7);
+#ifdef LAMP_DEBUG
+  Serial.printf("Artnet index: %d", lampNumber);
+#endif
   udp.onPacket([&](AsyncUDPPacket packet) {
     packetSize = packet.length();
 
@@ -82,5 +104,5 @@ void ArtnetWifi::begin() {
       }
     }
   });
-}
+};
 }  // namespace lamp

@@ -177,9 +177,7 @@ void WifiComponent::tick() {
   }
 };
 
-bool WifiComponent::hasArtnetData() { return artnet.artnetData.size() > 0; }
-
-std::vector<Color> WifiComponent::getArtnetData() {
+ArtnetDetail WifiComponent::getArtnetData() {
   return artnet.artnetData;
 };
 

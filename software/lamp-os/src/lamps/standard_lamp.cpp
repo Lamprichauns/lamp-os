@@ -80,10 +80,10 @@ void handleArtnet() {
 
   if (now > lastDmxCheckTimeMs + 2) {
     lastDmxCheckTimeMs = now;
-    std::vector<lamp::Color> artnetData = wifi.getArtnetData();
-    shadeDmxBehavior.setColor(artnetData[0]);
+    auto artnetData = wifi.getArtnetData();
+    shadeDmxBehavior.setColor(artnetData.shadeColor);
     shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
-    baseDmxBehavior.setColor(artnetData[1]);
+    baseDmxBehavior.setColor(artnetData.baseColor);
     baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
   }
 };
