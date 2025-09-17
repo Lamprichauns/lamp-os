@@ -8,7 +8,7 @@ Compositor::Compositor() {};
 
 void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors, std::vector<FrameBuffer*> inFrameBuffers, bool homeMode) {
   frameBuffers = inFrameBuffers;
-  homeMode = homeMode;
+  this->homeMode = homeMode;
 
   // Adds some basic behavior layers that are common to all framebuffers
   for (int i = 0; i < frameBuffers.size(); i++) {
@@ -61,5 +61,12 @@ void Compositor::tick() {
       frameBuffers[i]->flush();
     }
   };
-}
+};
+
+void Compositor::setHomeMode(bool homeMode) {
+  if (this->homeMode != homeMode) {
+    this->homeMode = homeMode;
+    behaviorsComputed = false;  // Force recomputation of active behaviors
+  }
+};
 };  // namespace lamp

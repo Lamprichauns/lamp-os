@@ -42,6 +42,12 @@ class Compositor {
    * @brief manage building frames and drawing them on the LEDs
    */
   void tick();
+
+  /**
+   * @brief update home mode state dynamically
+   * @param [in] homeMode new home mode state
+   */
+  void setHomeMode(bool homeMode);
 };
 }  // namespace lamp
 #endif

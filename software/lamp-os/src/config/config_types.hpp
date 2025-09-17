@@ -34,6 +34,7 @@ class LampSettings {
   std::string name = "standard";
   uint8_t brightness = 100;
   bool homeMode = false;
+  std::string homeModeSSID = "";
 };
 
 /**
