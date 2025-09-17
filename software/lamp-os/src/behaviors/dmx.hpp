@@ -8,8 +8,8 @@
 #include "../util/color.hpp"
 
 #define DMX_ARTNET_TIMEOUT_MS 30000
-#define DMX_BEHAVIOR_FADE_TIME_MIN_MS 120
-#define DMX_BEHAVIOR_FADE_TIME_MAX_MS 480
+#define DMX_BEHAVIOR_FADE_TIME_MIN_MS 240
+#define DMX_BEHAVIOR_FADE_TIME_MAX_MS 840
 
 /**
  * @brief a layer to take colors from artnet periodically and
