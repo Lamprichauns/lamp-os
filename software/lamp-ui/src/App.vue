@@ -21,6 +21,7 @@ interface LampSettings {
   name?: string
   brightness?: number
   homeMode?: boolean
+  homeModeSSID?: string
 }
 
 interface ShadeSettings {
@@ -62,6 +63,7 @@ const activeTab = ref('home')
 // Tab configuration
 const tabs = [
   { id: 'home', label: 'Home' },
+  { id: 'colors', label: 'Colors' },
   { id: 'lamp-setup', label: 'Setup' },
   { id: 'social', label: 'Social' },
   { id: 'info', label: 'Info' },
@@ -295,7 +297,10 @@ onUnmounted(() => {
         <!-- Tab Content -->
         <div class="tab-content">
           <!-- Home Tab -->
-          <div v-if="activeTab === 'home'" class="tab-panel">
+          <section v-if="activeTab === 'home'" class="tab-panel" aria-label="Home settings">
+            <div class="home-instructions">
+              <p>Control your lamp's basic settings. Home Mode disables social behaviors when enabled.</p>
+            </div>
             <FormField label="Lamp Name" id="name">
               <TextInput
                 :model-value="settings.lamp?.name || ''"
@@ -328,9 +333,32 @@ onUnmounted(() => {
                   :disabled="disabled"
                 />
               </FormField>
+
+              <!-- SSID Input for Home Mode -->
+              <div v-if="settings.lamp?.homeMode" class="home-mode-ssid">
+                <FormField label="Home Network SSID" id="homeModeSSID">
+                  <TextInput
+                    :model-value="settings.lamp?.homeModeSSID || ''"
+                    @update:model-value="(value) => updateSetting('lamp.homeModeSSID', value)"
+                    placeholder="Enter your home WiFi name"
+                    :disabled="disabled"
+                    :max-length="32"
+                  />
+                  <div id="home-ssid-info" class="info-text">
+                    When the lamp detects this WiFi network, it will automatically activate special home-only features and behaviors.
+                  </div>
+                </FormField>
+              </div>
+            </div>
+          </section>
+
+          <!-- Colors Tab -->
+          <section v-if="activeTab === 'colors'" class="tab-panel" aria-label="Color settings">
+            <div class="colors-instructions">
+              <p>Choose colors for your lamp's shade and base. For the base, you can add multiple colors to create gradient effects. The star icon marks the active color that will be broadcast to other lamps on the network.</p>
             </div>
 
-            <FormField label="Shade Color" id="shadeColors">
+            <FormField label="Shade" id="shadeColors">
               <ColorGradient
                 :model-value="settings.shade?.colors || ['#FF0000FF']"
                 @update:model-value="(value) => updateSetting('shade.colors', value)"
@@ -340,7 +368,7 @@ onUnmounted(() => {
               />
             </FormField>
 
-            <FormField label="Base Color" id="baseColors">
+            <FormField label="Base" id="baseColors">
               <ColorGradient
                 :model-value="settings.base?.colors || ['#FF0000FF']"
                 @update:model-value="(value) => updateSetting('base.colors', value)"
@@ -349,10 +377,13 @@ onUnmounted(() => {
                 @update:active-color="(value) => updateSetting('base.ac', value)"
               />
             </FormField>
-          </div>
+          </section>
 
           <!-- Lamp Setup Tab -->
-          <div v-if="activeTab === 'lamp-setup'" class="tab-panel">
+          <section v-if="activeTab === 'lamp-setup'" class="tab-panel" aria-label="Setup settings">
+            <div class="setup-instructions">
+              <p>Configure LED count and adjust individual LED brightness.</p>
+            </div>
             <FormField label="Base LED Count" id="baseLeds">
               <NumberInput
                 :model-value="settings.base?.px || 36"
@@ -364,7 +395,7 @@ onUnmounted(() => {
               />
             </FormField>
 
-            <FormField label="Base Knockout Pixels" id="baseKnockoutPixels" expandable>
+            <FormField label="Per-Pixel Brightness Adjustment" id="baseKnockoutPixels" expandable>
               <div class="pixel-grid">
                 <div
                   v-for="ledIndex in Array.from(
@@ -387,14 +418,14 @@ onUnmounted(() => {
                 </div>
               </div>
             </FormField>
-          </div>
+          </section>
 
           <!-- Social Tab -->
-          <div v-if="activeTab === 'social'" class="tab-panel">
+          <section v-if="activeTab === 'social'" class="tab-panel" aria-label="Social features">
             <p class="empty-state">Social features coming soon...</p>
-          </div>
+          </section>
 
-          <div v-if="activeTab === 'info'" class="tab-panel">
+          <section v-if="activeTab === 'info'" class="tab-panel" aria-label="Information">
             <div class="info-content">
               <div class="logo-container">
                 <Logo/>
@@ -405,7 +436,7 @@ onUnmounted(() => {
                 through shared creative experiences.
               </p>
               <p>
-                The Friends of Lamp art project from which our society grew. Their surreal and vivid
+                The lamps are the art project from which our society grew. Their surreal and vivid
                 presence captivates audiences, fosters unexpected connections, inspires creativity
                 and play, and illuminates spaces.
               </p>
@@ -416,7 +447,7 @@ onUnmounted(() => {
               </p>
               <p>Find more info at <b>lamplit.ca</b></p>
             </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>
@@ -631,12 +662,52 @@ textarea {
 /* Mode Toggles Styles */
 .mode-toggles {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 0;
 }
 
-.mode-toggles .form-field {
-  flex: 1;
+.mode-toggles > .form-field {
+  width: 100%;
+}
+
+/* Home Mode SSID Styles */
+.home-mode-ssid {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.home-mode-ssid .form-field {
+  margin-top: 8px;
+  margin-bottom: 32px;
+}
+
+.home-mode-ssid .info-text {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(68, 108, 156, 0.08);
+  border-left: 2px solid var(--brand-aurora-blue);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--brand-slate-grey);
+}
+
+/* Tab Instructions */
+.colors-instructions,
+.home-instructions,
+.setup-instructions {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: rgba(68, 108, 156, 0.06);
+  border-radius: 6px;
+}
+
+.colors-instructions p,
+.home-instructions p,
+.setup-instructions p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--brand-fog-grey);
 }
 
 /* Knockout Pixels Styles */

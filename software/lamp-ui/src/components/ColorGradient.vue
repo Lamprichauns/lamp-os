@@ -2,10 +2,7 @@
   <div class="color-gradient">
     <div v-if="localColors.length > 1" class="gradient-preview-container">
       <div class="gradient-preview" :style="gradientStyle"></div>
-      <div class="gradient-indicators">
-        <span class="indicator-left">Bottom</span>
-        <span class="indicator-right">Top</span>
-      </div>
+      <span class="indicator-right">Top</span>
     </div>
     <div class="color-list">
       <div
@@ -13,39 +10,43 @@
         :key="localColors.length - 1 - index"
         class="color-item"
       >
-        <ColorPicker
-          v-model="localColors[localColors.length - 1 - index]"
-          @update:model-value="updateColor(localColors.length - 1 - index, $event)"
-          :disabled="disabled"
-        />
+        <div class="color-swatch-group">
+          <ColorPicker
+            v-model="localColors[localColors.length - 1 - index]"
+            @update:model-value="updateColor(localColors.length - 1 - index, $event)"
+            :disabled="disabled"
+          />
 
-        <IconButton
-          v-if="localColors.length < props.maxColors"
-          icon="clone"
-          variant="clone"
-          title="Clone color"
-          :disabled="disabled"
-          @click="cloneColor(localColors.length - 1 - index)"
-        />
+          <IconButton
+            v-if="localColors.length > 1"
+            icon="star"
+            variant="star"
+            :title="isActiveColor(localColors.length - 1 - index) ? 'Active color' : 'Set as active'"
+            :disabled="disabled"
+            :class="{ active: isActiveColor(localColors.length - 1 - index) }"
+            @click="setActiveColor(localColors.length - 1 - index)"
+          />
+        </div>
 
-        <IconButton
-          v-if="localColors.length > 1"
-          icon="star"
-          variant="star"
-          :title="isActiveColor(localColors.length - 1 - index) ? 'Active color' : 'Set Active'"
-          :disabled="disabled"
-          :class="{ active: isActiveColor(localColors.length - 1 - index) }"
-          @click="setActiveColor(localColors.length - 1 - index)"
-        />
+        <div class="color-actions">
+          <IconButton
+            v-if="localColors.length < props.maxColors"
+            icon="clone"
+            variant="clone"
+            title="Clone color"
+            :disabled="disabled"
+            @click="cloneColor(localColors.length - 1 - index)"
+          />
 
-        <IconButton
-          v-if="localColors.length > 1"
-          icon="remove"
-          variant="remove"
-          title="Remove color"
-          :disabled="disabled"
-          @click="removeColor(localColors.length - 1 - index)"
-        />
+          <IconButton
+            v-if="localColors.length > 1"
+            icon="remove"
+            variant="remove"
+            title="Remove color"
+            :disabled="disabled"
+            @click="removeColor(localColors.length - 1 - index)"
+          />
+        </div>
       </div>
     </div>
 
@@ -190,33 +191,26 @@ watch(
 .gradient-preview-container {
   position: relative;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .gradient-preview {
-  width: 100%;
+  flex: 1;
   height: 20px;
   border-radius: 2px;
   pointer-events: none;
 }
 
-.gradient-indicators {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--brand-fog-grey);
-  font-weight: 500;
-}
-
-.indicator-left {
-  color: #446c9c;
-  margin-left: -15px;
-}
-
 .indicator-right {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   color: #efa3c8;
-  margin-right: -8px;
 }
 
 .color-list {
@@ -227,6 +221,20 @@ watch(
 }
 
 .color-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.color-swatch-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.color-actions {
   display: flex;
   align-items: center;
   gap: 8px;
