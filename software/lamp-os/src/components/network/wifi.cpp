@@ -175,6 +175,14 @@ void WifiComponent::tick() {
     Serial.printf("WS free heap: %" PRIu32 "\n", ESP.getFreeHeap());
 #endif
   }
+
+  // Update network scan every 30 seconds if home mode SSID is configured
+  // BUT ONLY if we're not connected to the web UI (scanning disrupts connection)
+  if (!config->lamp.homeModeSSID.empty() &&
+      ws.count() == 0 &&  // No WebSocket clients connected
+      now > lastNetworkScanTimeMs + 30000) {
+    updateNetworkScan();
+  }
 };
 
 ArtnetDetail WifiComponent::getArtnetData() {
@@ -208,5 +216,31 @@ void WifiComponent::toApMode() {
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
-}
+};
+
+bool WifiComponent::isHomeNetworkVisible() {
+  return homeNetworkVisible;
+};
+
+void WifiComponent::updateNetworkScan() {
+  if (config->lamp.homeModeSSID.empty()) {
+    homeNetworkVisible = false;
+    return;
+  }
+
+  lastNetworkScanTimeMs = millis();
+  homeNetworkVisible = false;
+
+  int n = WiFi.scanNetworks();
+  if (n > 0) {
+    for (int i = 0; i < n; ++i) {
+      String ssid = WiFi.SSID(i);
+      if (ssid.equals(config->lamp.homeModeSSID.c_str())) {
+        homeNetworkVisible = true;
+        break;
+      }
+    }
+  }
+  WiFi.scanDelete();
+};
 }  // namespace lamp

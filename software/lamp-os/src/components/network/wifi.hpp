@@ -24,6 +24,8 @@ class WifiComponent {
   bool stageMode = false;
   unsigned long lastWebSocketUpdateTimeMs = 0;
   JsonDocument lastWebSocketData;
+  bool homeNetworkVisible = false;
+  unsigned long lastNetworkScanTimeMs = 0;
 
   WifiComponent();
 
@@ -79,6 +81,17 @@ class WifiComponent {
    * @brief if the stage is no longer found, disconnect from the STA to restore the SoftAP
    */
   void toApMode();
+
+  /**
+   * @brief Check if the configured home network SSID is visible
+   * @return true if home network SSID is detected in scan results
+   */
+  bool isHomeNetworkVisible();
+
+  /**
+   * @brief Update network scan results to check for home SSID
+   */
+  void updateNetworkScan();
 };
 }  // namespace lamp
 #endif

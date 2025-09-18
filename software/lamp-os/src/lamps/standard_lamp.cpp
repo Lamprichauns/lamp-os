@@ -46,6 +46,16 @@ lamp::FadeOutBehavior shadeFadeOutBehavior;
 lamp::FadeOutBehavior baseFadeOutBehavior;
 lamp::KnockoutBehavior baseKnockoutBehavior;
 lamp::Config config;
+unsigned long lastHomeModeUpdateMs = 0;
+
+/**
+ * Calculate effective home mode based on configuration and network presence
+ */
+bool calculateEffectiveHomeMode(lamp::Config& config) {
+  if (!config.lamp.homeMode) return false;  // Mode disabled
+  if (config.lamp.homeModeSSID.empty()) return true;  // No SSID = always home
+  return wifi.isHomeNetworkVisible();  // Check if home network visible
+}
 
 void initBehaviors() {
   shadeDmxBehavior = lamp::DmxBehavior(&shade, 480);
@@ -72,7 +82,7 @@ void initBehaviors() {
                     &baseFadeOutBehavior,
                     &shadeFadeOutBehavior},
                    {&shade, &base},
-                   config.lamp.homeMode);
+                   calculateEffectiveHomeMode(config));
 
   compositor.overlayBehaviors.push_back(&baseKnockoutBehavior);
 }
@@ -117,6 +127,7 @@ void handleWebSocket() {
     String action = String(doc["a"]);
     if (action == "bright") {
       int level = doc["v"] | 100;
+      // Apply immediately for real-time control
       shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
       baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
@@ -167,5 +178,15 @@ void loop() {
   handleArtnet();
   handleWebSocket();
   wifi.tick();
+
+  // Update compositor home mode state every 30 seconds for social behaviors
+  if (millis() - lastHomeModeUpdateMs > 30000) {
+    bool effectiveHomeMode = calculateEffectiveHomeMode(config);
+    compositor.setHomeMode(effectiveHomeMode);
+    lastHomeModeUpdateMs = millis();
+  }
+
+  // No brightness logic here - WebSocket handles everything
+
   compositor.tick();
 };
