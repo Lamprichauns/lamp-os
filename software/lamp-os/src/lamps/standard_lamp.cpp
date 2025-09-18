@@ -30,6 +30,8 @@ Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW 
 Preferences prefs;
 uint32_t lastStageModeCheckTimeMs = 0;
 uint32_t lastDmxCheckTimeMs = 0;
+uint32_t lastArtnetFrameTimeMs = 0;
+lamp::ArtnetDetail artnetData;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -80,11 +82,13 @@ void handleArtnet() {
 
   if (now > lastDmxCheckTimeMs + 2) {
     lastDmxCheckTimeMs = now;
-    auto artnetData = wifi.getArtnetData();
+    lastArtnetFrameTimeMs = wifi.getLastArtnetFrameTimeMs();
+    artnetData = wifi.getArtnetData();
+
     shadeDmxBehavior.setColor(artnetData.shadeColor);
-    shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
+    shadeDmxBehavior.setLastArtnetFrameTimeMs(lastArtnetFrameTimeMs);
     baseDmxBehavior.setColor(artnetData.baseColor);
-    baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
+    baseDmxBehavior.setLastArtnetFrameTimeMs(lastArtnetFrameTimeMs);
   }
 };
 
