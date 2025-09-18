@@ -50,16 +50,9 @@ unsigned long lastHomeModeUpdateMs = 0;
  * Calculate effective home mode based on configuration and network presence
  */
 bool calculateEffectiveHomeMode(lamp::Config& config) {
-  if (!config.lamp.homeMode) {
-    return false;  // Home mode disabled
-  }
-
-  if (config.lamp.homeModeSSID.empty()) {
-    return true;  // Home mode enabled, no SSID = always home
-  }
-
-  // Home mode enabled with SSID specified, check if home network is visible
-  return wifi.isHomeNetworkVisible();
+  if (!config.lamp.homeMode) return false;  // Mode disabled
+  if (config.lamp.homeModeSSID.empty()) return true;  // No SSID = always home
+  return wifi.isHomeNetworkVisible();  // Check if home network visible
 }
 
 void initBehaviors() {

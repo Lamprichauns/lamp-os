@@ -22,6 +22,8 @@ interface LampSettings {
   brightness?: number
   homeMode?: boolean
   homeModeSSID?: string
+  homeModeBrightness?: number
+  webPassword?: string
 }
 
 interface ShadeSettings {
@@ -46,7 +48,7 @@ interface Settings {
 
 const maxReconnectAttempts = 60
 const reconnectInterval = 2500
-const websocketDebounceInterval = 25
+const websocketDebounceInterval = 10
 const maxLedsShade = 38
 const maxLedsBase = 50
 
@@ -57,6 +59,9 @@ const loaded = ref(false)
 const disabled = ref(false)
 const originalSettings = ref<string>('')
 const saving = ref(false)
+const authenticated = ref(false)
+const loginPassword = ref('')
+const showLogin = ref(false)
 
 const activeTab = ref('home')
 
@@ -74,6 +79,35 @@ const wsConnected = ref(false)
 const reconnectAttempts = ref(0)
 let reconnectTimeout: number | null = null
 let websocketDebounceTimeout: number | null = null
+
+// Cookie management functions
+const getCookie = (name: string): string | null => {
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null
+  return null
+}
+
+const setCookie = (name: string, value: string, days: number) => {
+  const date = new Date()
+  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000))
+  const expires = `expires=${date.toUTCString()}`
+  document.cookie = `${name}=${value};${expires};path=/`
+}
+
+const checkAuth = () => {
+  const authCookie = getCookie('lamp-auth')
+  return authCookie === 'authenticated'
+}
+
+const handleLogin = () => {
+  if (loginPassword.value === settings.value.lamp?.webPassword) {
+    setCookie('lamp-auth', 'authenticated', 30)
+    authenticated.value = true
+    showLogin.value = false
+    loginPassword.value = ''
+  }
+}
 
 // Computed property to check if settings have changed
 const hasChanges = computed(() => {
@@ -98,7 +132,26 @@ const updateSetting = (path: string, value: unknown) => {
   let action: Record<string, unknown> | undefined
   switch (path) {
     case 'lamp.brightness':
-      action = { a: 'bright', v: value }
+      // If home mode is OFF, apply this brightness immediately
+      if (!settings.value.lamp?.homeMode) {
+        action = { a: 'bright', v: value }
+      }
+      break
+    case 'lamp.homeModeBrightness':
+      // If home mode is ON, apply this brightness immediately
+      if (settings.value.lamp?.homeMode) {
+        action = { a: 'bright', v: value }
+      }
+      break
+    case 'lamp.homeMode':
+      // When toggling home mode, apply the appropriate brightness
+      if (value) {
+        // Turning ON: apply home mode brightness
+        action = { a: 'bright', v: settings.value.lamp?.homeModeBrightness ?? 80 }
+      } else {
+        // Turning OFF: apply regular brightness
+        action = { a: 'bright', v: settings.value.lamp?.brightness || 100 }
+      }
       break
     case 'shade.colors':
       action = { a: 'shade', c: value }
@@ -198,6 +251,14 @@ function connectWebSocket() {
     disabled.value = false
     reconnectAttempts.value = 0
 
+    // Send current brightness based on home mode state
+    if (settings.value.lamp) {
+      const brightness = settings.value.lamp.homeMode
+        ? (settings.value.lamp.homeModeBrightness ?? 80)
+        : (settings.value.lamp.brightness ?? 100)
+      websocketSend({ a: 'bright', v: brightness })
+    }
+
     ws.value?.send(
       JSON.stringify({
         type: 'test',
@@ -247,6 +308,15 @@ onMounted(async () => {
   const data = await response.json()
   settings.value = data
   originalSettings.value = JSON.stringify(data)
+
+  // Check if password is set and if user is authenticated
+  if (settings.value.lamp?.webPassword) {
+    authenticated.value = checkAuth()
+    showLogin.value = !authenticated.value
+  } else {
+    authenticated.value = true
+  }
+
   loaded.value = true
   connectWebSocket()
 })
@@ -276,8 +346,29 @@ onUnmounted(() => {
 
 <template>
   <div class="home">
+    <!-- Login Screen -->
+    <div v-if="showLogin && loaded" class="login-overlay">
+      <div class="login-container">
+        <div class="login-box">
+          <h2>Enter Password</h2>
+          <input
+            v-model="loginPassword"
+            type="password"
+            placeholder="Enter password"
+            @keyup.enter="handleLogin"
+            class="login-input"
+            autofocus
+          />
+          <button @click="handleLogin" class="login-button">
+            Login
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- WebSocket Status Indicator -->
     <div
+      v-if="authenticated"
       class="ws-status-indicator"
       :class="{ connected: wsConnected }"
       :title="wsConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'"
@@ -285,7 +376,7 @@ onUnmounted(() => {
       <div class="ws-status-dot"></div>
     </div>
 
-    <div v-if="loaded" class="container">
+    <div v-if="loaded && authenticated" class="container">
       <main class="main-content">
         <!-- Tab Navigation -->
         <TopNavigation
@@ -334,8 +425,20 @@ onUnmounted(() => {
                 />
               </FormField>
 
-              <!-- SSID Input for Home Mode -->
-              <div v-if="settings.lamp?.homeMode" class="home-mode-ssid">
+              <!-- Home Mode Settings -->
+              <div v-if="settings.lamp?.homeMode" class="home-mode-settings">
+                <FormField label="Home Mode Brightness" id="homeModeBrightness">
+                  <BrightnessSlider
+                    :model-value="settings.lamp?.homeModeBrightness ?? 80"
+                    @update:model-value="(value) => updateSetting('lamp.homeModeBrightness', value)"
+                    id="homeModeBrightness"
+                    :min="0"
+                    :max="100"
+                    append="%"
+                    :disabled="disabled"
+                  />
+                </FormField>
+
                 <FormField label="Home Network SSID" id="homeModeSSID">
                   <TextInput
                     :model-value="settings.lamp?.homeModeSSID || ''"
@@ -384,6 +487,20 @@ onUnmounted(() => {
             <div class="setup-instructions">
               <p>Configure LED count and adjust individual LED brightness.</p>
             </div>
+
+            <FormField label="Password" id="webPassword">
+              <TextInput
+                :model-value="settings.lamp?.webPassword || ''"
+                @update:model-value="(value) => updateSetting('lamp.webPassword', value)"
+                placeholder="Optional password"
+                :disabled="disabled"
+                :max-length="32"
+              />
+              <div class="password-info-text">
+                Optional password to protect settings access. Leave empty for no password.
+              </div>
+            </FormField>
+
             <FormField label="Base LED Count" id="baseLeds">
               <NumberInput
                 :model-value="settings.base?.px || 36"
@@ -453,7 +570,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Floating Save Button -->
-    <div v-if="loaded" class="floating-save-container">
+    <div v-if="loaded && authenticated" class="floating-save-container">
       <button
         class="floating-save-button"
         :class="{
@@ -671,16 +788,16 @@ textarea {
 }
 
 /* Home Mode SSID Styles */
-.home-mode-ssid {
+.home-mode-settings {
   animation: fadeIn 0.3s ease-in-out;
 }
 
-.home-mode-ssid .form-field {
+.home-mode-settings .form-field {
   margin-top: 8px;
   margin-bottom: 32px;
 }
 
-.home-mode-ssid .info-text {
+.home-mode-settings .info-text {
   margin-top: 12px;
   padding: 8px 12px;
   background: rgba(68, 108, 156, 0.08);
@@ -708,6 +825,18 @@ textarea {
   font-size: 0.85rem;
   line-height: 1.5;
   color: var(--brand-fog-grey);
+}
+
+/* Password Info Text */
+.password-info-text {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(68, 108, 156, 0.08);
+  border-left: 2px solid var(--brand-aurora-blue);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--brand-slate-grey);
 }
 
 /* Knockout Pixels Styles */
@@ -829,6 +958,77 @@ textarea {
 .ws-status-indicator.connected .ws-status-dot {
   background: var(--color-success);
   box-shadow: 0 0 8px rgba(141, 205, 166, 0.5);
+}
+
+/* Login Screen Styles */
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--brand-midnight-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+}
+
+.login-box {
+  background: var(--color-background-soft);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-box h2 {
+  color: var(--brand-lamp-white);
+  margin: 0 0 24px 0;
+  font-size: 1.5rem;
+  text-align: center;
+}
+
+.login-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid var(--color-background-mute);
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: var(--brand-aurora-blue);
+  box-shadow: 0 0 0 3px rgba(68, 108, 156, 0.1);
+}
+
+.login-button {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--brand-aurora-blue), var(--brand-glow-pink));
+  color: var(--brand-lamp-white);
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(68, 108, 156, 0.4);
 }
 
 /* Mobile adjustments */
