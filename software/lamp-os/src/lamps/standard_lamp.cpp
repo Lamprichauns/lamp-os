@@ -53,11 +53,11 @@ bool calculateEffectiveHomeMode(lamp::Config& config) {
   if (!config.lamp.homeMode) {
     return false;  // Home mode disabled
   }
-  
+
   if (config.lamp.homeModeSSID.empty()) {
-    return true;  // Home mode enabled but no SSID specified, always active
+    return true;  // Home mode enabled, no SSID = always home
   }
-  
+
   // Home mode enabled with SSID specified, check if home network is visible
   return wifi.isHomeNetworkVisible();
 }
@@ -130,6 +130,7 @@ void handleWebSocket() {
     String action = String(doc["a"]);
     if (action == "bright") {
       int level = doc["v"] | 100;
+      // Apply immediately for real-time control
       shadeStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
       baseStrip.setBrightness(lamp::calculateBrightnessLevel(LAMP_MAX_BRIGHTNESS, level));
     } else if (action == "knockout") {
@@ -180,13 +181,15 @@ void loop() {
   handleArtnet();
   handleWebSocket();
   wifi.tick();
-  
-  // Update home mode state every 5 seconds if SSID-based home mode is configured
-  if (!config.lamp.homeModeSSID.empty() && 
-      millis() > lastHomeModeUpdateMs + 5000) {
-    compositor.setHomeMode(calculateEffectiveHomeMode(config));
+
+  // Update compositor home mode state every 30 seconds for social behaviors
+  if (millis() - lastHomeModeUpdateMs > 30000) {
+    bool effectiveHomeMode = calculateEffectiveHomeMode(config);
+    compositor.setHomeMode(effectiveHomeMode);
     lastHomeModeUpdateMs = millis();
   }
-  
+
+  // No brightness logic here - WebSocket handles everything
+
   compositor.tick();
 };

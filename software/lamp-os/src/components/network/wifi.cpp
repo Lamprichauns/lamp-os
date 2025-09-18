@@ -177,7 +177,9 @@ void WifiComponent::tick() {
   }
 
   // Update network scan every 30 seconds if home mode SSID is configured
-  if (!config->lamp.homeModeSSID.empty() && 
+  // BUT ONLY if we're not connected to the web UI (scanning disrupts connection)
+  if (!config->lamp.homeModeSSID.empty() &&
+      ws.count() == 0 &&  // No WebSocket clients connected
       now > lastNetworkScanTimeMs + 30000) {
     updateNetworkScan();
   }
