@@ -53,12 +53,41 @@ THE SOFTWARE.
 #define ART_DMX_START 18
 
 namespace lamp {
+/**
+ * @brief abstraction for 10 DMX channels to the lamp
+ *        {shade r,g,b,w, base r,g,b,w, mode, parameter}
+ *        the mode will enable lamp effects. 0 is artnet pass through
+ *        the parameter will adjust a single. 0 is artnet pass thruough
+ * @property shadeColor - an rgbw value to send to shade pixels
+ * @property baseColor - and rgbw value to send to base pixels
+ * @property mode - a lamp mode from 0-255
+ * @property parameter - a mode parameter to help give more data to the lamp modes
+ */
+class ArtnetDetail {
+ public:
+  Color shadeColor;
+  Color baseColor;
+  uint8_t mode;
+  uint8_t parameter;
+
+  ArtnetDetail();
+
+  ArtnetDetail(Color inShadeColor, Color inBaseColor, uint8_t inMode = 0, uint8_t inParameter = 0);
+};
+
+/**
+ * @brief the artnet udp packet handler
+ * @property artnetData the record for the target lamp
+ * @property lastDmxFrameMs the last time a UDP frame event occurred
+ * @property seq tracking Artnet DMX sequence numbers to show jitter
+ * @property lampNumber a specific 10 channel fixture profile to use out of 80 possible channels
+ */
 class ArtnetWifi {
  public:
-  std::vector<Color> artnetData = {Color(), Color()};
+  ArtnetDetail artnetData;
   uint32_t lastDmxFrameMs;
   uint8_t seq = 0;
-  bool newDmxData = false;
+  uint8_t lampNumber = 0;
 
   ArtnetWifi();
   void begin();
@@ -72,11 +101,8 @@ class ArtnetWifi {
   uint8_t sequence;
   uint16_t incomingUniverse;
   uint16_t dmxDataLength;
+  uint8_t* data;
   static const char artnetId[];
-  void updateDmxFrame(uint16_t universe,
-                      uint16_t length,
-                      uint8_t sequence,
-                      uint8_t* data);
 };
 }  // namespace lamp
 #endif

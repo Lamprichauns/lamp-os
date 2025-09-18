@@ -30,6 +30,8 @@ Adafruit_NeoPixel baseStrip(LAMP_MAX_STRIP_PIXELS_BASE, LAMP_BASE_PIN, NEO_GRBW 
 Preferences prefs;
 uint32_t lastStageModeCheckTimeMs = 0;
 uint32_t lastDmxCheckTimeMs = 0;
+uint32_t lastArtnetFrameTimeMs = 0;
+lamp::ArtnetDetail artnetData;
 lamp::BluetoothComponent bt;
 lamp::WifiComponent wifi;
 lamp::Compositor compositor;
@@ -46,8 +48,8 @@ lamp::KnockoutBehavior baseKnockoutBehavior;
 lamp::Config config;
 
 void initBehaviors() {
-  shadeDmxBehavior = lamp::DmxBehavior(&shade, 240);
-  baseDmxBehavior = lamp::DmxBehavior(&base, 240);
+  shadeDmxBehavior = lamp::DmxBehavior(&shade, 480);
+  baseDmxBehavior = lamp::DmxBehavior(&base, 480);
   shadeSocialBehavior = lamp::SocialBehavior(&shade, 1200);
   shadeSocialBehavior.setBluetoothComponent(&bt);
   shadeConfiguratorBehavior = lamp::ConfiguratorBehavior(&shade, 120);
@@ -80,11 +82,13 @@ void handleArtnet() {
 
   if (now > lastDmxCheckTimeMs + 2) {
     lastDmxCheckTimeMs = now;
-    std::vector<lamp::Color> artnetData = wifi.getArtnetData();
-    shadeDmxBehavior.setColor(artnetData[0]);
-    shadeDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
-    baseDmxBehavior.setColor(artnetData[1]);
-    baseDmxBehavior.setLastArtnetFrameTimeMs(wifi.getLastArtnetFrameTimeMs());
+    lastArtnetFrameTimeMs = wifi.getLastArtnetFrameTimeMs();
+    artnetData = wifi.getArtnetData();
+
+    shadeDmxBehavior.setColor(artnetData.shadeColor);
+    shadeDmxBehavior.setLastArtnetFrameTimeMs(lastArtnetFrameTimeMs);
+    baseDmxBehavior.setColor(artnetData.baseColor);
+    baseDmxBehavior.setLastArtnetFrameTimeMs(lastArtnetFrameTimeMs);
   }
 };
 

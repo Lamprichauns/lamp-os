@@ -8,6 +8,8 @@
 
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
+#include "./artnet.hpp"
+
 #define WEBSOCKET_CLEAN_TIME_MS 60000
 #define WIFI_PREFERRED_CHANNEL 6
 
@@ -37,17 +39,10 @@ class WifiComponent {
   void tick();
 
   /**
-   * @brief Check if there's new Artnet data to consume to save unnecessary
-   *        LED updates
-   * @return true if there's recent data in the buffer
-   */
-  bool hasArtnetData();
-
-  /**
    * @brief get last Artnet UDP data from the buffer
-   * @return vector of shade[0] and base[1] colors
+   * @return details of the 10 channels occupied by a lamp
    */
-  std::vector<Color> getArtnetData();
+  ArtnetDetail getArtnetData();
 
   /**
    * @brief get last Artnet UDP frame time

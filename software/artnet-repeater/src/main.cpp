@@ -27,7 +27,12 @@
 
 AsyncUDP udp;
 
+void onWiFiEvent(WiFiEvent_t event) {
+  Serial.printf("WIFI Event %d\n", event);
+};
+
 void setup() {
+  Serial.begin(115200);
   std::string coordinatorSsid = SECRET_COORDINATOR_SSID;
   std::string coordinatorPassword = SECRET_COORDINATOR_PASSWORD;
 
@@ -56,6 +61,9 @@ void setup() {
   pAdvertising->start();
 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.onEvent(onWiFiEvent);
   WiFi.config(IPAddress(10, 0, 0, 2), IPAddress(10, 0, 0, 1),
               IPAddress(255, 255, 255, 0), IPAddress(10, 0, 0, 1));
   WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD, 5);
@@ -66,15 +74,15 @@ void setup() {
     if (packetSize == MAX_BUFFER_ARTNET) {
       uint8_t* data = packet.data();
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 20),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
+                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 21),
                   ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 22),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
+                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 23),
                   ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_MAX);
+                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
     }
   });
 }

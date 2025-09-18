@@ -8,9 +8,13 @@
 #include "../util/color.hpp"
 
 #define DMX_ARTNET_TIMEOUT_MS 30000
+#define DMX_BEHAVIOR_FADE_TIME_MIN_MS 240
+#define DMX_BEHAVIOR_FADE_TIME_MAX_MS 840
 
 /**
- * @brief a layer to display dmx data from Artnet
+ * @brief a layer to take colors from artnet periodically and
+ *        shift the lamp's colors slowly to match the stage at random
+ *        intervals
  */
 namespace lamp {
 class DmxBehavior : public AnimatedBehavior {
@@ -19,7 +23,20 @@ class DmxBehavior : public AnimatedBehavior {
  public:
   // the total frame count must be a multiple of the ease frames
   uint32_t easeFrames = 120;
+
+  // the incoming color from DMX every few ms to sample from
+  Color currentDmxColor = Color();
+
+  // the lamp's currently calculated color
   Color currentColor = Color();
+
+  // the lamp's selected color ranges to blur between
+  Color startColor = Color();
+  Color endColor = Color();
+  uint32_t transitionFrames = 0;
+  uint32_t transitionFrame = 0;
+
+  // keep track if artnet input is still incoming
   uint32_t lastArtnetFrameTimeMs = 0;
   bool allowedInHomeMode = true;
 
@@ -27,8 +44,16 @@ class DmxBehavior : public AnimatedBehavior {
 
   void control();
 
+  /**
+   * @brief Set the DMX current color from the DMX Callback
+   * @param [in] inColor the realtime color found
+   */
   void setColor(Color inColor);
 
+  /**
+   * @brief Set the last known Artnet frame callback time
+   * @param [in] inLastArtnetFrameTimeMs a time in milliseconds
+   */
   void setLastArtnetFrameTimeMs(uint32_t inLastArtnetFrameTimeMs);
 };
 }  // namespace lamp

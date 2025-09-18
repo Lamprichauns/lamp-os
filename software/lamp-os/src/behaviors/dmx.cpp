@@ -24,19 +24,40 @@ void DmxBehavior::control() {
   uint32_t now = millis();
   if (animationState == STOPPED) {
     if (lastArtnetFrameTimeMs > 0 && now < lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
+      currentColor = currentDmxColor;  // sample and hold a value from dmx for transition in
       playOnce();
     }
   }
-  if (animationState == PLAYING_ONCE && frame == easeFrames) {
+
+  if (animationState == PLAYING_ONCE && frame == easeFrames * 2) {
     pause();
   }
+
   if (animationState == PAUSED && now > lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
     playOnce();
+  }
+
+  if (animationState == PAUSED) {
+    // the lamp will now begin a sub animation to smear between what dmx is sending
+    if (transitionFrame == 0) {
+      // create the ranges
+      startColor = currentColor;
+      endColor = currentDmxColor;
+      transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_MS, DMX_BEHAVIOR_FADE_TIME_MAX_MS);
+    }
+
+    currentColor = fade(startColor, endColor, transitionFrames, transitionFrame);
+
+    transitionFrame++;
+
+    if (transitionFrame >= transitionFrames) {
+      transitionFrame = 0;
+    }
   }
 };
 
 void DmxBehavior::setColor(Color inColor) {
-  currentColor = inColor;
+  currentDmxColor = inColor;
 };
 
 void DmxBehavior::setLastArtnetFrameTimeMs(uint32_t inLastArtnetFrameTimeMs) {
