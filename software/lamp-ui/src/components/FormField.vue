@@ -1,28 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from "vue";
 
 interface Props {
-  label: string
-  id?: string
-  error?: string
-  required?: boolean
-  helpText?: string
-  expandable?: boolean
+  label?: string;
+  id?: string;
+  error?: string;
+  required?: boolean;
+  helpText?: string;
+  expandable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   required: false,
-  helpText: '',
+  helpText: "",
   expandable: false,
-})
+});
 
-const isExpanded = ref(false)
+const isExpanded = ref(false);
 
 const toggleExpanded = () => {
   if (props.expandable) {
-    isExpanded.value = !isExpanded.value
+    isExpanded.value = !isExpanded.value;
   }
-}
+};
 </script>
 
 <template>
@@ -69,9 +69,9 @@ const toggleExpanded = () => {
 }
 
 .form-field-label {
-  font-weight: 600;
-  color: var(--brand-lamp-white);
-  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--brand-cloud-grey);
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -118,7 +118,7 @@ const toggleExpanded = () => {
 }
 
 .form-field-error::before {
-  content: '⚠️';
+  content: "⚠️";
   font-size: 0.8rem;
 }
 

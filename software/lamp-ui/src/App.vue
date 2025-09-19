@@ -1,374 +1,279 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from "vue";
 
-import ColorGradient from '@/components/ColorGradient.vue'
-import BrightnessSlider from '@/components/BrightnessSlider.vue'
-import NumberInput from '@/components/NumberInput.vue'
-import TextInput from '@/components/TextInput.vue'
-import BooleanInput from '@/components/BooleanInput.vue'
-import FormField from '@/components/FormField.vue'
-import TopNavigation from '@/components/TopNavigation.vue'
-import Logo from '@/components/Logo.vue'
-
-// ts =========================
-
-interface KnockoutPixel {
-  p: number
-  b: number
-}
-
-interface LampSettings {
-  name?: string
-  brightness?: number
-  homeMode?: boolean
-  homeModeSSID?: string
-  homeModeBrightness?: number
-  webPassword?: string
-}
-
-interface ShadeSettings {
-  px?: number
-  colors?: string[]
-}
-
-interface BaseSettings {
-  px?: number
-  colors?: string[]
-  ac?: number
-  knockout?: KnockoutPixel[]
-}
-
-interface Settings {
-  lamp?: LampSettings
-  shade?: ShadeSettings
-  base?: BaseSettings
-}
+import ColorGradient from "@/components/ColorGradient.vue";
+import BrightnessSlider from "@/components/BrightnessSlider.vue";
+import NumberInput from "@/components/NumberInput.vue";
+import TextInput from "@/components/TextInput.vue";
+import BooleanInput from "@/components/BooleanInput.vue";
+import FormField from "@/components/FormField.vue";
+import TopNavigation from "@/components/TopNavigation.vue";
+import Logo from "@/components/Logo.vue";
+import Nameplate from "@/components/Nameplate.vue";
+import type { Settings } from "@/types";
 
 // configuration ==============
 
-const maxReconnectAttempts = 60
-const reconnectInterval = 2500
-const websocketDebounceInterval = 10
-const maxLedsShade = 38
-const maxLedsBase = 50
+const maxReconnectAttempts = 60;
+const reconnectInterval = 2500;
+const websocketDebounceInterval = 10;
+const maxLedsShade = 38;
+const maxLedsBase = 50;
 
 // state ======================
 
-const settings = ref<Settings>({})
-const loaded = ref(false)
-const disabled = ref(false)
-const originalSettings = ref<string>('')
-const saving = ref(false)
-const authenticated = ref(false)
-const loginPassword = ref('')
-const showLogin = ref(false)
-
-const activeTab = ref('home')
+const settings = ref<Settings>({});
+const loaded = ref(false);
+const disabled = ref(false);
+const originalSettings = ref<string>("");
+const saving = ref(false);
+const showLogin = ref(false);
+const activeTab = ref("home");
 
 // Tab configuration
 const tabs = [
-  { id: 'home', label: 'Home' },
-  { id: 'colors', label: 'Colors' },
-  { id: 'lamp-setup', label: 'Setup' },
-  { id: 'social', label: 'Social' },
-  { id: 'info', label: 'Info' },
-]
+  { id: "home", label: "Home" },
+  { id: "lamp-setup", label: "Setup" },
+  { id: "info", label: "Info" },
+];
 
-const ws = ref<WebSocket | null>(null)
-const wsConnected = ref(false)
-const reconnectAttempts = ref(0)
-let reconnectTimeout: number | null = null
-let websocketDebounceTimeout: number | null = null
-
-// Cookie management functions
-const getCookie = (name: string): string | null => {
-  const value = `; ${document.cookie}`
-  const parts = value.split(`; ${name}=`)
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null
-  return null
-}
-
-const setCookie = (name: string, value: string, days: number) => {
-  const date = new Date()
-  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000))
-  const expires = `expires=${date.toUTCString()}`
-  document.cookie = `${name}=${value};${expires};path=/`
-}
-
-const checkAuth = () => {
-  const authCookie = getCookie('lamp-auth')
-  return authCookie === 'authenticated'
-}
-
-const handleLogin = () => {
-  if (loginPassword.value === settings.value.lamp?.webPassword) {
-    setCookie('lamp-auth', 'authenticated', 30)
-    authenticated.value = true
-    showLogin.value = false
-    loginPassword.value = ''
-  }
-}
+const ws = ref<WebSocket | null>(null);
+const wsConnected = ref(false);
+const reconnectAttempts = ref(0);
+let reconnectTimeout: number | null = null;
+let websocketDebounceTimeout: number | null = null;
 
 // Computed property to check if settings have changed
 const hasChanges = computed(() => {
-  return JSON.stringify(settings.value) !== originalSettings.value
-})
+  return JSON.stringify(settings.value) !== originalSettings.value;
+});
 
 // Generic function to update settings -- except knockout pixels
 const updateSetting = (path: string, value: unknown) => {
-  const pathParts = path.split('.')
-  let current: Record<string, unknown> = settings.value
+  const pathParts = path.split(".");
+  let current: Record<string, unknown> = settings.value;
 
   for (let i = 0; i < pathParts.length - 1; i++) {
     if (!current[pathParts[i]]) {
-      current[pathParts[i]] = {}
+      current[pathParts[i]] = {};
     }
-    current = current[pathParts[i]] as Record<string, unknown>
+    current = current[pathParts[i]] as Record<string, unknown>;
   }
 
-  const finalKey = pathParts[pathParts.length - 1]
-  current[finalKey] = value
+  const finalKey = pathParts[pathParts.length - 1];
+  current[finalKey] = value;
 
-  let action: Record<string, unknown> | undefined
+  let action: Record<string, unknown> | undefined;
   switch (path) {
-    case 'lamp.brightness':
+    case "lamp.brightness":
       // If home mode is OFF, apply this brightness immediately
       if (!settings.value.lamp?.homeMode) {
-        action = { a: 'bright', v: value }
+        action = { a: "bright", v: value };
       }
-      break
-    case 'lamp.homeModeBrightness':
+      break;
+    case "lamp.homeModeBrightness":
       // If home mode is ON, apply this brightness immediately
       if (settings.value.lamp?.homeMode) {
-        action = { a: 'bright', v: value }
+        action = { a: "bright", v: value };
       }
-      break
-    case 'lamp.homeMode':
+      break;
+    case "lamp.homeMode":
       // When toggling home mode, apply the appropriate brightness
       if (value) {
         // Turning ON: apply home mode brightness
-        action = { a: 'bright', v: settings.value.lamp?.homeModeBrightness ?? 80 }
+        action = { a: "bright", v: settings.value.lamp?.homeModeBrightness ?? 80 };
       } else {
         // Turning OFF: apply regular brightness
-        action = { a: 'bright', v: settings.value.lamp?.brightness || 100 }
+        action = { a: "bright", v: settings.value.lamp?.brightness || 100 };
       }
-      break
-    case 'shade.colors':
-      action = { a: 'shade', c: value }
-      break
-    case 'base.colors':
-      action = { a: 'base', c: value }
-      break
+      break;
+    case "shade.colors":
+      action = { a: "shade", c: value };
+      break;
+    case "base.colors":
+      action = { a: "base", c: value };
+      break;
   }
   if (action) {
-    websocketSend(action)
+    websocketSend(action);
   }
-}
+};
 
 const updateKnockoutPixel = (ledIndex: number, brightness: number) => {
   if (!settings.value.base) {
-    settings.value.base = {}
+    settings.value.base = {};
   }
   if (!settings.value.base) {
-    settings.value.base = {}
+    settings.value.base = {};
   }
   if (!settings.value.base?.knockout) {
-    settings.value.base.knockout = []
+    settings.value.base.knockout = [];
   }
 
-  const existingIndex = settings.value.base.knockout.findIndex((kp) => kp.p === ledIndex)
+  const existingIndex = settings.value.base.knockout.findIndex((kp) => kp.p === ledIndex);
 
   if (brightness === 100) {
     if (existingIndex !== -1) {
-      settings.value.base.knockout.splice(existingIndex, 1)
+      settings.value.base.knockout.splice(existingIndex, 1);
     }
   } else {
     if (existingIndex !== -1) {
-      settings.value.base.knockout[existingIndex].b = brightness
+      settings.value.base.knockout[existingIndex].b = brightness;
     } else {
-      settings.value.base.knockout.push({ p: ledIndex, b: brightness })
+      settings.value.base.knockout.push({ p: ledIndex, b: brightness });
     }
   }
 
-  const action = { a: 'knockout', p: ledIndex, b: brightness }
-  websocketSend(action)
-}
+  const action = { a: "knockout", p: ledIndex, b: brightness };
+  websocketSend(action);
+};
 
 // Get brightness for a specific LED (returns 100 if not in knockout array)
 const getKnockoutBrightness = (ledIndex: number): number => {
-  if (!settings.value.base?.knockout) return 100
-  const knockout = settings.value.base.knockout.find((kp) => kp.p === ledIndex)
-  return knockout ? knockout.b : 100
-}
+  if (!settings.value.base?.knockout) return 100;
+  const knockout = settings.value.base.knockout.find((kp) => kp.p === ledIndex);
+  return knockout ? knockout.b : 100;
+};
 
 const saveSettings = async () => {
-  if (!hasChanges.value || saving.value) return
+  if (!hasChanges.value || saving.value) return;
 
-  saving.value = true
+  saving.value = true;
 
   // apply an extra filter on settings.value.base.knockout to remove any empty objects and knockout pixels values that are 100
   if (!settings.value.base) {
-    settings.value.base = {}
+    settings.value.base = {};
   }
   settings.value.base.knockout =
-    settings.value.base?.knockout?.filter(({ p, b }) => p !== undefined && p !== null && b < 100) ??
-    []
+    settings.value.base?.knockout?.filter(
+      ({ p, b }) => p !== undefined && p !== null && b < 100
+    ) ?? [];
 
   try {
     const response = await fetch(`${import.meta.env.VITE_SERVER_HTTP}/settings`, {
-      method: 'PUT',
+      method: "PUT",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(settings.value),
-    })
+    });
 
     if (response.ok) {
-      originalSettings.value = JSON.stringify(settings.value)
+      originalSettings.value = JSON.stringify(settings.value);
     }
-    saving.value = false
+    saving.value = false;
   } catch (error) {
-    console.error('Error saving settings:', error)
+    console.error("Error saving settings:", error);
   } finally {
-    saving.value = false
+    saving.value = false;
   }
-}
+};
 
 function connectWebSocket() {
   if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout)
-    reconnectTimeout = null
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
   }
 
   if (ws.value) {
-    ws.value.close()
+    ws.value.close();
   }
 
-  ws.value = new WebSocket(`${import.meta.env.VITE_SERVER_WS}`)
+  ws.value = new WebSocket(`${import.meta.env.VITE_SERVER_WS}`);
 
   ws.value.onopen = () => {
-    wsConnected.value = true
-    disabled.value = false
-    reconnectAttempts.value = 0
+    wsConnected.value = true;
+    disabled.value = false;
+    reconnectAttempts.value = 0;
 
     // Send current brightness based on home mode state
     if (settings.value.lamp) {
       const brightness = settings.value.lamp.homeMode
-        ? (settings.value.lamp.homeModeBrightness ?? 80)
-        : (settings.value.lamp.brightness ?? 100)
-      websocketSend({ a: 'bright', v: brightness })
+        ? settings.value.lamp.homeModeBrightness ?? 80
+        : settings.value.lamp.brightness ?? 100;
+      websocketSend({ a: "bright", v: brightness });
     }
 
     ws.value?.send(
       JSON.stringify({
-        type: 'test',
-        message: 'Hello WebSocket!',
+        type: "test",
+        message: "Hello WebSocket!",
         timestamp: new Date().toISOString(),
-      }),
-    )
-  }
+      })
+    );
+  };
 
   ws.value.onclose = () => {
-    wsConnected.value = false
-    disabled.value = true
+    wsConnected.value = false;
+    disabled.value = true;
     if (reconnectAttempts.value < maxReconnectAttempts) {
-      reconnectAttempts.value++
+      reconnectAttempts.value++;
       reconnectTimeout = window.setTimeout(() => {
-        connectWebSocket()
-      }, reconnectInterval)
+        connectWebSocket();
+      }, reconnectInterval);
     } else {
-      console.log('Max reconnection attempts reached. Stopping reconnection attempts.')
+      console.log("Max reconnection attempts reached. Stopping reconnection attempts.");
     }
-  }
+  };
 
   ws.value.onerror = (error) => {
-    console.error('WebSocket error:', error)
-    wsConnected.value = false
-    disabled.value = true
-  }
+    console.error("WebSocket error:", error);
+    wsConnected.value = false;
+    disabled.value = true;
+  };
 
-  return ws.value
+  return ws.value;
 }
 
 const websocketSend = (action: Record<string, unknown>) => {
   // Clear any existing debounce timeout
   if (websocketDebounceTimeout) {
-    clearTimeout(websocketDebounceTimeout)
+    clearTimeout(websocketDebounceTimeout);
   }
 
   // Set a new timeout to send the message after 25ms
   websocketDebounceTimeout = window.setTimeout(() => {
-    ws.value?.send(JSON.stringify(action))
-    websocketDebounceTimeout = null
-  }, websocketDebounceInterval)
-}
+    ws.value?.send(JSON.stringify(action));
+    websocketDebounceTimeout = null;
+  }, websocketDebounceInterval);
+};
 
 onMounted(async () => {
-  const response = await fetch(`${import.meta.env.VITE_SERVER_HTTP}/settings`)
-  const data = await response.json()
-  settings.value = data
-  originalSettings.value = JSON.stringify(data)
-
-  // Check if password is set and if user is authenticated
-  if (settings.value.lamp?.webPassword) {
-    authenticated.value = checkAuth()
-    showLogin.value = !authenticated.value
-  } else {
-    authenticated.value = true
-  }
-
-  loaded.value = true
-  connectWebSocket()
-})
+  const response = await fetch(`${import.meta.env.VITE_SERVER_HTTP}/settings`);
+  const data = await response.json();
+  settings.value = data;
+  originalSettings.value = JSON.stringify(data);
+  loaded.value = true;
+  connectWebSocket();
+});
 
 onUnmounted(() => {
   // Clean up WebSocket connection and reconnection timeout
   if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout)
-    reconnectTimeout = null
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
   }
 
   // Clean up websocket debounce timeout
   if (websocketDebounceTimeout) {
-    clearTimeout(websocketDebounceTimeout)
-    websocketDebounceTimeout = null
+    clearTimeout(websocketDebounceTimeout);
+    websocketDebounceTimeout = null;
   }
 
   if (ws.value) {
-    ws.value.close()
-    ws.value = null
+    ws.value.close();
+    ws.value = null;
   }
 
-  wsConnected.value = false
-  disabled.value = true
-})
+  wsConnected.value = false;
+  disabled.value = true;
+});
 </script>
 
 <template>
   <div class="home">
-    <!-- Login Screen -->
-    <div v-if="showLogin && loaded" class="login-overlay">
-      <div class="login-container">
-        <div class="login-box">
-          <h2>Enter Password</h2>
-          <input
-            v-model="loginPassword"
-            type="password"
-            placeholder="Enter password"
-            @keyup.enter="handleLogin"
-            class="login-input"
-            autofocus
-          />
-          <button @click="handleLogin" class="login-button">
-            Login
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- WebSocket Status Indicator -->
     <div
-      v-if="authenticated"
       class="ws-status-indicator"
       :class="{ connected: wsConnected }"
       :title="wsConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'"
@@ -376,7 +281,7 @@ onUnmounted(() => {
       <div class="ws-status-dot"></div>
     </div>
 
-    <div v-if="loaded && authenticated" class="container">
+    <div v-if="loaded" class="container">
       <main class="main-content">
         <!-- Tab Navigation -->
         <TopNavigation
@@ -388,23 +293,15 @@ onUnmounted(() => {
         <!-- Tab Content -->
         <div class="tab-content">
           <!-- Home Tab -->
-          <section v-if="activeTab === 'home'" class="tab-panel" aria-label="Home settings">
-            <div class="home-instructions">
-              <p>Control your lamp's basic settings. Home Mode disables social behaviors when enabled.</p>
-            </div>
-            <FormField label="Lamp Name" id="name">
-              <TextInput
-                :model-value="settings.lamp?.name || ''"
-                @update:model-value="(value) => updateSetting('lamp.name', value)"
-                placeholder="Enter a name for your lamp"
-                :disabled="disabled"
-                :max-length="12"
-                pattern="[a-zA-Z]"
-                transform="lowercase"
-              />
-            </FormField>
+          <section
+            v-if="activeTab === 'home'"
+            class="tab-panel"
+            aria-label="Home settings"
+          >
+            <Nameplate v-model="settings" id="nameplate" />
 
-            <FormField label="Brightness" id="brightness">
+            <h1 class="gold" v-if="!settings.lamp?.homeMode">Lamp Brightness</h1>
+            <FormField id="brightness" v-if="!settings.lamp?.homeMode">
               <BrightnessSlider
                 :model-value="settings.lamp?.brightness || 0"
                 @update:model-value="(value) => updateSetting('lamp.brightness', value)"
@@ -416,51 +313,7 @@ onUnmounted(() => {
               />
             </FormField>
 
-            <div class="mode-toggles">
-              <FormField label="Home Mode" id="homeMode">
-                <BooleanInput
-                  :model-value="settings.lamp?.homeMode || false"
-                  @update:model-value="(value) => updateSetting('lamp.homeMode', value)"
-                  :disabled="disabled"
-                />
-              </FormField>
-
-              <!-- Home Mode Settings -->
-              <div v-if="settings.lamp?.homeMode" class="home-mode-settings">
-                <FormField label="Home Mode Brightness" id="homeModeBrightness">
-                  <BrightnessSlider
-                    :model-value="settings.lamp?.homeModeBrightness ?? 80"
-                    @update:model-value="(value) => updateSetting('lamp.homeModeBrightness', value)"
-                    id="homeModeBrightness"
-                    :min="0"
-                    :max="100"
-                    append="%"
-                    :disabled="disabled"
-                  />
-                </FormField>
-
-                <FormField label="Home Network SSID" id="homeModeSSID">
-                  <TextInput
-                    :model-value="settings.lamp?.homeModeSSID || ''"
-                    @update:model-value="(value) => updateSetting('lamp.homeModeSSID', value)"
-                    placeholder="Enter your home WiFi name"
-                    :disabled="disabled"
-                    :max-length="32"
-                  />
-                  <div id="home-ssid-info" class="info-text">
-                    When the lamp detects this WiFi network, it will automatically activate special home-only features and behaviors.
-                  </div>
-                </FormField>
-              </div>
-            </div>
-          </section>
-
-          <!-- Colors Tab -->
-          <section v-if="activeTab === 'colors'" class="tab-panel" aria-label="Color settings">
-            <div class="colors-instructions">
-              <p>Choose colors for your lamp's shade and base. For the base, you can add multiple colors to create gradient effects. The star icon marks the active color that will be broadcast to other lamps on the network.</p>
-            </div>
-
+            <h1 class="yellow">Lamp Color Settings</h1>
             <FormField label="Shade" id="shadeColors">
               <ColorGradient
                 :model-value="settings.shade?.colors || ['#FF0000FF']"
@@ -483,24 +336,88 @@ onUnmounted(() => {
           </section>
 
           <!-- Lamp Setup Tab -->
-          <section v-if="activeTab === 'lamp-setup'" class="tab-panel" aria-label="Setup settings">
-            <div class="setup-instructions">
-              <p>Configure LED count and adjust individual LED brightness.</p>
-            </div>
-
-            <FormField label="Password" id="webPassword">
+          <section
+            v-if="activeTab === 'lamp-setup'"
+            class="tab-panel"
+            aria-label="Setup settings"
+          >
+            <h1 class="gold">Lamp Name</h1>
+            <FormField id="name">
               <TextInput
-                :model-value="settings.lamp?.webPassword || ''"
-                @update:model-value="(value) => updateSetting('lamp.webPassword', value)"
-                placeholder="Optional password"
+                :model-value="settings.lamp?.name || ''"
+                @update:model-value="(value) => updateSetting('lamp.name', value)"
+                placeholder="Enter a name for your lamp"
                 :disabled="disabled"
-                :max-length="32"
+                :max-length="12"
+                pattern="[a-z]"
+                transform="lowercase"
               />
               <div class="password-info-text">
-                Optional password to protect settings access. Leave empty for no password.
+                Names must be all lowercase letters and no more than 12 characters long.
               </div>
             </FormField>
 
+            <h1 class="yellow">Lamp Password</h1>
+            <FormField id="password">
+              <TextInput
+                :model-value="settings.lamp?.password || ''"
+                @update:model-value="(value) => updateSetting('lamp.password', value)"
+                placeholder="Optional password"
+                :disabled="disabled"
+                :max-length="10"
+                :min-length="5"
+              />
+              <div class="password-info-text">
+                Optional password to protect your lamp from changes. Between 5-10
+                characters. Leave empty for no password.
+              </div>
+            </FormField>
+
+            <h1 class="lime">At-Home Mode</h1>
+            <div class="mode-toggles">
+              <FormField label="Home Mode" id="homeMode">
+                <BooleanInput
+                  :model-value="settings.lamp?.homeMode || false"
+                  @update:model-value="(value) => updateSetting('lamp.homeMode', value)"
+                  :disabled="disabled"
+                />
+              </FormField>
+
+              <!-- Home Mode Settings -->
+              <div v-if="settings.lamp?.homeMode" class="home-mode-settings">
+                <FormField label="Home Mode Brightness" id="homeModeBrightness">
+                  <BrightnessSlider
+                    :model-value="settings.lamp?.homeModeBrightness ?? 80"
+                    @update:model-value="
+                      (value) => updateSetting('lamp.homeModeBrightness', value)
+                    "
+                    id="homeModeBrightness"
+                    :min="0"
+                    :max="100"
+                    append="%"
+                    :disabled="disabled"
+                  />
+                </FormField>
+
+                <FormField label="Home Network SSID" id="homeModeSSID">
+                  <TextInput
+                    :model-value="settings.lamp?.homeModeSSID || ''"
+                    @update:model-value="
+                      (value) => updateSetting('lamp.homeModeSSID', value)
+                    "
+                    placeholder="Enter your home WiFi name"
+                    :disabled="disabled"
+                    :max-length="32"
+                  />
+                  <div id="home-ssid-info" class="info-text">
+                    When the lamp detects this WiFi network, it will automatically
+                    activate special home-only features and behaviors.
+                  </div>
+                </FormField>
+              </div>
+            </div>
+
+            <h1 class="green">Lamp Base LED Profile</h1>
             <FormField label="Base LED Count" id="baseLeds">
               <NumberInput
                 :model-value="settings.base?.px || 36"
@@ -512,12 +429,16 @@ onUnmounted(() => {
               />
             </FormField>
 
-            <FormField label="Per-Pixel Brightness Adjustment" id="baseKnockoutPixels" expandable>
+            <FormField
+              label="Per-Pixel Brightness Adjustment"
+              id="baseKnockoutPixels"
+              expandable
+            >
               <div class="pixel-grid">
                 <div
                   v-for="ledIndex in Array.from(
                     { length: settings.base?.px || 36 },
-                    (_, i) => (settings.base?.px || 36) - i,
+                    (_, i) => (settings.base?.px || 36) - i
                   )"
                   :key="ledIndex - 1"
                   class="pixel-row"
@@ -525,7 +446,9 @@ onUnmounted(() => {
                   <label class="pixel-label">LED {{ ledIndex }}</label>
                   <BrightnessSlider
                     :model-value="getKnockoutBrightness(ledIndex - 1)"
-                    @update:model-value="(value) => updateKnockoutPixel(ledIndex - 1, value)"
+                    @update:model-value="
+                      (value) => updateKnockoutPixel(ledIndex - 1, value)
+                    "
                     :id="`knockout-pixel-${ledIndex - 1}`"
                     :min="0"
                     :max="100"
@@ -537,30 +460,26 @@ onUnmounted(() => {
             </FormField>
           </section>
 
-          <!-- Social Tab -->
-          <section v-if="activeTab === 'social'" class="tab-panel" aria-label="Social features">
-            <p class="empty-state">Social features coming soon...</p>
-          </section>
-
+          <!-- Information Tab -->
           <section v-if="activeTab === 'info'" class="tab-panel" aria-label="Information">
             <div class="info-content">
               <div class="logo-container">
-                <Logo/>
+                <Logo />
               </div>
               <p>
-                Lamplit Art Society is a non-profit collective dedicated to sparking inspiration and
-                providing opportunities for people to connect, celebrate, grow, and inspire others
-                through shared creative experiences.
+                Lamplit Art Society is a non-profit collective dedicated to sparking
+                inspiration and providing opportunities for people to connect, celebrate,
+                grow, and inspire others through shared creative experiences.
               </p>
               <p>
-                The lamps are the art project from which our society grew. Their surreal and vivid
-                presence captivates audiences, fosters unexpected connections, inspires creativity
-                and play, and illuminates spaces.
+                The lamps are the art project from which our society grew. Their surreal
+                and vivid presence captivates audiences, fosters unexpected connections,
+                inspires creativity and play, and illuminates spaces.
               </p>
               <p>
-                As stewards of this decentralized and open source project, we maintain its core
-                vision while welcoming contributors and artists to build, adopt, or share these
-                lamps with their communities.
+                As stewards of this decentralized and open source project, we maintain its
+                core vision while welcoming contributors and artists to build, adopt, or
+                share these lamps with their communities.
               </p>
               <p>Find more info at <b>lamplit.ca</b></p>
             </div>
@@ -570,7 +489,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Floating Save Button -->
-    <div v-if="loaded && authenticated" class="floating-save-container">
+    <div v-if="loaded" class="floating-save-container">
       <button
         class="floating-save-button"
         :class="{
@@ -602,7 +521,7 @@ input,
 select,
 textarea,
 a,
-[role='button'],
+[role="button"],
 [tabindex] {
   touch-action: manipulation;
   -webkit-touch-callout: none;
@@ -614,12 +533,12 @@ a,
 }
 
 /* Allow text selection in input fields and textareas */
-input[type='text'],
-input[type='email'],
-input[type='password'],
-input[type='search'],
-input[type='url'],
-input[type='tel'],
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="url"],
+input[type="tel"],
 textarea {
   -webkit-user-select: text;
   -khtml-user-select: text;
@@ -892,9 +811,7 @@ textarea {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.4),
-    0 8px 32px rgba(0, 0, 0, 0.3),
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   font-family: inherit;
@@ -916,11 +833,8 @@ textarea {
 
 .floating-save-button.has-changes:hover {
   transform: translateY(-4px);
-  box-shadow:
-    0 25px 80px rgba(0, 0, 0, 0.5),
-    0 15px 50px rgba(68, 108, 156, 0.4),
-    0 0 0 1px rgba(253, 253, 253, 0.2),
-    0 0 30px rgba(68, 108, 156, 0.4);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 15px 50px rgba(68, 108, 156, 0.4),
+    0 0 0 1px rgba(253, 253, 253, 0.2), 0 0 30px rgba(68, 108, 156, 0.4);
 }
 
 .floating-save-button.saving {

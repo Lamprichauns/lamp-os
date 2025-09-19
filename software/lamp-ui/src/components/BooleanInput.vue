@@ -60,11 +60,6 @@ const toggleValue = () => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.boolean-input:hover:not(.boolean-input--disabled) {
-  background-color: var(--color-background-soft);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
 .boolean-input:focus {
   outline: none;
   box-shadow: 0 0 0 3px rgba(68, 108, 156, 0.2);
@@ -72,10 +67,6 @@ const toggleValue = () => {
 
 .boolean-input--active {
   background-color: var(--color-background-mute);
-}
-
-.boolean-input--active:hover:not(.boolean-input--disabled) {
-  background-color: var(--color-background-soft);
 }
 
 .boolean-input--disabled {

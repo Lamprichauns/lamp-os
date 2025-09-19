@@ -10,6 +10,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 
+#include "../../behaviors/dmx.hpp"
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
@@ -177,11 +178,17 @@ void WifiComponent::tick() {
   }
 
   // Update network scan every 30 seconds if home mode SSID is configured
-  // BUT ONLY if we're not connected to the web UI (scanning disrupts connection)
+  // This mode has side effects on both Station and AP modes and will interrupt
+  // their connectivity. Check that:
+  // - The user has their lamp in home SSID scanning mode
+  // - The user is not using the web configuration tool at the moment
+  // - The lamp isn't actively receiving recent artnet packets
   if (!config->lamp.homeModeSSID.empty() &&
-      ws.count() == 0 &&  // No WebSocket clients connected
+      ws.count() == 0 &&
+      (now < 5 || now > getLastArtnetFrameTimeMs() + DMX_ARTNET_TIMEOUT_MS - 1) &&
       now > lastNetworkScanTimeMs + 30000) {
     updateNetworkScan();
+    lastNetworkScanTimeMs = now;
   }
 };
 
@@ -228,7 +235,6 @@ void WifiComponent::updateNetworkScan() {
     return;
   }
 
-  lastNetworkScanTimeMs = millis();
   homeNetworkVisible = false;
 
   int n = WiFi.scanNetworks();
