@@ -30,7 +30,7 @@ class KnockoutPixel {
  * @property homeMode - if true it will disable some animations while at home
  * @property homeModeSSID - SSID to detect for home mode activation
  * @property homeModeBrightness - brightness level to use when home mode is active
- * @property webPassword - password to protect the web UI (plain text)
+ * @property password - password to protect lamp API and web access
  */
 class LampSettings {
  public:
@@ -39,7 +39,7 @@ class LampSettings {
   bool homeMode = false;
   std::string homeModeSSID = "";
   uint8_t homeModeBrightness = 80;
-  std::string webPassword = "";
+  std::string password = "";
 };
 
 /**

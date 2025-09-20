@@ -3,6 +3,7 @@
 #include <NimBLEDevice.h>
 #include <WiFi.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -11,21 +12,14 @@
 #define MAX_BUFFER_ARTNET 530
 #define BLE_MAGIC_NUMBER 42007
 
-#ifdef CONFIG_ARDUINO_UDP_TASK_PRIORITY
-#undef CONFIG_ARDUINO_UDP_TASK_PRIORITY
-#define CONFIG_ARDUINO_UDP_TASK_PRIORITY 10
-#endif
-
-#ifdef CONFIG_ARDUINO_UDP_RUNNING_CORE
-#undef CONFIG_ARDUINO_UDP_RUNNING_CORE
-#define CONFIG_ARDUINO_UDP_RUNNING_CORE 1
-#endif
+#define MIN_UPDATE_TIME 250
 
 // Tx power level in DB
 // @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
 #define BLE_POWER_LEVEL 4
 
 AsyncUDP udp;
+uint32_t lastUpdate = 0;
 
 void onWiFiEvent(WiFiEvent_t event) {
   Serial.printf("WIFI Event %d\n", event);
@@ -72,27 +66,32 @@ void setup() {
     uint32_t packetSize = packet.length();
 
     if (packetSize == MAX_BUFFER_ARTNET) {
-      uint8_t* data = packet.data();
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 20),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 21),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 22),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 23),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 26),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 27),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 28),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-      udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 29),
-                  ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+      uint32_t now = millis();
+
+      if (now > lastUpdate + MIN_UPDATE_TIME) {
+        lastUpdate = now;
+        uint8_t* data = packet.data();
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 20),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 21),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 22),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 23),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 26),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 27),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 28),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 29),
+                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+      }
     }
   });
 }

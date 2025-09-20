@@ -133,12 +133,12 @@ const toggleExpanded = () => {
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .form-field-label {
-    font-size: 1rem;
+    font-size: 0.8rem;
   }
 
   .form-field-error,
   .form-field-help {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
   }
 }
 
@@ -148,7 +148,7 @@ const toggleExpanded = () => {
   }
 
   .form-field-label {
-    font-size: 1.05rem;
+    font-size: 0.8rem;
   }
 }
 </style>

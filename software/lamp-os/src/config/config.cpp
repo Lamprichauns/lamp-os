@@ -31,7 +31,10 @@ Config::Config(Preferences* inPrefs) {
   lamp.homeMode = lampNode["homeMode"] | false;
   lamp.homeModeSSID = std::string(lampNode["homeModeSSID"] | "");
   lamp.homeModeBrightness = lampNode["homeModeBrightness"] | 80;
-  lamp.webPassword = std::string(lampNode["webPassword"] | "");
+  std::string password = std::string(lampNode["password"] | "");
+  if (!password.empty()) {
+    lamp.password = password;
+  }
 
   JsonObject baseNode = doc["base"];
   base.px = baseNode["px"] | 36;
@@ -83,8 +86,9 @@ JsonDocument Config::asJsonDocument() {
   lampNode["homeMode"] = lamp.homeMode;
   lampNode["homeModeSSID"] = lamp.homeModeSSID;
   lampNode["homeModeBrightness"] = lamp.homeModeBrightness;
-  lampNode["webPassword"] = lamp.webPassword;
-
+  if (!lamp.password.empty()) {
+    lampNode["password"] = lamp.password;
+  }
   JsonObject baseNode = doc["base"].to<JsonObject>();
   baseNode["px"] = base.px;
   baseNode["ac"] = base.ac;

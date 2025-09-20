@@ -70,7 +70,12 @@ void WifiComponent::begin(Config *inConfig) {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
+
+  WiFi.softAP(
+      inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(),
+      String(inConfig->lamp.password.c_str()),
+      WIFI_PREFERRED_CHANNEL);
+
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   MDNS.begin("lamp");
 #ifdef LAMP_DEBUG
@@ -222,7 +227,10 @@ void WifiComponent::toApMode() {
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
+  WiFi.softAP(
+      config->lamp.name.substr(0, 12).append("-lamp").c_str(),
+      String(config->lamp.password.c_str()),
+      WIFI_PREFERRED_CHANNEL);
 };
 
 bool WifiComponent::isHomeNetworkVisible() {

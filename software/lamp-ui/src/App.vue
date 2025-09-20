@@ -349,11 +349,11 @@ onUnmounted(() => {
                 placeholder="Enter a name for your lamp"
                 :disabled="disabled"
                 :max-length="12"
-                pattern="[a-z]"
+                pattern="[a-z]+"
                 transform="lowercase"
               />
               <div class="password-info-text">
-                Names must be all lowercase letters and no more than 12 characters long.
+                Names must be all lowercase letters and between 3-12 characters.
               </div>
             </FormField>
 
@@ -364,11 +364,11 @@ onUnmounted(() => {
                 @update:model-value="(value) => updateSetting('lamp.password', value)"
                 placeholder="Optional password"
                 :disabled="disabled"
-                :max-length="10"
-                :min-length="5"
+                pattern="[ -~]+"
+                :max-length="16"
               />
               <div class="password-info-text">
-                Optional password to protect your lamp from changes. Between 5-10
+                Optional password to protect your lamp from changes. Between 8-16
                 characters. Leave empty for no password.
               </div>
             </FormField>
@@ -408,6 +408,7 @@ onUnmounted(() => {
                     placeholder="Enter your home WiFi name"
                     :disabled="disabled"
                     :max-length="32"
+                    pattern="[ -~]+"
                   />
                   <div id="home-ssid-info" class="info-text">
                     When the lamp detects this WiFi network, it will automatically
