@@ -17,7 +17,7 @@ uint8_t ease(uint8_t start, uint8_t end, uint32_t duration, uint32_t currentStep
 };
 
 uint8_t easeLinear(uint8_t start, uint8_t end, uint32_t duration, uint32_t currentStep) {
-  uint32_t factor = linear[(uint16_t)((currentStep * 100 / duration * 100) / 100)];
+  uint32_t factor = linear[(uint16_t)((currentStep * 511 / duration * 511) / 511)];
 
   return (((end - start) * factor) / 262144) + start;
 };
