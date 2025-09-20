@@ -10,6 +10,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 
+#include "../../behaviors/dmx.hpp"
 #include "../../config/config.hpp"
 #include "../../util/color.hpp"
 #include "./artnet.hpp"
@@ -69,7 +70,12 @@ void WifiComponent::begin(Config *inConfig) {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.softAP(inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
+
+  WiFi.softAP(
+      inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(),
+      String(inConfig->lamp.password.c_str()),
+      WIFI_PREFERRED_CHANNEL);
+
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   MDNS.begin("lamp");
 #ifdef LAMP_DEBUG
@@ -177,11 +183,17 @@ void WifiComponent::tick() {
   }
 
   // Update network scan every 30 seconds if home mode SSID is configured
-  // BUT ONLY if we're not connected to the web UI (scanning disrupts connection)
+  // This mode has side effects on both Station and AP modes and will interrupt
+  // their connectivity. Check that:
+  // - The user has their lamp in home SSID scanning mode
+  // - The user is not using the web configuration tool at the moment
+  // - The lamp isn't actively receiving recent artnet packets
   if (!config->lamp.homeModeSSID.empty() &&
-      ws.count() == 0 &&  // No WebSocket clients connected
+      ws.count() == 0 &&
+      (now < 5 || now > getLastArtnetFrameTimeMs() + DMX_ARTNET_TIMEOUT_MS - 1) &&
       now > lastNetworkScanTimeMs + 30000) {
     updateNetworkScan();
+    lastNetworkScanTimeMs = now;
   }
 };
 
@@ -215,7 +227,10 @@ void WifiComponent::toApMode() {
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(config->lamp.name.substr(0, 12).append("-lamp").c_str(), emptyString, WIFI_PREFERRED_CHANNEL);
+  WiFi.softAP(
+      config->lamp.name.substr(0, 12).append("-lamp").c_str(),
+      String(config->lamp.password.c_str()),
+      WIFI_PREFERRED_CHANNEL);
 };
 
 bool WifiComponent::isHomeNetworkVisible() {
@@ -228,7 +243,6 @@ void WifiComponent::updateNetworkScan() {
     return;
   }
 
-  lastNetworkScanTimeMs = millis();
   homeNetworkVisible = false;
 
   int n = WiFi.scanNetworks();

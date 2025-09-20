@@ -83,13 +83,6 @@ void ArtnetWifi::begin() {
               Color(data[index + 4], data[index + 5], data[index + 6], data[index + 7]),  // base color
               data[index + 8],                                                            // mode
               data[index + 9]);                                                           // parameter
-
-#ifdef LAMP_DEBUG
-          if (sequence != 1 && sequence != (seq + 1)) {
-            Serial.printf("dmx frame skipped seq: %d - prev seq: %d\n", sequence,
-                          seq);
-          }
-#endif
           seq = sequence;
         }
       }

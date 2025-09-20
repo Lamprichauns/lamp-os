@@ -1,22 +1,22 @@
 <script setup lang="ts">
 interface Props {
-  modelValue: boolean
-  disabled?: boolean
+  modelValue: boolean;
+  disabled?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
-})
+});
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-}>()
+  "update:modelValue": [value: boolean];
+}>();
 
 const toggleValue = () => {
   if (!props.disabled) {
-    emit('update:modelValue', !props.modelValue)
+    emit("update:modelValue", !props.modelValue);
   }
-}
+};
 </script>
 
 <template>
@@ -24,7 +24,10 @@ const toggleValue = () => {
     <button
       type="button"
       class="boolean-input"
-      :class="{ 'boolean-input--active': modelValue, 'boolean-input--disabled': disabled }"
+      :class="{
+        'boolean-input--active': modelValue,
+        'boolean-input--disabled': disabled,
+      }"
       @click="toggleValue"
       :disabled="disabled"
       :aria-checked="modelValue"
@@ -60,11 +63,6 @@ const toggleValue = () => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.boolean-input:hover:not(.boolean-input--disabled) {
-  background-color: var(--color-background-soft);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
 .boolean-input:focus {
   outline: none;
   box-shadow: 0 0 0 3px rgba(68, 108, 156, 0.2);
@@ -72,10 +70,6 @@ const toggleValue = () => {
 
 .boolean-input--active {
   background-color: var(--color-background-mute);
-}
-
-.boolean-input--active:hover:not(.boolean-input--disabled) {
-  background-color: var(--color-background-soft);
 }
 
 .boolean-input--disabled {
@@ -105,22 +99,5 @@ const toggleValue = () => {
 .boolean-input--active .boolean-input-thumb {
   left: calc(100% - 26px);
   background-color: var(--brand-lumen-green);
-}
-
-/* Mobile optimizations */
-@media (max-width: 768px) {
-  .boolean-input {
-    width: 56px;
-    height: 32px;
-  }
-
-  .boolean-input-thumb {
-    width: 28px;
-    height: 28px;
-  }
-
-  .boolean-input--active .boolean-input-thumb {
-    left: calc(100% - 30px);
-  }
 }
 </style>
