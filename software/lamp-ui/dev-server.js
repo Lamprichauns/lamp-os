@@ -3,11 +3,6 @@
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import { createServer } from 'http'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 
 const app = express()
 const server = createServer(app)
@@ -17,9 +12,12 @@ const PORT = process.env.DEV_SERVER_PORT || 3001
 
 let settings = {
   lamp: {
-    name: 'Snafu',
+    name: 'snafu',
     brightness: 60,
-    homeMode: false,
+    homeMode: true,
+    homeModeSSID: "home-network-01",
+    homeModeBrightness: 80,
+    password: "my password"
   },
   shade: {
     px: 38,
@@ -30,6 +28,7 @@ let settings = {
     colors: ['#9B2E09C5', '#C3520A3D', '#6717005E'],
     ac: 1,
     knockout: [
+      { p: 35, b: 14 },
       { p: 17, b: 90 },
       { p: 16, b: 70 },
       { p: 15, b: 50 },

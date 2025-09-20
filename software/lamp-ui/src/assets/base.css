@@ -15,6 +15,12 @@
   --brand-ash-grey: #555555;
   --brand-fog-grey: #cccccc;
 
+  /* Header Color Variants */
+  --header-amber: var(--brand-amber-gold);
+  --header-yellow: #FFFA77;
+  --header-lime: #ddff77;
+  --header-green: var(--brand-lumen-green);
+
   /* Legacy variables for compatibility */
   --vt-c-white: var(--brand-lamp-white);
   --vt-c-black: var(--brand-midnight-black);
@@ -76,4 +82,25 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1 {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+h1.gold {
+  color: var(--header-amber);
+}
+
+h1.yellow {
+  color: var(--header-yellow);
+}
+
+h1.lime {
+  color: var(--header-lime);
+}
+
+h1.green {
+  color: var(--brand-lumen-green);
 }
