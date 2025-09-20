@@ -2,9 +2,14 @@
 #define LAMP_UTIL_FADE_H
 
 #include <cstdint>
+#include <vector>
 
 #include "./color.hpp"
 
+/**
+ * Interested in bulding new luts for different types of easing?
+ * @see https://gist.github.com/chaffneue/808f38f12eb4f2104b97dcd74af9e812
+ */
 namespace lamp {
 /**
  * @brief ease one color byte to another using a quadratic curve
@@ -13,8 +18,7 @@ namespace lamp {
  * @param [in] duration - the duration of the change
  * @param [in] currentStep - the step in the duration of the change
  */
-uint8_t ease(uint8_t start, uint8_t end, uint32_t duration,
-             uint32_t currentStep);
+uint8_t ease(uint8_t start, uint8_t end, uint32_t duration, uint32_t currentStep);
 
 /**
  * @brief ease one color byte to another using a linear curve
@@ -23,8 +27,7 @@ uint8_t ease(uint8_t start, uint8_t end, uint32_t duration,
  * @param [in] duration - the duration of the change
  * @param [in] currentStep - the step in the duration of the change
  */
-uint8_t easeLinear(uint8_t start, uint8_t end, uint32_t duration,
-                   uint32_t currentStep);
+uint8_t easeLinear(uint8_t start, uint8_t end, uint32_t duration, uint32_t currentStep);
 
 /**
  * @brief fade all color bytes to another using a quadratic curve

@@ -28,7 +28,7 @@ class BluetoothLampRecord {
   Color baseColor = Color();
   Color shadeColor = Color();
   uint32_t lastSeenTimeMs;
-  bool acknowledged;
+  bool acknowledged = false;
 
   BluetoothLampRecord(std::string inName, Color inBaseColor, Color inShadeColor, uint32_t inTimeFoundMs);
 };

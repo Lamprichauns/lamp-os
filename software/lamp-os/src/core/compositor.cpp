@@ -27,7 +27,7 @@ void Compositor::tick() {
   if (!behaviorsComputed) {
     if (startupComplete) {
       for (int i = 0; i < behaviors.size(); i++) {
-        if (!homeMode || (homeMode && behaviors[i]->allowedInHomeMode)) {
+        if (!homeMode || behaviors[i]->allowedInHomeMode) {
           behaviors[i]->control();
           if (behaviors[i]->animationState != STOPPED) {
             behaviors[i]->draw();

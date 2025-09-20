@@ -16,8 +16,8 @@ namespace lamp {
 class FrameBuffer {
  public:
   std::vector<Color> defaultColors;
-  uint8_t pixelCount;
-  Adafruit_NeoPixel *driver;
+  uint8_t pixelCount = 0;
+  Adafruit_NeoPixel *driver = nullptr;
   std::vector<Color> buffer;
 
   FrameBuffer();

@@ -67,14 +67,9 @@ void WifiComponent::begin(Config *inConfig) {
   Serial.begin(115200);
   config = inConfig;
   serializeJson(config->asJsonDocument(), doc);
-  WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
   WiFi.onEvent(onWiFiEvent);
-
-  WiFi.softAP(
-      inConfig->lamp.name.substr(0, 12).append("-lamp").c_str(),
-      String(inConfig->lamp.password.c_str()),
-      WIFI_PREFERRED_CHANNEL);
+  toApMode();
 
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   MDNS.begin("lamp");

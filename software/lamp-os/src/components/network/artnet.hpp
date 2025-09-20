@@ -84,8 +84,8 @@ class ArtnetDetail {
  */
 class ArtnetWifi {
  public:
-  ArtnetDetail artnetData;
-  uint32_t lastDmxFrameMs;
+  ArtnetDetail artnetData = ArtnetDetail();
+  uint32_t lastDmxFrameMs = 0;
   uint8_t seq = 0;
   uint8_t lampNumber = 0;
 
@@ -94,14 +94,13 @@ class ArtnetWifi {
 
  private:
   AsyncUDP udp;
-  String host;
   uint8_t artnetPacket[MAX_BUFFER_ARTNET];
-  uint16_t packetSize;
-  uint16_t opcode;
-  uint8_t sequence;
-  uint16_t incomingUniverse;
-  uint16_t dmxDataLength;
-  uint8_t* data;
+  uint16_t packetSize = 0;
+  uint16_t opcode = 0;
+  uint8_t sequence = 0;
+  uint16_t incomingUniverse = 0;
+  uint16_t dmxDataLength = 0;
+  uint8_t* data = {};
   static const char artnetId[];
 };
 }  // namespace lamp

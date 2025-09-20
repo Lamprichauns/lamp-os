@@ -24,9 +24,9 @@ class SocialBehavior : public AnimatedBehavior {
   std::vector<BluetoothLampRecord>* foundLamps;
   bool allowedInHomeMode = false;
 
-  void draw();
+  void draw() override;
 
-  void control();
+  void control() override;
 
   void setBluetoothComponent(BluetoothComponent* inBt);
 };

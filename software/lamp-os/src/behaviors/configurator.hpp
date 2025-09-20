@@ -27,9 +27,9 @@ class ConfiguratorBehavior : public AnimatedBehavior {
   unsigned long lastWebSocketUpdateTimeMs = 0;
   bool allowedInHomeMode = true;
 
-  void draw();
+  void draw() override;
 
-  void control();
+  void control() override;
 };
 }  // namespace lamp
 #endif
