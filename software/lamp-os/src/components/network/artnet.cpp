@@ -39,12 +39,7 @@ THE SOFTWARE.
 namespace lamp {
 ArtnetDetail::ArtnetDetail() {};
 
-ArtnetDetail::ArtnetDetail(Color inShadeColor, Color inBaseColor, uint8_t inMode, uint8_t inParameter) {
-  shadeColor = inShadeColor,
-  baseColor = inBaseColor,
-  mode = inMode;
-  parameter = inParameter;
-};
+ArtnetDetail::ArtnetDetail(Color inShadeColor, Color inBaseColor, uint8_t inMode, uint8_t inParameter) : shadeColor(inShadeColor), baseColor(inBaseColor), mode(inMode), parameter(inParameter) {};
 
 const char ArtnetWifi::artnetId[] = ART_NET_ID;
 

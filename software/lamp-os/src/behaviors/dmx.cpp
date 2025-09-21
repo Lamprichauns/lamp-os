@@ -46,7 +46,13 @@ void DmxBehavior::control() {
       transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_MS, DMX_BEHAVIOR_FADE_TIME_MAX_MS);
     }
 
-    currentColor = fade(startColor, endColor, transitionFrames, transitionFrame);
+    if (transitionFrames > 400) {
+      // use a smoother algo for longer transitions to prevent obvious led changes
+      currentColor = fadeLinear(startColor, endColor, transitionFrames, transitionFrame);
+    } else {
+      // use a more exciting algo for short transitions
+      currentColor = fade(startColor, endColor, transitionFrames, transitionFrame);
+    }
 
     transitionFrame++;
 

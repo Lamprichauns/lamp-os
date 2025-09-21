@@ -11,13 +11,10 @@ namespace lamp {
 BluetoothLampRecord::BluetoothLampRecord(std::string inName,
                                          Color inBaseColor,
                                          Color inShadeColor,
-                                         uint32_t inLastSeenTimeMs) {
-  name = inName;
-  baseColor = inBaseColor;
-  shadeColor = inShadeColor;
-  lastSeenTimeMs = inLastSeenTimeMs;
-  acknowledged = false;
-};
+                                         uint32_t inLastSeenTimeMs) : name(inName),
+                                                                      baseColor(inBaseColor),
+                                                                      shadeColor(inShadeColor),
+                                                                      lastSeenTimeMs(inLastSeenTimeMs) {};
 
 void BluetoothPool::addLamp(BluetoothLampRecord lamp) {
   if (lampPool.size() < MAX_POOL_SIZE) {

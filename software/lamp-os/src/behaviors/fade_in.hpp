@@ -13,8 +13,9 @@ class FadeInBehavior : public AnimatedBehavior {
  public:
   bool allowedInHomeMode = true;
 
-  void draw();
-  void control();
+  void draw() override;
+
+  void control() override;
 };
 }  // namespace lamp
 #endif

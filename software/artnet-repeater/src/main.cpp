@@ -14,10 +14,6 @@
 
 #define MIN_UPDATE_TIME 250
 
-// Tx power level in DB
-// @see platformio build flag MYNEWT_VAL_BLE_LL_TX_PWR_DBM as they must match
-#define BLE_POWER_LEVEL 4
-
 AsyncUDP udp;
 uint32_t lastUpdate = 0;
 
@@ -27,11 +23,13 @@ void onWiFiEvent(WiFiEvent_t event) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Initializing...");
   std::string coordinatorSsid = SECRET_COORDINATOR_SSID;
   std::string coordinatorPassword = SECRET_COORDINATOR_PASSWORD;
 
   NimBLEDevice::init(SECRET_COORDINATOR_STAGE_NAME);
-  NimBLEDevice::setPower(BLE_POWER_LEVEL);
+  uint8_t result = NimBLEDevice::setPower(ESP_PWR_LVL_P9, NimBLETxPowerType::Advertise);
+  Serial.printf("Setting bluetooth to +9dB with status code: %d\n", result);
 
   // Stage coordinators advertise the following packet
   // 2 bytes: coordinator identifier [Manufacturer ID block]
@@ -58,9 +56,12 @@ void setup() {
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.onEvent(onWiFiEvent);
-  WiFi.config(IPAddress(10, 0, 0, 2), IPAddress(10, 0, 0, 1),
-              IPAddress(255, 255, 255, 0), IPAddress(10, 0, 0, 1));
-  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD, 5);
+  WiFi.config(IPAddress(10, 0, 0, 2),
+              IPAddress(10, 0, 0, 1),
+              IPAddress(255, 255, 255, 0),
+              IPAddress(10, 0, 0, 1));
+  WiFi.begin(SECRET_COORDINATOR_SSID, SECRET_COORDINATOR_PASSWORD);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
   udp.listen(ART_NET_PORT);
   udp.onPacket([](AsyncUDPPacket packet) {
     uint32_t packetSize = packet.length();
@@ -71,26 +72,17 @@ void setup() {
       if (now > lastUpdate + MIN_UPDATE_TIME) {
         lastUpdate = now;
         uint8_t* data = packet.data();
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 20),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 21),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 22),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 23),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 26),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 27),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 28),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
-        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 29),
-                    ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 20), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 21), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 22), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 23), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 24), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 25), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 26), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 27), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 28), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 29), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
+        udp.writeTo(data, MAX_BUFFER_ARTNET, IPAddress(10, 0, 0, 30), ART_NET_PORT, TCPIP_ADAPTER_IF_STA);
       }
     }
   });
