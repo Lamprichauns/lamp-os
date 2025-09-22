@@ -7,16 +7,23 @@
 
 namespace lamp {
 void DmxBehavior::draw() {
-  for (int i = 0; i < fb->pixelCount; i++) {
+  for (i = 0; i < fb->pixelCount; i++) {
     if (frame < easeFrames) {
       fb->buffer[i] = fade(fb->buffer[i], currentColor, easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
       fb->buffer[i] = fade(currentColor, fb->buffer[i], easeFrames, frame % easeFrames);
     } else {
-      fb->buffer[i] = currentColor;
+      // interlace transitions to further smooth the pixel brightness
+      fb->buffer[i] = prevColor;
+      if (drawEven && i % 2 == 0) {
+        fb->buffer[i] = currentColor;
+      } else if (!drawEven && i % 2 != 0) {
+        fb->buffer[i] = currentColor;
+      }
     }
   }
 
+  drawEven = !drawEven;
   nextFrame();
 };
 
@@ -26,6 +33,7 @@ void DmxBehavior::control() {
   if (animationState == STOPPED) {
     if (lastArtnetFrameTimeMs > 0 && now < lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
       currentColor = currentDmxColor;  // sample and hold a value from dmx for transition in
+      prevColor = currentColor;
       playOnce();
     }
   }
@@ -52,6 +60,8 @@ void DmxBehavior::control() {
       }
     }
 
+    prevColor = currentColor;
+
     if (transitionFrames > DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES) {
       // use a smoother algo for longer transitions to prevent obvious led changes
       currentColor = fadeLinear(startColor, endColor, transitionFrames, transitionFrame);
@@ -60,16 +70,6 @@ void DmxBehavior::control() {
       currentColor = fade(startColor, endColor, transitionFrames, transitionFrame);
     }
 
-    // interlace transitions to further smooth the pixel brightness
-    for (i = 0; i < fb->pixelCount; i++) {
-      if (drawEven && i % 2 == 0) {
-        fb->buffer[i] = currentColor;
-      } else if (!drawEven && i % 2 != 0) {
-        fb->buffer[i] = currentColor;
-      }
-    }
-
-    drawEven = !drawEven;
     transitionFrame++;
 
     if (transitionFrame >= transitionFrames) {

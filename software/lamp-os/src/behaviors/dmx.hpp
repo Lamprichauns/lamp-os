@@ -30,6 +30,7 @@ class DmxBehavior : public AnimatedBehavior {
 
   // the lamp's currently calculated color
   Color currentColor = Color();
+  Color prevColor = Color();
 
   // the lamp's selected color ranges to blur between
   Color startColor = Color();
