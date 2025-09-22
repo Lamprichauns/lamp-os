@@ -8,8 +8,9 @@
 #include "../util/color.hpp"
 
 #define DMX_ARTNET_TIMEOUT_MS 30000
-#define DMX_BEHAVIOR_FADE_TIME_MIN_MS 240
-#define DMX_BEHAVIOR_FADE_TIME_MAX_MS 840
+#define DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES 180
+#define DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES 600
+#define DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES 320
 
 /**
  * @brief a layer to take colors from artnet periodically and
@@ -39,6 +40,10 @@ class DmxBehavior : public AnimatedBehavior {
   // keep track if artnet input is still incoming
   uint32_t lastArtnetFrameTimeMs = 0;
   bool allowedInHomeMode = true;
+
+  // interlace color changes to update even and odd pixels
+  uint8_t i = 0;
+  bool drawEven = false;
 
   void draw();
 

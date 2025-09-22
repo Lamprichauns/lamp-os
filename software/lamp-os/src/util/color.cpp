@@ -1,5 +1,6 @@
 #include "./color.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -23,6 +24,10 @@ Color hexStringToColor(std::string inHexString) {
 
   return output;
 };
+
+uint32_t colorDistance(Color c1, Color c2) {
+  return uint32_t(sqrtf(powf((c2.r - c1.r), 2) + powf((c2.g - c1.g), 2) + powf((c2.b - c1.b), 2) + powf(c2.w - c1.w, 2)));
+}
 
 Color::Color() { r = g = b = w = 0; }
 
