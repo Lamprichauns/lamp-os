@@ -1,0 +1,224 @@
+#include "./expression.hpp"
+
+#include <Arduino.h>
+
+#include "../core/compositor.hpp"
+#include "./expression_manager.hpp"
+
+// Global frame buffer references (set by ExpressionManager)
+namespace lamp {
+  extern std::vector<FrameBuffer*> expressionFrameBuffers;
+
+  // Global compositor pointer (set by standard_lamp)
+  static Compositor* globalCompositor = nullptr;
+
+  void setGlobalCompositor(Compositor* compositor) {
+    globalCompositor = compositor;
+  }
+}
+
+namespace lamp {
+
+void Expression::configure(const std::vector<Color>& inColors,
+                          uint32_t inIntervalMin,
+                          uint32_t inIntervalMax,
+                          ExpressionTarget inTarget) {
+  colors = inColors;
+  intervalMinMs = inIntervalMin * 1000;
+  intervalMaxMs = inIntervalMax * 1000;
+  target = inTarget;
+#ifdef LAMP_DEBUG
+  Serial.printf("Expression::configure() - intervalMin: %lu s, intervalMax: %lu s, target: %d\n",
+                inIntervalMin, inIntervalMax, inTarget);
+#endif
+  scheduleNextTrigger();
+}
+
+void Expression::scheduleNextTrigger() {
+  std::uniform_int_distribution<uint32_t> dist(intervalMinMs, intervalMaxMs);
+  nextTriggerMs = millis() + dist(rng);
+}
+
+void Expression::saveBufferState() {
+  savedBuffer = fb->buffer;
+}
+
+bool Expression::shouldAffectBuffer() {
+  if (expressionFrameBuffers.empty()) return false;
+
+  // Check if current buffer matches our target
+  bool isShade = (fb == expressionFrameBuffers[0]);  // Shade is first
+  bool isBase = (fb == expressionFrameBuffers[1]);   // Base is second
+
+  switch (target) {
+    case TARGET_SHADE:
+      return isShade;
+    case TARGET_BASE:
+      return isBase;
+    case TARGET_BOTH:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void Expression::control() {
+  // Pause if an exclusive behavior is running (unless we are exclusive)
+  if (shouldPause()) return;
+
+#ifdef LAMP_DEBUG
+  static uint32_t lastDebugMs = 0;
+  if (millis() - lastDebugMs > 5000) {  // Log every 5 seconds
+    Serial.printf("Expression::control() - state: %d, time: %lu, nextTrigger: %lu\n",
+                  animationState, millis(), nextTriggerMs);
+    lastDebugMs = millis();
+  }
+#endif
+
+  // Check for automatic trigger
+  if (animationState == STOPPED && millis() > nextTriggerMs) {
+#ifdef LAMP_DEBUG
+    Serial.printf("Expression triggering - time: %lu > nextTrigger: %lu\n", millis(), nextTriggerMs);
+#endif
+    trigger();
+  }
+
+  // Per-frame updates during animation
+  if (animationState == PLAYING || animationState == PLAYING_ONCE) {
+    onUpdate();
+  }
+
+  // Handle completion - check if we just stopped
+  if (animationState == STOPPED && currentLoop > lastCompletedLoop) {
+    onComplete();
+    lastCompletedLoop = currentLoop;
+  }
+}
+
+bool Expression::shouldPause() const {
+  // Don't pause if this expression is exclusive
+  if (isExclusive) return false;
+
+  // Check if compositor has an active exclusive
+  return globalCompositor && globalCompositor->hasActiveExclusive();
+}
+
+Color Expression::getRandomColor() {
+  if (colors.empty()) {
+    return Color(0, 0, 0, 0);
+  }
+  std::uniform_int_distribution<size_t> dist(0, colors.size() - 1);
+  return colors[dist(rng)];
+}
+
+void Expression::trigger() {
+#ifdef LAMP_DEBUG
+  Serial.printf("Expression::trigger() called\n");
+
+  // Debug frame buffer information
+  if (expressionFrameBuffers.size() >= 2) {
+    bool isShade = (fb == expressionFrameBuffers[0]);
+    bool isBase = (fb == expressionFrameBuffers[1]);
+    Serial.printf("Expression::trigger() - current buffer: %s, target: %d\n",
+                  isShade ? "shade" : (isBase ? "base" : "unknown"), target);
+  }
+
+  Serial.printf("Expression::trigger() - calling shouldAffectBuffer()\n");
+#endif
+
+  // Only trigger if this expression should affect this buffer
+  // This ensures expressions respect their target configuration
+  if (!shouldAffectBuffer()) {
+#ifdef LAMP_DEBUG
+    Serial.printf("Expression::trigger() - shouldAffectBuffer returned false, aborting trigger\n");
+
+    // Additional debug info about why shouldAffectBuffer failed
+    if (expressionFrameBuffers.empty()) {
+      Serial.printf("Expression::trigger() - expressionFrameBuffers is empty\n");
+    } else {
+      bool isShade = (fb == expressionFrameBuffers[0]);
+      bool isBase = (fb == expressionFrameBuffers[1]);
+      Serial.printf("Expression::trigger() - buffer check: isShade=%d, isBase=%d, target=%d\n", isShade, isBase, target);
+    }
+#endif
+    return;
+  }
+
+#ifdef LAMP_DEBUG
+  Serial.printf("Expression::trigger() - shouldAffectBuffer returned true, proceeding with trigger\n");
+#endif
+
+  // Save current state and start immediately
+  saveBufferState();
+  onTrigger();            // Expression-specific setup
+  scheduleNextTrigger();  // Reset next automatic trigger
+  playOnce();
+#ifdef LAMP_DEBUG
+  Serial.printf("Expression::trigger() - animation started, next trigger: %lu\n", nextTriggerMs);
+#endif
+}
+
+uint32_t Expression::extractUint32Parameter(const std::map<std::string, std::variant<uint32_t, float, double>>& parameters,
+                                             const std::string& key, uint32_t defaultValue) const {
+  auto it = parameters.find(key);
+  if (it != parameters.end()) {
+    try {
+      return std::get<uint32_t>(it->second);
+    } catch (const std::bad_variant_access&) {
+      try {
+        return static_cast<uint32_t>(std::get<float>(it->second));
+      } catch (const std::bad_variant_access&) {
+        try {
+          return static_cast<uint32_t>(std::get<double>(it->second));
+        } catch (const std::bad_variant_access&) {
+          return defaultValue;
+        }
+      }
+    }
+  }
+  return defaultValue;
+}
+
+float Expression::extractFloatParameter(const std::map<std::string, std::variant<uint32_t, float, double>>& parameters,
+                                         const std::string& key, float defaultValue) const {
+  auto it = parameters.find(key);
+  if (it != parameters.end()) {
+    try {
+      return std::get<float>(it->second);
+    } catch (const std::bad_variant_access&) {
+      try {
+        return static_cast<float>(std::get<uint32_t>(it->second));
+      } catch (const std::bad_variant_access&) {
+        try {
+          return static_cast<float>(std::get<double>(it->second));
+        } catch (const std::bad_variant_access&) {
+          return defaultValue;
+        }
+      }
+    }
+  }
+  return defaultValue;
+}
+
+double Expression::extractDoubleParameter(const std::map<std::string, std::variant<uint32_t, float, double>>& parameters,
+                                           const std::string& key, double defaultValue) const {
+  auto it = parameters.find(key);
+  if (it != parameters.end()) {
+    try {
+      return std::get<double>(it->second);
+    } catch (const std::bad_variant_access&) {
+      try {
+        return static_cast<double>(std::get<uint32_t>(it->second));
+      } catch (const std::bad_variant_access&) {
+        try {
+          return static_cast<double>(std::get<float>(it->second));
+        } catch (const std::bad_variant_access&) {
+          return defaultValue;
+        }
+      }
+    }
+  }
+  return defaultValue;
+}
+
+}  // namespace lamp
