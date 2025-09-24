@@ -95,7 +95,7 @@ const checkAuth = () => {
 };
 
 const handleLogin = () => {
-  if (loginPassword.value === settings.value.lamp?.webPassword) {
+  if (loginPassword.value === settings.value.lamp?.password) {
     setCookie("lamp-auth", "authenticated", 30);
     authenticated.value = true;
     showLogin.value = false;
