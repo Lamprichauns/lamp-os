@@ -22,6 +22,8 @@ interface Expression {
   intervalMax: number;
   target: number;
   duration?: number;
+  durationMin?: number;
+  durationMax?: number;
 }
 
 // Extend Settings interface

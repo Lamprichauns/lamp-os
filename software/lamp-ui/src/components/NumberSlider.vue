@@ -81,6 +81,10 @@ watch(
     localValue.value = newValue
   },
 )
+
+watch(localValue, (newValue) => {
+  emit('update:modelValue', newValue)
+})
 </script>
 
 <style scoped>

@@ -13,17 +13,19 @@
         },
         "intervalMin": {
           "type": "range",
-          "min": 60,
+          "min": 600,
           "max": 2700,
           "step": 60,
+          "default": 1800,
           "unit": "s",
           "label": "Min Interval"
         },
         "intervalMax": {
           "type": "range",
-          "min": 60,
+          "min": 600,
           "max": 2700,
           "step": 60,
+          "default": 2700,
           "unit": "s",
           "label": "Max Interval"
         },
@@ -35,17 +37,17 @@
           "default": 1,
           "unit": "frames",
           "label": "Min Duration",
-          "help": "Minimum glitch duration in frames (30fps)"
+          "help": "Minimum glitch duration (30ms - 2s)"
         },
         "durationMax": {
           "type": "range",
           "min": 1,
           "max": 60,
           "step": 1,
-          "default": 3,
+          "default": 15,
           "unit": "frames",
           "label": "Max Duration",
-          "help": "Maximum glitch duration in frames (30fps)"
+          "help": "Maximum glitch duration (30ms - 2s)"
         }
       }
     },

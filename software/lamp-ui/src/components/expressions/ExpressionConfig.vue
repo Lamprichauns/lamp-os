@@ -17,7 +17,7 @@
     </FormField>
 
     <!-- Colors Configuration -->
-    <FormField label="Colors" id="expression-colors">
+    <FormField label="Colors (Randomly Selected)" id="expression-colors">
       <div class="colors-container">
         <div v-for="(color, index) in expression.colors" :key="index" class="color-item">
           <ColorPicker
@@ -91,21 +91,41 @@
     <!-- Expression-specific Configuration -->
     <FormField
       v-if="expression.type === 'glitchy'"
-      label="Glitch Duration"
+      label="Glitch Duration Range"
       id="expression-duration"
     >
-      <div class="duration-container">
-        <NumberSlider
-          id="glitch-duration"
-          :model-value="expression.duration || 3"
-          @update:model-value="(value) => updateField('duration', value)"
-          :min="1"
-          :max="60"
-          :step="1"
-          :disabled="disabled"
-          prepend="time"
-        />
-        <span class="duration-value">{{ formatDuration(expression.duration || 3) }}</span>
+      <div class="interval-container">
+        <div class="interval-input">
+          <label for="glitch-duration-min">Min</label>
+          <input
+            id="glitch-duration-min"
+            v-model.number="localDurationMin"
+            type="range"
+            :min="1"
+            :max="60"
+            :step="1"
+            :disabled="disabled"
+            class="interval-slider"
+            @input="handleDurationMinChange"
+          />
+          <span class="interval-value">{{ formatDuration(localDurationMin) }}</span>
+        </div>
+        <div class="interval-input">
+          <label for="glitch-duration-max">Max</label>
+          <input
+            id="glitch-duration-max"
+            v-model.number="localDurationMax"
+            type="range"
+            :min="1"
+            :max="60"
+            :step="1"
+            :disabled="disabled"
+            class="interval-slider"
+            @input="handleDurationMaxChange"
+          />
+          <span class="interval-value">{{ formatDuration(localDurationMax) }}</span>
+        </div>
+        <span class="interval-summary">{{ formatDuration(localDurationMin) }} - {{ formatDuration(localDurationMax) }}</span>
       </div>
     </FormField>
 
@@ -205,6 +225,8 @@ interface Expression {
   intervalMax: number
   target: number
   duration?: number
+  durationMin?: number
+  durationMax?: number
   fadeDuration?: number
   shiftDurationMin?: number
   shiftDurationMax?: number
@@ -244,6 +266,8 @@ const maxColors = computed(() => props.configSchema?.colors?.max || 5)
 // Local refs for smooth slider dragging
 const localIntervalMin = ref(props.expression.intervalMin)
 const localIntervalMax = ref(props.expression.intervalMax)
+const localDurationMin = ref(props.expression.durationMin || 1)
+const localDurationMax = ref(props.expression.durationMax || 3)
 const localShiftDurationMin = ref(props.expression.shiftDurationMin || 300)
 const localShiftDurationMax = ref(props.expression.shiftDurationMax || 600)
 
@@ -254,6 +278,14 @@ watch(() => props.expression.intervalMin, (newVal) => {
 
 watch(() => props.expression.intervalMax, (newVal) => {
   localIntervalMax.value = newVal
+})
+
+watch(() => props.expression.durationMin, (newVal) => {
+  if (newVal !== undefined) localDurationMin.value = newVal
+})
+
+watch(() => props.expression.durationMax, (newVal) => {
+  if (newVal !== undefined) localDurationMax.value = newVal
 })
 
 watch(() => props.expression.shiftDurationMin, (newVal) => {
@@ -297,6 +329,32 @@ const handleIntervalMaxChange = () => {
     })
   } else {
     emit('update', { intervalMax: localIntervalMax.value })
+  }
+}
+
+const handleDurationMinChange = () => {
+  // If min exceeds max, set max equal to min
+  if (localDurationMin.value > localDurationMax.value) {
+    localDurationMax.value = localDurationMin.value
+    emit('update', {
+      durationMin: localDurationMin.value,
+      durationMax: localDurationMax.value
+    })
+  } else {
+    emit('update', { durationMin: localDurationMin.value })
+  }
+}
+
+const handleDurationMaxChange = () => {
+  // If max is less than min, set min equal to max
+  if (localDurationMax.value < localDurationMin.value) {
+    localDurationMin.value = localDurationMax.value
+    emit('update', {
+      durationMin: localDurationMin.value,
+      durationMax: localDurationMax.value
+    })
+  } else {
+    emit('update', { durationMax: localDurationMax.value })
   }
 }
 
