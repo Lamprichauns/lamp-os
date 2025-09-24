@@ -1,5 +1,6 @@
 #include "./color.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -24,7 +25,19 @@ Color hexStringToColor(std::string inHexString) {
   return output;
 };
 
+uint32_t colorDistance(Color c1, Color c2) {
+  return uint32_t(sqrtf(powf((c2.r - c1.r), 2) + powf((c2.g - c1.g), 2) + powf((c2.b - c1.b), 2) + powf(c2.w - c1.w, 2)));
+}
+
 Color::Color() { r = g = b = w = 0; }
 
 Color::Color(uint8_t inR, uint8_t inG, uint8_t inB, uint8_t inW) : r(inR), g(inG), b(inB), w(inW) {};
+
+bool Color::operator==(const Color &inColor) const {
+  return (
+      r == inColor.r &&
+      g == inColor.g &&
+      b == inColor.b &&
+      w == inColor.w);
+};
 }  // namespace lamp

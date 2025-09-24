@@ -14,8 +14,12 @@ namespace lamp {
  * colors for all layered draw operations
  */
 class FrameBuffer {
+ private:
+  uint8_t i = 0;
+
  public:
   std::vector<Color> defaultColors;
+  std::vector<Color> previousBuffer;
   uint8_t pixelCount = 0;
   Adafruit_NeoPixel *driver = nullptr;
   std::vector<Color> buffer;

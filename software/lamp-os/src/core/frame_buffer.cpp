@@ -21,18 +21,24 @@ void FrameBuffer::begin(std::vector<Color> inDefaultColors, uint8_t inPixelCount
 };
 
 void FrameBuffer::fill(Color inColor) {
-  for (int i = 0; i < pixelCount; i++) {
+  for (i = 0; i < pixelCount; i++) {
     buffer[i] = inColor;
   }
 };
 
 void FrameBuffer::flush() {
-  for (int i = 0; i < pixelCount; i++) {
+  if (buffer == previousBuffer) {
+    return;
+  }
+
+  for (i = 0; i < pixelCount; i++) {
     driver->setPixelColor(i, (uint32_t)((buffer[i].w << 24) | (buffer[i].r << 16) | (buffer[i].g << 8) | (buffer[i].b)));
   }
 
   if (driver->canShow()) {
     driver->show();
   }
+
+  previousBuffer = buffer;
 };
 }  // namespace lamp

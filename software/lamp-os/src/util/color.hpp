@@ -14,6 +14,7 @@ class Color {
   uint8_t r, g, b, w;
   Color();
   Color(uint8_t inR, uint8_t inG, uint8_t inB, uint8_t inW);
+  bool operator==(const Color &inColor) const;
 };
 
 /**
@@ -27,5 +28,10 @@ std::string colorToHexString(Color inColor);
  * eg: "#FF234212" -> r:0xFF, g:0x23, b:0x42, w:0x12
  */
 Color hexStringToColor(std::string inHexString);
+
+/**
+ * @brief get the Euclidean distance between 2 colors as an integer
+ */
+uint32_t colorDistance(Color c1, Color c2);
 }  // namespace lamp
 #endif

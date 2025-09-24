@@ -8,8 +8,9 @@
 #include "../util/color.hpp"
 
 #define DMX_ARTNET_TIMEOUT_MS 30000
-#define DMX_BEHAVIOR_FADE_TIME_MIN_MS 240
-#define DMX_BEHAVIOR_FADE_TIME_MAX_MS 840
+#define DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES 180
+#define DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES 700
+#define DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES 320
 
 /**
  * @brief a layer to take colors from artnet periodically and
@@ -19,6 +20,9 @@
 namespace lamp {
 class DmxBehavior : public AnimatedBehavior {
   using AnimatedBehavior::AnimatedBehavior;
+
+ private:
+  uint8_t i = 0;
 
  public:
   // the total frame count must be a multiple of the ease frames

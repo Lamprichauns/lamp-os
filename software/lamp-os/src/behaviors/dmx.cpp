@@ -7,7 +7,7 @@
 
 namespace lamp {
 void DmxBehavior::draw() {
-  for (int i = 0; i < fb->pixelCount; i++) {
+  for (i = 0; i < fb->pixelCount; i++) {
     if (frame < easeFrames) {
       fb->buffer[i] = fade(fb->buffer[i], currentColor, easeFrames, frame);
     } else if (frame > (frames - easeFrames)) {
@@ -22,9 +22,11 @@ void DmxBehavior::draw() {
 
 void DmxBehavior::control() {
   uint32_t now = millis();
+
   if (animationState == STOPPED) {
     if (lastArtnetFrameTimeMs > 0 && now < lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
       currentColor = currentDmxColor;  // sample and hold a value from dmx for transition in
+      transitionFrame = 0;
       playOnce();
     }
   }
@@ -34,6 +36,7 @@ void DmxBehavior::control() {
   }
 
   if (animationState == PAUSED && now > lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
+    transitionFrame = 0;
     playOnce();
   }
 
@@ -43,10 +46,15 @@ void DmxBehavior::control() {
       // create the ranges
       startColor = currentColor;
       endColor = currentDmxColor;
-      transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_MS, DMX_BEHAVIOR_FADE_TIME_MAX_MS);
+      transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES, DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES);
+
+      // if the random time is long and there's not enough steps, speed up the transition this round
+      if (transitionFrames > 300 && colorDistance(startColor, endColor) < 550) {
+        transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES, DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES);
+      }
     }
 
-    if (transitionFrames > 400) {
+    if (transitionFrames > DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES) {
       // use a smoother algo for longer transitions to prevent obvious led changes
       currentColor = fadeLinear(startColor, endColor, transitionFrames, transitionFrame);
     } else {
