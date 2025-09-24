@@ -41,9 +41,6 @@ void ExpressionManager::loadFromConfig(const ExpressionSettings& settings) {
 
 void ExpressionManager::addExpression(const ExpressionConfig& config) {
   if (!shadeBuffer || !baseBuffer) return;
-#ifdef LAMP_DEBUG
-  Serial.printf("ExpressionManager::addExpression - type: %s\n", config.type.c_str());
-#endif
 
   auto target = static_cast<ExpressionTarget>(config.target);
 
@@ -57,9 +54,6 @@ void ExpressionManager::addExpression(const ExpressionConfig& config) {
       glitchyExpr->configureFromParameters(config.parameters);
       expr = std::move(glitchyExpr);
     } else if (config.type == "shifty") {
-#ifdef LAMP_DEBUG
-      Serial.printf("Creating ShiftyExpression with generic parameters\n");
-#endif
       auto shiftyExpr = std::make_unique<ShiftyExpression>(buffer, 120);
       shiftyExpr->configure(config.colors, config.intervalMin, config.intervalMax, target);
       shiftyExpr->configureFromParameters(config.parameters);
@@ -109,35 +103,18 @@ void ExpressionManager::clear() {
 }
 
 bool ExpressionManager::triggerExpression(const std::string& type) {
-#ifdef LAMP_DEBUG
-  Serial.printf("ExpressionManager::triggerExpression() - looking for type: %s\n", type.c_str());
-  Serial.printf("ExpressionManager::triggerExpression() - total expressions: %zu\n", expressions.size());
-#endif
 
   bool triggered = false;
   int matchCount = 0;
 
   for (auto& entry : expressions) {
-#ifdef LAMP_DEBUG
-    Serial.printf("ExpressionManager::triggerExpression() - checking expression: %s\n", entry.type.c_str());
-#endif
     if (entry.type == type && entry.expression) {
       matchCount++;
-#ifdef LAMP_DEBUG
-      Serial.printf("ExpressionManager::triggerExpression() - triggering match #%d: %s\n", matchCount, entry.type.c_str());
-#endif
       entry.expression->trigger();
       triggered = true;  // Don't return here, continue to trigger all matches
     }
   }
 
-#ifdef LAMP_DEBUG
-  if (triggered) {
-    Serial.printf("ExpressionManager::triggerExpression() - successfully triggered %d expressions of type: %s\n", matchCount, type.c_str());
-  } else {
-    Serial.printf("ExpressionManager::triggerExpression() - no expressions found for type: %s\n", type.c_str());
-  }
-#endif
 
   return triggered;
 }

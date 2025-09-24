@@ -34,36 +34,17 @@ void GlitchyExpression::onTrigger() {
     frames = durationDist(rng);
   }
 
-#ifdef LAMP_DEBUG
-  Serial.printf("GlitchyExpression::onTrigger() - starting glitch animation with color R%d G%d B%d W%d, duration: %lu frames (range %lu-%lu)\n",
-                glitchColor.r, glitchColor.g, glitchColor.b, glitchColor.w, frames, glitchDurationMin, glitchDurationMax);
-  Serial.printf("GlitchyExpression::onTrigger() - pixelCount: %d\n", fb->pixelCount);
-#endif
 }
 
 void GlitchyExpression::draw() {
-#ifdef LAMP_DEBUG
-  static uint32_t lastDrawDebugMs = 0;
-  if (millis() - lastDrawDebugMs > 1000) {  // Log once per second
-    Serial.printf("Glitchy draw - frame: %lu/%lu, animState: %d, shouldAffect: %d, isLastFrame: %d\n",
-                  frame, frames, animationState, shouldAffectBuffer(), isLastFrame());
-    lastDrawDebugMs = millis();
-  }
-#endif
 
   if (!shouldAffectBuffer()) {
-#ifdef LAMP_DEBUG
-    Serial.printf("GlitchyExpression::draw() - skipping: shouldAffectBuffer returned false\n");
-#endif
     nextFrame();
     return;
   }
 
   // On last frame, restore original buffer
   if (isLastFrame()) {
-#ifdef LAMP_DEBUG
-    Serial.printf("GlitchyExpression::draw() - last frame, restoring original buffer\n");
-#endif
     fb->buffer = savedBuffer;
   } else {
     // Blend glitch color with current buffer for a tinted effect
@@ -71,23 +52,12 @@ void GlitchyExpression::draw() {
     for (int i = 0; i < fb->pixelCount; i++) {
       fb->buffer[i] = fb->buffer[i].lerp(glitchColor, GLITCH_BLEND_FACTOR);
     }
-#ifdef LAMP_DEBUG
-    static uint32_t lastGlitchDebugMs = 0;
-    if (millis() - lastGlitchDebugMs > 500) {  // Log glitch application every 500ms
-      Serial.printf("GlitchyExpression::draw() - applied glitch color to %d pixels (frame %lu/%lu)\n",
-                    fb->pixelCount, frame, frames);
-      lastGlitchDebugMs = millis();
-    }
-#endif
   }
 
   nextFrame();
 
   // Check if animation just completed
   if (animationState == STOPPED && frame >= frames) {
-#ifdef LAMP_DEBUG
-    Serial.printf("GlitchyExpression::draw() - glitch animation completed at frame %lu\n", frame);
-#endif
   }
 }
 

@@ -95,9 +95,6 @@ void PulseExpression::selectNextColor() {
 }
 
 void PulseExpression::onTrigger() {
-#ifdef LAMP_DEBUG
-  Serial.printf("PulseExpression::onTrigger() - starting pulse animation\n");
-#endif
   // Reset wave to start position
   wavePosition = -static_cast<float>(pulseWidth);  // Start just off the strip
   waveDirection = 1;  // Always move forward
@@ -114,10 +111,6 @@ void PulseExpression::onTrigger() {
   frames = PULSE_MAX_FRAMES;
   frame = 0;
 
-#ifdef LAMP_DEBUG
-  Serial.printf("PulseExpression: Start at %.1f, end at %lu, totalDistance=%.1f, timeNeededMs=%.1f, frames=%lu\n",
-                wavePosition, fb->pixelCount + pulseWidth, totalDistance, timeNeededMs, frames);
-#endif
 }
 
 void PulseExpression::onUpdate() {
@@ -126,14 +119,6 @@ void PulseExpression::onUpdate() {
 }
 
 void PulseExpression::draw() {
-#ifdef LAMP_DEBUG
-  static uint32_t lastDrawDebugMs = 0;
-  if (millis() - lastDrawDebugMs > 500) {  // Log twice per second for better visibility
-    Serial.printf("Pulse draw - wavePosition: %.2f (range: -%lu to %lu), frame: %lu/%lu, animState: %d\n",
-                  wavePosition, pulseWidth, fb->pixelCount + pulseWidth, frame, frames, animationState);
-    lastDrawDebugMs = millis();
-  }
-#endif
 
   // Pause if an exclusive behavior is running
   if (shouldPause()) return;
@@ -141,9 +126,6 @@ void PulseExpression::draw() {
   // For pulse, we need to continue drawing even when "stopped" to allow fade-out
   // Only skip if we shouldn't affect this buffer based on target
   if (!shouldAffectBuffer() && animationState != STOPPED) {
-#ifdef LAMP_DEBUG
-    Serial.printf("PulseExpression::draw() - skipping: shouldAffectBuffer=%d\n", shouldAffectBuffer());
-#endif
     return;
   }
 
@@ -173,9 +155,6 @@ void PulseExpression::draw() {
   // Wave extends pulseWidth on both sides, so center needs to be at pixelCount + (2 * pulseWidth)
   // for the trailing edge to clear pixelCount
   if (wavePosition > fb->pixelCount + (2 * pulseWidth)) {
-#ifdef LAMP_DEBUG
-    Serial.printf("PulseExpression::draw() - wave cleared strip at position %.2f\n", wavePosition);
-#endif
     // Wave has completely passed, safe to stop
     if (animationState != STOPPED) {
       stop();
@@ -184,10 +163,6 @@ void PulseExpression::draw() {
 
   // Check if animation just completed
   if (animationState == STOPPED && frame == 0) {  // frame resets to 0 when stopped
-#ifdef LAMP_DEBUG
-    Serial.printf("PulseExpression::draw() - animation completed, final wavePosition: %.2f (target: %lu)\n",
-                  wavePosition, fb->pixelCount + pulseWidth);
-#endif
   }
 }
 

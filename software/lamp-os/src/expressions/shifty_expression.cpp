@@ -23,10 +23,6 @@ void ShiftyExpression::configureFromParameters(const std::map<std::string, std::
   shiftDurationMaxMs = shiftDurationMax * 1000;
   fadeDurationFrames = fadeDuration * 30;  // Convert seconds to frames at 30fps
 
-#ifdef LAMP_DEBUG
-  Serial.printf("ShiftyExpression::configureFromParameters() - shiftMin: %lu s, shiftMax: %lu s, fade: %lu s\n",
-                shiftDurationMin, shiftDurationMax, fadeDuration);
-#endif
 
   // If no colors configured, use current buffer colors as default
   if (colors.empty() && fb && fb->pixelCount > 0) {
@@ -82,9 +78,6 @@ uint32_t ShiftyExpression::getRandomShiftDuration() {
 }
 
 void ShiftyExpression::onTrigger() {
-#ifdef LAMP_DEBUG
-  Serial.printf("ShiftyExpression::onTrigger() - starting shift\n");
-#endif
   // If we're already animating, cancel and start fresh
   // This allows manual triggers to work at any time
   if (state != IDLE) {
@@ -100,26 +93,17 @@ void ShiftyExpression::onUpdate() {
     case FADING_TO_PALETTE:
       // Check if fade is complete
       if (isLastFrame()) {
-#ifdef LAMP_DEBUG
-        Serial.printf("ShiftyExpression state change: FADING_TO_PALETTE -> SHIFTED\n");
-#endif
         state = SHIFTED;
         shiftStartMs = millis();
         // Extend animation to last through the shift hold period
         // Add enough frames to cover the shift duration
         frames = frame + (currentShiftDurationMs / 1000.0f) * 30;
-#ifdef LAMP_DEBUG
-        Serial.printf("Extending animation - current frame: %lu, new total frames: %lu\n", frame, frames);
-#endif
       }
       break;
 
     case SHIFTED:
       // Check if it's time to unshift
       if (millis() - shiftStartMs > currentShiftDurationMs) {
-#ifdef LAMP_DEBUG
-        Serial.printf("ShiftyExpression starting unshift - held for %lu ms\n", millis() - shiftStartMs);
-#endif
         startUnshift();
       }
       break;
@@ -127,9 +111,6 @@ void ShiftyExpression::onUpdate() {
     case FADING_BACK:
       // Check if fade back is complete
       if (isLastFrame()) {
-#ifdef LAMP_DEBUG
-        Serial.printf("ShiftyExpression state change: FADING_BACK -> IDLE\n");
-#endif
         state = IDLE;
         // Animation will naturally stop after this
       }
@@ -150,14 +131,6 @@ void ShiftyExpression::onComplete() {
 }
 
 void ShiftyExpression::draw() {
-#ifdef LAMP_DEBUG
-  static uint32_t lastDrawDebugMs = 0;
-  if (millis() - lastDrawDebugMs > 1000) {  // Log once per second
-    Serial.printf("Shifty draw - state: %d, frame: %lu/%lu, animState: %d\n",
-                  state, frame, frames, animationState);
-    lastDrawDebugMs = millis();
-  }
-#endif
 
   // Pause if an exclusive behavior is running
   if (shouldPause()) return;

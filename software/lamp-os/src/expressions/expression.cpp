@@ -27,10 +27,6 @@ void Expression::configure(const std::vector<Color>& inColors,
   intervalMinMs = inIntervalMin * 1000;
   intervalMaxMs = inIntervalMax * 1000;
   target = inTarget;
-#ifdef LAMP_DEBUG
-  Serial.printf("Expression::configure() - intervalMin: %lu s, intervalMax: %lu s, target: %d\n",
-                inIntervalMin, inIntervalMax, inTarget);
-#endif
   scheduleNextTrigger();
 }
 
@@ -66,20 +62,9 @@ void Expression::control() {
   // Pause if an exclusive behavior is running (unless we are exclusive)
   if (shouldPause()) return;
 
-#ifdef LAMP_DEBUG
-  static uint32_t lastDebugMs = 0;
-  if (millis() - lastDebugMs > 5000) {  // Log every 5 seconds
-    Serial.printf("Expression::control() - state: %d, time: %lu, nextTrigger: %lu\n",
-                  animationState, millis(), nextTriggerMs);
-    lastDebugMs = millis();
-  }
-#endif
 
   // Check for automatic trigger
   if (animationState == STOPPED && millis() > nextTriggerMs) {
-#ifdef LAMP_DEBUG
-    Serial.printf("Expression triggering - time: %lu > nextTrigger: %lu\n", millis(), nextTriggerMs);
-#endif
     trigger();
   }
 
@@ -112,50 +97,19 @@ Color Expression::getRandomColor() {
 }
 
 void Expression::trigger() {
-#ifdef LAMP_DEBUG
-  Serial.printf("Expression::trigger() called\n");
-
-  // Debug frame buffer information
-  if (expressionFrameBuffers.size() >= 2) {
-    bool isShade = (fb == expressionFrameBuffers[0]);
-    bool isBase = (fb == expressionFrameBuffers[1]);
-    Serial.printf("Expression::trigger() - current buffer: %s, target: %d\n",
-                  isShade ? "shade" : (isBase ? "base" : "unknown"), target);
-  }
-
-  Serial.printf("Expression::trigger() - calling shouldAffectBuffer()\n");
-#endif
 
   // Only trigger if this expression should affect this buffer
   // This ensures expressions respect their target configuration
   if (!shouldAffectBuffer()) {
-#ifdef LAMP_DEBUG
-    Serial.printf("Expression::trigger() - shouldAffectBuffer returned false, aborting trigger\n");
-
-    // Additional debug info about why shouldAffectBuffer failed
-    if (expressionFrameBuffers.empty()) {
-      Serial.printf("Expression::trigger() - expressionFrameBuffers is empty\n");
-    } else {
-      bool isShade = (fb == expressionFrameBuffers[0]);
-      bool isBase = (fb == expressionFrameBuffers[1]);
-      Serial.printf("Expression::trigger() - buffer check: isShade=%d, isBase=%d, target=%d\n", isShade, isBase, target);
-    }
-#endif
     return;
   }
 
-#ifdef LAMP_DEBUG
-  Serial.printf("Expression::trigger() - shouldAffectBuffer returned true, proceeding with trigger\n");
-#endif
 
   // Save current state and start immediately
   saveBufferState();
   onTrigger();            // Expression-specific setup
   scheduleNextTrigger();  // Reset next automatic trigger
   playOnce();
-#ifdef LAMP_DEBUG
-  Serial.printf("Expression::trigger() - animation started, next trigger: %lu\n", nextTriggerMs);
-#endif
 }
 
 uint32_t Expression::extractUint32Parameter(const std::map<std::string, std::variant<uint32_t, float, double>>& parameters,
