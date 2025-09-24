@@ -9,7 +9,7 @@
 
 #define DMX_ARTNET_TIMEOUT_MS 30000
 #define DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES 180
-#define DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES 600
+#define DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES 700
 #define DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES 320
 
 /**
@@ -21,6 +21,9 @@ namespace lamp {
 class DmxBehavior : public AnimatedBehavior {
   using AnimatedBehavior::AnimatedBehavior;
 
+ private:
+  uint8_t i = 0;
+
  public:
   // the total frame count must be a multiple of the ease frames
   uint32_t easeFrames = 120;
@@ -30,7 +33,6 @@ class DmxBehavior : public AnimatedBehavior {
 
   // the lamp's currently calculated color
   Color currentColor = Color();
-  Color prevColor = Color();
 
   // the lamp's selected color ranges to blur between
   Color startColor = Color();
@@ -41,10 +43,6 @@ class DmxBehavior : public AnimatedBehavior {
   // keep track if artnet input is still incoming
   uint32_t lastArtnetFrameTimeMs = 0;
   bool allowedInHomeMode = true;
-
-  // interlace color changes to update even and odd pixels
-  uint8_t i = 0;
-  bool drawEven = false;
 
   void draw();
 

@@ -16,6 +16,9 @@ namespace lamp {
  *        they need to draw
  */
 class Compositor {
+ private:
+  uint8_t i = 0;
+
  public:
   std::vector<AnimatedBehavior*> startupBehaviors;
   std::vector<AnimatedBehavior*> behaviors;

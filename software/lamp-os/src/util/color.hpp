@@ -14,6 +14,7 @@ class Color {
   uint8_t r, g, b, w;
   Color();
   Color(uint8_t inR, uint8_t inG, uint8_t inB, uint8_t inW);
+  bool operator==(const Color &inColor) const;
 };
 
 /**

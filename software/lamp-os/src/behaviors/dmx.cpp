@@ -13,17 +13,10 @@ void DmxBehavior::draw() {
     } else if (frame > (frames - easeFrames)) {
       fb->buffer[i] = fade(currentColor, fb->buffer[i], easeFrames, frame % easeFrames);
     } else {
-      // interlace transitions to further smooth the pixel brightness
-      fb->buffer[i] = prevColor;
-      if (drawEven && i % 2 == 0) {
-        fb->buffer[i] = currentColor;
-      } else if (!drawEven && i % 2 != 0) {
-        fb->buffer[i] = currentColor;
-      }
+      fb->buffer[i] = currentColor;
     }
   }
 
-  drawEven = !drawEven;
   nextFrame();
 };
 
@@ -33,7 +26,7 @@ void DmxBehavior::control() {
   if (animationState == STOPPED) {
     if (lastArtnetFrameTimeMs > 0 && now < lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
       currentColor = currentDmxColor;  // sample and hold a value from dmx for transition in
-      prevColor = currentColor;
+      transitionFrame = 0;
       playOnce();
     }
   }
@@ -43,6 +36,7 @@ void DmxBehavior::control() {
   }
 
   if (animationState == PAUSED && now > lastArtnetFrameTimeMs + DMX_ARTNET_TIMEOUT_MS) {
+    transitionFrame = 0;
     playOnce();
   }
 
@@ -55,12 +49,10 @@ void DmxBehavior::control() {
       transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES, DMX_BEHAVIOR_FADE_TIME_MAX_FRAMES);
 
       // if the random time is long and there's not enough steps, speed up the transition this round
-      if (transitionFrames > 300 && colorDistance(startColor, endColor) < 500) {
+      if (transitionFrames > 300 && colorDistance(startColor, endColor) < 550) {
         transitionFrames = random(DMX_BEHAVIOR_FADE_TIME_MIN_FRAMES, DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES);
       }
     }
-
-    prevColor = currentColor;
 
     if (transitionFrames > DMX_BEHAVIOR_FADE_TIME_LOW_STEPS_FRAMES) {
       // use a smoother algo for longer transitions to prevent obvious led changes
