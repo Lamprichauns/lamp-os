@@ -55,10 +55,8 @@ const activeTab = ref("home");
 // Tab configuration
 const tabs = [
   { id: "home", label: "Home" },
-  { id: "colors", label: "Colors" },
   { id: "expressions", label: "Expressions" },
   { id: "lamp-setup", label: "Setup" },
-  { id: "social", label: "Social" },
   { id: "info", label: "Info" },
 ];
 
@@ -437,14 +435,6 @@ onUnmounted(() => {
               />
             </FormField>
 
-          </section>
-
-          <!-- Colors Tab -->
-          <section
-            v-if="activeTab === 'colors'"
-            class="tab-panel"
-            aria-label="Color settings"
-          >
             <h1 class="yellow">Lamp Color Settings</h1>
             <FormField label="Shade" id="shadeColors">
               <ColorGradient
@@ -610,18 +600,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </FormField>
-          </section>
-
-          <!-- Social Tab -->
-          <section v-if="activeTab === 'social'" class="tab-panel" aria-label="Social">
-            <div class="social-content">
-              <h1 class="gold">Connect With Us</h1>
-              <p>Follow Lamplit Art Society on social media:</p>
-              <div class="social-links">
-                <a href="https://instagram.com/lamplitart" target="_blank" rel="noopener noreferrer">Instagram</a>
-                <a href="https://twitter.com/lamplitart" target="_blank" rel="noopener noreferrer">Twitter</a>
-              </div>
-            </div>
           </section>
 
           <!-- Information Tab -->
