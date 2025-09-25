@@ -28,5 +28,3 @@ src/main.py
 .vscode/settings.json
 .vscode/
 node_modules/
-package-lock.json
-package.json

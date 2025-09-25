@@ -424,8 +424,8 @@ onUnmounted(() => {
           >
             <Nameplate v-model="settings" id="nameplate" />
 
-            <h1 class="gold" v-if="!settings.lamp?.homeMode">Lamp Brightness</h1>
-            <FormField id="brightness" v-if="!settings.lamp?.homeMode">
+            <h1 class="gold">Lamp Brightness</h1>
+            <FormField id="brightness">
               <BrightnessSlider
                 :model-value="settings.lamp?.brightness || 0"
                 @update:model-value="(value) => updateSetting('lamp.brightness', value)"
@@ -433,7 +433,7 @@ onUnmounted(() => {
                 :min="0"
                 :max="100"
                 append="%"
-                :disabled="disabled"
+                :disabled="disabled || settings.lamp?.homeMode"
               />
             </FormField>
 
