@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 
 import ColorGradient from "@/components/ColorGradient.vue";
 import BrightnessSlider from "@/components/BrightnessSlider.vue";
@@ -10,7 +10,28 @@ import FormField from "@/components/FormField.vue";
 import TopNavigation from "@/components/TopNavigation.vue";
 import Logo from "@/components/Logo.vue";
 import Nameplate from "@/components/Nameplate.vue";
+import ExpressionsList from "@/components/expressions/ExpressionsList.vue";
 import type { Settings } from "@/types";
+
+// Additional type definitions for expressions
+interface Expression {
+  type: string;
+  enabled: boolean;
+  colors: string[];
+  intervalMin: number;
+  intervalMax: number;
+  target: number;
+  duration?: number;
+  durationMin?: number;
+  durationMax?: number;
+}
+
+// Extend Settings interface
+declare module "@/types" {
+  interface Settings {
+    expressions?: Expression[];
+  }
+}
 
 // configuration ==============
 
@@ -27,21 +48,62 @@ const loaded = ref(false);
 const disabled = ref(false);
 const originalSettings = ref<string>("");
 const saving = ref(false);
+const resetUnsavedChanges = ref(0);
+const authenticated = ref(false);
+const loginPassword = ref("");
 const showLogin = ref(false);
 const activeTab = ref("home");
 
 // Tab configuration
 const tabs = [
   { id: "home", label: "Home" },
+  { id: "expressions", label: "Expressions" },
   { id: "lamp-setup", label: "Setup" },
   { id: "info", label: "Info" },
 ];
+
+// Send tab state when it changes
+watch(activeTab, (newTab) => {
+  // Tell the lamp what tab is active
+  if (ws.value?.readyState === WebSocket.OPEN) {
+    websocketSend({ a: "tab", v: newTab });
+  }
+});
 
 const ws = ref<WebSocket | null>(null);
 const wsConnected = ref(false);
 const reconnectAttempts = ref(0);
 let reconnectTimeout: number | null = null;
 let websocketDebounceTimeout: number | null = null;
+
+// Cookie management functions
+const getCookie = (name: string): string | null => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
+  return null;
+};
+
+const setCookie = (name: string, value: string, days: number) => {
+  const date = new Date();
+  date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+  const expires = `expires=${date.toUTCString()}`;
+  document.cookie = `${name}=${value};${expires};path=/`;
+};
+
+const checkAuth = () => {
+  const authCookie = getCookie("lamp-auth");
+  return authCookie === "authenticated";
+};
+
+const handleLogin = () => {
+  if (loginPassword.value === settings.value.lamp?.password) {
+    setCookie("lamp-auth", "authenticated", 30);
+    authenticated.value = true;
+    showLogin.value = false;
+    loginPassword.value = "";
+  }
+};
 
 // Computed property to check if settings have changed
 const hasChanges = computed(() => {
@@ -93,6 +155,8 @@ const updateSetting = (path: string, value: unknown) => {
     case "base.colors":
       action = { a: "base", c: value };
       break;
+    // Don't send real-time updates for expressions
+    // They are cleared when entering tab and reloaded when leaving
   }
   if (action) {
     websocketSend(action);
@@ -194,6 +258,17 @@ function connectWebSocket() {
       websocketSend({ a: "bright", v: brightness });
     }
 
+    // Send current tab state
+    websocketSend({ a: "tab", v: activeTab.value });
+
+    // Send current colors to establish preview
+    if (settings.value.shade?.colors) {
+      websocketSend({ a: "shade", c: settings.value.shade.colors });
+    }
+    if (settings.value.base?.colors) {
+      websocketSend({ a: "base", c: settings.value.base.colors });
+    }
+
     ws.value?.send(
       JSON.stringify({
         type: "test",
@@ -236,6 +311,55 @@ const websocketSend = (action: Record<string, unknown>) => {
     ws.value?.send(JSON.stringify(action));
     websocketDebounceTimeout = null;
   }, websocketDebounceInterval);
+};
+
+const handleTestExpression = (type: string) => {
+  const action = { a: "test_expression", type };
+  websocketSend(action);
+};
+
+const handleTestExpressionComplete = () => {
+  // Re-enable configurator and restore preview colors
+  const action = {
+    a: "test_expression_complete",
+    shadeColors: settings.value.shade?.colors || [],
+    baseColors: settings.value.base?.colors || [],
+  };
+  websocketSend(action);
+};
+
+const handleExpressionColorPreview = (color: string, target: number) => {
+  // Send single color as array for solid color preview
+  if (target === 1 || target === 3) {
+    // Shade or Both
+    websocketSend({ a: "shade", c: [color] });
+  }
+  if (target === 2 || target === 3) {
+    // Base or Both
+    websocketSend({ a: "base", c: [color] });
+  }
+};
+
+const handleExpressionColorPickerOpen = () => {
+  // Configurator stays enabled, expression color will override temporarily
+};
+
+const handleExpressionColorPickerClose = () => {
+  // Restore the colors from the colors tab settings
+  if (settings.value.shade?.colors) {
+    websocketSend({ a: "shade", c: settings.value.shade.colors });
+  }
+  if (settings.value.base?.colors) {
+    websocketSend({ a: "base", c: settings.value.base.colors });
+  }
+};
+
+// Removed - configurator now uses 60-second timeout instead of explicit stop
+
+const handleSaveAndRestart = async () => {
+  await saveSettings();
+  // Increment to trigger reset in ExpressionsList component
+  resetUnsavedChanges.value++;
 };
 
 onMounted(async () => {
@@ -300,8 +424,8 @@ onUnmounted(() => {
           >
             <Nameplate v-model="settings" id="nameplate" />
 
-            <h1 class="gold" v-if="!settings.lamp?.homeMode">Lamp Brightness</h1>
-            <FormField id="brightness" v-if="!settings.lamp?.homeMode">
+            <h1 class="gold">Lamp Brightness</h1>
+            <FormField id="brightness">
               <BrightnessSlider
                 :model-value="settings.lamp?.brightness || 0"
                 @update:model-value="(value) => updateSetting('lamp.brightness', value)"
@@ -309,7 +433,7 @@ onUnmounted(() => {
                 :min="0"
                 :max="100"
                 append="%"
-                :disabled="disabled"
+                :disabled="disabled || settings.lamp?.homeMode"
               />
             </FormField>
 
@@ -333,6 +457,25 @@ onUnmounted(() => {
                 @update:active-color="(value) => updateSetting('base.ac', value)"
               />
             </FormField>
+          </section>
+
+          <!-- Expressions Tab -->
+          <section v-if="activeTab === 'expressions'" class="tab-panel" aria-label="Expression settings">
+            <div class="expressions-instructions">
+              <p>Add expressions to give your lamp personality. Expressions are behaviors that trigger randomly to create visual effects.</p>
+            </div>
+            <ExpressionsList
+              :model-value="settings.expressions || []"
+              @update:model-value="(value) => updateSetting('expressions', value)"
+              @test-expression="handleTestExpression"
+              @test-expression-complete="handleTestExpressionComplete"
+              @save-and-restart="handleSaveAndRestart"
+              @preview-color="handleExpressionColorPreview"
+              @color-picker-open="handleExpressionColorPickerOpen"
+              @color-picker-close="handleExpressionColorPickerClose"
+              :reset-unsaved-changes="resetUnsavedChanges"
+              :disabled="disabled"
+            />
           </section>
 
           <!-- Lamp Setup Tab -->
@@ -731,7 +874,8 @@ textarea {
 /* Tab Instructions */
 .colors-instructions,
 .home-instructions,
-.setup-instructions {
+.setup-instructions,
+.expressions-instructions {
   margin-bottom: 24px;
   padding: 12px 16px;
   background: rgba(68, 108, 156, 0.06);
@@ -740,7 +884,8 @@ textarea {
 
 .colors-instructions p,
 .home-instructions p,
-.setup-instructions p {
+.setup-instructions p,
+.expressions-instructions p {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.5;
