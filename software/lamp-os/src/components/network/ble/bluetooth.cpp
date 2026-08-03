@@ -164,6 +164,7 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
   Serial.printf("Starting Bluetooth Async Client\n");
 #endif
   NimBLEDevice::init(name.substr(0, 12));
+  ble_control::disableBtModemSleep();
   NimBLEDevice::setPower(BLE_POWER_LEVEL);
 
   // LE Secure Connections + Just-Works bonding remain enabled, but the

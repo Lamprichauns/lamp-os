@@ -127,6 +127,14 @@ constexpr const char* CHAR_EDIT_SESSION    = "5f64f4e9-d6d9-4a44-9b3f-3a8d6f7e6b
 // to NVS, debounced 1500ms, OTA-gated, FNV-1a hash-deduped.
 inline constexpr const char* CHAR_COMMIT_UUID = "48537d49-11a7-4f54-a69a-9425b9288c50";
 
+// Disables BT-controller modem sleep. WiFi is already held awake
+// (WiFi.setSleep(false), ESP-NOW is unbuffered) so BT sleep saves ~no
+// power on the shared radio, but its PHY sleep/wake toggle around
+// connection events triggers a libphy RF-calib allocation that aborts
+// under heap fragmentation. Call after every controller bring-up
+// (NimBLEDevice::init resets controller state).
+void disableBtModemSleep();
+
 void start(lamp::Config* config);
 
 void stop();

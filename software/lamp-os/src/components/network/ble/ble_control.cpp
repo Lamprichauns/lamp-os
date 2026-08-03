@@ -1201,6 +1201,15 @@ void notifyStateChange() {
   s_stateNotify->notify();
 }
 
+void disableBtModemSleep() {
+  esp_err_t err = esp_bt_sleep_disable();
+  if (err != ESP_OK) {
+#ifdef LAMP_DEBUG
+    Serial.printf("[ble_control] esp_bt_sleep_disable failed: %d\n", err);
+#endif
+  }
+}
+
 void start(lamp::Config* config) {
   if (s_running) return;
 
@@ -1209,6 +1218,7 @@ void start(lamp::Config* config) {
   if (!NimBLEDevice::isInitialized()) {
     NimBLEDevice::init(config->lamp.name.substr(0, 12));
   }
+  disableBtModemSleep();
 
   // createServer() returns the existing instance if one was already created
   // (NimBLE supports only one server per device).
