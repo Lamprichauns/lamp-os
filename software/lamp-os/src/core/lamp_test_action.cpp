@@ -24,6 +24,7 @@
 #include "behaviors/greetable.hpp"
 #include "components/apply/apply_brightness.hpp"
 #include "components/apply/apply_expressions.hpp"
+#include "components/apply/apply_lamp.hpp"
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
 #include "config/config.hpp"
@@ -357,6 +358,20 @@ void runSerialCommand(char* line, size_t len) {
     config.baseSectionJsonCached(base);
     config.shadeSectionJsonCached(shade);
     Serial.printf("[cmd] ok base=%s shade=%s\n", base.c_str(), shade.c_str());
+    return;
+  }
+
+  // Same partial-merge choke point as the BLE settings_blob `lamp` drain, e.g.
+  // `cfg.set {"password":""}` clears the control password on a locked-out lamp.
+  if (strncmp(line, "cfg.set ", 8) == 0) {
+    JsonDocument doc;
+    if (deserializeJson(doc, line + 8) != DeserializationError::Ok) {
+      Serial.println("[cmd] err parse");
+      return;
+    }
+    lamp::apply::lampLocal(doc.as<JsonObject>(), s_hwMaxBrightness);
+    config.persistConfig("cfgSet");
+    Serial.println("[cmd] ok cfg.set");
     return;
   }
 
