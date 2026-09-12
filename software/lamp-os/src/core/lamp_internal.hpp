@@ -122,6 +122,13 @@ bool calculateEffectiveHomeMode();
 uint8_t effectiveBrightness();
 void reapplyHomeModeState();
 namespace lamp {
+// Re-seed each role's fallback scene from the saved config colors. IdleBehavior
+// paints defaultColors whenever the configurator idle-stops, so a persist that
+// skips this strands the fallback on the colors the lamp booted with. Call only
+// from persist paths; live-preview writes must leave it alone so an abandoned
+// web-config drag still falls back to the last saved scene.
+void refreshDefaultScene();
+
 // Last pre-clamp level handed to setAllStripsBrightness. The governor's
 // engage/release hysteresis keys on this, and ceiling changes re-min it
 // without recomputing the brightness baseline.

@@ -18,6 +18,25 @@ namespace lamp {
 constexpr Color kBaseDefaultColor(0x30, 0x07, 0x83, 0x00);
 constexpr Color kShadeDefaultColor(0x00, 0x00, 0x00, 0xFF);
 
+// True when both roles still hold exactly what applyDefaults() installed: the
+// variant's injected hex where it supplies one, the class default where it
+// omits the field. A variant that omits a color never equals its own empty hex
+// string, so the fallback has to mirror applyDefaults or the role reads as
+// user-configured on a factory lamp.
+inline bool colorsAreFactoryDefault(const std::vector<Color>& baseColors,
+                                    const std::vector<Color>& shadeColors,
+                                    const std::string& variantBaseHex,
+                                    const std::string& variantShadeHex) {
+  const Color baseDefault = variantBaseHex.empty()
+                                ? kBaseDefaultColor
+                                : hexStringToColor(variantBaseHex);
+  const Color shadeDefault = variantShadeHex.empty()
+                                 ? kShadeDefaultColor
+                                 : hexStringToColor(variantShadeHex);
+  return baseColors.size() == 1 && baseColors[0] == baseDefault &&
+         shadeColors.size() == 1 && shadeColors[0] == shadeDefault;
+}
+
 // Name a fresh lamp loads from empty NVS, and the sentinel a variant replaces
 // with its own default in applyDefaults(). A stored name equal to this or the
 // variant default is treated as unconfigured by the pre-`named`-flag migration.

@@ -225,6 +225,7 @@ void Lamp::drainCommit() {
           if (persisted) {
             lastPersistedHash = hash;
             config.invalidateAllSections();
+            lamp::refreshDefaultScene();
             commitDirty = false;
           }
           // Persist failure leaves commitDirty set; next tick retries.
@@ -288,6 +289,7 @@ void Lamp::drainSettingsBlob() {
       recomputeEffectiveCeiling();  // new brightnessCeiling takes effect without reboot
       reapplyHomeModeState();
       bool persisted = config.persistConfig("settings_blob");
+      if (persisted) lamp::refreshDefaultScene();
       config.invalidateAllSections();
       ble_control::notifyStateChange();
       if (wantsReboot && persisted) {

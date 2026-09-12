@@ -458,6 +458,13 @@ void updateAdvertisedDeviceName(const char* newName) {
 
 namespace lamp {
 
+void refreshDefaultScene() {
+  shade.defaultColors =
+      buildGradientWithStops(shade.pixelCount, ::config.shade.broadcastColors());
+  base.defaultColors =
+      buildGradientWithStops(base.pixelCount, ::config.base.broadcastColors());
+}
+
 void applyKnockoutPixel(uint8_t pixel, uint8_t brightness) {
   if (pixel < ::config.base.sumPx() && brightness <= 100) {
     ::baseKnockoutBehavior.knockoutPixels[pixel] = brightness;
@@ -612,13 +619,9 @@ void lamp::Lamp::setup() {
     persistFirstBoot = true;
   }
   if (!config.lamp.setup) {
-    const Color baseDefault = hexStringToColor(defaults().baseColor.c_str());
-    const Color shadeDefault = hexStringToColor(defaults().shadeColor.c_str());
-    const bool colorsUnconfigured =
-        config.base.broadcastColors().size() == 1 &&
-        config.base.broadcastColors()[0] == baseDefault &&
-        config.shade.broadcastColors().size() == 1 &&
-        config.shade.broadcastColors()[0] == shadeDefault;
+    const bool colorsUnconfigured = colorsAreFactoryDefault(
+        config.base.broadcastColors(), config.shade.broadcastColors(),
+        defaults().baseColor, defaults().shadeColor);
     if (colorsUnconfigured) {
       FastRng rng(seedFromMac());
       int baseHue = rng.range(0, 359);
