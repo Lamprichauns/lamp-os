@@ -31,6 +31,14 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   ("gramp -lamp" for a lamp called "gramp"), so it looked missing. Spaces are
   now rejected as you type and stripped from names already saved, which also
   tidies the lamp's Bluetooth name.
+- **Your colours stay where you put them.** A lamp would quietly fall back to
+  its factory colours about a minute after you set new ones, so it looked like
+  nothing had saved. Your colours were always stored correctly — the lamp was
+  painting the wrong ones, which is why reopening the app or restarting the
+  lamp brought them back.
+- **Every lamp starts with its own colours.** New lamps were all coming up on
+  the same blue and red instead of the distinct colour pair each lamp is meant
+  to pick for itself the first time it's set up.
 
 ## 1.2.6
 
