@@ -56,9 +56,15 @@ void test_name_stored_lowercase() {
   parseInto("{\"lamp\":{\"name\":\"Jacko\"}}", mixed);
   TEST_ASSERT_EQUAL_STRING("jacko", mixed.lamp.name.c_str());
 
+  // Whitespace is dropped, not preserved: the name composes the setup AP's
+  // SSID, the BLE advert name and the mDNS host.
   Model words;
   parseInto("{\"lamp\":{\"name\":\"LIVING ROOM\"}}", words);
-  TEST_ASSERT_EQUAL_STRING("living room", words.lamp.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("livingroom", words.lamp.name.c_str());
+
+  Model padded;
+  parseInto("{\"lamp\":{\"name\":\"gramp \"}}", padded);
+  TEST_ASSERT_EQUAL_STRING("gramp", padded.lamp.name.c_str());
 }
 
 void test_apbootminutes_defaults_and_round_trip() {

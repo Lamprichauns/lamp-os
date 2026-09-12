@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Single-field rename modal. Keeps a tappable row editable without a full
 /// sub-screen. Hosted by a `StatefulWidget` so its `TextEditingController`
@@ -14,6 +15,7 @@ Future<void> showRenameDialog(
   required ValueChanged<String> onSave,
   int? maxLength,
   String? hintText,
+  List<TextInputFormatter>? inputFormatters,
 }) =>
     showDialog<void>(
       context: context,
@@ -24,6 +26,7 @@ Future<void> showRenameDialog(
         onSave: onSave,
         maxLength: maxLength,
         hintText: hintText,
+        inputFormatters: inputFormatters,
       ),
     );
 
@@ -36,6 +39,7 @@ class RenameDialog extends StatefulWidget {
     required this.onSave,
     this.maxLength,
     this.hintText,
+    this.inputFormatters,
   });
 
   final String title;
@@ -44,6 +48,7 @@ class RenameDialog extends StatefulWidget {
   final ValueChanged<String> onSave;
   final int? maxLength;
   final String? hintText;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<RenameDialog> createState() => _RenameDialogState();
@@ -67,6 +72,7 @@ class _RenameDialogState extends State<RenameDialog> {
         controller: _ctrl,
         autofocus: true,
         maxLength: widget.maxLength,
+        inputFormatters: widget.inputFormatters,
         decoration: InputDecoration(
           labelText: widget.label,
           hintText: widget.hintText,

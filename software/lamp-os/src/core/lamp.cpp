@@ -539,6 +539,40 @@ void lamp::Lamp::tickInputs(uint32_t nowMs) {
 // GPIO0 is the dev board's BOOT button, unused by every variant. Reading it
 // as a pull-up input is safe; its strapping role only applies at reset, which
 // is also why the hold only registers on an already-running lamp.
+// Two full-lamp pulses. Clearing the password deliberately does not restart
+// the lamp, so this is the only signal an owner standing at the lamp gets.
+// Blocking: a one-shot hold-to-recover is worth ~0.8s of stalled loop, and
+// the compositor repaints from the behaviour stack on the next frame.
+static void pulseWholeLampTwice() {
+  lamp::FrameBuffer* fbs[] = {&::shade, &::base};
+  uint8_t saved[2] = {0, 0};
+  for (size_t i = 0; i < 2; ++i) {
+    if (!fbs[i]->segments.empty()) {
+      saved[i] = fbs[i]->segments[0].driver->getBrightness();
+    }
+  }
+  auto paint = [&](lamp::Color c, uint8_t brightness) {
+    for (auto* fb : fbs) {
+      if (fb->segments.empty()) continue;
+      std::fill(fb->buffer.begin(), fb->buffer.end(), c);
+      for (auto& seg : fb->segments) seg.driver->setBrightness(brightness);
+      fb->flush();
+    }
+  };
+  const lamp::Color white(0, 0, 0, 255);
+  const lamp::Color off(0, 0, 0, 0);
+  for (int pulse = 0; pulse < 2; ++pulse) {
+    paint(white, 200);
+    delay(180);
+    paint(off, 200);
+    delay(180);
+  }
+  for (size_t i = 0; i < 2; ++i) {
+    if (fbs[i]->segments.empty()) continue;
+    for (auto& seg : fbs[i]->segments) seg.driver->setBrightness(saved[i]);
+  }
+}
+
 void lamp::Lamp::tickBootRecovery() {
   if (::config.lamp.password.empty()) return;
   static bool s_pinReady = false;
@@ -552,6 +586,7 @@ void lamp::Lamp::tickBootRecovery() {
   // BLE auth reads the password live, so the app is usable immediately. The
   // softAP keeps the key it was brought up with until the next boot.
   Serial.println("[recovery] BOOT held: control password cleared");
+  pulseWholeLampTwice();
 }
 
 void lamp::Lamp::recomputeEffectiveCeiling() {

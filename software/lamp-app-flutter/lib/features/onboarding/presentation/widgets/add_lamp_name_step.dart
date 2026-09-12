@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../../core/lamp_name.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_spacing.dart';
@@ -51,6 +53,7 @@ class _AddLampNameStepState extends ConsumerState<AddLampNameStep> {
           TextField(
             controller: _controller,
             autofocus: true,
+            inputFormatters: lampNameFormatters,
             onChanged: notifier.setName,
             decoration: const InputDecoration(
               labelText: 'Their name',

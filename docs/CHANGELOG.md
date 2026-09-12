@@ -21,8 +21,16 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 ### Added
 - **Forgot your lamp's password?** Hold the small BOOT button on the lamp's
   board for five seconds within a minute of switching it on and the password is
-  cleared, so the app can connect again. The lamp keeps its name, colours and
-  everything else. Its setup WiFi re-opens the next time the lamp restarts.
+  cleared, so the app can connect again. The whole lamp pulses twice to confirm
+  it worked. The lamp keeps its name, colours and everything else. Its setup
+  WiFi re-opens the next time the lamp restarts.
+
+### Fixed
+- **Lamp names can't hide a space any more.** A name with a space in it made
+  the setup WiFi network appear under a different name than the app showed
+  ("gramp -lamp" for a lamp called "gramp"), so it looked missing. Spaces are
+  now rejected as you type and stripped from names already saved, which also
+  tidies the lamp's Bluetooth name.
 
 ## 1.2.6
 

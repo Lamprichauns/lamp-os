@@ -11,6 +11,7 @@ import '../../../core/utils/tap_counter.dart';
 import '../../../core/widgets/app_sheet.dart';
 import '../../../core/widgets/app_snackbar.dart';
 import '../../../core/widgets/friendly_error.dart';
+import '../../../core/lamp_name.dart';
 import '../../../core/lamp_password.dart';
 import '../../../core/widgets/password_prompt_dialog.dart';
 import '../../../core/widgets/rename_dialog.dart';
@@ -90,6 +91,7 @@ class _SetupBody extends ConsumerWidget {
             context,
             title: 'Rename lamp',
             label: 'Name',
+            inputFormatters: lampNameFormatters,
             initial: state.lamp.name.toTitleCase(),
             onSave: (name) => n().setLampName(name),
           ),
