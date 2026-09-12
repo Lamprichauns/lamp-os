@@ -56,6 +56,7 @@
 #include "config/nvs_config_store.hpp"
 #include "core/compositor.hpp"
 #include "core/frame_buffer.hpp"
+#include "core/boot_recovery.hpp"
 #include "core/power_governor.hpp"
 #include <lampos/blended_identity.hpp>
 #include <lampos/led_power.hpp>
@@ -533,6 +534,24 @@ lamp::input::InputSource* lamp::Lamp::inputById(uint8_t id) const {
 
 void lamp::Lamp::tickInputs(uint32_t nowMs) {
   for (auto& src : inputs_) src->tick(nowMs);
+}
+
+// GPIO0 is the dev board's BOOT button, unused by every variant. Reading it
+// as a pull-up input is safe; its strapping role only applies at reset, which
+// is also why the hold only registers on an already-running lamp.
+void lamp::Lamp::tickBootRecovery() {
+  if (::config.lamp.password.empty()) return;
+  static bool s_pinReady = false;
+  if (!s_pinReady) {
+    pinMode(0, INPUT_PULLUP);
+    s_pinReady = true;
+  }
+  if (!bootRecovery_.update(digitalRead(0) == LOW, millis())) return;
+  ::config.lamp.password.clear();
+  ::config.persistConfig("boot_recovery");
+  // BLE auth reads the password live, so the app is usable immediately. The
+  // softAP keeps the key it was brought up with until the next boot.
+  Serial.println("[recovery] BOOT held: control password cleared");
 }
 
 void lamp::Lamp::recomputeEffectiveCeiling() {
@@ -1087,6 +1106,8 @@ void lamp::Lamp::tick() {
 
   socialEchoObserver.tick(millis());
   arrivalNotifier.tick(millis(), lamp::lampRoster, LAMP_PRUNE_TIME_MS);
+
+  tickBootRecovery();
 
   wifi::tick();
 #if LAMP_WEBAPP_ENABLED

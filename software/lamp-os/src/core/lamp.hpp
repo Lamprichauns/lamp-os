@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "core/boot_recovery.hpp"
 #include "core/hw_config.hpp"
 #include "core/lamp_features.hpp"
 #include "core/behavior_stack_builder.hpp"
@@ -57,6 +58,9 @@ class Lamp {
   // compositor each loop. Empty on variants that declare no inputs.
   std::vector<std::unique_ptr<input::InputSource>> inputs_;
   void tickInputs(uint32_t nowMs);
+
+  // Clears a forgotten control password on a BOOT hold, then reboots.
+  void tickBootRecovery();
   // Internal framework members (compositor, BLE, mesh, OTA timing) live as
   // file-scope statics in lamp.cpp, single-Lamp-per-binary by design. The
   // extern declarations in apply_brightness.hpp etc. resolve to those
@@ -65,6 +69,8 @@ class Lamp {
   // Recompute s_hwMaxBrightness from the variant cap and config.brightnessCeiling.
   // Call at setup and after any settings-blob write so a new ceiling applies live.
   void recomputeEffectiveCeiling();
+
+  BootRecovery bootRecovery_;
 
   // Per-slot drains (called from tick()). Each drains one pending slot
   // (BLE input, mesh input, transient-override command, etc.) and applies

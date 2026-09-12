@@ -7,6 +7,7 @@
 #include <portmacro.h>
 
 #include "components/network/ble/ble_control.hpp"  // for ble_control::isClientConnected()
+#include "components/network/transport/wifi_psk.hpp"
 
 // Grid channel. All unconnected grid lamps line up here so ESP-NOW peers
 // can hear each other. The radio never associates to a home AP,
@@ -187,8 +188,9 @@ bool homeSsidVisible(const std::string& ssid) {
 }
 
 static bool s_softApUp = false;
+static bool s_softApSecured = false;
 
-bool startSoftAp(const std::string& name) {
+bool startSoftAp(const std::string& name, const std::string& psk) {
   if (s_softApUp) return true;
   // AP_STA so STA scan + ESP-NOW recv keep working while the AP serves
   // the webapp. Both interfaces share the radio's current channel;
@@ -196,9 +198,12 @@ bool startSoftAp(const std::string& name) {
   // doesn't pull the lamp off the grid channel.
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
-  // Open network (no password). The boot window IS the auth boundary.
+  // The lamp password keys the AP. Without a usable one the AP is open and
+  // every /api route is reachable by any client that associates.
   // Hidden=false so phones surface it without manual entry.
-  const bool ok = WiFi.softAP(name.c_str(), nullptr, LAMP_ESPNOW_CHANNEL,
+  const bool secured = pskUsable(psk.size());
+  const bool ok = WiFi.softAP(name.c_str(), secured ? psk.c_str() : nullptr,
+                              LAMP_ESPNOW_CHANNEL,
                               /*ssid_hidden=*/0, /*max_connection=*/4);
   if (!ok) {
     portENTER_CRITICAL(&s_scanMux);
@@ -214,9 +219,11 @@ bool startSoftAp(const std::string& name) {
   }
   esp_wifi_set_channel(LAMP_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   s_softApUp = true;
+  s_softApSecured = secured;
 #ifdef LAMP_DEBUG
-  Serial.printf("[wifi] softAP up ssid=%s ch=%d ip=%s\n", name.c_str(),
-                LAMP_ESPNOW_CHANNEL, WiFi.softAPIP().toString().c_str());
+  Serial.printf("[wifi] softAP up ssid=%s ch=%d ip=%s auth=%s\n", name.c_str(),
+                LAMP_ESPNOW_CHANNEL, WiFi.softAPIP().toString().c_str(),
+                secured ? "wpa2" : "open");
 #endif
   return true;
 }
@@ -231,10 +238,13 @@ void stopSoftAp() {
   // branch of tick()).
   esp_wifi_set_channel(LAMP_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   s_softApUp = false;
+  s_softApSecured = false;
 #ifdef LAMP_DEBUG
   Serial.println("[wifi] softAP down");
 #endif
 }
+
+bool softApSecured() { return s_softApSecured; }
 
 void tick() {
   // 1. Drain a completed scan (whether UI-triggered or background).

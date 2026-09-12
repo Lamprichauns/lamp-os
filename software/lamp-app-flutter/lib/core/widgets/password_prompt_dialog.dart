@@ -24,6 +24,9 @@ Future<String?> showPasswordPromptDialog(
   String confirmLabel = 'Save',
   String cancelLabel = 'Cancel',
   bool barrierDismissible = true,
+  /// Checked on submit. Return null to accept, or the reason to show
+  /// inline and keep the dialog open.
+  String? Function(String pw)? validate,
   /// Called on submit. Return null on success (dialog pops).
   /// Return `(errorMessage, rawError)` to show an inline error and
   /// keep the dialog open. rawError may be null.
@@ -38,6 +41,7 @@ Future<String?> showPasswordPromptDialog(
       initialValue: initialValue,
       confirmLabel: confirmLabel,
       cancelLabel: cancelLabel,
+      validate: validate,
       onSubmit: onSubmit,
     ),
   );
@@ -50,6 +54,7 @@ class _PasswordPromptDialog extends StatefulWidget {
     this.initialValue,
     required this.confirmLabel,
     required this.cancelLabel,
+    this.validate,
     this.onSubmit,
   });
 
@@ -58,6 +63,7 @@ class _PasswordPromptDialog extends StatefulWidget {
   final String? initialValue;
   final String confirmLabel;
   final String cancelLabel;
+  final String? Function(String pw)? validate;
   final Future<(String, Object?)?> Function(String pw)? onSubmit;
 
   @override
@@ -81,6 +87,14 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
   Future<void> _confirm() async {
     final value = _ctrl.text;
     if (value.isEmpty || _busy) return;
+    final invalid = widget.validate?.call(value);
+    if (invalid != null) {
+      setState(() {
+        _errorMsg = invalid;
+        _rawError = null;
+      });
+      return;
+    }
     if (widget.onSubmit == null) {
       Navigator.of(context).pop(value);
       return;

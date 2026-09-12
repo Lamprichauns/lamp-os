@@ -65,8 +65,12 @@ void tick();
 bool homeSsidVisible(const std::string& ssid);
 
 // softAP shares LAMP_ESPNOW_CHANNEL so an associating phone doesn't yank
-// the radio off the grid channel.
-bool startSoftAp(const std::string& name);
+// the radio off the grid channel. `psk` keys the AP with WPA2 when its
+// length is usable (`wifi_psk.hpp`); anything else brings the AP up open.
+bool startSoftAp(const std::string& name, const std::string& psk);
 void stopSoftAp();
+
+// Whether the live softAP is WPA2-keyed. False while no AP is up.
+bool softApSecured();
 
 }  // namespace wifi

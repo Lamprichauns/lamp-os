@@ -83,10 +83,18 @@ static String s_settingsJson;
 static void buildSettingsSnapshot() {
   JsonDocument doc = s_config->asJsonDocument();
   doc["lamp"]["hasPassword"] = !s_config->lamp.password.empty();
+  doc["lamp"]["apSecured"] = wifi::softApSecured();
   doc["lamp"]["lampId"] = s_config->lampId();
   doc["lamp"].remove("password");
   s_settingsJson = "";
   serializeJson(doc, s_settingsJson);
+}
+
+// A password the AP can't key leaves the network open, so the surface that
+// would hand config writes (or the password itself) to any nearby client goes
+// read-only. Recover by setting a usable password over BLE.
+static bool webSurfaceReadOnly() {
+  return !s_config->lamp.password.empty() && !wifi::softApSecured();
 }
 
 static void handleGetSettings(AsyncWebServerRequest* req) {
@@ -122,6 +130,10 @@ static void handleGetDispositions(AsyncWebServerRequest* req) {
 static void handlePutDispositions(AsyncWebServerRequest* req,
                                   JsonVariant& json) {
   bumpDeadline();
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
+    return;
+  }
   if (lamp::ota_quiet_mode::isQuiet()) {
     req->send(503, "application/json", "{\"ok\":false}");
     return;
@@ -138,6 +150,10 @@ static void handlePutDispositions(AsyncWebServerRequest* req,
 
 static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   bumpDeadline();
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
+    return;
+  }
   JsonObject obj = json.as<JsonObject>();
   // Whole-document replace: the body must be the full config (the GET doc,
   // mutated and sent back in its entirety). Reject anything without a `lamp`
@@ -154,6 +170,10 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   if (pw[0] == '\0' && !s_config->lamp.password.empty()) {
     obj["lamp"]["password"] = s_config->lamp.password;
   }
+  // The GET-only fields never belong in the persisted blob; an older SPIFFS
+  // UI riding a newer firmware wouldn't know to strip them.
+  obj["lamp"].remove("hasPassword");
+  obj["lamp"].remove("apSecured");
   // A web save carrying a name is an explicit user configuration; stamp the
   // adoption flag so boot's applyDefaults never reverts the name to a default.
   const char* nm = obj["lamp"]["name"] | "";
@@ -187,6 +207,12 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
 // correct match so the UI can show it; GET keeps the password redacted.
 static void handleUnlock(AsyncWebServerRequest* req, JsonVariant& json) {
   bumpDeadline();
+  // Unthrottled and it returns the plaintext on a match, so on an open AP it
+  // would be a free oracle for the BLE control password.
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
+    return;
+  }
   const std::string& stored = s_config->lamp.password;
   const std::string supplied = json["password"] | "";
   // Constant-time compare: accumulate diff over max(stored, supplied) length
@@ -328,7 +354,7 @@ void begin(lamp::Config& config) {
   // SoftAP SSID is the lamp's name + "-lamp" so it's recognizable as a
   // lamp's setup network in a Wi-Fi scan.
   const std::string ssid = config.lamp.name + "-lamp";
-  if (!wifi::startSoftAp(ssid)) {
+  if (!wifi::startSoftAp(ssid, config.lamp.password)) {
 #ifdef LAMP_DEBUG
     Serial.println("[webapp] softAP failed; webapp not started");
 #endif
@@ -347,8 +373,9 @@ void begin(lamp::Config& config) {
   s_apUp = true;
 
 #ifdef LAMP_DEBUG
-  Serial.printf("[webapp] softAP up at %s  bootWindow=%umin%s\n",
-                WiFi.softAPIP().toString().c_str(), bootMinutes,
+  Serial.printf("[webapp] softAP up at %s  auth=%s bootWindow=%umin%s\n",
+                WiFi.softAPIP().toString().c_str(),
+                wifi::softApSecured() ? "wpa2" : "open", bootMinutes,
                 s_neverExpire ? " (never expire)" : "");
 #endif
 }

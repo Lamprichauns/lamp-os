@@ -5,6 +5,25 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## 1.2.7
+
+### Changed
+- **Your lamp password now locks its setup WiFi.** The setup network a lamp
+  puts up for its web config page used to be open, so anyone nearby could join
+  and change settings even on a password-protected lamp. Set a password and the
+  setup network is WPA2-encrypted with it — you'll need that password to reach
+  the web config page. Lamps with no password, or a password shorter than 8
+  characters, still put up an open network, and the web config page says which
+  of the two you have instead of implying it's private. On a lamp whose
+  password is too short to lock the network, the web page goes read-only rather
+  than handing settings — or the password itself — to anyone who joins.
+
+### Added
+- **Forgot your lamp's password?** Hold the small BOOT button on the lamp's
+  board for five seconds within a minute of switching it on and the password is
+  cleared, so the app can connect again. The lamp keeps its name, colours and
+  everything else. Its setup WiFi re-opens the next time the lamp restarts.
+
 ## 1.2.6
 
 ### Fixed

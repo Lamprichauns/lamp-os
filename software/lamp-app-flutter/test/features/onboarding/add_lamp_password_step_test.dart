@@ -38,4 +38,38 @@ void main() {
     expect(find.text('Take Sparky home'), findsOneWidget);
     expect(find.text('Welcome them home'), findsNothing);
   });
+
+  testWidgets('a password too short for WPA2 cannot be submitted',
+      (tester) async {
+    final c = makeContainer();
+    addTearDown(c.dispose);
+
+    final notifier = c.read(addLampNotifierProvider.notifier);
+    notifier.select('test-lamp');
+    notifier.next();
+    notifier.setName('Sparky');
+    notifier.next();
+
+    await tester.pumpWidget(wrap(c));
+    await tester.pump();
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.first, 'short');
+    await tester.enterText(fields.last, 'short');
+    await tester.pump();
+
+    expect(find.text('Must be at least 8 characters'), findsOneWidget);
+    final short = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Take Sparky home'));
+    expect(short.onPressed, isNull);
+
+    await tester.enterText(fields.first, 'longenough');
+    await tester.enterText(fields.last, 'longenough');
+    await tester.pump();
+
+    expect(find.text('Must be at least 8 characters'), findsNothing);
+    final ok = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Take Sparky home'));
+    expect(ok.onPressed, isNotNull);
+  });
 }

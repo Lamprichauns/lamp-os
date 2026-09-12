@@ -31,7 +31,8 @@ source file is where the tag's format strings live.
 | `[wispcoex]` | `components/network/mesh/mesh_link.cpp` | Wisp-frame coex reception meter (`recv=.. maxgap=..ms`) |
 | `[wispdirect]` | `components/network/mesh/mesh_link.cpp` | Direct wisp-paint receive (srcMac) |
 | `[espnow]` | `components/network/transport/espnow_link.cpp` | ESP-NOW transport init / peer-add / reject-len |
-| `[wifi]` | `components/network/transport/wifi.cpp` | WiFi state machine (softAP up/failed, scan) |
+| `[wifi]` | `components/network/transport/wifi.cpp` | WiFi state machine (softAP up/failed with `auth=wpa2\|open`, scan) |
+| `[recovery]` | `core/lamp.cpp` | BOOT-hold cleared the control password (5s hold, first minute of uptime) |
 | `[roster]` | `components/network/mesh/lamp_roster.cpp` | Roster update dropped on mutex contention |
 | `[arrival]` | `core/arrival_notifier.cpp` | `onArrival` observer registry full |
 | `[social]` | `behaviors/social.cpp` | Greet decision (`greet %s mode=.. frames=..`), introvert fatigue window |
@@ -41,7 +42,7 @@ source file is where the tag's format strings live.
 | `[nvs]` | `config/config.cpp`, `core/lamp_drains.cpp` | `persistConfig` write (bytes, OOM, zero-byte) |
 | `[cfg]` | `config/config.cpp` | Config load / parse-failure (serving defaults) |
 | `[drain]` | `core/lamp_drains.cpp` | Core 0→1 drain of brightness / colors / edit-session |
-| `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed |
+| `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed, with the AP's `auth=` and boot window |
 | `[fwdist]` | `components/firmware/firmware_distributor.cpp` | Firmware OTA distribution state (disabled reasons, offer/serve) |
 | `[fsdist]` | `components/firmware/firmware_distributor.cpp` | Filesystem-image OTA distribution (disabled reasons) |
 | `[fw_receiver]` | `components/firmware/firmware_receiver.cpp` | Mesh OTA receive: OFFER accept/decline, chunk recv/drop, upfront-erase, verify, signature/digest, type-gate, set_boot_partition |

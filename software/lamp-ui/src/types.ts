@@ -9,6 +9,9 @@ export interface LampConfig {
   password?: string
   // Read-only on GET: signals whether a password is set without exposing it.
   hasPassword?: boolean
+  // Read-only on GET: whether the setup network came up WPA2-keyed with the
+  // lamp password. False means this page is reachable by any nearby client.
+  apSecured?: boolean
   // Read-only on GET: the lamp's mesh mac; the critter is derived from it.
   lampId?: string
   brightness: number
