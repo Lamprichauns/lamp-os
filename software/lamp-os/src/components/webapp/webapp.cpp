@@ -20,6 +20,7 @@
 #include "expr_catalog.h"
 #include "components/firmware/ota_quiet_mode.hpp"
 #include "components/network/ble/ble_control.hpp"
+#include "behaviors/fade_out.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "components/webapp/webapp_deadline.hpp"
 #include "config/config_types.hpp"
@@ -44,6 +45,9 @@ static AsyncWebSocket* s_ws = nullptr;
 
 static uint32_t s_deadlineMs = 0;
 static uint32_t s_rebootAtMs = 0;
+// Set only by the save path so rebootNow() fades to black first; the
+// browser-left / idle reboots stay a hard restart (no scene to fade).
+static bool s_fadeOnReboot = false;
 static bool s_apUp = false;
 static bool s_serverUp = false;
 static bool s_neverExpire = false;
@@ -199,6 +203,7 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   // 1.5s delay so the HTTP response flushes AND any lamp.name change picks up
   // on the BLE advert (set once at bluetooth.cpp:147). The constructor
   // re-parses the new blob on boot.
+  s_fadeOnReboot = true;
   s_rebootAtMs = millis() + 1500;
   req->send(200, "application/json", "{\"ok\":true}");
 }
@@ -393,6 +398,17 @@ static void stopAp() {
 }
 
 static void rebootNow() {
+  if (s_fadeOnReboot) {
+    // FadeOutBehavior draws over everything, fades to black over
+    // REBOOT_ANIMATION_FRAMES (~1.9s), then calls ESP.restart() on its last
+    // frame. Consume the flag and leave a fallback deadline: if this variant
+    // has WebApp but not FadeOutBehavior (nothing consumes the flag), the hard
+    // restart below still fires so the save always reboots.
+    lamp::fadeOutRebootRequested = true;
+    s_fadeOnReboot = false;
+    s_rebootAtMs = millis() + 4000;
+    return;
+  }
   delay(50);  // let the serial log flush before restart
   ESP.restart();
 }
