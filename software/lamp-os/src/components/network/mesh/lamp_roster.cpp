@@ -1,5 +1,7 @@
 #include "lamp_roster.hpp"
 
+#include "proximity.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -19,7 +21,7 @@ void LampRoster::debugGetterEnter() {
   if (getterTask_ != cur) {
     reason = "roster getter called from unexpected task";
   } else if (getterInUse_) {
-    reason = "re-entrant roster getter (nested getNear/getMesh/getAll)";
+    reason = "re-entrant roster getter (nested snapshotNear/getMesh/getAll)";
   }
   if (reason) {
     if (s_debugGetterViolation) {
@@ -47,12 +49,64 @@ void copyName(char (&dst)[lamp_protocol::HELLO_MAX_NAME + 1],
 uint32_t lastSeen(const RosterEntry& e) {
   return std::max(e.lastSeenNearMs, e.lastSeenMeshMs);
 }
+
+NearbyCopy toNearbyCopy(const RosterEntry& e) {
+  NearbyCopy c;
+  std::memcpy(c.name, e.name, sizeof(c.name));
+  std::memcpy(c.mac, e.mac, 6);
+  c.hasMac = e.hasMac;
+  c.baseColor = e.baseColor;
+  c.shadeColor = e.shadeColor;
+  c.lastRssi = e.lastRssi;
+  c.lastSeenNearMs = e.lastSeenNearMs;
+  c.variant = e.variant;
+  return c;
+}
+
+MeshPeer toMeshPeer(const RosterEntry& e) {
+  MeshPeer m;
+  m.firmwareVersion = e.firmwareVersion;
+  m.maxChunk = e.maxChunk;
+  std::memcpy(m.mac, e.mac, 6);
+  std::memcpy(m.otaSendingTo, e.otaSendingTo, 6);
+  std::memcpy(m.fsDigest, e.fsDigest, sizeof(m.fsDigest));
+  std::memcpy(m.fwChannel, e.fwChannel, sizeof(m.fwChannel));
+  m.otaState = e.otaState;
+  m.protocolVersion = e.protocolVersion;
+  m.hasMac = e.hasMac;
+  m.hasFsDigest = e.hasFsDigest;
+  m.needsFs = e.needsFs;
+  m.hasOtaSendingTo = e.hasOtaSendingTo;
+  m.espnowRssi = e.espnowRssi;
+  m.lastRssi = e.lastRssi;
+  return m;
+}
+
+ListedPeer toListedPeer(const RosterEntry& e) {
+  ListedPeer l;
+  std::memcpy(l.name, e.name, sizeof(l.name));
+  std::memcpy(l.fwChannel, e.fwChannel, sizeof(l.fwChannel));
+  std::memcpy(l.mac, e.mac, 6);
+  std::memcpy(l.otaSendingTo, e.otaSendingTo, 6);
+  l.baseColor = e.baseColor;
+  l.shadeColor = e.shadeColor;
+  l.lastSeenNearMs = e.lastSeenNearMs;
+  l.lastSeenMeshMs = e.lastSeenMeshMs;
+  l.firmwareVersion = e.firmwareVersion;
+  l.lastRssi = e.lastRssi;
+  l.otaState = e.otaState;
+  l.hasMac = e.hasMac;
+  l.hasOtaSendingTo = e.hasOtaSendingTo;
+  return l;
+}
 }  // namespace
 
 LampRoster lampRoster;  // global instance
 
 LampRoster::LampRoster() {
   mutex_ = xSemaphoreCreateMutex();
+  meshBuf_.reserve(kCapacity);
+  nearSnapshot_.reserve(kCapacity);
 }
 
 size_t LampRoster::findIndexLocked(const uint8_t mac[6]) const {
@@ -245,102 +299,80 @@ void LampRoster::prune(uint32_t maxAgeMs) {
   xSemaphoreGive(mutex_);
 }
 
-// Copy store_ into a reused buffer under lock, filter outside. Bounds the
+// Project store_ into a reserved buffer under lock; sort outside. Bounds the
 // critical section so ESP-NOW recv-side bounded takes don't time out on a
-// loop-task reader, and reuses the buffer so steady-state queries don't churn
-// the fragmented heap.
-std::vector<RosterEntry>& LampRoster::getNear(uint32_t maxAgeMs) {
-#ifdef LAMP_DEBUG
-  debugGetterEnter();
-#endif
-  uint32_t now = millis();
-  nearBuf_.clear();
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  nearBuf_.insert(nearBuf_.end(), store_.begin(), store_.begin() + count_);
-  xSemaphoreGive(mutex_);
-  nearBuf_.erase(
-      std::remove_if(nearBuf_.begin(), nearBuf_.end(),
-                     [&](const RosterEntry& e) {
-                       return !(e.lastSeenNearMs != 0 &&
-                                (now - e.lastSeenNearMs) <= maxAgeMs);
-                     }),
-      nearBuf_.end());
-  // Highest RSSI first: `peers.front()` gives the nearest lamp
-  // (cascade-stagger sort key). -127 sorts to the back. std::sort (in-place
-  // introsort, no merge-buffer alloc) avoids bad_alloc on the fragmented
-  // heap; the mac tiebreak gives equal-RSSI peers a deterministic order.
-  std::sort(nearBuf_.begin(), nearBuf_.end(),
-            [](const RosterEntry& a, const RosterEntry& b) {
-              if (a.lastRssi != b.lastRssi) return a.lastRssi > b.lastRssi;
-              return std::memcmp(a.mac, b.mac, 6) < 0;
-            });
-#ifdef LAMP_DEBUG
-  debugGetterExit();
-#endif
-  return nearBuf_;
-}
-
+// loop-task reader.
 const std::vector<NearbyCopy>& LampRoster::snapshotNear(uint32_t maxAgeMs) {
   uint32_t now = millis();
   if (lastSnapshotValid_ && maxAgeMs == lastSnapshotMaxAge_ &&
       (now - lastSnapshotMs_) < kSnapshotCacheMs) {
     return nearSnapshot_;
   }
-  std::vector<RosterEntry>& near = getNear(maxAgeMs);
+#ifdef LAMP_DEBUG
+  debugGetterEnter();
+#endif
   nearSnapshot_.clear();
-  for (const RosterEntry& e : near) {
-    NearbyCopy c;
-    std::memcpy(c.name, e.name, sizeof(c.name));
-    std::memcpy(c.mac, e.mac, 6);
-    c.hasMac = e.hasMac;
-    c.baseColor = e.baseColor;
-    c.shadeColor = e.shadeColor;
-    c.lastRssi = e.lastRssi;
-    c.lastSeenNearMs = e.lastSeenNearMs;
-    c.variant = e.variant;
-    nearSnapshot_.push_back(c);
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  for (size_t i = 0; i < count_; i++) {
+    if (isNearNow(store_[i].lastSeenNearMs, now, maxAgeMs)) {
+      nearSnapshot_.push_back(toNearbyCopy(store_[i]));
+    }
   }
+  xSemaphoreGive(mutex_);
+  // Highest RSSI first: front() is the nearest lamp. -127 sorts to the back.
+  // std::sort (in-place introsort, no merge-buffer alloc) avoids bad_alloc on
+  // the fragmented heap; the mac tiebreak gives equal-RSSI peers a
+  // deterministic order.
+  std::sort(nearSnapshot_.begin(), nearSnapshot_.end(),
+            [](const NearbyCopy& a, const NearbyCopy& b) {
+              if (a.lastRssi != b.lastRssi) return a.lastRssi > b.lastRssi;
+              return std::memcmp(a.mac, b.mac, 6) < 0;
+            });
   lastSnapshotMs_ = now;
   lastSnapshotMaxAge_ = maxAgeMs;
   lastSnapshotValid_ = true;
+#ifdef LAMP_DEBUG
+  debugGetterExit();
+#endif
   return nearSnapshot_;
 }
 
-std::vector<RosterEntry>& LampRoster::getMesh(uint32_t maxAgeMs) {
+std::vector<MeshPeer>& LampRoster::getMesh(uint32_t maxAgeMs) {
 #ifdef LAMP_DEBUG
   debugGetterEnter();
 #endif
   uint32_t now = millis();
   meshBuf_.clear();
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  meshBuf_.insert(meshBuf_.end(), store_.begin(), store_.begin() + count_);
+  for (size_t i = 0; i < count_; i++) {
+    const RosterEntry& e = store_[i];
+    if (e.lastSeenMeshMs != 0 && (now - e.lastSeenMeshMs) <= maxAgeMs) {
+      meshBuf_.push_back(toMeshPeer(e));
+    }
+  }
   xSemaphoreGive(mutex_);
-  meshBuf_.erase(
-      std::remove_if(meshBuf_.begin(), meshBuf_.end(),
-                     [&](const RosterEntry& e) {
-                       return !(e.lastSeenMeshMs != 0 &&
-                                (now - e.lastSeenMeshMs) <= maxAgeMs);
-                     }),
-      meshBuf_.end());
 #ifdef LAMP_DEBUG
   debugGetterExit();
 #endif
   return meshBuf_;
 }
 
-std::vector<RosterEntry>& LampRoster::getAll() {
+std::vector<ListedPeer>& LampRoster::getAll() {
+  allBuf_.reserve(kCapacity);
 #ifdef LAMP_DEBUG
   debugGetterEnter();
 #endif
   allBuf_.clear();
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  allBuf_.insert(allBuf_.end(), store_.begin(), store_.begin() + count_);
+  for (size_t i = 0; i < count_; i++) allBuf_.push_back(toListedPeer(store_[i]));
   xSemaphoreGive(mutex_);
 #ifdef LAMP_DEBUG
   debugGetterExit();
 #endif
   return allBuf_;
 }
+
+void LampRoster::releaseAll() { std::vector<ListedPeer>().swap(allBuf_); }
 
 bool LampRoster::findByMac(const uint8_t mac[6], RosterEntry& out) {
   if (mac == nullptr) return false;

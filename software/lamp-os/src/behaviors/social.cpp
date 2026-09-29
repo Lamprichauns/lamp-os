@@ -221,7 +221,7 @@ void SocialBehavior::control() {
        static_cast<int32_t>(now - lastOtaScanMs_) >=
            static_cast<int32_t>(kOtaScanIntervalMs))) {
     lastOtaScanMs_ = now;
-    const std::vector<RosterEntry>& espNowPeers =
+    const std::vector<MeshPeer>& espNowPeers =
         lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
     bool peerHigherSeen = false;
     for (const auto& p : espNowPeers) {

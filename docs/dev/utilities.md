@@ -118,9 +118,9 @@ reactions, prefer `PersonalityEngine` (see
 [`personality-signals.md`](personality-signals.md)).
 
 ```cpp
-std::vector<RosterEntry> getNear(uint32_t maxAgeMs);  // BLE-seen, sorted by RSSI (nearest first)
-std::vector<RosterEntry> getMesh(uint32_t maxAgeMs);  // ESP-NOW-seen
-std::vector<RosterEntry> getAll();
+const std::vector<NearbyCopy>& snapshotNear(uint32_t maxAgeMs);  // near, sorted by RSSI (nearest first)
+std::vector<MeshPeer>& getMesh(uint32_t maxAgeMs);  // ESP-NOW-seen, OTA/cascade fields only
+std::vector<ListedPeer>& getAll();  // nearby-JSON fields only; held until releaseAll()
 bool findByMac(const uint8_t mac[6], RosterEntry& out);
 // Nearest un-greeted arrival passing `accept`; in-place scan, no snapshot/sort.
 template <typename Accept>
@@ -130,7 +130,7 @@ bool bestUngreetedArrival(uint32_t maxAgeMs, uint32_t now, Accept accept, Roster
 Prefer the `forEach*` visitors over the snapshot getters for hot-path / arrival
 work — they keep `RosterEntry` copies off the small heap.
 
-`RosterEntry` is a trivially-copyable POD (~104 B) held in a fixed
+`RosterEntry` is a trivially-copyable POD (108 B) held in a fixed
 static array of `kCapacity` (50); snapshots never allocate per entry.
 **Identity keys on `mac`** (the stable social identity used by the roster,
 disposition store, and greeting dedup); `name` is a stored display field

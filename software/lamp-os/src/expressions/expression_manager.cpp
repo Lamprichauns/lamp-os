@@ -145,19 +145,19 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   inv.target = static_cast<uint8_t>(entry.expression->getTarget());
   inv.parameters = parametersWithoutCascadeKeys(entry.config.parameters);
 
-  const auto& peers = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
+  std::vector<MeshPeer>& targets = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
   uint8_t myMac[6];
   meshLink_->getMyMac(myMac);
-  std::vector<RosterEntry> targets;
-  targets.reserve(peers.size());
-  for (const auto& p : peers) {
-    if (!p.hasMac) continue;
-    if (std::memcmp(p.mac, myMac, 6) == 0) continue;
-    if (excludeMac && std::memcmp(p.mac, excludeMac, 6) == 0) continue;
-    targets.push_back(p);
-  }
+  targets.erase(std::remove_if(targets.begin(), targets.end(),
+                               [&](const MeshPeer& p) {
+                                 return !p.hasMac ||
+                                        std::memcmp(p.mac, myMac, 6) == 0 ||
+                                        (excludeMac &&
+                                         std::memcmp(p.mac, excludeMac, 6) == 0);
+                               }),
+                targets.end());
   std::sort(targets.begin(), targets.end(),
-            [](const RosterEntry& a, const RosterEntry& b) {
+            [](const MeshPeer& a, const MeshPeer& b) {
               return a.lastRssi > b.lastRssi;
             });
 

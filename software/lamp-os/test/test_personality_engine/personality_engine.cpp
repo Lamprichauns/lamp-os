@@ -41,7 +41,7 @@ struct Color {
   }
 };
 
-struct RosterEntry {
+struct NearbyCopy {
   std::string name;
   std::string lampId;
   Color baseColor;
@@ -111,7 +111,7 @@ class PersonalityEngine {
     if (config_) lastSocialMode_ = config_->socialMode;
   }
 
-  void setNearbyOverride(std::vector<RosterEntry> peers) {
+  void setNearbyOverride(std::vector<NearbyCopy> peers) {
     nearbyOverride_ = std::move(peers);
   }
 
@@ -284,7 +284,7 @@ class PersonalityEngine {
       default: return 1.0f;
     }
   }
-  float computeWeightedCount_(const std::vector<RosterEntry>& peers,
+  float computeWeightedCount_(const std::vector<NearbyCopy>& peers,
                               SocialMode mode) const {
     if (!config_) return 0.0f;
     float w = 0.0f;
@@ -307,7 +307,7 @@ class PersonalityEngine {
     return f;
   }
   void sampleAndSmoothCrowd_(uint32_t /*nowMs*/,
-                             const std::vector<RosterEntry>& peers) {
+                             const std::vector<NearbyCopy>& peers) {
     const SocialMode mode = config_->socialMode;
     const float rawW = computeWeightedCount_(peers, mode);
     sampleBuf_[sampleHead_] = rawW;
@@ -341,7 +341,7 @@ class PersonalityEngine {
   }
 
   FakeConfig* config_ = nullptr;
-  std::vector<RosterEntry> nearbyOverride_;
+  std::vector<NearbyCopy> nearbyOverride_;
   int snapshotCount_ = 0;
   uint32_t lastSampleMs_ = 0;
   float sampleBuf_[kSampleWindow] = {0};
@@ -371,12 +371,12 @@ static std::string lampIdFor(const std::string& s) {
   return std::string(buf);
 }
 
-static std::vector<RosterEntry> peers(size_t n, uint8_t dispositionToSet,
+static std::vector<NearbyCopy> peers(size_t n, uint8_t dispositionToSet,
                                      FakeConfig& cfg, const char* prefix = "p") {
-  std::vector<RosterEntry> v;
+  std::vector<NearbyCopy> v;
   v.reserve(n);
   for (size_t i = 0; i < n; ++i) {
-    RosterEntry lamp;
+    NearbyCopy lamp;
     lamp.name = std::string(prefix) + std::to_string(i);
     lamp.lampId = lampIdFor(lamp.name);
     v.push_back(lamp);
@@ -396,7 +396,7 @@ static void runSampleTicks(PersonalityEngine& eng, size_t n) {
 
 // Settle the smoother fully against a held nearby list. Returns the
 // final committed dim factor.
-static float settleAt(PersonalityEngine& eng, const std::vector<RosterEntry>& nearby) {
+static float settleAt(PersonalityEngine& eng, const std::vector<NearbyCopy>& nearby) {
   eng.setNearbyOverride(nearby);
   runSampleTicks(eng, 40);  // way more than needed; EMA τ ≈ 6s = 6 ticks
   return eng.currentDimFactor();
@@ -461,9 +461,9 @@ void test_crowd_weight_mixed() {
   resetEngine(eng, cfg);
   // 1 Salty (2.0) + 2 Wary (3.0) + 1 Neutral (1.0) + 1 Fond (0.5) + 1 Smitten (0.0)
   //   = 6.5 weighted (Introvert table)
-  std::vector<RosterEntry> mix;
+  std::vector<NearbyCopy> mix;
   auto add = [&](const std::string& n, uint8_t d) {
-    RosterEntry lamp;
+    NearbyCopy lamp;
     lamp.name = n;
     lamp.lampId = lampIdFor(n);
     lamp.lastRssi = -50;
@@ -895,9 +895,9 @@ void test_crowd_composition_counts_by_disposition() {
   PersonalityEngine eng;
   resetEngine(eng, cfg);
 
-  std::vector<RosterEntry> mix;
+  std::vector<NearbyCopy> mix;
   auto add = [&](const std::string& n, uint8_t d) {
-    RosterEntry lamp;
+    NearbyCopy lamp;
     lamp.name = n;
     lamp.lampId = lampIdFor(n);
     lamp.lastRssi = -50;
@@ -937,7 +937,7 @@ void test_crowd_composition_unknown_peer_counts_as_neutral() {
   resetEngine(eng, cfg);
 
   // Peer in snapshot but absent from dispositions map → unknown → Neutral.
-  RosterEntry p;
+  NearbyCopy p;
   p.name = "stranger";
   p.lampId = lampIdFor("stranger");
   p.lastRssi = -50;

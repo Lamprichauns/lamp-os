@@ -115,7 +115,7 @@ void test_rearms_on_near_window_edge_not_prune() {
 
   // Age past the near window without ever pruning: the entry is still there.
   const uint32_t departed = 100000 + nearWindow + 5000;
-  set_mock_millis(departed);  // getNear reads millis() internally; keep it in step
+  set_mock_millis(departed);  // snapshotNear reads millis() internally; keep it in step
   n.tick(departed, roster, nearWindow);
   TEST_ASSERT_EQUAL_INT(1, sink.fires);        // no re-fire on departure
   TEST_ASSERT_EQUAL_size_t(0, n.firedCount());  // re-armed

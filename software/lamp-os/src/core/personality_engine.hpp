@@ -103,11 +103,11 @@ class PersonalityEngine {
   static constexpr uint8_t kDeadbandLevels = 2;  // ≥ 2/100 change to commit
 
   // Available in both LAMP_TEST and LAMP_DEBUG builds. Replaces the live
-  // lampRoster.getNear() snapshot used by the engine, letting
+  // lampRoster.snapshotNear() view used by the engine, letting
   // the developer simulate a crowd from one lamp + the Flutter app's
   // test-action button. Pass {} to drop back to live data.
 #if defined(LAMP_TEST) || defined(LAMP_DEBUG)
-  void setNearbyOverride(std::vector<RosterEntry> peers);
+  void setNearbyOverride(std::vector<NearbyCopy> peers);
   void clearNearbyOverride();
 #endif
 
@@ -121,7 +121,7 @@ class PersonalityEngine {
 
   // Σ weight(disposition(peer), mode) over `peers`. Self-MAC filtering is
   // the caller's responsibility (lampRoster doesn't include self anyway).
-  float computeWeightedCount_(const std::vector<RosterEntry>& peers,
+  float computeWeightedCount_(const std::vector<NearbyCopy>& peers,
                               SocialMode mode) const;
 
   // factor = max(floor, 1 - (1-floor) * log10(1+W) / log10(1+kCurveScaleW))
@@ -135,11 +135,11 @@ class PersonalityEngine {
   // computes W, runs the rolling-median + EMA smoother, applies the
   // deadband, and updates crowdDimFactor_/lastCommittedLevel_ if needed.
   void sampleAndSmoothCrowd_(uint32_t nowMs,
-                              const std::vector<RosterEntry>& peers);
+                              const std::vector<NearbyCopy>& peers);
 
   // Get the current BLE-reachable snapshot (or the test override). Pure
   // read; called only at the sample cadence to refresh blePeerCache_.
-  const std::vector<RosterEntry>& snapshotBlePeers_() const;
+  const std::vector<NearbyCopy>& snapshotBlePeers_() const;
 
   Config* config_ = nullptr;
 
@@ -164,7 +164,7 @@ class PersonalityEngine {
   SocialMode lastSocialMode_ = SocialMode::Ambivert;
 
 #if defined(LAMP_TEST) || defined(LAMP_DEBUG)
-  std::vector<RosterEntry> nearbyOverride_;
+  std::vector<NearbyCopy> nearbyOverride_;
   bool nearbyOverrideActive_ = false;
 #endif
 };

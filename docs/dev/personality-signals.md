@@ -126,7 +126,7 @@ disposition the same way the rest of the fleet does.
 ## What's NOT exposed (and why)
 
 - **Per-peer raw RSSI**, already on `LampRoster` directly. Iterate
-  `lampRoster.getNear(...)` if you need distance.
+  `lampRoster.snapshotNear(...)` if you need distance.
 - **The smoothing state buffer** (`sampleBuf_`, `sampleHead_`,
   `emaSeeded_`), internal to the smoother. Leaking it would freeze
   the smoother's internals as an external contract; don't want that.

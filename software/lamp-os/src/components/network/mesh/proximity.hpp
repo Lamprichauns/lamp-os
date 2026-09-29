@@ -15,7 +15,7 @@ inline bool isNearRssi(int8_t rssi, int8_t threshold) {
   return rssi != -127 && rssi >= threshold;
 }
 
-// Must return the same boolean LampRoster::getNear computes; a divergence
+// Must return the same boolean LampRoster::snapshotNear filters on; a divergence
 // would split what BLE reports as near from what roster filtering treats
 // as near.
 inline bool isNearNow(uint32_t lastSeenNearMs, uint32_t nowMs, uint32_t maxAgeMs) {

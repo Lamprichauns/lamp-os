@@ -481,15 +481,14 @@ static void logNearbyHeapSkip(uint32_t largest, uint32_t needed, uint32_t lamps)
 
 static constexpr uint32_t kNearbyHeapMargin = 1024;
 
-// Builds into `out`, reused in place (cleared, capacity retained) so a
-// steady-state rebuild never allocates once the buffer has grown to the
-// fleet's high-water size.
+// Builds a fresh string into `out`, reserved to the worst-case size of `lamps`
+// so the build never reallocates mid-string.
 static void buildNearbyJson(uint32_t& membershipHashOut,
-                            std::vector<lamp::RosterEntry>& lamps,
+                            std::vector<lamp::ListedPeer>& lamps,
                             std::string& out) {
   // Sort by name for stable rendering.
   std::sort(lamps.begin(), lamps.end(),
-            [](const lamp::RosterEntry& a, const lamp::RosterEntry& b) {
+            [](const lamp::ListedPeer& a, const lamp::ListedPeer& b) {
               return std::strcmp(a.name, b.name) < 0;
             });
   out.clear();
@@ -604,12 +603,12 @@ void copyNearbyJson(std::string& out) {
 // Keep the kNearbyMaxLamps most-relevant entries at the front of `lamps` and
 // drop the rest: near peers before mesh-only, then most-recently-seen, then
 // strongest RSSI. buildNearbyJson re-sorts the survivors by name.
-static void capNearby(std::vector<lamp::RosterEntry>& lamps, uint32_t now) {
+static void capNearby(std::vector<lamp::ListedPeer>& lamps, uint32_t now) {
   if (lamps.size() <= kNearbyMaxLamps) return;
   std::partial_sort(lamps.begin(), lamps.begin() + kNearbyMaxLamps,
                     lamps.end(),
-                    [now](const lamp::RosterEntry& a,
-                          const lamp::RosterEntry& b) {
+                    [now](const lamp::ListedPeer& a,
+                          const lamp::ListedPeer& b) {
                       return lamp::nearbyMoreRelevant(a, b, now,
                                                       LAMP_PRUNE_TIME_MS);
                     });
@@ -640,6 +639,7 @@ static void maintainNearbyJson() {
       s_nearbyReady = false;
     }
     xSemaphoreGive(nearbyCacheMutex());
+    lamp::lampRoster.releaseAll();
     builtGen    = 0;
     lastBuildMs = 0;
     seeded      = false;
@@ -651,7 +651,15 @@ static void maintainNearbyJson() {
   const uint32_t now = millis();
   if (s_nearbyReady && now - lastBuildMs < 1000) return;
 
-  auto& lamps = lamp::lampRoster.getAll();
+  std::vector<lamp::ListedPeer>* all = nullptr;
+  try {
+    all = &lamp::lampRoster.getAll();
+  } catch (const std::bad_alloc&) {
+    logBleSectionOom("nearby roster");
+    lastBuildMs = now;
+    return;
+  }
+  auto& lamps = *all;
   capNearby(lamps, now);
   uint32_t needed = 2;
   for (auto& e : lamps) needed += 240 + 6 * std::strlen(e.name);

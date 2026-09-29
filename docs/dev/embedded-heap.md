@@ -67,25 +67,34 @@ Two properties make it lethal:
    served by reference, so it never builds on the host task at all; match one or
    the other.
 7. **Prefer a shared roster view over a new snapshot.** "Who's around" gets asked
-   from many features, so a single allocation-free roster iterator earns its keep.
-   Do not let the next feature roll its own vector-of-strings copy. The shared
-   `getNear`/`getMesh`/`getAll` buffers are the mechanism: each returns a
-   reference to a reused member vector, refilled in place, so a steady-state
-   query never allocates. That reuse makes them **single-task and non-reentrant** —
-   loop task (Core 1) only, and the reference is invalidated by the next getter
-   call. `LAMP_DEBUG` asserts both (unexpected task, re-entrant fill). A path that
-   hands each peer to a **user callback** must not iterate a getter reference
-   across the callbacks: a callback that re-enters that same getter refills the
-   buffer mid-iteration. Take the near set via `snapshotNear` first, then iterate
-   its reference: it projects into a **distinct** reused member buffer
-   (`nearSnapshot_`, `NearbyCopy` up to the 50-entry `kCapacity`, alloc-free once
-   warmed), so a callback re-entering `getNear`/`getMesh`/`getAll` fills a
-   different buffer and cannot invalidate the walk. The one uncovered case is a
-   nested `snapshotNear` (no near-walk nests today); `LAMP_DEBUG` catches an
-   off-task caller of it. `snapshotNear` also caches: repeated calls with the
-   same `maxAgeMs` within `kSnapshotCacheMs` (1 s) return the existing copy
-   without re-locking or sorting, so a behavior calls it per frame and does not
-   roll its own throttle. A different `maxAgeMs` rebuilds.
+   from many features, so a single shared roster view earns its keep. Do not let
+   the next feature roll its own vector-of-strings copy. The shared views are
+   `snapshotNear`, `getMesh`, and `getAll`. Each copies the matching entries
+   under the roster mutex into a member vector of a slim, trivially copyable
+   projection holding only the fields its callers read (`NearbyCopy`,
+   `MeshPeer`, `ListedPeer`, a fraction of `RosterEntry`'s size), then filters
+   or sorts outside the lock, which keeps the critical section short enough for
+   the ESP-NOW receive path's bounded takes. The near and mesh buffers are
+   `reserve()`d to `kCapacity` (50) when the roster is constructed at boot, so
+   a growing roster never reallocates them. The `getAll` buffer serves only the
+   app-facing nearby list: it is reserved to `kCapacity` in one allocation on
+   the first build after an app or webapp client connects and released when the
+   last one disconnects, and the build skips (logging OOM) if that reservation
+   throws. A new roster consumer reads one of these views, adding a field to its
+   projection if needed, and never takes a full `RosterEntry` copy per peer.
+
+   The buffers are **single-task and non-reentrant**: loop task (Core 1) only,
+   and a reference is invalidated by the next call to the same getter.
+   `LAMP_DEBUG` asserts both (unexpected task, re-entrant fill). A path that
+   hands each peer to a **user callback** walks the `snapshotNear` reference: a
+   callback re-entering `getMesh`/`getAll` fills a different buffer and cannot
+   invalidate the walk. The one uncovered case is a nested `snapshotNear` that
+   rebuilds (a `forEachNearby` or `crowd()` inside a near-walk callback) and
+   overwrites the buffer mid-walk; no near-walk nests today. `snapshotNear` also
+   caches: repeated calls with the same `maxAgeMs` within `kSnapshotCacheMs`
+   (1 s) return the existing copy without re-locking or sorting, so a behavior
+   calls it per frame and does not roll its own throttle. A different
+   `maxAgeMs` rebuilds.
 
 ## Reading a crash record
 

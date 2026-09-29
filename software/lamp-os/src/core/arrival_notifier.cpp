@@ -44,7 +44,7 @@ void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWind
   bool present[kMaxFired] = {};
 
   // Snapshot before firing: an observer is arbitrary user code that may
-  // re-enter getNear/getMesh/getAll, which fills a distinct buffer, so this
+  // re-enter getMesh/getAll, which fills a distinct buffer, so this
   // snapshot stays valid across the fire loop.
   const std::vector<NearbyCopy>& near = roster.snapshotNear(nearWindowMs);
   for (const NearbyCopy& e : near) {

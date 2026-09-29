@@ -35,18 +35,21 @@ int8_t lastRssiByName(LampRoster& r, const std::string& name) {
   return -127;
 }
 
-int8_t espnowRssiByName(LampRoster& r, const std::string& name) {
+// Full entry for `name`; getAll carries only the app-list fields.
+RosterEntry entryByName(LampRoster& r, const std::string& name) {
+  RosterEntry out;
   for (const auto& e : r.getAll()) {
-    if (name == e.name) return e.espnowRssi;
+    if (name == e.name && e.hasMac) r.findByMac(e.mac, out);
   }
-  return -127;
+  return out;
+}
+
+int8_t espnowRssiByName(LampRoster& r, const std::string& name) {
+  return entryByName(r, name).espnowRssi;
 }
 
 std::string macStrByName(LampRoster& r, const std::string& name) {
-  for (const auto& e : r.getAll()) {
-    if (name == e.name) return e.macStr();
-  }
-  return {};
+  return entryByName(r, name).macStr();
 }
 
 bool hasUngreetedArrival(LampRoster& r, uint32_t maxAgeMs = 240000) {

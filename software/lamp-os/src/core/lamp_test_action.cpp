@@ -239,10 +239,10 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   //   ]}
   // Pair with {"a":"clear_nearby"} to drop back to live data.
   else if (action == "inject_nearby") {
-    std::vector<lamp::RosterEntry> peers;
+    std::vector<lamp::NearbyCopy> peers;
     JsonArray arr = doc["peers"];
     for (JsonVariant v : arr) {
-      lamp::RosterEntry p;
+      lamp::NearbyCopy p;
       snprintf(p.name, sizeof(p.name), "%s", v["name"] | "");
       if (p.name[0] == '\0') continue;
       const String baseHex = String(v["baseColor"] | "#FFFFFFFF");
