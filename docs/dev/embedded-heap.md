@@ -87,6 +87,35 @@ Two properties make it lethal:
    without re-locking or sorting, so a behavior calls it per frame and does not
    roll its own throttle. A different `maxAgeMs` rebuilds.
 
+## Reading a crash record
+
+Every build, released ones included, keeps a crash record (`core/crash_record`).
+The loop samples the running minimum largest block, minimum free heap, roster
+peak, and uptime into RTC memory at 1 Hz; the panic handler adds the reason, pc,
+first four backtrace addresses, and core. RTC memory survives a panic or
+watchdog reset but not power loss, so a magic value gates it. On the next boot a
+panic, int/task/other watchdog, or brownout reset (or a captured panic under any
+reset) bumps a counter and writes the record to NVS (namespace `crash`, key
+`last`). A clean `esp_restart` (OTA, webapp reboot) and power-on do not count.
+
+Read it from the BLE `lamp` section:
+
+```json
+"resetReason": 4,
+"lastCrash": {"count": 3, "reset": 4, "fw": 66055,
+  "uptimeMs": 5412000, "minLargestBlock": 1300, "minFreeHeap": 5120,
+  "rosterPeak": 12, "reason": "abort() was called", "core": 0,
+  "pc": "0x4008a1b2", "bt": ["0x4008a1b2", "0x400d3c44", "0x400e0123"]}
+```
+
+`reset` and `resetReason` are `esp_reset_reason_t` ordinals (4 panic, 5 int WDT,
+6 task WDT, 7 other WDT, 9 brownout, 3 clean restart, 1 power-on). The heap and
+roster fields are absent when RTC memory failed its check (a brownout often
+does); `reason`/`core`/`pc`/`bt` are absent unless the panic handler ran.
+`minLargestBlock` near 1-2 KB with a high `rosterPeak` points at fragmentation.
+Feed `pc` and `bt` to `xtensa-esp32-elf-addr2line -e firmware.elf` for the build
+matching `fw` (packed `major<<16 | minor<<8 | patch`).
+
 ## Why it recurs
 
 The features that make the fleet feel alive constantly re-answer "who's near me,"

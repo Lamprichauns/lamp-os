@@ -383,4 +383,11 @@ uint32_t LampRoster::generation() {
   return g;
 }
 
+size_t LampRoster::size() {
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  size_t n = count_;
+  xSemaphoreGive(mutex_);
+  return n;
+}
+
 }  // namespace lamp

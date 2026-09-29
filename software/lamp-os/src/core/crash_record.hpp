@@ -1,0 +1,58 @@
+#pragma once
+
+#include <esp_system.h>
+
+#include <cstddef>
+#include <cstdint>
+
+// Crash forensics that survive into released builds. See
+// docs/dev/embedded-heap.md "Reading a crash record".
+namespace lamp::crash_record {
+
+constexpr size_t kReasonLen = 32;
+constexpr size_t kBacktraceLen = 4;
+
+// Last-known state of the running boot, held in RTC memory across a reset.
+struct Snapshot {
+  char reason[kReasonLen];
+  uint32_t pc;
+  uint32_t backtrace[kBacktraceLen];
+  uint32_t uptimeMs;
+  uint32_t minLargestBlock;
+  uint32_t minFreeHeap;
+  uint16_t rosterPeak;
+  int8_t core;  // -1 until the panic handler fills reason/pc/backtrace
+  uint8_t panicked;
+};
+
+// Persisted to NVS as a raw blob; a size mismatch on load reads as no record.
+struct Record {
+  uint32_t count;
+  uint32_t fwVersion;
+  uint8_t resetReason;
+  uint8_t snapshotValid;
+  Snapshot snap;
+};
+
+bool isCrashReset(esp_reset_reason_t reason);
+
+// Folds this boot into the stored record. `rtc` is null when the RTC state
+// failed its magic check. Returns true when `rec` changed and must be written.
+bool foldBoot(Record& rec, esp_reset_reason_t reason, const Snapshot* rtc,
+              uint32_t fwVersion);
+
+// Call once, first thing in setup and before the panic handler is registered:
+// persists a crash left by the previous boot, then re-arms the RTC state.
+void boot(uint32_t fwVersion);
+
+// Loop task, every iteration; self-throttles to 1 Hz. Allocation-free.
+void tick(uint32_t nowMs, size_t rosterCount);
+
+// Panic context only: plain stores, no heap, no NVS.
+void capturePanic(const char* reason, const void* pc,
+                  const unsigned int* backtrace, unsigned int backtraceLen,
+                  int core);
+
+const Record& last();
+
+}  // namespace lamp::crash_record

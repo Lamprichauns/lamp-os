@@ -242,6 +242,8 @@ class LampRoster {
   // for the nearby-JSON cache rebuild in ble_control::tick().
   uint32_t generation();
 
+  size_t size();
+
 #ifdef LAMP_DEBUG
   // The shared getter buffers are non-reentrant and read outside the mutex, so
   // their safety rests on "one loop task, no nested getter call." These catch a
