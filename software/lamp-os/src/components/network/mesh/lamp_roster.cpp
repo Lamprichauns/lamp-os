@@ -358,13 +358,22 @@ std::vector<MeshPeer>& LampRoster::getMesh(uint32_t maxAgeMs) {
 }
 
 std::vector<ListedPeer>& LampRoster::getAll() {
-  allBuf_.reserve(kCapacity);
+  try {
+    allBuf_.reserve(kCapacity);
+  } catch (const std::bad_alloc&) {
+    allBuf_.reserve(size());
+  }
 #ifdef LAMP_DEBUG
   debugGetterEnter();
 #endif
   allBuf_.clear();
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  for (size_t i = 0; i < count_; i++) allBuf_.push_back(toListedPeer(store_[i]));
+  // Capped at capacity so push_back never reallocates (and throws) under the
+  // mutex; a peer added since the fallback reserve bumps generation and shows
+  // on the next rebuild.
+  for (size_t i = 0; i < count_ && allBuf_.size() < allBuf_.capacity(); i++) {
+    allBuf_.push_back(toListedPeer(store_[i]));
+  }
   xSemaphoreGive(mutex_);
 #ifdef LAMP_DEBUG
   debugGetterExit();

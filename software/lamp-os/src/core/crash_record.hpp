@@ -41,12 +41,13 @@ bool isCrashReset(esp_reset_reason_t reason);
 bool foldBoot(Record& rec, esp_reset_reason_t reason, const Snapshot* rtc,
               uint32_t fwVersion);
 
-// Call once, first thing in setup and before the panic handler is registered:
+// Call once, early in setup and before the panic handler is registered:
 // persists a crash left by the previous boot, then re-arms the RTC state.
 void boot(uint32_t fwVersion);
 
-// Loop task, every iteration; self-throttles to 1 Hz. Allocation-free.
-void tick(uint32_t nowMs, size_t rosterCount);
+// Loop task, every iteration; self-throttles to 1 Hz and calls rosterCount
+// only when it samples. Allocation-free.
+void tick(uint32_t nowMs, size_t (*rosterCount)());
 
 // Panic context only: plain stores, no heap, no NVS.
 void capturePanic(const char* reason, const void* pc,

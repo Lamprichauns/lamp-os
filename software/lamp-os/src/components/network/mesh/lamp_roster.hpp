@@ -268,9 +268,10 @@ class LampRoster {
 
   // Every roster entry, for the app-facing nearby list. The buffer is reserved
   // to kCapacity in one allocation on first use and held until releaseAll, so
-  // it is resident only while an app/webapp client is connected. Throws
-  // std::bad_alloc if that reservation fails. Same task/reentrancy contract
-  // as getMesh.
+  // it is resident only while an app/webapp client is connected. On a heap too
+  // fragmented for that it reserves just the current count instead, and throws
+  // std::bad_alloc only if that fails too. Same task/reentrancy contract as
+  // getMesh.
   std::vector<ListedPeer>& getAll();
   void releaseAll();
 

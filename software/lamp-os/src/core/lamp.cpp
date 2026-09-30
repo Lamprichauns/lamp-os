@@ -1009,7 +1009,7 @@ void lamp::Lamp::tick() {
     }
   }
 #endif
-  crash_record::tick(millis(), lampRoster.size());
+  crash_record::tick(millis(), [] { return lampRoster.size(); });
 
   // Drain pending BLE actions on the loop task (Core 1). All heap allocation
   // (JsonDocument parse, std::vector, gradient construction) happens here,

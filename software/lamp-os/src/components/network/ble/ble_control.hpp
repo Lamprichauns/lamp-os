@@ -137,6 +137,8 @@ void disableBtModemSleep();
 
 void start(lamp::Config* config);
 
+// Loop task only: also frees the nearby-JSON cache and roster buffer, which
+// tick() stops maintaining once the service is down.
 void stop();
 bool isRunning();
 

@@ -85,11 +85,11 @@ void boot(uint32_t fwVersion) {
   sample(0, 0);
 }
 
-void tick(uint32_t nowMs, size_t rosterCount) {
+void tick(uint32_t nowMs, size_t (*rosterCount)()) {
   static uint32_t s_nextMs = 0;
   if (static_cast<int32_t>(nowMs - s_nextMs) < 0) return;
   s_nextMs = nowMs + kSampleIntervalMs;
-  sample(nowMs, rosterCount);
+  sample(nowMs, rosterCount());
 }
 
 void capturePanic(const char* reason, const void* pc,

@@ -615,6 +615,16 @@ static void capNearby(std::vector<lamp::ListedPeer>& lamps, uint32_t now) {
   lamps.resize(kNearbyMaxLamps);
 }
 
+static void releaseNearby() {
+  xSemaphoreTake(nearbyCacheMutex(), portMAX_DELAY);
+  if (s_nearbyReady) {
+    std::string("[]").swap(s_nearbyJson);  // SSO, reclaims the build heap
+    s_nearbyReady = false;
+  }
+  xSemaphoreGive(nearbyCacheMutex());
+  lamp::lampRoster.releaseAll();
+}
+
 // Core 1 only (tick). Materializes the nearby JSON while an app/webapp client
 // is connected, rebuilding when the roster changes (throttled to 1 Hz;
 // BLE advs freshen lastSeen at ~30 Hz per peer). Frees the buffer the moment
@@ -633,13 +643,7 @@ static void maintainNearbyJson() {
   wanted = wanted || webapp::hasClient();
 #endif
   if (!wanted) {
-    xSemaphoreTake(nearbyCacheMutex(), portMAX_DELAY);
-    if (s_nearbyReady) {
-      std::string("[]").swap(s_nearbyJson);  // SSO, reclaims the build heap
-      s_nearbyReady = false;
-    }
-    xSemaphoreGive(nearbyCacheMutex());
-    lamp::lampRoster.releaseAll();
+    releaseNearby();
     builtGen    = 0;
     lastBuildMs = 0;
     seeded      = false;
@@ -649,7 +653,9 @@ static void maintainNearbyJson() {
   const uint32_t gen = lamp::lampRoster.generation();
   if (gen == builtGen && s_nearbyReady) return;
   const uint32_t now = millis();
-  if (s_nearbyReady && now - lastBuildMs < 1000) return;
+  // lastBuildMs is 0 only before the first attempt since connect; after a
+  // failed attempt it holds the retry to the same 1 Hz.
+  if (lastBuildMs != 0 && now - lastBuildMs < 1000) return;
 
   std::vector<lamp::ListedPeer>* all = nullptr;
   try {
@@ -1429,6 +1435,7 @@ void stop() {
   s_server  = nullptr;
   s_running = false;
   clearAllSlots();
+  releaseNearby();
 
 #ifdef LAMP_DEBUG
   Serial.printf("[ble_control] GATT control service stopped\n");
