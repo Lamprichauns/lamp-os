@@ -66,6 +66,7 @@
 #include "core/pending_json_slot.hpp"
 #include "core/pending_typed_slot.hpp"
 #include "core/pending_slot_aggregate.hpp"
+#include "core/wisp_broadcast_peek.hpp"
 #include "core/override_aggregate.hpp"
 #include "util/bd_addr.hpp"
 #include "util/color.hpp"
@@ -805,8 +806,18 @@ void lamp::Lamp::setup() {
   // arriving in the gap is dropped because controlOpHandler_ is null.
   meshLink.setControlOpHandler(
       [](const uint8_t* payload, size_t len, const uint8_t srcMac[6]) {
-        lamp::pendingSlots.inboundOp.post(
-            pendingMux, reinterpret_cast<const char*>(payload), len, srcMac);
+        const char* json = reinterpret_cast<const char*>(payload);
+        switch (lamp::peekWispBroadcast(payload, len)) {
+          case lamp::WispBroadcast::Status:
+            lamp::pendingSlots.wispStatus.post(pendingMux, json, len, srcMac);
+            return;
+          case lamp::WispBroadcast::Config:
+            lamp::pendingSlots.wispConfig.post(pendingMux, json, len, srcMac);
+            return;
+          case lamp::WispBroadcast::None:
+            break;
+        }
+        lamp::pendingSlots.inboundOp.post(pendingMux, json, len, srcMac);
       });
   // Install the OTA receiver BEFORE meshLink.begin() so the chunk
   // fast-path is wired by the time MSG_FW_* frames start arriving.
@@ -1077,6 +1088,7 @@ void lamp::Lamp::tick() {
   drainWispState();
   drainWispOp();
   drainWispStatus();
+  drainWispConfig();
   drainCommand();
   drainColorQuery();
   drainColorInfo();

@@ -65,7 +65,9 @@ Two properties make it lethal:
    cache and let the mux cover only the pointer swap. Every section payload works
    this way except `exprcat`, which is generated into `.rodata` at build time and
    served by reference, so it never builds on the host task at all; match one or
-   the other.
+   the other. `wispstatus` is the standing exception: it builds its merge (well
+   under 1 KB) on the host task, the same build the direct `CHAR_WISP_STATUS`
+   read has always run there.
 7. **Prefer a shared roster view over a new snapshot.** "Who's around" gets asked
    from many features, so a single shared roster view earns its keep. Do not let
    the next feature roll its own vector-of-strings copy. The shared views are

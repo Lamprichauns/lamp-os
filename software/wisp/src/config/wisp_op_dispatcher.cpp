@@ -71,11 +71,11 @@ DispatchResult WispOpDispatcher::dispatch(const uint8_t* payload, size_t len) {
     jsonLen = len;
   }
 
-  // Gate plaintext behind the password, with two exceptions. setManualPalette
+  // Gate plaintext behind the password, with three exceptions. setManualPalette
   // is an integrity exception: palette colors are unauthenticated by design
   // (an attacker in BLE proximity can vandalize colors regardless, so sealing
-  // adds nothing under the proximity threat model). pollStatus is read-only:
-  // it only triggers a re-broadcast of already-public state.
+  // adds nothing under the proximity threat model). pollStatus and pollConfig
+  // are read-only: they only trigger a re-broadcast of already-public state.
   if (config_.password().length() > 0) {
     // Peek the op name before deciding to reject.
     JsonDocument peekDoc;
@@ -83,7 +83,8 @@ DispatchResult WispOpDispatcher::dispatch(const uint8_t* payload, size_t len) {
     if (!err) {
       const char* op = peekDoc["op"];
       if (op && (strcmp(op, "setManualPalette") == 0 ||
-                 strcmp(op, "pollStatus") == 0)) {
+                 strcmp(op, "pollStatus") == 0 ||
+                 strcmp(op, "pollConfig") == 0)) {
         return dispatchJson(json, jsonLen);
       }
     }
@@ -284,6 +285,10 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
 
   if (strcmp(op, "pollStatus") == 0) {
     return DispatchResult::PollStatus;
+  }
+
+  if (strcmp(op, "pollConfig") == 0) {
+    return DispatchResult::PollConfig;
   }
 
   if (strcmp(op, "shuffle") == 0) {

@@ -34,6 +34,7 @@ struct PendingSlotAggregate {
   PendingJsonSlot<kPendingJsonOp> remoteOp;
   PendingJsonSlot<kPendingJsonOp> wispOp;
   PendingJsonSlotWithMac<kPendingJsonOp> wispStatus;
+  PendingJsonSlotWithMac<kPendingWispConfig> wispConfig;
   PendingJsonSlot<kPendingJsonOp> socialDispositions;
   PendingJsonSlot<kPendingSettingsBlob> settingsBlob;
   PendingJsonSlotWithMac<kPendingJsonOp> inboundOp;

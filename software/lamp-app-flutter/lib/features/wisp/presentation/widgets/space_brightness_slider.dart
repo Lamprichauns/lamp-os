@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../application/wisp_notifier.dart';
 import '../../domain/wisp_status.dart';
+import 'wisp_settings_pending.dart';
 
 /// Top space-dimmer control above the palette gradient bar. Scales every
 /// claimed lamp together without touching their colors. Deliberately relative
@@ -24,13 +25,41 @@ class SpaceBrightnessSlider extends ConsumerStatefulWidget {
 }
 
 class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
-  // Local slider state is authoritative after mount; the wisp echoes back
-  // the written value, so re-seeding on every status change would fight a drag.
+  // Follows the wisp's value whenever it differs from the slider, except
+  // while the slider is held and for a while after release: the write is
+  // debounced, so a status from mid-drag can still arrive carrying an
+  // intermediate value. The hold ends when a status change brings the
+  // released value or after _echoHold, whichever comes first. A rebuild with
+  // an unchanged status does not count: setBrightness already wrote the
+  // dragged value into the notifier's state, so that is not the wisp's echo.
+  static const Duration _echoHold = Duration(milliseconds: 2500);
   late double _value;
+  bool _dragging = false;
+  DateTime? _holdUntil;
 
   @override
   void initState() {
     super.initState();
+    _seed();
+  }
+
+  // Never seeds from placeholders: the slider shows pending until configKnown.
+  @override
+  void didUpdateWidget(SpaceBrightnessSlider old) {
+    super.didUpdateWidget(old);
+    final s = widget.status;
+    if (!s.configKnown || _dragging) return;
+    final shown = s.brightness == _value.round();
+    final hold = _holdUntil;
+    if (hold != null) {
+      final echoed = shown && old.status.brightness != s.brightness;
+      if (!echoed && DateTime.now().isBefore(hold)) return;
+      _holdUntil = null;
+    }
+    if (!shown) _seed();
+  }
+
+  void _seed() {
     _value = widget.status.brightness.clamp(0, 100).toDouble();
   }
 
@@ -62,17 +91,25 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            Slider(
-              min: 0,
-              max: 100,
-              value: _value,
-              label: _value >= 99.5 ? 'Full' : 'Dimmer',
-              onChanged: (v) {
-                setState(() => _value = v);
-                notifier.setBrightness(v.round());
-              },
-              onChangeEnd: (_) => notifier.flushBrightness(),
-            ),
+            if (!widget.status.configKnown)
+              const WispSettingsPending()
+            else
+              Slider(
+                min: 0,
+                max: 100,
+                value: _value,
+                label: _value >= 99.5 ? 'Full' : 'Dimmer',
+                onChangeStart: (_) => _dragging = true,
+                onChanged: (v) {
+                  setState(() => _value = v);
+                  notifier.setBrightness(v.round());
+                },
+                onChangeEnd: (_) {
+                  _dragging = false;
+                  _holdUntil = DateTime.now().add(_echoHold);
+                  notifier.flushBrightness();
+                },
+              ),
           ],
         ),
       ),

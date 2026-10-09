@@ -10,6 +10,7 @@ import '../../../core/ble/uuids.dart';
 import '../data/wisp_password_store.dart';
 import '../data/wisp_repository.dart';
 import 'manual_palette_draft.dart';
+import '../domain/wisp_config.dart';
 import '../domain/wisp_source_mode.dart';
 import '../domain/wisp_status.dart';
 
@@ -21,9 +22,12 @@ part 'wisp_notifier.g.dart';
 enum PaletteConfirmOutcome { confirmed, notConfirmed, sourceChanged }
 
 /// Owns the live [WispStatus] for a single lamp. On build it does one
-/// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-/// thereafter every wispStatus update from the wisp lands in `state`
-/// without a round-trip.
+/// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+/// lamp without it) and subscribes to the status notify stream; thereafter
+/// every wispStatus update from the wisp lands in `state` without a
+/// round-trip. The wisp's settings come from the `wispconfig` section when
+/// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+/// moves, and are merged over whatever the status carried.
 ///
 /// `setOscRole` delegates to the repository and relies on the wisp's
 /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -165,6 +169,29 @@ class WispNotifier extends _$WispNotifier {
   bool get paletteLoading =>
       (state.value?.present ?? false) && !_currentPaletteKnown;
 
+  // Latest wispConfig from the `wispconfig` section and the wisp it belongs
+  // to; merged over the config fields of every status from that wisp.
+  WispConfig? _config;
+  String? _configMac;
+  int? _lastConfigSeenMs;
+  bool _configRereadInFlight = false;
+  bool _statusRereadInFlight = false;
+  DateTime? _lastConfigPollAt;
+
+  // Every status as it arrives, config merged, ahead of the source-write
+  // guard. The confirm waits listen here so a status that only a section
+  // re-read could recover still confirms.
+  late StreamController<WispStatus> _incoming;
+
+  // FbpBleClient has no internal lock, so two concurrent characteristic
+  // reads stall the GATT flow on Android; every read here skips while
+  // another is in flight and retries on the next notify.
+  bool get _readBusy =>
+      _paletteRereadInFlight ||
+      _claimsReadInFlight ||
+      _configRereadInFlight ||
+      _statusRereadInFlight;
+
   bool _disposed = false;
 
   @override
@@ -185,9 +212,18 @@ class WispNotifier extends _$WispNotifier {
     _colorsRecalculating = false;
     _shuffleSnapshot = null;
 
+    _config = null;
+    _configMac = null;
+    _lastConfigSeenMs = null;
+    _configRereadInFlight = false;
+    _statusRereadInFlight = false;
+    _lastConfigPollAt = null;
+    final incoming = _incoming = StreamController<WispStatus>.broadcast();
+
     ref.onDispose(() {
       _disposed = true;
       _sub?.cancel();
+      unawaited(incoming.close());
       _offColorWriteTimer?.cancel();
       _driftWriteTimer?.cancel();
       _brightnessWriteTimer?.cancel();
@@ -221,39 +257,15 @@ class WispNotifier extends _$WispNotifier {
         .subscribe(lampId, BleUuids.controlService, BleUuids.wispStatus)
         .listen((bytes) {
       if (_disposed) return;
-      var next = WispStatus.fromBytes(bytes);
-      // A frame that decodes to "no wisp" while already holding a present
-      // status is a transient empty/short BLE notify. Drop it to prevent
-      // the icon, source, and palette from blinking out for a tick.
-      if (!next.present && (state.value?.present ?? false)) {
+      final next = WispStatus.fromBytes(bytes);
+      if (next.configLastSeenMs != null) _repo.noteWispSections();
+      // An empty or MTU-truncated notify on a lamp that serves the status
+      // whole: re-read it there rather than drop the update.
+      if (!next.present && _repo.wispSectionsSupported) {
+        unawaited(_rereadStatusSection());
         return;
       }
-      final rawMac = next.wispMac;
-      final guarded = _applySourceWriteGuard(next);
-      if (guarded == null) {
-        debugPrint(
-          '[wisp_notifier] notify lamp=$lampId dropped stale source echo '
-          'source=${next.source} pending=$_pendingSourceMode',
-        );
-        return;
-      }
-      next = guarded;
-      _maybeRereadForPalette(next);
-      // Throttle: claims change rarely; re-read at most once per ~3 s so this
-      // doesn't issue a BLE read on every ~2 s wispStatus notify.
-      final notifyNow = DateTime.now();
-      final lastRead = _lastClaimsReadAt;
-      if (_colorsRecalculating ||
-          lastRead == null ||
-          notifyNow.difference(lastRead) >= const Duration(seconds: 3)) {
-        _lastClaimsReadAt = notifyNow;
-        unawaited(_loadClaims());
-      }
-      state = AsyncData(next);
-      debugPrint(
-        '[wisp_notifier] notify lamp=$lampId len=${bytes.length} '
-        'wispMac=$rawMac present=${next.present} source=${next.source}',
-      );
+      _onIncoming(next);
     }, onError: (Object e, StackTrace st) {
       debugPrint('[wisp_notifier] notify-stream error lamp=$lampId: $e');
     }, onDone: () {
@@ -289,6 +301,12 @@ class WispNotifier extends _$WispNotifier {
       // notify-clobbered status char. Awaited before _loadClaims so the two
       // BLE reads don't collide on FbpBleClient's lockless flow.
       await _readManualPaletteSection(bumpState: false);
+      if (_disposed) return WispStatus.empty;
+      if (initial.present && _repo.wispSectionsSupported) {
+        await _readConfigSection(initial, emit: false);
+        if (_disposed) return WispStatus.empty;
+        initial = _withHeldConfig(initial);
+      }
       // Seed the in-memory password cache from persistent storage.
       final mac = initial.wispMac;
       if (mac != null) {
@@ -331,7 +349,7 @@ class WispNotifier extends _$WispNotifier {
   /// future early, letting an optimistic write land before build's return
   /// clobbers it.
   Future<void> _readManualPaletteSection({bool bumpState = true}) async {
-    if (_paletteRereadInFlight || _claimsReadInFlight || _disposed) return;
+    if (_readBusy || _disposed) return;
     _paletteRereadInFlight = true;
     try {
       final palette = await _repo.readManualPalette();
@@ -369,7 +387,7 @@ class WispNotifier extends _$WispNotifier {
   // Serialized against the palette re-read: FbpBleClient has no internal lock,
   // so two concurrent characteristic reads stall the GATT flow on Android.
   Future<void> _loadClaims() async {
-    if (_claimsReadInFlight || _paletteRereadInFlight || _disposed) return;
+    if (_readBusy || _disposed) return;
     _claimsReadInFlight = true;
     try {
       final parsed = await _repo.readClaims();
@@ -402,13 +420,131 @@ class WispNotifier extends _$WispNotifier {
     return true;
   }
 
+  /// Adopt a status from a notify or a section re-read: merge the held
+  /// config, publish it to the confirm waits, then apply the source-write
+  /// guard and the palette / config / claims re-read triggers.
+  void _onIncoming(WispStatus raw) {
+    if (_disposed) return;
+    var next = _withHeldConfig(raw);
+    _incoming.add(next);
+    // A frame that decodes to "no wisp" while already holding a present
+    // status is a transient empty/short BLE notify. Drop it to prevent
+    // the icon, source, and palette from blinking out for a tick.
+    if (!next.present && (state.value?.present ?? false)) {
+      return;
+    }
+    final guarded = _applySourceWriteGuard(next);
+    if (guarded == null) {
+      debugPrint(
+        '[wisp_notifier] notify lamp=$lampId dropped stale source echo '
+        'source=${next.source} pending=$_pendingSourceMode',
+      );
+      return;
+    }
+    next = guarded;
+    _maybeRereadForPalette(next);
+    _maybeRereadConfig(next);
+    // Throttle: claims change rarely; re-read at most once per ~3 s so this
+    // doesn't issue a BLE read on every ~2 s wispStatus notify.
+    final notifyNow = DateTime.now();
+    final lastRead = _lastClaimsReadAt;
+    if (_colorsRecalculating ||
+        lastRead == null ||
+        notifyNow.difference(lastRead) >= const Duration(seconds: 3)) {
+      _lastClaimsReadAt = notifyNow;
+      unawaited(_loadClaims());
+    }
+    state = AsyncData(next);
+    debugPrint(
+      '[wisp_notifier] notify lamp=$lampId '
+      'wispMac=${next.wispMac} present=${next.present} source=${next.source}',
+    );
+  }
+
+  Future<void> _rereadStatusSection() async {
+    if (_readBusy || _disposed) return;
+    _statusRereadInFlight = true;
+    final WispStatus status;
+    try {
+      status = await _repo.readStatus();
+    } catch (e) {
+      debugPrint('[wisp_notifier] status re-read failed lamp=$lampId: $e');
+      return;
+    } finally {
+      _statusRereadInFlight = false;
+    }
+    if (_disposed || !status.present) return;
+    _onIncoming(status);
+  }
+
+  /// [status] with the held config merged in, when the status carries no
+  /// settings of its own and the config came from the same wisp. A status
+  /// that [WispStatus.carriesConfig] is the fresher of the two: a config
+  /// re-read can be skipped or lost, a status cannot go stale behind it.
+  WispStatus _withHeldConfig(WispStatus status) {
+    final config = _config;
+    if (config == null ||
+        status.carriesConfig ||
+        status.wispMac == null ||
+        status.wispMac != _configMac) {
+      return status;
+    }
+    return status.withConfig(config);
+  }
+
+  // Bounded wait for an in-flight read, so a caller that needs the section's
+  // current contents reads it rather than skipping as busy.
+  Future<void> _awaitReadsIdle() async {
+    final deadline = DateTime.now().add(_readIdleTimeout);
+    while (_readBusy && !_disposed && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+
+  static const Duration _readIdleTimeout = Duration(seconds: 3);
+
+  // The lamp stamps configLastSeenMs when a wispConfig lands; a new stamp
+  // means the section holds something to read. Busy reads leave the stamp
+  // unconsumed so the next notify retries.
+  void _maybeRereadConfig(WispStatus next) {
+    final seen = next.configLastSeenMs;
+    if (seen == null || seen == _lastConfigSeenMs) return;
+    unawaited(_readConfigSection(next));
+  }
+
+  /// Read the `wispconfig` section for the wisp [forStatus] describes and
+  /// hold it. With [emit], re-publish the current status with it merged.
+  Future<void> _readConfigSection(
+    WispStatus forStatus, {
+    bool emit = true,
+  }) async {
+    if (_readBusy || _disposed) return;
+    _configRereadInFlight = true;
+    final WispConfig? config;
+    try {
+      config = await _repo.readConfig();
+    } finally {
+      _configRereadInFlight = false;
+    }
+    if (_disposed || config == null) return;
+    _config = config;
+    _configMac = forStatus.wispMac;
+    _lastConfigSeenMs = forStatus.configLastSeenMs;
+    if (!emit) return;
+    final cur = state.value;
+    if (cur == null) return;
+    final merged = _withHeldConfig(cur);
+    _incoming.add(merged);
+    state = AsyncData(merged);
+  }
+
   // The small, reliable status NOTIFY carries paletteIdPrefix; a changed
   // prefix means the wisp's palette moved, so re-read the palette section.
   // Don't consume the prefix while a read is busy; retry on the next notify.
   void _maybeRereadForPalette(WispStatus next) {
     final prefix = next.paletteIdPrefix;
     if (prefix.isEmpty || prefix == _lastPaletteIdPrefix) return;
-    if (_paletteRereadInFlight || _claimsReadInFlight) return;
+    if (_readBusy) return;
     _lastPaletteIdPrefix = prefix;
     unawaited(_readManualPaletteSection());
   }
@@ -555,7 +691,20 @@ class WispNotifier extends _$WispNotifier {
     required String currentGuess,
     required Future<void> Function() sendOp,
   }) async {
-    final baseline = state.value?.opSeq ?? 0;
+    // opSeq rides the config: refresh it from the section first, waiting out
+    // any read in flight, so the baseline is the wisp's current value. A
+    // split status with no config to read has no baseline at all, and a
+    // placeholder 0 would let any later opSeq confirm a rejected change.
+    final cur = state.value;
+    if (cur != null && _repo.wispSectionsSupported) {
+      await _awaitReadsIdle();
+      await _readConfigSection(state.value ?? cur);
+    }
+    final now = state.value;
+    if (now != null && now.configSplit && !now.configKnown) {
+      throw StateError('wisp settings not loaded; opSeq baseline unknown');
+    }
+    final baseline = now?.opSeq ?? 0;
     final prevCached = _cachedPassword;
     // Watch for the confirming status before sending so a fast echo can't slip
     // through between the write and the listen.
@@ -581,10 +730,8 @@ class WispNotifier extends _$WispNotifier {
   /// [baseline], or false when [_opConfirmTimeout] elapses first. A reboot
   /// resets `opSeq` to 0, so only a strict advance counts as confirmation.
   Future<bool> _awaitOpSeqAdvance(int baseline) {
-    return ref
-        .read(bleClientProvider)
-        .subscribe(lampId, BleUuids.controlService, BleUuids.wispStatus)
-        .map((bytes) => WispStatus.fromBytes(bytes).opSeq)
+    return _incoming.stream
+        .map((s) => s.opSeq)
         .firstWhere((seq) => seq > baseline)
         .timeout(_opConfirmTimeout)
         .then((_) => true)
@@ -616,6 +763,21 @@ class WispNotifier extends _$WispNotifier {
       await _repo.pollStatus();
     } catch (e) {
       debugPrint('WispNotifier.pollStatus failed: $e');
+    }
+  }
+
+  /// Ask the wisp to re-broadcast its wispConfig now, so the lamp's cached
+  /// copy (and the settings forms) refresh on screen open. Same rate limit
+  /// as [pollStatus]; failures are swallowed.
+  Future<void> pollConfig() async {
+    final now = DateTime.now();
+    final last = _lastConfigPollAt;
+    if (last != null && now.difference(last) < _statusPollMinInterval) return;
+    _lastConfigPollAt = now;
+    try {
+      await _repo.pollConfig();
+    } catch (e) {
+      debugPrint('WispNotifier.pollConfig failed: $e');
     }
   }
 
@@ -652,6 +814,7 @@ class WispNotifier extends _$WispNotifier {
   Future<void> setLedStrip(String ledType, int pixelCount) async {
     final cur = state.value ?? WispStatus.empty;
     state = AsyncData(cur.copyWith(ledType: ledType, pixelCount: pixelCount));
+    _config = _config?.copyWith(ledType: ledType, pixelCount: pixelCount);
     try {
       await _repo.setLedStrip(ledType, pixelCount);
     } catch (e, st) {
@@ -692,6 +855,7 @@ class WispNotifier extends _$WispNotifier {
   void setBrightness(int pct) {
     final cur = state.value ?? WispStatus.empty;
     state = AsyncData(cur.copyWith(brightness: pct));
+    _config = _config?.copyWith(brightness: pct);
     _pendingBrightness = pct;
     _brightnessWriteTimer?.cancel();
     _brightnessWriteTimer =
@@ -765,13 +929,9 @@ class WispNotifier extends _$WispNotifier {
 
   /// Resolve true once a wispStatus arrives whose `source` matches [mode]
   /// (the wisp applied and re-broadcast the change), or false when
-  /// [_sourceConfirmTimeout] elapses. Watch the notify stream directly:
-  /// every wispStatus frame carries `source`.
+  /// [_sourceConfirmTimeout] elapses. Every wispStatus carries `source`.
   Future<bool> _confirmSourceLanded(WispSourceMode mode) {
-    return ref
-        .read(bleClientProvider)
-        .subscribe(lampId, BleUuids.controlService, BleUuids.wispStatus)
-        .map((bytes) => WispStatus.fromBytes(bytes))
+    return _incoming.stream
         .firstWhere((s) => s.present && s.source == mode)
         .timeout(_sourceConfirmTimeout)
         .then((_) => true)
@@ -951,10 +1111,7 @@ class WispNotifier extends _$WispNotifier {
       _paletteConfirmOutcome = PaletteConfirmOutcome.sourceChanged;
       return Future.value(false);
     }
-    return ref
-        .read(bleClientProvider)
-        .subscribe(lampId, BleUuids.controlService, BleUuids.wispStatus)
-        .map((bytes) => WispStatus.fromBytes(bytes))
+    return _incoming.stream
         .firstWhere((s) =>
             s.present &&
             (s.paletteIdPrefix == expectedHash ||

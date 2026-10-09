@@ -211,6 +211,31 @@ void test_poll_status_plaintext_with_password() {
     TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollStatus, (int)result);
 }
 
+// pollConfig is accepted without a password and changes nothing.
+void test_poll_config_no_password() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+
+    wisp::WispOpDispatcher d(cfg);
+    const char* plain = R"({"char":"wispOp","op":"pollConfig"})";
+    auto result = d.dispatch(reinterpret_cast<const uint8_t*>(plain), strlen(plain));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollConfig, (int)result);
+    TEST_ASSERT_EQUAL_UINT32(0, cfg.opSeq());
+}
+
+// pollConfig rides the plaintext exception list beside pollStatus: it only
+// re-broadcasts state every lamp already relays.
+void test_poll_config_plaintext_with_password() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    cfg.setPassword("testpass");
+
+    wisp::WispOpDispatcher d(cfg);
+    const char* plain = R"({"char":"wispOp","op":"pollConfig"})";
+    auto result = d.dispatch(reinterpret_cast<const uint8_t*>(plain), strlen(plain));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollConfig, (int)result);
+}
+
 // --- Task 4b: setPassword op + replay window ---
 
 // setPassword sealed under the OLD password changes the password; subsequent
@@ -552,6 +577,8 @@ int main(int, char**) {
     RUN_TEST(test_set_off_color_rgbw_tuple);
     RUN_TEST(test_poll_status_no_password);
     RUN_TEST(test_poll_status_plaintext_with_password);
+    RUN_TEST(test_poll_config_no_password);
+    RUN_TEST(test_poll_config_plaintext_with_password);
     RUN_TEST(test_set_password_sealed_changes_password);
     RUN_TEST(test_set_password_plaintext_factory_fresh);
     RUN_TEST(test_set_password_plaintext_rejected_when_password_set);

@@ -94,12 +94,13 @@ class _WispBodyState extends ConsumerState<_WispBody> {
     super.initState();
     // The lamp shell keeps the notifier alive, so its build() won't re-run
     // on screen open; poll here so a stale relay cache refreshes now
-    // instead of on the wisp's 30 s heartbeat.
+    // instead of on the wisp's 30 s heartbeat, and the lamp holds the
+    // wisp's current settings for the forms.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(
-        ref.read(wispNotifierProvider(widget.lampId).notifier).pollStatus(),
-      );
+      final notifier = ref.read(wispNotifierProvider(widget.lampId).notifier);
+      // In turn: FbpBleClient has no internal lock to serialize two writes.
+      unawaited(notifier.pollStatus().then((_) => notifier.pollConfig()));
     });
   }
 

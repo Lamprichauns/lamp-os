@@ -7,6 +7,7 @@ import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/lamp_crypto.dart';
 import '../../../core/ble/uuids.dart';
 import '../domain/tuple_sampler.dart';
+import '../domain/wisp_config.dart';
 import '../domain/wisp_claims.dart';
 import '../domain/wisp_source_mode.dart';
 import '../domain/wisp_status.dart';
@@ -31,15 +32,53 @@ class WispRepository {
 
   static final _wispOpSalt = uuidSaltLE16(BleUuids.wispOp);
 
-  /// One-shot read of the merged wispStatus JSON. Empty / `"{}"` /
-  /// unparseable payloads map to [WispStatus.empty].
+  bool _wispSectionsSupported = false;
+
+  /// True once the lamp has served the `wispstatus` page section, which a
+  /// lamp that has it always answers with at least `"{}"`. It also serves
+  /// `wispconfig`. Sticky: an empty read before the auth handshake looks
+  /// the same as a lamp that predates the sections, so only a hit counts.
+  bool get wispSectionsSupported => _wispSectionsSupported;
+
+  /// Record that the lamp serves the wisp sections, from a status only such a
+  /// lamp merges (`configLastSeenMs`), so a build whose reads all landed
+  /// before the auth handshake does not leave the sections unused.
+  void noteWispSections() => _wispSectionsSupported = true;
+
+  /// One-shot read of the merged wispStatus JSON: whole from the
+  /// `wispstatus` page section, or from CHAR_WISP_STATUS (capped at 512 B)
+  /// on a lamp without it. Empty / `"{}"` / unparseable payloads map to
+  /// [WispStatus.empty].
   Future<WispStatus> readStatus() async {
-    final bytes = await _ble.read(
+    Uint8List bytes;
+    try {
+      bytes = await _ble.readSection(_deviceId, 'wispstatus');
+    } catch (_) {
+      bytes = Uint8List(0);
+    }
+    if (bytes.isNotEmpty) {
+      _wispSectionsSupported = true;
+      return WispStatus.fromBytes(bytes);
+    }
+    bytes = await _ble.read(
       _deviceId,
       BleUuids.controlService,
       BleUuids.wispStatus,
     );
     return WispStatus.fromBytes(bytes);
+  }
+
+  /// Read the wisp's settings from the `wispconfig` page section. Null when
+  /// the lamp has no sections, has no config cached yet, or the read fails;
+  /// never throws.
+  Future<WispConfig?> readConfig() async {
+    if (!_wispSectionsSupported) return null;
+    try {
+      final bytes = await _ble.readSection(_deviceId, 'wispconfig');
+      return WispConfig.fromBytes(bytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Read the wisp's stored manual palette from its dedicated page section.
@@ -284,6 +323,16 @@ class WispRepository {
     await _writeOpPlaintext({
       'char': 'wispOp',
       'op': 'pollStatus',
+    });
+  }
+
+  /// Ask the wisp to re-broadcast its wispConfig now (read-only). Plaintext
+  /// for the same reason as [pollStatus]. A wisp that predates the op
+  /// ignores it.
+  Future<void> pollConfig() async {
+    await _writeOpPlaintext({
+      'char': 'wispOp',
+      'op': 'pollConfig',
     });
   }
 

@@ -97,6 +97,7 @@ class Lamp {
   void drainWispState();
   void drainWispOp();
   void drainWispStatus();
+  void drainWispConfig();
   void drainCommand();
   void drainColorQuery();
   void drainColorInfo();

@@ -29,6 +29,7 @@ enum class DispatchResult {
   AppliedLedStrip,       // setLedStrip applied (format + pixel count)
   AppliedBrightnessChange, // setBrightness applied (space-dim factor)
   PollStatus,            // pollStatus: re-emit wispStatus, no state change
+  PollConfig,            // pollConfig: re-emit wispConfig, no state change
   Malformed,             // JSON parse failed or required field missing
   Rejected,              // auth gate blocked (password set, plaintext not allowed)
 };

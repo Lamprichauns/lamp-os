@@ -8,6 +8,7 @@ import '../../../../core/widgets/number_input_dialog.dart';
 import '../../../../core/widgets/settings_row.dart';
 import '../../application/wisp_notifier.dart';
 import '../../domain/wisp_status.dart';
+import 'wisp_settings_pending.dart';
 
 /// LED strip config panel. Pass [status] for initial values; [lampId]
 /// routes writes through the wisp notifier.
@@ -32,50 +33,53 @@ class WispLedConfig extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SettingsGroupHeading('LED strip'),
-        LampCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('LED type', style: textTheme.bodySmall),
-              const SizedBox(height: AppSpace.sm),
-              SegmentedButton<String>(
-                key: const Key('wisp-led-type-picker'),
-                style: SegmentedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.card),
+        if (!status.configKnown)
+          const LampCard(child: WispSettingsPending())
+        else
+          LampCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('LED type', style: textTheme.bodySmall),
+                const SizedBox(height: AppSpace.sm),
+                SegmentedButton<String>(
+                  key: const Key('wisp-led-type-picker'),
+                  style: SegmentedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                    ),
+                  ),
+                  segments: const [
+                    ButtonSegment(value: 'GRBW', label: Text('GRBW')),
+                    ButtonSegment(value: 'GRB', label: Text('GRB')),
+                    ButtonSegment(value: 'BGR', label: Text('BGR')),
+                  ],
+                  selected: {ledType},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (set) {
+                    if (set.isEmpty) return;
+                    notifier.setLedStrip(set.first, status.pixelCount);
+                  },
+                ),
+                const SizedBox(height: AppSpace.lg),
+                NavRow(
+                  key: const Key('wisp-led-count-row'),
+                  icon: Icons.lightbulb_outline,
+                  title: 'LED count',
+                  subtitle: '${status.pixelCount} LEDs',
+                  onTap: () => showNumberInputDialog(
+                    context,
+                    title: 'LED count',
+                    label: 'LED count',
+                    initial: status.pixelCount,
+                    min: 1,
+                    max: 100,
+                    onSave: (v) => notifier.setLedStrip(ledType, v),
                   ),
                 ),
-                segments: const [
-                  ButtonSegment(value: 'GRBW', label: Text('GRBW')),
-                  ButtonSegment(value: 'GRB', label: Text('GRB')),
-                  ButtonSegment(value: 'BGR', label: Text('BGR')),
-                ],
-                selected: {ledType},
-                showSelectedIcon: false,
-                onSelectionChanged: (set) {
-                  if (set.isEmpty) return;
-                  notifier.setLedStrip(set.first, status.pixelCount);
-                },
-              ),
-              const SizedBox(height: AppSpace.lg),
-              NavRow(
-                key: const Key('wisp-led-count-row'),
-                icon: Icons.lightbulb_outline,
-                title: 'LED count',
-                subtitle: '${status.pixelCount} LEDs',
-                onTap: () => showNumberInputDialog(
-                  context,
-                  title: 'LED count',
-                  label: 'LED count',
-                  initial: status.pixelCount,
-                  min: 1,
-                  max: 100,
-                  onSave: (v) => notifier.setLedStrip(ledType, v),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

@@ -31,12 +31,18 @@
 // pattern ble_control.cpp uses for the BLE-write side of the slot.
 void postPendingKnockout(uint8_t pixel, uint8_t brightness);
 
-// wispStatus: applyRemoteOpLocal sees char:"wispStatus" and
-// memcpys here under portMUX along with the original wisp's MAC.
-// The drain caches via LampRoster + emits a BLE notify.
+// The ESP-NOW receive handler posts the wisp's own broadcasts, which lead
+// with "char", straight to their slots (peekWispBroadcast). These cover the
+// rest: a wispStatus / wispConfig whose "char" is not first, or one arriving
+// through the BLE remoteOp route. The drains cache via LampRoster and notify.
 static void postPendingWispStatusJson(const uint8_t srcMac[6],
                                       const char* data, size_t len) {
   lamp::pendingSlots.wispStatus.post(pendingMux, data, len, srcMac);
+}
+
+static void postPendingWispConfigJson(const uint8_t srcMac[6],
+                                      const char* data, size_t len) {
+  lamp::pendingSlots.wispConfig.post(pendingMux, data, len, srcMac);
 }
 
 // Apply a remote-op payload locally (either from BLE remoteOp drain when
@@ -107,14 +113,15 @@ static void applyRemoteOpLocal(const char* payloadJson, size_t len,
     config.invalidateExpressionsSection();
 
   } else if (strcmp(ch, "wispStatus") == 0) {
-    // A wispStatus payload arrived, either directly from the
-    // wisp's MSG_CONTROL_OP broadcast or via a peer's gossip relay.
-    // Nothing is APPLIED locally (lamps don't have a zone state to
-    // mutate); the payload is just cached + notified so the phone-paired
-    // lamp's CHAR_WISP_STATUS read/notify surface stays current. srcMac is
-    // the wisp's MAC (preserved through gossip relay by MeshLink, which
-    // copies op.sourceMac into the inbound slot).
+    // Only a payload peekWispBroadcast did not route reaches here (see
+    // postPendingWispStatusJson). Nothing is applied locally; it is cached
+    // and notified so CHAR_WISP_STATUS stays current. srcMac is the wisp's
+    // MAC, preserved through gossip relay.
     postPendingWispStatusJson(srcMac, payloadJson, len);
+
+  } else if (strcmp(ch, "wispConfig") == 0) {
+    // Same cache-and-notify path as wispStatus, for the wisp's settings.
+    postPendingWispConfigJson(srcMac, payloadJson, len);
   }
   // wispOp intentionally has NO branch here. The dedicated CHAR_WISP_OP
   // slot drain broadcasts a MSG_CONTROL_OP; the wisp(s) on the mesh
