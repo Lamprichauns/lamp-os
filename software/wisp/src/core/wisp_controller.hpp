@@ -8,16 +8,17 @@
 #pragma once
 
 #include "paint/current_palette.hpp"  // CurrentPalette, Palette
+#include "config/wisp_config.hpp"  // kManualPaletteMaxColors, OscRole
 #include "config/wisp_op_dispatcher.hpp"  // DispatchResult
 #include "osc/osc_freshness.hpp"
 #include "status/status_ring.hpp"  // kMaxRingPixels
+#include "util/rate_gate.hpp"
 
 class Adafruit_NeoPixel;
 
 namespace wisp {
 
 class PaintDistributor;
-class WispConfig;
 class StatusEmitter;
 class ArtnetEmitter;
 enum class WispSourceMode : uint8_t;
@@ -40,13 +41,17 @@ class WispController {
   // Apply the DispatchResult from a CONTROL_OP. MeshRouter result callback.
   void applyOpResult(DispatchResult res);
 
-  // OSC palette input (flat RGB floats 0..1). Applied only in Osc mode;
-  // an unchanged palette only refreshes liveness. Never changes paint mode.
+  // OSC palette input (flat RGB floats 0..1, at most kManualPaletteMaxColors).
+  // Applied only in Osc mode; an unchanged palette only refreshes liveness
+  // and a blank one counts as no palette. Ring updates at once; lamp paint,
+  // STATE and ArtNet follow at most once per kOscPaintIntervalMs, trailing
+  // edge included. Never changes paint mode.
   void onOscPalette(const float* rgb, size_t colours, const char* via,
                     uint32_t nowMs);
 
   // Osc mode with no palette for OscFreshness::kStaleMs: hold lamps and ring
-  // at Off with paint mode kept, until the next palette.
+  // at Off with paint mode kept, until the next palette. Also releases a
+  // held paint update.
   void tickOscLiveness(uint32_t now);
 
   // Osc mode with a fresh palette. HELLO flag bit 2 + wispStatus sourceLive.
@@ -74,12 +79,20 @@ class WispController {
   Adafruit_NeoPixel& strip_;
 
   void resetOscStream();
+  void holdOscStream();
+  void pushOscPaint();
 
-  static constexpr size_t kOscMaxFloats = 150;  // kManualPaletteMaxColors * 3
+  static constexpr size_t kOscMaxFloats = kManualPaletteMaxColors * 3;
+  // A fast-moving palette re-colours lamps at most this often; each pass
+  // re-assigns every lamp and bursts STATE over the mesh.
+  static constexpr uint32_t kOscPaintIntervalMs = 1000;
   OscFreshness oscFresh_;
-  // Last applied palette; an identical one only refreshes liveness.
+  RateGate oscPaintGate_{kOscPaintIntervalMs};
+  // Last applied palette and its role; an identical one only refreshes
+  // liveness. A role change applies the new role's first palette.
   float oscLast_[kOscMaxFloats] = {0};
   size_t oscLastFloats_ = 0;
+  OscRole oscLastRole_ = OscRole::Primary;
   uint32_t oscLastLogMs_ = 0;
   // Reused across changes so a streaming palette never reallocates.
   Palette oscScratch_;

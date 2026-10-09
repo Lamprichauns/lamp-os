@@ -5,13 +5,17 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace wisp {
 
 class OscFreshness {
  public:
-  static constexpr uint32_t kStaleMs = 10000;
+  // Straylight's UDP feed is change-only with a full restate every 10 s, so a
+  // still palette arrives only on the restate. Too close to 10 s and lamps
+  // pulse home on every restate cycle.
+  static constexpr uint32_t kStaleMs = 30000;
 
   // Records a palette arrival. True on the stale -> live edge.
   bool onPalette(uint32_t nowMs) {
@@ -35,5 +39,14 @@ class OscFreshness {
   bool live_ = false;
   uint32_t lastRxMs_ = 0;
 };
+
+// True when no channel is above zero (NaN included): the palette would paint
+// lamps black. Straylight sends zeros for a role with nothing bound to it.
+inline bool isBlankPalette(const float* rgb, size_t floats) {
+  for (size_t i = 0; i < floats; ++i) {
+    if (rgb[i] > 0.0f) return false;
+  }
+  return true;
+}
 
 }  // namespace wisp

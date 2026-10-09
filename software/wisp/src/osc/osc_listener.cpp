@@ -11,8 +11,10 @@ namespace wisp {
 
 namespace {
 constexpr uint32_t kOpenRetryMs = 5000;
-// Bounds loop-task time when a sender floods the port.
-constexpr int kMaxPacketsPerPoll = 4;
+// lwIP queues at most 6 datagrams per UDP socket (UDP_RECVMBOX_SIZE), so 8
+// drains a full mailbox in one pass and still bounds loop-task time when a
+// sender floods the port.
+constexpr int kMaxPacketsPerPoll = 8;
 }  // namespace
 
 void OscListener::open(uint32_t nowMs) {

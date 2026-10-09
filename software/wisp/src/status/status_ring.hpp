@@ -16,9 +16,10 @@ inline constexpr size_t kStatusRingPixelCount = 30;
 // Upper bound for configurable pixel count (NVS / app-settable).
 inline constexpr size_t kMaxRingPixels = 100;
 
-// Warm-white fallback when the ring has no palette (empty Manual). Pulled warmer than a neutral warm-white because at brightness 40
-// (~16% scale) the WS2812 compresses the R:G:B ratio and washes a paler tint
-// out; these scale to roughly (40, 24, 8) on the LEDs, a clear candle-amber.
+// Warm-white fallback when the ring has no palette (empty Manual). Pulled
+// warmer than a neutral warm-white because at brightness 40 (~16% scale) the
+// WS2812 compresses the R:G:B ratio and washes a paler tint out; these scale
+// to roughly (40, 24, 8) on the LEDs, a clear candle-amber.
 inline constexpr uint8_t kWarmWhiteR = 255;
 inline constexpr uint8_t kWarmWhiteG = 150;
 inline constexpr uint8_t kWarmWhiteB = 50;

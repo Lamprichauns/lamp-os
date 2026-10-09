@@ -35,13 +35,16 @@ inline OscRole coerceOscRole(int raw) {
                                          : OscRole::Primary;
 }
 
+inline uint8_t oscRoleIndex(OscRole r) {
+  return static_cast<uint8_t>(coerceOscRole(static_cast<int>(r)));
+}
+
 inline const char* oscRoleName(OscRole r) {
-  return kOscRoleNames[static_cast<uint8_t>(coerceOscRole(static_cast<int>(r)))];
+  return kOscRoleNames[oscRoleIndex(r)];
 }
 
 inline const char* oscPaletteAddress(OscRole r) {
-  return kOscPaletteAddresses[static_cast<uint8_t>(
-      coerceOscRole(static_cast<int>(r)))];
+  return kOscPaletteAddresses[oscRoleIndex(r)];
 }
 
 // False when `name` is null or not a role name.

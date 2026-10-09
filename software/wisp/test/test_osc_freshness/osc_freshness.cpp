@@ -59,6 +59,26 @@ void test_reset_drops_live_without_edge() {
   TEST_ASSERT_TRUE(f.onPalette(1));
 }
 
+// Straylight restates a still palette every 10 s over UDP; that cadence
+// must never read as stale.
+void test_ten_second_restate_stays_live() {
+  OscFreshness f;
+  for (uint32_t t = 0; t <= 120000; t += 10000) {
+    f.onPalette(t);
+    TEST_ASSERT_FALSE(f.tick(t + 9999));
+  }
+  TEST_ASSERT_TRUE(f.live());
+}
+
+void test_blank_palette_detected() {
+  const float zeros[6] = {0, 0, 0, 0, 0, 0};
+  TEST_ASSERT_TRUE(wisp::isBlankPalette(zeros, 6));
+  const float negative[3] = {-1.0f, 0.0f, -0.5f};
+  TEST_ASSERT_TRUE(wisp::isBlankPalette(negative, 3));
+  const float oneLit[6] = {0, 0, 0, 0, 0.01f, 0};
+  TEST_ASSERT_FALSE(wisp::isBlankPalette(oneLit, 6));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_first_palette_is_live_edge);
@@ -67,5 +87,7 @@ int main(int, char**) {
   RUN_TEST(test_steady_stream_never_stales);
   RUN_TEST(test_millis_wrap);
   RUN_TEST(test_reset_drops_live_without_edge);
+  RUN_TEST(test_ten_second_restate_stays_live);
+  RUN_TEST(test_blank_palette_detected);
   return UNITY_END();
 }

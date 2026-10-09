@@ -4,8 +4,9 @@
 // (and triggerOnChange) only flag the emit due; pump() runs the build +
 // broadcast on the loop task so nothing heavy touches the 2KB timer stack.
 // pump() also detects wifi connectivity edges and flags an emit for them;
-// the controller flags source-liveness edges itself. Emits are coalesced to one per 5 s minimum: a due flag inside the
-// window is deferred until the window opens, never dropped.
+// the controller flags source-liveness edges itself. Emits are coalesced to
+// one per 5 s minimum: a due flag inside the window is deferred until the
+// window opens, never dropped.
 
 #pragma once
 

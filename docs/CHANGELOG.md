@@ -11,9 +11,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
   source in the app and choose which of Straylight's palettes to follow —
   Primary, Secondary, Tertiary or Fill. The wisp takes it over USB or the
-  network. If Straylight goes quiet for about ten seconds your lamps ease back
-  to their own colours and the app says it's waiting; when Straylight comes
-  back the lamps pick its palette up again on their own.
+  network (USB is the steadier of the two). If Straylight goes quiet for
+  about thirty seconds, or the palette you picked has nothing in it, your
+  lamps ease back to their own colours and the app says it's waiting; when
+  Straylight comes back the lamps pick its palette up again on their own.
 
 ### Changed
 - **Aurora is gone.** The wisp's Aurora palette source, which never shipped

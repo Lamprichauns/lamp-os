@@ -89,8 +89,9 @@ wisp::OscListener oscListener(controller, wispConfig);
 }  // namespace
 
 void setup() {
-  // A bundled OSC frame runs to ~1.4 KB; the default CDC RX buffer would
-  // overflow between loop passes.
+  // A 16-colour palette frame is ~280 B before SLIP escaping, past the 256 B
+  // default CDC RX buffer; 2 KB holds a 50-colour frame, escapes included,
+  // across a slow loop pass.
   Serial.setRxBufferSize(2048);
   Serial.begin(115200);
   serialConsole.setOscSink(&oscListener);

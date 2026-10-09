@@ -30,7 +30,8 @@ void SerialConsole::pump() {
   while (Serial.available() > 0) {
     int ch = Serial.read();
     if (ch < 0) break;
-    const SlipDecoder::Result r = slip_.feed(static_cast<uint8_t>(ch));
+    const SlipDecoder::Result r =
+        slip_.feed(static_cast<uint8_t>(ch), millis());
     if (r == SlipDecoder::Result::Frame) {
       if (osc_) osc_->handlePacket(slip_.frame(), slip_.frameLen(), "serial");
       continue;
@@ -98,9 +99,6 @@ void SerialConsole::handleCommand(const String& cmd) {
       return;
     }
     config_.setOscRole(role);
-    if (config_.sourceMode() == WispSourceMode::Osc) {
-      onSourceTransition_(WispSourceMode::Osc);
-    }
     status_.triggerOnChange();
     Serial.printf("[wisp.cmd] osc role = %s (%s)\n", oscRoleName(role),
                   oscPaletteAddress(role));

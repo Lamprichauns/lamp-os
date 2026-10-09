@@ -16,8 +16,8 @@
 
 namespace wisp {
 
-// Empty palette deliberately skips the update so flipping Manual -> empty
-// doesn't zero the lamps' fallback color.
+// An empty palette pushes nothing; the caller has already marked the source
+// not-live so lamps ease home.
 void WispController::pushManualPaletteToCurrent() {
   const auto& cols = config_.manualPalette();
   if (cols.empty()) return;
@@ -156,8 +156,21 @@ void WispController::applyLedConfig() {
 
 void WispController::resetOscStream() {
   oscFresh_.reset();
+  oscPaintGate_.reset();
   oscLastFloats_ = 0;
   palette_.clear();
+}
+
+void WispController::holdOscStream() {
+  resetOscStream();
+  paint_.setSourceLive(false);
+  renderRing();
+  status_.triggerOnChange();
+}
+
+void WispController::pushOscPaint() {
+  paint_.onPaletteChanged();
+  artnet_.onPaletteChanged();
 }
 
 void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
@@ -171,7 +184,10 @@ void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
       Serial.println("[wisp] source=Off — paintMode off, STATE clears paint");
       break;
     case wisp::WispSourceMode::Manual:
-      paint_.setSourceLive(true);
+      // An empty manual palette paints nothing; clearing drops whatever the
+      // previous source left behind so lamps ease home instead.
+      palette_.clear();
+      paint_.setSourceLive(!config_.manualPalette().empty());
       paint_.setPaintMode(true);
       pushManualPaletteToCurrent();
       Serial.println("[wisp] source=Manual — paintMode on");
@@ -198,20 +214,19 @@ void WispController::applyOpResult(DispatchResult res) {
     }
     case wisp::DispatchResult::AppliedManualPalette: {
       if (config_.sourceMode() == wisp::WispSourceMode::Manual) {
+        if (config_.manualPalette().empty()) palette_.clear();
+        paint_.setSourceLive(!config_.manualPalette().empty());
         pushManualPaletteToCurrent();
         renderRing();
       }
       status_.triggerOnChange();
       break;
     }
-    case wisp::DispatchResult::AppliedOscRole: {
-      // The old role's palette is not this role's: wait for a fresh one.
-      if (config_.sourceMode() == wisp::WispSourceMode::Osc) {
-        applySourceModeTransition(wisp::WispSourceMode::Osc);
-      }
+    case wisp::DispatchResult::AppliedOscRole:
+      // Lamps keep the old role's palette until the new role's first one
+      // lands; onOscPalette keys its dedup on the role.
       status_.triggerOnChange();
       break;
-    }
     case wisp::DispatchResult::AppliedWifiChange:
       Serial.println("[wisp] wifi creds updated; STA reconnect + advert refresh kicked");
       status_.triggerOnChange();
@@ -257,21 +272,26 @@ void WispController::applyOpResult(DispatchResult res) {
 
 void WispController::onOscPalette(const float* rgb, size_t colours,
                                   const char* via, uint32_t nowMs) {
-  static_assert(kOscMaxFloats == wisp::kManualPaletteMaxColors * 3,
-                "OSC palette buffer must hold a manual-size palette");
   if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
   if (colours == 0) return;
-  if (colours > wisp::kManualPaletteMaxColors) {
-    colours = wisp::kManualPaletteMaxColors;
-  }
   const size_t floats = colours * 3;
+  if (isBlankPalette(rgb, floats)) {
+    if (oscFresh_.live()) {
+      holdOscStream();
+      Serial.printf("[osc] blank palette via %s — holding lamps at Off\n",
+                    via);
+    }
+    return;
+  }
   const bool resumed = oscFresh_.onPalette(nowMs);
-  if (!resumed && floats == oscLastFloats_ &&
+  const OscRole role = config_.oscRole();
+  if (!resumed && role == oscLastRole_ && floats == oscLastFloats_ &&
       std::memcmp(rgb, oscLast_, floats * sizeof(float)) == 0) {
     return;
   }
   std::memcpy(oscLast_, rgb, floats * sizeof(float));
   oscLastFloats_ = floats;
+  oscLastRole_ = role;
 
   oscScratch_.colors.resize(colours);
   for (size_t i = 0; i < colours; ++i) {
@@ -288,14 +308,18 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
                                       floats * sizeof(float)));
   oscScratch_.id = id;
   palette_.update(oscScratch_, nowMs);
-  if (resumed) {
-    paint_.setSourceLive(true);
-    status_.triggerOnChange();
-  } else {
-    paint_.onPaletteChanged();
-  }
-  artnet_.onPaletteChanged();
+  // Ring first: it re-opens the ArtNet gate on a resume, so the emit below
+  // is not dropped.
   renderRing();
+  if (resumed) {
+    oscPaintGate_.reset();
+    oscPaintGate_.request(nowMs);
+    paint_.setSourceLive(true);
+    artnet_.onPaletteChanged();
+    status_.triggerOnChange();
+  } else if (oscPaintGate_.request(nowMs)) {
+    pushOscPaint();
+  }
 
   if (resumed || nowMs - oscLastLogMs_ >= 1000) {
     oscLastLogMs_ = nowMs;
@@ -305,12 +329,13 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
 
 void WispController::tickOscLiveness(uint32_t now) {
   if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
-  if (!oscFresh_.tick(now)) return;
-  resetOscStream();
-  paint_.setSourceLive(false);
-  renderRing();
-  status_.triggerOnChange();
-  Serial.println("[osc] palette stale — holding lamps at Off, paint mode kept");
+  if (oscFresh_.tick(now)) {
+    holdOscStream();
+    Serial.println(
+        "[osc] palette stale — holding lamps at Off, paint mode kept");
+    return;
+  }
+  if (oscFresh_.live() && oscPaintGate_.due(now)) pushOscPaint();
 }
 
 }  // namespace wisp

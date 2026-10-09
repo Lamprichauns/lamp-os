@@ -2,11 +2,18 @@
 
 namespace wisp {
 
-SlipDecoder::Result SlipDecoder::feed(uint8_t b) {
+SlipDecoder::Result SlipDecoder::feed(uint8_t b, uint32_t nowMs) {
   if (justEmitted_) {
     justEmitted_ = false;
     len_ = 0;
   }
+  if (inFrame_ && nowMs - lastByteMs_ >= kIdleResetMs) {
+    inFrame_ = false;
+    escaped_ = false;
+    discarding_ = false;
+    len_ = 0;
+  }
+  lastByteMs_ = nowMs;
   if (!inFrame_) {
     if (b != kEnd) return Result::Text;
     inFrame_ = true;

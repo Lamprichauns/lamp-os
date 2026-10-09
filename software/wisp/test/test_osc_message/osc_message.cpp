@@ -157,7 +157,7 @@ void test_slip_frame_with_escapes(void) {
   int frames = 0;
   std::vector<uint8_t> text;
   for (uint8_t b : wire) {
-    switch (slip.feed(b)) {
+    switch (slip.feed(b, 0)) {
       case SlipDecoder::Result::Text: text.push_back(b); break;
       case SlipDecoder::Result::Frame:
         ++frames;
@@ -177,7 +177,7 @@ void test_slip_back_to_back_and_oversize(void) {
   int frames = 0;
   auto feedAll = [&](const std::vector<uint8_t>& v) {
     for (uint8_t b : v) {
-      if (slip.feed(b) == SlipDecoder::Result::Frame) ++frames;
+      if (slip.feed(b, 0) == SlipDecoder::Result::Frame) ++frames;
     }
   };
   feedAll({0xC0, 'a', 0xC0, 0xC0, 'b', 0xC0});
@@ -189,7 +189,27 @@ void test_slip_back_to_back_and_oversize(void) {
   feedAll(big);
   TEST_ASSERT_EQUAL_INT(2, frames);
   // Back on text after the oversize frame's closing END.
-  TEST_ASSERT_TRUE(slip.feed('z') == SlipDecoder::Result::Text);
+  TEST_ASSERT_TRUE(slip.feed('z', 0) == SlipDecoder::Result::Text);
+}
+
+void test_slip_idle_reset_returns_to_text(void) {
+  static SlipDecoder slip;
+  // A frame opened and cut off mid-stream.
+  TEST_ASSERT_TRUE(slip.feed(0xC0, 1000) == SlipDecoder::Result::Consumed);
+  TEST_ASSERT_TRUE(slip.feed('/', 1001) == SlipDecoder::Result::Consumed);
+  // Inside the idle window the decoder is still collecting.
+  TEST_ASSERT_TRUE(slip.feed('a', 1001 + SlipDecoder::kIdleResetMs - 1) ==
+                   SlipDecoder::Result::Consumed);
+  // Silent for the idle window: the next byte is console text again.
+  const uint32_t later = 1001 + 2 * SlipDecoder::kIdleResetMs;
+  TEST_ASSERT_TRUE(slip.feed('p', later) == SlipDecoder::Result::Text);
+  // And a fresh frame still decodes.
+  int frames = 0;
+  for (uint8_t b : {0xC0, 0x01, 0x02, 0xC0}) {
+    if (slip.feed(b, later + 1) == SlipDecoder::Result::Frame) ++frames;
+  }
+  TEST_ASSERT_EQUAL_INT(1, frames);
+  TEST_ASSERT_EQUAL_UINT(2, slip.frameLen());
 }
 
 void test_slip_carries_straylight_bundle(void) {
@@ -204,7 +224,7 @@ void test_slip_carries_straylight_bundle(void) {
   wire.push_back(0xC0);
   bool got = false;
   for (uint8_t b : wire) {
-    if (slip.feed(b) == SlipDecoder::Result::Frame) {
+    if (slip.feed(b, 0) == SlipDecoder::Result::Frame) {
       got = true;
       TEST_ASSERT_EQUAL_UINT(d.size(), slip.frameLen());
       TEST_ASSERT_EQUAL_MEMORY(d.data(), slip.frame(), d.size());
@@ -224,5 +244,6 @@ int main(int, char**) {
   RUN_TEST(test_slip_frame_with_escapes);
   RUN_TEST(test_slip_back_to_back_and_oversize);
   RUN_TEST(test_slip_carries_straylight_bundle);
+  RUN_TEST(test_slip_idle_reset_returns_to_text);
   return UNITY_END();
 }
