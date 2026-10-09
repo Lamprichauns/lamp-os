@@ -83,7 +83,8 @@ void test_wrong_password_then_fixed() {
   j.onDisconnected(500);
   assertState(State::Waiting, j);
   assertAction(StaAction::None, j.step(600, true));
-  assertAction(StaAction::None, j.restart(700));
+  // Waiting may hide a core retry still in flight, so restart drops first.
+  assertAction(StaAction::Drop, j.restart(700));
   assertAction(StaAction::StartScan, j.step(700, true));
   assertAction(StaAction::Begin, j.onScanDone(true, 800));
   j.onConnected();
@@ -171,6 +172,71 @@ void test_halt_until_restart() {
   assertAction(StaAction::StartScan, j.step(20000000, true));
 }
 
+// The core's one-shot first-connect retry links after the wisp left Osc:
+// leaving drops even from Waiting, and the late link is dropped too.
+void test_core_retry_link_after_unwanted_dropped() {
+  StaJoin j;
+  j.setWanted(true, 0);
+  j.step(0, true);
+  assertAction(StaAction::Begin, j.onScanDone(true, 10));
+  j.onDisconnected(100);
+  assertState(State::Waiting, j);
+  assertAction(StaAction::Drop, j.setWanted(false, 200));
+  assertAction(StaAction::Drop, j.onConnected());
+  assertState(State::Idle, j);
+}
+
+// Re-entering Osc is an explicit operator act: it clears a halt.
+void test_rewanting_clears_halt() {
+  StaJoin j;
+  j.setWanted(true, 0);
+  j.step(0, true);
+  j.onScanDone(true, 10);
+  j.onConnected();
+  j.halt();
+  assertAction(StaAction::Drop, j.setWanted(false, 100));
+  j.setWanted(true, 200);
+  assertAction(StaAction::StartScan, j.step(200, true));
+}
+
+// Every way out of an attempt in flight drops it.
+void test_in_flight_exits_drop() {
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    j.onScanDone(true, 10);
+    assertAction(StaAction::Drop, j.restart(20));
+  }
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    j.onScanDone(true, 10);
+    j.onConnected();
+    assertAction(StaAction::Drop, j.restart(20));
+  }
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    assertAction(StaAction::Drop, j.halt());
+  }
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    assertAction(StaAction::Drop, j.setWanted(false, 10));
+  }
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    j.onScanDone(true, 10);
+    assertAction(StaAction::Drop, j.setWanted(false, 20));
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_idle_until_wanted);
@@ -184,5 +250,8 @@ int main(int, char**) {
   RUN_TEST(test_scan_timeout_counts_as_failure);
   RUN_TEST(test_no_creds_goes_idle);
   RUN_TEST(test_halt_until_restart);
+  RUN_TEST(test_core_retry_link_after_unwanted_dropped);
+  RUN_TEST(test_rewanting_clears_halt);
+  RUN_TEST(test_in_flight_exits_drop);
   return UNITY_END();
 }

@@ -34,16 +34,17 @@ class WifiLink {
   // Re-read creds and restart the join schedule: drops any association and,
   // while the join is wanted, attempts at once. Called after a setWifi op
   // persists new creds. Clears the channel-mismatch guard, which is
-  // otherwise sticky: after a mismatch the wisp does not retry until this.
+  // otherwise sticky: after a mismatch the wisp does not retry until this or
+  // until the source re-enters Osc.
   void reconnect();
 
   // Loop-task driver. `wanted` is whether the source uses the network (Osc).
   // While wanted and creds exist it scans the mesh channel for the stored
   // SSID and joins only an AP found there, retrying on StaJoin's backoff (no
   // core auto-reconnect). Unwanted drops the association and stops retrying;
-  // creds stay in NVS. Also applies a deferred STA_GOT_IP channel check: the
-  // event only records the channel, the radio work runs here off the WiFi
-  // event task.
+  // creds stay in NVS. Re-entering Osc clears a channel-mismatch halt. Also
+  // applies a deferred STA_GOT_IP channel check: the event only records the
+  // channel, the radio work runs here off the WiFi event task.
   void loop(bool wanted, uint32_t nowMs);
 
   // softAP role on the mesh channel (WIFI_AP_STA so ESP-NOW keeps working).
@@ -98,16 +99,21 @@ class WifiLink {
   void pollScan(uint32_t nowMs);
   void dropJoin();
   void checkChannel();
+  void clearMismatch();
+  void onStaDisconnected(uint32_t nowMs);
 
   StaJoin join_;
   bool wanted_ = false;
   uint8_t scanBssid_[6] = {0};
-  // Written by the WiFi event task, read by loop(): STA_DISCONNECTED events
-  // the wisp did not cause (reason other than ASSOC_LEAVE), and GOT_IP.
-  std::atomic<uint32_t> disconnects_{0};
-  std::atomic<uint32_t> connects_{0};
-  uint32_t seenDisconnects_ = 0;
-  uint32_t seenConnects_ = 0;
+  // Written by the WiFi event task, read by loop(). Every event takes the
+  // next eventSeq_; lastDisconnectSeq_ is the latest STA_DISCONNECTED the
+  // wisp did not cause (reason other than ASSOC_LEAVE), lastConnectSeq_ the
+  // latest GOT_IP, so loop() applies a pair in the order it happened.
+  std::atomic<uint32_t> eventSeq_{0};
+  std::atomic<uint32_t> lastDisconnectSeq_{0};
+  std::atomic<uint32_t> lastConnectSeq_{0};
+  uint32_t seenDisconnectSeq_ = 0;
+  uint32_t seenConnectSeq_ = 0;
 
   std::function<void()> onChange_;
 };

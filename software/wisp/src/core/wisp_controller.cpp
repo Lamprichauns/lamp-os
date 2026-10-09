@@ -325,8 +325,8 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
                                       floats * sizeof(float)));
   oscScratch_.id = id;
   palette_.update(oscScratch_, nowMs);
-  // Ring first: it re-opens the ArtNet gate on a resume, so the emit below
-  // is not dropped.
+  // The ring renders first because it re-opens the ArtNet gate on a resume;
+  // the emit below would otherwise be dropped.
   renderRing();
   if (resumed) {
     oscPaintGate_.reset();

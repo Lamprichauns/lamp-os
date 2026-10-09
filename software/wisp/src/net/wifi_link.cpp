@@ -41,14 +41,18 @@ void WifiLink::begin(WispConfig* config) {
       if (s_self) {
         s_self->pendingStaChannel_.store(WiFi.channel(),
                                          std::memory_order_relaxed);
-        s_self->connects_.fetch_add(1, std::memory_order_relaxed);
+        s_self->lastConnectSeq_.store(
+            s_self->eventSeq_.fetch_add(1, std::memory_order_relaxed) + 1,
+            std::memory_order_relaxed);
       }
     } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
       const uint8_t reason = info.wifi_sta_disconnected.reason;
       Serial.printf("[wifi] disconnected reason=%u\n", (unsigned)reason);
       // ASSOC_LEAVE is the wisp's own disconnect; it fails no attempt.
       if (s_self && reason != WIFI_REASON_ASSOC_LEAVE) {
-        s_self->disconnects_.fetch_add(1, std::memory_order_relaxed);
+        s_self->lastDisconnectSeq_.store(
+            s_self->eventSeq_.fetch_add(1, std::memory_order_relaxed) + 1,
+            std::memory_order_relaxed);
       }
 #ifdef LAMP_DEBUG
     } else if (event == ARDUINO_EVENT_WIFI_AP_STACONNECTED) {
@@ -67,28 +71,28 @@ void WifiLink::begin(WispConfig* config) {
 
 void WifiLink::loop(bool wanted, uint32_t nowMs) {
   checkChannel();
-  wanted_ = wanted;
-  const StaAction edge = join_.setWanted(wanted, nowMs);
-  if (!wanted && edge == StaAction::Drop) {
-    Serial.println("[wifi] source does not use the network; STA idle");
-  }
-  apply(edge);
-
-  const uint32_t disc = disconnects_.load(std::memory_order_relaxed);
-  if (disc != seenDisconnects_) {
-    seenDisconnects_ = disc;
-    const StaJoin::State was = join_.state();
-    join_.onDisconnected(nowMs);
-    if (was == StaJoin::State::Joining || was == StaJoin::State::Linked) {
-      Serial.printf("[wifi] %s %s; retry in %lus\n", ssid().c_str(),
-                    was == StaJoin::State::Linked ? "link lost" : "join failed",
-                    (unsigned long)(join_.lastWaitMs() / 1000));
+  if (wanted != wanted_) {
+    if (wanted) {
+      clearMismatch();
+    } else {
+      Serial.println("[wifi] source does not use the network; STA idle");
     }
   }
-  const uint32_t conn = connects_.load(std::memory_order_relaxed);
-  if (conn != seenConnects_) {
-    seenConnects_ = conn;
-    join_.onConnected();
+  wanted_ = wanted;
+  apply(join_.setWanted(wanted, nowMs));
+
+  const uint32_t disc = lastDisconnectSeq_.load(std::memory_order_relaxed);
+  const uint32_t conn = lastConnectSeq_.load(std::memory_order_relaxed);
+  const bool newDisc = disc != seenDisconnectSeq_;
+  const bool newConn = conn != seenConnectSeq_;
+  seenDisconnectSeq_ = disc;
+  seenConnectSeq_ = conn;
+  if (newDisc && newConn && static_cast<int32_t>(conn - disc) < 0) {
+    apply(join_.onConnected());
+    onStaDisconnected(nowMs);
+  } else {
+    if (newDisc) onStaDisconnected(nowMs);
+    if (newConn) apply(join_.onConnected());
   }
 
   pollScan(nowMs);
@@ -103,6 +107,24 @@ void WifiLink::loop(bool wanted, uint32_t nowMs) {
                   before == StaJoin::State::Joining ? "join" : "scan",
                   (unsigned long)(join_.lastWaitMs() / 1000));
   }
+}
+
+void WifiLink::onStaDisconnected(uint32_t nowMs) {
+  const StaJoin::State was = join_.state();
+  join_.onDisconnected(nowMs);
+  if (was == StaJoin::State::Joining || was == StaJoin::State::Linked) {
+    Serial.printf("[wifi] %s %s; retry in %lus\n", ssid().c_str(),
+                  was == StaJoin::State::Linked ? "link lost" : "join failed",
+                  (unsigned long)(join_.lastWaitMs() / 1000));
+  }
+}
+
+void WifiLink::clearMismatch() {
+  pendingStaChannel_.store(0, std::memory_order_relaxed);
+  lastStaChannel_ = 0;
+  if (!channelMismatch_) return;
+  channelMismatch_ = false;
+  if (onChange_) onChange_();
 }
 
 void WifiLink::apply(StaAction action) {
@@ -128,7 +150,8 @@ void WifiLink::apply(StaAction action) {
 
 void WifiLink::startScan() {
   const std::string s = ssid();
-  // Async, one channel, filtered to the stored SSID: loop() polls the result.
+  // Async and filtered to the stored SSID on the mesh channel; pollScan()
+  // reads the result.
   const int16_t r = WiFi.scanNetworks(/*async=*/true, /*show_hidden=*/false,
                                       /*passive=*/false, kScanDwellMs,
                                       LAMP_ESPNOW_CHANNEL, s.c_str());
@@ -141,18 +164,19 @@ void WifiLink::pollScan(uint32_t nowMs) {
   if (join_.state() != StaJoin::State::Scanning) return;
   const int16_t n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) return;
-  bool found = false;
-  if (n > 0) {
-    int best = 0;
-    for (int i = 1; i < n; ++i) {
-      if (WiFi.RSSI(i) > WiFi.RSSI(best)) best = i;
-    }
-    WiFi.BSSID(static_cast<uint8_t>(best), scanBssid_);
-    found = true;
+  int best = -1;
+  for (int i = 0; i < n; ++i) {
+    if (WiFi.channel(i) != LAMP_ESPNOW_CHANNEL) continue;
+    if (best < 0 || WiFi.RSSI(i) > WiFi.RSSI(best)) best = i;
   }
+  const bool found = best >= 0;
+  if (found) WiFi.BSSID(static_cast<uint8_t>(best), scanBssid_);
   WiFi.scanDelete();
   const StaAction a = join_.onScanDone(found, nowMs);
-  if (!found) {
+  if (n == WIFI_SCAN_FAILED) {
+    Serial.printf("[wifi] mesh-channel scan failed; retry in %lus\n",
+                  (unsigned long)(join_.lastWaitMs() / 1000));
+  } else if (!found) {
     Serial.printf("[wifi] %s not on ch %d; retry in %lus\n", ssid().c_str(),
                   LAMP_ESPNOW_CHANNEL,
                   (unsigned long)(join_.lastWaitMs() / 1000));
@@ -203,9 +227,7 @@ void WifiLink::reconnect() {
     Serial.println("[wifi] reconnect called before begin(); ignoring");
     return;
   }
-  channelMismatch_ = false;
-  lastStaChannel_ = 0;
-  pendingStaChannel_.store(0, std::memory_order_relaxed);
+  clearMismatch();
   if (join_.restart(millis()) == StaAction::Drop) dropJoin();
   if (ssid().empty() || password().empty()) {
     Serial.println(

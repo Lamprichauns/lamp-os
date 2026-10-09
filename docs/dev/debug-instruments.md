@@ -74,7 +74,7 @@ Serial-ingress commands (`scripts/bench_cmd.py`), `core/lamp_test_action.cpp`:
 | `[wisploop]` | `wisp/src/main.cpp` | Loop stall (`stall=..ms`) |
 | `[wispheap]` | `wisp/src/status/status_emitter.cpp` | Wisp free + largest heap (`free=.. largest=..`) |
 | `[mesh]` | `wisp/src/net/mesh_link.cpp` | Wisp ESP-NOW init / ready (ch, mac) |
-| `[wifi]` | `wisp/src/net/wifi_link.cpp`, `console/serial_console.cpp` | Wisp WiFi STA join: `<ssid> found on ch 6; joining`, `<ssid> not on ch 6; retry in Ns`, `<ssid> join failed\|link lost; retry in Ns`, `<ssid> join\|scan timed out; retry in Ns`, `source does not use the network; STA idle`, `disconnected reason=N`, `got IP`; channel-6 guard drop logs `AP ch=N != mesh ch=6; dropping association, re-pinning radio to mesh, retries halted` |
+| `[wifi]` | `wisp/src/net/wifi_link.cpp`, `console/serial_console.cpp` | Wisp WiFi STA join: `<ssid> found on ch 6; joining`, `<ssid> not on ch 6; retry in Ns`, `mesh-channel scan failed; retry in Ns`, `<ssid> join failed\|link lost; retry in Ns`, `<ssid> join\|scan timed out; retry in Ns`, `source does not use the network; STA idle`, `disconnected reason=N`, `got IP`; channel-6 guard drop logs `AP ch=N != mesh ch=6; dropping association, re-pinning radio to mesh, retries halted` |
 | `[bright]` | `wisp/src/paint/paint_distributor.cpp` | Per-lamp brightness send (`send %u->mac seq=..`) |
 | `[osc]` | `wisp/src/core/wisp_controller.cpp`, `osc/osc_listener.cpp` | OSC palette in (`palette n=.. via serial\|udp`, at most 1/s), stream stale, UDP listen / bind failures |
 | `[artnet]` | `wisp/src/artnet/artnet_emitter.cpp` | Art-Net UDP emit (ready / frame-build-failed) |

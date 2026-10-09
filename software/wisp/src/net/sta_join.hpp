@@ -1,13 +1,10 @@
-// When the wisp's WiFi STA scans for, joins and drops its stored network.
-// Pure: WifiLink feeds it WiFi events and scan results and carries out the
-// actions it returns, so the policy is host-testable. Every attempt is judged
-// by the events it produces, never by WiFi.status(), which the Arduino core
-// latches from the last event and does not clear when a new join starts.
-//
-// One attempt: scan the mesh channel only for the SSID; begin a join only
-// when it is there; a disconnect or a join that neither links nor fails
-// within kJoinTimeoutMs counts as a failure. Failures retry on a
-// RetryBackoff. Nothing runs while the source does not want the network.
+// Decides when the wisp's WiFi STA scans for, joins and drops its stored
+// network. The caller feeds it WiFi events (in the order they happened) and
+// mesh-channel scan results, never WiFi.status(), and carries out every
+// action it returns; a Drop must be safe to repeat. Contract: nothing scans
+// or joins unless the network is wanted; a join begins only after a scan
+// found the SSID; failures retry on a RetryBackoff; a link that appears while
+// the network is unwanted or halted is dropped.
 
 #pragma once
 
@@ -40,8 +37,8 @@ class StaJoin {
 
   State state() const { return state_; }
 
-  // Whether the source uses the network. Wanting arms a scan at once;
-  // unwanting drops everything and retries nothing.
+  // Whether the source uses the network. Wanting arms a scan at once, and
+  // clears a halt; unwanting drops everything and retries nothing.
   StaAction setWanted(bool wanted, uint32_t nowMs) {
     if (wanted == wanted_) return StaAction::None;
     wanted_ = wanted;
@@ -52,25 +49,24 @@ class StaJoin {
     return idle();
   }
 
-  // Creds changed or a reconnect was asked for: start over at once.
+  // Creds changed or a reconnect was asked for: drop whatever is in flight
+  // and, while wanted, start over at once. Clears a halt.
   StaAction restart(uint32_t nowMs) {
-    const bool active = state_ == State::Scanning || state_ == State::Joining ||
-                        state_ == State::Linked;
-    if (!wanted_) {
-      state_ = State::Idle;
-      return active ? StaAction::Drop : StaAction::None;
-    }
+    if (!wanted_) return idle();
+    const StaAction drop = state_ == State::Idle ? StaAction::None
+                                                 : StaAction::Drop;
     arm(nowMs);
-    return active ? StaAction::Drop : StaAction::None;
+    return drop;
   }
 
   // A guard refused the link (wrong channel): drop and stay down until
-  // restart().
+  // restart() or the network is wanted again.
   StaAction halt() {
-    const bool active = state_ != State::Idle && state_ != State::Waiting &&
-                        state_ != State::Halted;
+    const StaAction drop = state_ == State::Idle || state_ == State::Halted
+                               ? StaAction::None
+                               : StaAction::Drop;
     state_ = State::Halted;
-    return active ? StaAction::Drop : StaAction::None;
+    return drop;
   }
 
   // Drives scan starts and timeouts. Call every loop pass.
@@ -111,12 +107,12 @@ class StaJoin {
     return StaAction::Begin;
   }
 
-  // GOT_IP. Adopted in any wanted state, so a join the core retried on its
-  // own still counts.
-  void onConnected() {
-    if (!wanted_ || state_ == State::Halted) return;
+  // GOT_IP. Adopted in any wanted state but Halted, so a join the core
+  // retried on its own still counts; while unwanted or halted it is dropped.
+  StaAction onConnected() {
+    if (!wanted_ || state_ == State::Halted) return StaAction::Drop;
     state_ = State::Linked;
-    backoff_.stop();
+    return StaAction::None;
   }
 
   // An STA disconnect the wisp did not ask for. Fails a join; a lost link
@@ -139,11 +135,13 @@ class StaJoin {
     state_ = State::Waiting;
   }
 
+  // Drops from any state but Idle: from Waiting too, since the core may be
+  // running a retry of its own that could still link.
   StaAction idle() {
-    const bool active = state_ == State::Scanning || state_ == State::Joining ||
-                        state_ == State::Linked;
+    const StaAction drop = state_ == State::Idle ? StaAction::None
+                                                 : StaAction::Drop;
     state_ = State::Idle;
-    return active ? StaAction::Drop : StaAction::None;
+    return drop;
   }
 
   void fail(uint32_t nowMs) {

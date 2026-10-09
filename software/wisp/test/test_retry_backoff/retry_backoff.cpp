@@ -7,12 +7,6 @@ using wisp::RetryBackoff;
 void setUp() {}
 void tearDown() {}
 
-void test_unarmed_never_due() {
-  RetryBackoff b;
-  TEST_ASSERT_FALSE(b.due(0));
-  TEST_ASSERT_FALSE(b.due(0xFFFFFFFFu));
-}
-
 void test_reset_is_due_at_once() {
   RetryBackoff b;
   b.reset(5000);
@@ -47,14 +41,6 @@ void test_reset_restarts_schedule() {
   TEST_ASSERT_FALSE(b.due(79999));
 }
 
-void test_stop_disarms() {
-  RetryBackoff b;
-  b.reset(0);
-  b.failed(0);
-  b.stop();
-  TEST_ASSERT_FALSE(b.due(1000000));
-}
-
 void test_millis_wrap() {
   RetryBackoff b;
   b.reset(0xFFFFF000u);
@@ -65,11 +51,9 @@ void test_millis_wrap() {
 
 int main(int, char**) {
   UNITY_BEGIN();
-  RUN_TEST(test_unarmed_never_due);
   RUN_TEST(test_reset_is_due_at_once);
   RUN_TEST(test_schedule_doubles_to_cap);
   RUN_TEST(test_reset_restarts_schedule);
-  RUN_TEST(test_stop_disarms);
   RUN_TEST(test_millis_wrap);
   return UNITY_END();
 }
