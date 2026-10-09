@@ -39,8 +39,8 @@ void WifiLink::begin(WispConfig* config) {
       // One shared radio: STA follows the AP's channel, dragging ESP-NOW with
       // it. Hand the channel to loop(); the radio fix runs off the event task.
       if (s_self) {
-        s_self->pendingStaChannel_.store(WiFi.channel(),
-                                         std::memory_order_relaxed);
+        s_self->lastConnectChannel_.store(WiFi.channel(),
+                                          std::memory_order_relaxed);
         s_self->lastConnectSeq_.store(
             s_self->eventSeq_.fetch_add(1, std::memory_order_relaxed) + 1,
             std::memory_order_relaxed);
@@ -70,7 +70,6 @@ void WifiLink::begin(WispConfig* config) {
 }
 
 void WifiLink::loop(bool wanted, uint32_t nowMs) {
-  checkChannel();
   if (wanted != wanted_) {
     if (wanted) {
       clearMismatch();
@@ -81,18 +80,29 @@ void WifiLink::loop(bool wanted, uint32_t nowMs) {
   wanted_ = wanted;
   apply(join_.setWanted(wanted, nowMs));
 
-  const uint32_t disc = lastDisconnectSeq_.load(std::memory_order_relaxed);
   const uint32_t conn = lastConnectSeq_.load(std::memory_order_relaxed);
-  const bool newDisc = disc != seenDisconnectSeq_;
-  const bool newConn = conn != seenConnectSeq_;
-  seenDisconnectSeq_ = disc;
-  seenConnectSeq_ = conn;
-  if (newDisc && newConn && static_cast<int32_t>(conn - disc) < 0) {
-    apply(join_.onConnected());
+  const uint32_t disc = lastDisconnectSeq_.load(std::memory_order_relaxed);
+  const bool newConn = static_cast<int32_t>(conn - appliedSeq_) > 0;
+  const bool newDisc = static_cast<int32_t>(disc - appliedSeq_) > 0;
+  if (newConn && (!newDisc || static_cast<int32_t>(conn - disc) < 0)) {
+    appliedSeq_ = conn;
+    onStaConnected();
+    if (newDisc && static_cast<int32_t>(disc - appliedSeq_) > 0) {
+      appliedSeq_ = disc;
+      onStaDisconnected(nowMs);
+    }
+  } else if (newDisc) {
+    appliedSeq_ = disc;
     onStaDisconnected(nowMs);
-  } else {
-    if (newDisc) onStaDisconnected(nowMs);
-    if (newConn) apply(join_.onConnected());
+    if (newConn && static_cast<int32_t>(conn - appliedSeq_) > 0) {
+      appliedSeq_ = conn;
+      onStaConnected();
+    }
+  }
+  // Backstop for a link that went down without an event reaching here: the
+  // netif CONNECTED bit, unlike WiFi.status(), is not latched.
+  if (join_.state() == StaJoin::State::Linked && !WiFi.STA.connected()) {
+    onStaDisconnected(nowMs);
   }
 
   pollScan(nowMs);
@@ -119,8 +129,15 @@ void WifiLink::onStaDisconnected(uint32_t nowMs) {
   }
 }
 
+void WifiLink::onStaConnected() {
+  const StaAction a = join_.onConnected();
+  apply(a);
+  if (a == StaAction::None) {
+    checkChannel(lastConnectChannel_.load(std::memory_order_relaxed));
+  }
+}
+
 void WifiLink::clearMismatch() {
-  pendingStaChannel_.store(0, std::memory_order_relaxed);
   lastStaChannel_ = 0;
   if (!channelMismatch_) return;
   channelMismatch_ = false;
@@ -190,6 +207,7 @@ void WifiLink::dropJoin() {
   // Drop the association but keep the stored creds and the radio up; the STA
   // interface must stay up for ESP-NOW.
   WiFi.disconnect(/*wifioff=*/false, /*eraseap=*/false);
+  appliedSeq_ = eventSeq_.load(std::memory_order_relaxed);
   // Setting the channel is refused while scanning, connecting or serving
   // softAP stations, so only when the radio has actually left the mesh.
   uint8_t primary = 0;
@@ -200,8 +218,7 @@ void WifiLink::dropJoin() {
   }
 }
 
-void WifiLink::checkChannel() {
-  const int ch = pendingStaChannel_.exchange(0, std::memory_order_relaxed);
+void WifiLink::checkChannel(int ch) {
   if (ch == 0) return;
   const bool wasMismatch = channelMismatch_;
   if (ch == LAMP_ESPNOW_CHANNEL) {

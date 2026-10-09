@@ -166,7 +166,7 @@ void test_halt_until_restart() {
   j.onConnected();
   assertAction(StaAction::Drop, j.halt());
   assertAction(StaAction::None, j.step(10000000, true));
-  j.onConnected();
+  assertAction(StaAction::Drop, j.onConnected());
   assertState(State::Halted, j);
   j.restart(20000000);
   assertAction(StaAction::StartScan, j.step(20000000, true));
@@ -237,6 +237,29 @@ void test_in_flight_exits_drop() {
   }
 }
 
+// Restart drops from Waiting (a core retry may be in flight) and from
+// Halted, then starts over.
+void test_restart_drops_from_waiting_and_halted() {
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.step(0, true);
+    j.onScanDone(true, 10);
+    j.onDisconnected(20);
+    assertState(State::Waiting, j);
+    assertAction(StaAction::Drop, j.restart(30));
+    assertAction(StaAction::StartScan, j.step(30, true));
+  }
+  {
+    StaJoin j;
+    j.setWanted(true, 0);
+    j.halt();
+    assertState(State::Halted, j);
+    assertAction(StaAction::Drop, j.restart(30));
+    assertAction(StaAction::StartScan, j.step(30, true));
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_idle_until_wanted);
@@ -253,5 +276,6 @@ int main(int, char**) {
   RUN_TEST(test_core_retry_link_after_unwanted_dropped);
   RUN_TEST(test_rewanting_clears_halt);
   RUN_TEST(test_in_flight_exits_drop);
+  RUN_TEST(test_restart_drops_from_waiting_and_halted);
   return UNITY_END();
 }

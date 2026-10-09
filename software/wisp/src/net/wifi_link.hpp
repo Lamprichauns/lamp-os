@@ -67,8 +67,8 @@ class WifiLink {
   bool isConnected() const;
 
   // True once an AP association landed on a channel other than the mesh
-  // channel and the guard dropped it. Cleared by reconnect() or a clean
-  // mesh-channel association. apChannel() is the offending channel (0 when
+  // channel and the guard dropped it. Cleared by reconnect(), by the source
+  // re-entering Osc, or by a clean mesh-channel association. apChannel() is the offending channel (0 when
   // no mismatch). Loop-task state, read by the status emitter.
   bool channelMismatch() const { return channelMismatch_; }
   int apChannel() const { return lastStaChannel_; }
@@ -88,9 +88,6 @@ class WifiLink {
   Mode mode_ = Mode::Off;
   bool apUp_ = false;
 
-  // Channel carried by a STA_GOT_IP event, handed from the WiFi event task to
-  // loop(). 0 means nothing pending; loop() exchanges it back to 0.
-  std::atomic<int> pendingStaChannel_{0};
   bool channelMismatch_ = false;
   int lastStaChannel_ = 0;
 
@@ -98,9 +95,10 @@ class WifiLink {
   void startScan();
   void pollScan(uint32_t nowMs);
   void dropJoin();
-  void checkChannel();
+  void checkChannel(int ch);
   void clearMismatch();
   void onStaDisconnected(uint32_t nowMs);
+  void onStaConnected();
 
   StaJoin join_;
   bool wanted_ = false;
@@ -108,12 +106,15 @@ class WifiLink {
   // Written by the WiFi event task, read by loop(). Every event takes the
   // next eventSeq_; lastDisconnectSeq_ is the latest STA_DISCONNECTED the
   // wisp did not cause (reason other than ASSOC_LEAVE), lastConnectSeq_ the
-  // latest GOT_IP, so loop() applies a pair in the order it happened.
+  // latest GOT_IP and lastConnectChannel_ its channel. loop() applies new
+  // events in sequence order; appliedSeq_ is the newest applied, and anything
+  // at or below it is stale. dropJoin() swallows every event so far, so a
+  // GOT_IP for a link already dropped is never adopted.
   std::atomic<uint32_t> eventSeq_{0};
   std::atomic<uint32_t> lastDisconnectSeq_{0};
   std::atomic<uint32_t> lastConnectSeq_{0};
-  uint32_t seenDisconnectSeq_ = 0;
-  uint32_t seenConnectSeq_ = 0;
+  std::atomic<int> lastConnectChannel_{0};
+  uint32_t appliedSeq_ = 0;
 
   std::function<void()> onChange_;
 };
