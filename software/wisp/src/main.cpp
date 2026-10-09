@@ -51,8 +51,8 @@ std::string stageApSsid(const wisp::WispConfig& config) {
   return std::string("wisp-") + name.c_str();
 }
 
-// GPIO 1 (D1): D0 = GPIO 0 = BOOT strap pin; leaving it free keeps
-// USB-recover (download mode) working without unplugging the strip.
+// GPIO 1 (D1). The C6's BOOT strap is GPIO 9, which is not on the header, so
+// download mode works whatever the strip is wired to.
 constexpr uint8_t  kTestStripPin        = 1;
 // Sized to kMaxRingPixels so the internal buffer covers any configured count;
 // applyLedConfig() sets the real format + length after config is loaded.
