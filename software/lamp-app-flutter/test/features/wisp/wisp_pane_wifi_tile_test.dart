@@ -148,6 +148,21 @@ void main() {
     expect(find.textContaining('Not connected'), findsNothing);
   });
 
+  testWidgets('on Ethernet the WiFi row says WiFi is off and shows the IP',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,'
+          '"source":"osc","ethIp":"10.0.0.42"}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.textContaining('Off while on Ethernet (10.0.0.42)'),
+        findsOneWidget);
+    expect(find.textContaining('Not connected'), findsNothing);
+  });
+
   testWidgets('tapping the WiFi row opens the network picker sheet',
       (tester) async {
     final c = await _makeContainer();

@@ -273,5 +273,14 @@ void main() {
       expect(s.wifiChannelMismatch, isFalse);
       expect(s.wifiApChannel, 0);
     });
+
+    test('ethIp parses from JSON and defaults empty when absent', () {
+      final s = WispStatus.fromBytes(_b(
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","ethIp":"10.0.0.42"}',
+      ));
+      expect(s.ethIp, '10.0.0.42');
+      expect(WispStatus.fromBytes(_b('{"wispMac":"AA:BB:CC:DD:EE:FF"}')).ethIp,
+          '');
+    });
   });
 }

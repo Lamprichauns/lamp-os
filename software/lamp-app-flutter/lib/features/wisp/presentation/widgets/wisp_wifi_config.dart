@@ -33,15 +33,18 @@ class _WifiConfigRowState extends ConsumerState<WifiConfigRow> {
     // The wisp joins WiFi only while following Straylight, so outside that
     // mode "not connected" says nothing about the saved network.
     final followsStraylight = widget.status.source == WispSourceMode.osc;
+    final ethIp = widget.status.ethIp;
     final subtitle = _busy
         ? 'Sending credentials to wisp…'
         : mismatch
             ? 'Wi-Fi channel conflict. Tap to change network.'
             : !followsStraylight
                 ? 'Joins only while following Straylight. Tap to configure.'
-                : (widget.status.wifiConnected
-                    ? 'Connected. Tap to change network.'
-                    : 'Not connected. Tap to configure.');
+                : ethIp.isNotEmpty
+                    ? 'Off while on Ethernet ($ethIp). Tap to configure.'
+                    : (widget.status.wifiConnected
+                        ? 'Connected. Tap to change network.'
+                        : 'Not connected. Tap to configure.');
     final row = SettingsRow(
       key: const Key('wifi-config-row'),
       icon: Icons.wifi,
