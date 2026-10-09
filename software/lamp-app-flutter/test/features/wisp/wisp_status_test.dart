@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_source_mode.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_status.dart';
-import 'package:lamp_app/features/wisp/domain/zone_source.dart';
 
 /// Wrap a JSON string as the raw UTF-8 bytes the BLE layer hands us.
 Uint8List _b(String s) => Uint8List.fromList(utf8.encode(s));
@@ -15,17 +14,14 @@ void main() {
       final s = WispStatus.fromBytes(Uint8List(0));
       expect(s.present, isFalse);
       expect(s.wispMac, isNull);
-      expect(s.currentZone, isNull);
-      expect(s.zoneSource, ZoneSource.none);
-      expect(s.observedZones, isEmpty);
+      expect(s.source, WispSourceMode.off);
+      expect(s.sourceLive, isFalse);
     });
 
     test('"{}" bytes → empty status (not present)', () {
       final s = WispStatus.fromBytes(_b('{}'));
       expect(s.present, isFalse);
       expect(s.wispMac, isNull);
-      expect(s.currentZone, isNull);
-      expect(s.zoneSource, ZoneSource.none);
     });
 
     test('invalid UTF-8 bytes → empty status (no throw)', () {
@@ -50,40 +46,17 @@ void main() {
     test('canonical payload parses every field', () {
       final s = WispStatus.fromBytes(_b(
         '{"wispMac":"AA:BB:CC:DD:EE:FF",'
-        '"currentZone":3,'
-        '"zoneSource":"nvs",'
-        '"observedZones":[0,3,7],'
+        '"source":"osc",'
+        '"oscRole":"tertiary",'
         '"wifiConnected":true,'
-        '"auroraConnected":true}',
+        '"sourceLive":true}',
       ));
       expect(s.present, isTrue);
       expect(s.wispMac, 'AA:BB:CC:DD:EE:FF');
-      expect(s.currentZone, 3);
-      expect(s.zoneSource, ZoneSource.nvs);
-      expect(s.observedZones, [0, 3, 7]);
+      expect(s.source, WispSourceMode.osc);
+      expect(s.oscRole, OscRole.tertiary);
       expect(s.wifiConnected, isTrue);
-      expect(s.auroraConnected, isTrue);
-    });
-
-    test('zoneSource "firstSeen" round-trips', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","zoneSource":"firstSeen"}',
-      ));
-      expect(s.zoneSource, ZoneSource.firstSeen);
-    });
-
-    test('zoneSource "appOp" round-trips', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","zoneSource":"appOp"}',
-      ));
-      expect(s.zoneSource, ZoneSource.appOp);
-    });
-
-    test('zoneSource "none" round-trips', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","zoneSource":"none"}',
-      ));
-      expect(s.zoneSource, ZoneSource.none);
+      expect(s.sourceLive, isTrue);
     });
 
     test('extra unknown keys do not crash', () {
@@ -91,27 +64,19 @@ void main() {
       // doesn't know about. Parser must ignore them gracefully.
       final s = WispStatus.fromBytes(_b(
         '{"wispMac":"AA:BB:CC:DD:EE:FF",'
-        '"currentZone":1,'
         '"futureField":"whatever",'
         '"anotherFutureField":42,'
         '"nestedFuture":{"a":1,"b":[2,3]}}',
       ));
       expect(s.present, isTrue);
-      expect(s.currentZone, 1);
-    });
-
-    test('missing observedZones defaults to empty list', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","currentZone":1}',
-      ));
-      expect(s.observedZones, isEmpty);
     });
 
     test('source field parses each known value', () {
       for (final pair in [
         ('off', WispSourceMode.off),
         ('manual', WispSourceMode.manual),
-        ('aurora', WispSourceMode.aurora),
+        ('osc', WispSourceMode.osc),
+        ('aurora', WispSourceMode.off),
       ]) {
         final s = WispStatus.fromBytes(_b(
           '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"${pair.$1}"}',
@@ -127,25 +92,38 @@ void main() {
       expect(s.source, WispSourceMode.off);
     });
 
-    test('auroraDetected is true when auroraConnected is true', () {
+    test('sourceLive defaults to false when absent', () {
       final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","auroraConnected":true}',
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}',
       ));
-      expect(s.auroraDetected, isTrue);
+      expect(s.sourceLive, isFalse);
     });
 
-    test('auroraDetected is true when any zone is observed', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","observedZones":[3]}',
-      ));
-      expect(s.auroraDetected, isTrue);
+    test('oscRole defaults to primary when absent or unknown', () {
+      for (final json in [
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}',
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc","oscRole":"bass"}',
+      ]) {
+        expect(WispStatus.fromBytes(_b(json)).oscRole, OscRole.primary);
+      }
     });
 
-    test('auroraDetected is false when no signal', () {
-      final s = WispStatus.fromBytes(_b(
-        '{"wispMac":"AA:BB:CC:DD:EE:FF"}',
-      ));
-      expect(s.auroraDetected, isFalse);
+    test('oscRole parses each role', () {
+      for (final r in OscRole.values) {
+        final s = WispStatus.fromBytes(_b(
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc",'
+          '"oscRole":"${oscRoleWire(r)}"}',
+        ));
+        expect(s.oscRole, r);
+      }
+    });
+
+    test('oscRole participates in equality and copyWith', () {
+      const a = WispStatus(wispMac: 'AA:BB:CC:DD:EE:FF');
+      final b = a.copyWith(oscRole: OscRole.fill);
+      expect(b.oscRole, OscRole.fill);
+      expect(b == a, isFalse);
+      expect(b.copyWith(oscRole: OscRole.primary), a);
     });
 
     test('shuffleSeed parses from JSON', () {
@@ -185,7 +163,7 @@ void main() {
     });
 
     // Option A: the wisp emits offColor only in off mode and drift fields only
-    // in manual/aurora. Both sets must round-trip even when the other is absent.
+    // in manual/osc. Both sets must round-trip even when the other is absent.
     test('offColor parses the W element when present', () {
       final s = WispStatus.fromBytes(_b(
         '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"off","offColor":[200,100,50,90]}',

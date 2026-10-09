@@ -13,11 +13,10 @@ part of 'wisp_notifier.dart';
 /// thereafter every wispStatus update from the wisp lands in `state`
 /// without a round-trip.
 ///
-/// `setZone` / `clearZone` delegate to the repository and rely on the
-/// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-/// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-/// state so the chip highlight doesn't lag the tap; the notify either
-/// confirms or corrects it.
+/// `setOscRole` delegates to the repository and relies on the wisp's
+/// on-change broadcast (≤ ~2s) to push the updated status back via
+/// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+/// the picker doesn't lag the tap; the notify either confirms or corrects it.
 
 @ProviderFor(WispNotifier)
 final wispNotifierProvider = WispNotifierFamily._();
@@ -27,11 +26,10 @@ final wispNotifierProvider = WispNotifierFamily._();
 /// thereafter every wispStatus update from the wisp lands in `state`
 /// without a round-trip.
 ///
-/// `setZone` / `clearZone` delegate to the repository and rely on the
-/// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-/// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-/// state so the chip highlight doesn't lag the tap; the notify either
-/// confirms or corrects it.
+/// `setOscRole` delegates to the repository and relies on the wisp's
+/// on-change broadcast (≤ ~2s) to push the updated status back via
+/// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+/// the picker doesn't lag the tap; the notify either confirms or corrects it.
 final class WispNotifierProvider
     extends $AsyncNotifierProvider<WispNotifier, WispStatus> {
   /// Owns the live [WispStatus] for a single lamp. On build it does one
@@ -39,11 +37,10 @@ final class WispNotifierProvider
   /// thereafter every wispStatus update from the wisp lands in `state`
   /// without a round-trip.
   ///
-  /// `setZone` / `clearZone` delegate to the repository and rely on the
-  /// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-  /// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-  /// state so the chip highlight doesn't lag the tap; the notify either
-  /// confirms or corrects it.
+  /// `setOscRole` delegates to the repository and relies on the wisp's
+  /// on-change broadcast (≤ ~2s) to push the updated status back via
+  /// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+  /// the picker doesn't lag the tap; the notify either confirms or corrects it.
   WispNotifierProvider._({
     required WispNotifierFamily super.from,
     required String super.argument,
@@ -87,11 +84,10 @@ String _$wispNotifierHash() => r'76e1af15c7c7162d9229ca16064603356a1e63bb';
 /// thereafter every wispStatus update from the wisp lands in `state`
 /// without a round-trip.
 ///
-/// `setZone` / `clearZone` delegate to the repository and rely on the
-/// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-/// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-/// state so the chip highlight doesn't lag the tap; the notify either
-/// confirms or corrects it.
+/// `setOscRole` delegates to the repository and relies on the wisp's
+/// on-change broadcast (≤ ~2s) to push the updated status back via
+/// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+/// the picker doesn't lag the tap; the notify either confirms or corrects it.
 
 final class WispNotifierFamily extends $Family
     with
@@ -116,11 +112,10 @@ final class WispNotifierFamily extends $Family
   /// thereafter every wispStatus update from the wisp lands in `state`
   /// without a round-trip.
   ///
-  /// `setZone` / `clearZone` delegate to the repository and rely on the
-  /// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-  /// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-  /// state so the chip highlight doesn't lag the tap; the notify either
-  /// confirms or corrects it.
+  /// `setOscRole` delegates to the repository and relies on the wisp's
+  /// on-change broadcast (≤ ~2s) to push the updated status back via
+  /// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+  /// the picker doesn't lag the tap; the notify either confirms or corrects it.
 
   WispNotifierProvider call(String lampId) =>
       WispNotifierProvider._(argument: lampId, from: this);
@@ -134,11 +129,10 @@ final class WispNotifierFamily extends $Family
 /// thereafter every wispStatus update from the wisp lands in `state`
 /// without a round-trip.
 ///
-/// `setZone` / `clearZone` delegate to the repository and rely on the
-/// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-/// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-/// state so the chip highlight doesn't lag the tap; the notify either
-/// confirms or corrects it.
+/// `setOscRole` delegates to the repository and relies on the wisp's
+/// on-change broadcast (≤ ~2s) to push the updated status back via
+/// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+/// the picker doesn't lag the tap; the notify either confirms or corrects it.
 
 abstract class _$WispNotifier extends $AsyncNotifier<WispStatus> {
   late final _$args = ref.$arg as String;

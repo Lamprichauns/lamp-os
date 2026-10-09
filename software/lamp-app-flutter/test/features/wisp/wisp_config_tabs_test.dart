@@ -102,7 +102,7 @@ void main() {
       // SourcePicker pills visible without any tab tap.
       expect(find.text('Manual'), findsOneWidget);
       expect(find.text('Off'), findsOneWidget);
-      expect(find.text('Aurora'), findsOneWidget);
+      expect(find.text('Straylight'), findsOneWidget);
     });
 
     testWidgets('Palette source tab shows per-mode widget (manual palette editor)',
@@ -113,6 +113,36 @@ void main() {
 
       // Still on Palette source tab (default); manual source is active in seed JSON.
       expect(find.text('MANUAL PALETTE'), findsOneWidget);
+    });
+
+    testWidgets('Straylight source shows role picker and waiting notice',
+        (tester) async {
+      final c = await _makeContainer(
+        wispJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc",'
+            '"oscRole":"fill"}',
+      );
+      addTearDown(c.dispose);
+      await _pumpScreen(tester, c);
+
+      expect(find.byKey(const Key('wisp-osc-role-picker')), findsOneWidget);
+      for (final label in ['Primary', 'Secondary', 'Tertiary', 'Fill']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      expect(find.textContaining('Waiting for Straylight'), findsOneWidget);
+      expect(find.text('MANUAL PALETTE'), findsNothing);
+    });
+
+    testWidgets('live Straylight stream hides the waiting notice',
+        (tester) async {
+      final c = await _makeContainer(
+        wispJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc",'
+            '"sourceLive":true}',
+      );
+      addTearDown(c.dispose);
+      await _pumpScreen(tester, c);
+
+      expect(find.byKey(const Key('wisp-osc-role-picker')), findsOneWidget);
+      expect(find.textContaining('Waiting for Straylight'), findsNothing);
     });
 
     testWidgets('Settings tab shows name field, password field, and drift',
@@ -160,7 +190,7 @@ void main() {
       // Source picker pills should not appear on the Settings tab.
       expect(find.text('Manual'), findsNothing);
       expect(find.text('Off'), findsNothing);
-      expect(find.text('Aurora'), findsNothing);
+      expect(find.text('Straylight'), findsNothing);
     });
 
     testWidgets('DriftControls does NOT appear on Palette source or Lamps tabs',

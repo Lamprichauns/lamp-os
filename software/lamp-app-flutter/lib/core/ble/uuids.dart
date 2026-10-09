@@ -49,8 +49,8 @@ abstract class BleUuids {
 
   // wisp_op (write-with-response, plaintext): JSON op forwarded to the
   // wisp via MSG_CONTROL_OP broadcast. Shape:
-  //   {"char":"wispOp","op":"setZone","zoneId":N}
-  //   {"char":"wispOp","op":"clearZone"}
+  //   {"char":"wispOp","op":"setSource","mode":"osc"}
+  //   {"char":"wispOp","op":"setOscRole","role":"secondary"}
   //   {"char":"wispOp","op":"setWifi","ssid":"…","pw":"…"}
   // The lamp broadcasts these on the mesh; it does not interpret them.
   static const wispOp = '5f64f4e1-d6d9-4a44-9b3f-3a8d6f7e6b40';

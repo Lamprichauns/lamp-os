@@ -8,7 +8,6 @@ import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/core/ble/uuids.dart';
 import 'package:lamp_app/features/wisp/application/wisp_notifier.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_source_mode.dart';
-import 'package:lamp_app/features/wisp/domain/zone_source.dart';
 
 /// When a wispOp write rejects, optimistic state must roll back to its
 /// pre-call value. Failed writes have no incoming notify to reconcile
@@ -35,61 +34,42 @@ void main() {
   }
 
   group('WispNotifier rollback on write failure', () {
-    test('setZone reverts optimistic zone+source on BLE failure', () async {
+    test('setOscRole reverts optimistic role on BLE failure', () async {
       final ble = InMemoryBleClient();
       await primeStatus(
         ble,
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","currentZone":3,'
-        '"zoneSource":"firstSeen"}',
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc",'
+        '"oscRole":"secondary"}',
       );
       final c = makeContainer(ble);
 
       final initial = await c.read(wispNotifierProvider(lampId).future);
-      expect(initial.currentZone, 3);
-      expect(initial.zoneSource, ZoneSource.firstSeen);
+      expect(initial.oscRole, OscRole.secondary);
 
       // Tear the link down so the next write rejects.
       await ble.disconnect(lampId);
 
       final n = c.read(wispNotifierProvider(lampId).notifier);
-      await expectLater(() => n.setZone(7), throwsA(isA<Object>()));
-
-      final after = c.read(wispNotifierProvider(lampId)).value!;
-      expect(after.currentZone, 3, reason: 'optimistic zone bump reverted');
-      expect(after.zoneSource, ZoneSource.firstSeen,
-          reason: 'optimistic source flip reverted');
-    });
-
-    test('clearZone reverts zoneSource on BLE failure', () async {
-      final ble = InMemoryBleClient();
-      await primeStatus(
-        ble,
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","currentZone":3,'
-        '"zoneSource":"appOp"}',
+      await expectLater(
+        () => n.setOscRole(OscRole.fill),
+        throwsA(isA<Object>()),
       );
-      final c = makeContainer(ble);
-
-      await c.read(wispNotifierProvider(lampId).future);
-      await ble.disconnect(lampId);
-
-      final n = c.read(wispNotifierProvider(lampId).notifier);
-      await expectLater(() => n.clearZone(), throwsA(isA<Object>()));
 
       final after = c.read(wispNotifierProvider(lampId)).value!;
-      expect(after.zoneSource, ZoneSource.appOp,
-          reason: 'optimistic source flip reverted');
+      expect(after.oscRole, OscRole.secondary,
+          reason: 'optimistic role flip reverted');
     });
 
     test('setSource reverts source pill on BLE failure', () async {
       final ble = InMemoryBleClient();
       await primeStatus(
         ble,
-        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}',
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}',
       );
       final c = makeContainer(ble);
 
       final initial = await c.read(wispNotifierProvider(lampId).future);
-      expect(initial.source, WispSourceMode.aurora);
+      expect(initial.source, WispSourceMode.osc);
 
       await ble.disconnect(lampId);
 
@@ -100,7 +80,7 @@ void main() {
       );
 
       final after = c.read(wispNotifierProvider(lampId)).value!;
-      expect(after.source, WispSourceMode.aurora,
+      expect(after.source, WispSourceMode.osc,
           reason: 'optimistic source mode flip reverted');
     });
   });

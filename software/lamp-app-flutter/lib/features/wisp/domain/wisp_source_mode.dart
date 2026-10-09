@@ -1,31 +1,29 @@
 /// Where the wisp gets its paint palette from. Mirrors the wisp-side
-/// `WispSourceMode` enum in `software/wisp/src/WispConfig.h`:
+/// `WispSourceMode` enum in `software/wisp/src/config/wisp_config.hpp`:
 ///   off:    wisp does not broadcast paint; lamps run local behavior.
 ///   manual: wisp broadcasts paint from an operator-defined palette.
-///   aurora: wisp follows its Aurora subscription (default; legacy
-///           first-seen-wins behavior).
+///   osc:    wisp follows a palette streamed to it over OSC (Straylight).
+///           While no palette arrives the wisp holds the lamps at Off and
+///           resumes painting on its own when the stream returns.
 ///
 /// Wire-format on `wispStatus.source` is the lowercase enum name; the
 /// wispOp setter accepts the same strings.
 enum WispSourceMode {
   off,
   manual,
-  aurora,
+  osc,
 }
 
 /// Decode a wire-format `source` string into the enum. Anything not
 /// recognized (older wisp, future field, missing key) maps to [off], the
-/// safe default. The wisp emits paint frames only when source is Manual
-/// or Aurora, so falling back to Off can never accidentally override the
+/// safe default: falling back to Off can never accidentally override the
 /// lamps; the user has to explicitly opt in.
 WispSourceMode parseWispSourceMode(String? raw) {
   switch (raw) {
-    case 'off':
-      return WispSourceMode.off;
     case 'manual':
       return WispSourceMode.manual;
-    case 'aurora':
-      return WispSourceMode.aurora;
+    case 'osc':
+      return WispSourceMode.osc;
     default:
       return WispSourceMode.off;
   }
@@ -40,7 +38,29 @@ String wispSourceModeWire(WispSourceMode m) {
       return 'off';
     case WispSourceMode.manual:
       return 'manual';
-    case WispSourceMode.aurora:
-      return 'aurora';
+    case WispSourceMode.osc:
+      return 'osc';
   }
 }
+
+/// Which Straylight palette role the wisp listens to in [WispSourceMode.osc].
+/// Wire format on `wispStatus.oscRole` and the `setOscRole` wispOp is the
+/// lowercase enum name; the wisp omits the key at [primary].
+enum OscRole {
+  primary,
+  secondary,
+  tertiary,
+  fill,
+}
+
+/// Decode a wire-format `oscRole`; absent or unknown maps to [OscRole.primary],
+/// the wisp's default.
+OscRole parseOscRole(String? raw) {
+  for (final r in OscRole.values) {
+    if (r.name == raw) return r;
+  }
+  return OscRole.primary;
+}
+
+/// Wire-format string for an [OscRole].
+String oscRoleWire(OscRole r) => r.name;

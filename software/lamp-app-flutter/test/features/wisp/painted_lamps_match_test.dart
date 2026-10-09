@@ -20,8 +20,8 @@ void main() {
     test('off -> empty (offColor is on the wisp ring, not the grid)', () {
       expect(previewPaletteFor(WispSourceMode.off, manual), isEmpty);
     });
-    test('aurora -> empty (no app-side aurora palette)', () {
-      expect(previewPaletteFor(WispSourceMode.aurora, manual), isEmpty);
+    test('osc -> empty (no app-side Straylight palette)', () {
+      expect(previewPaletteFor(WispSourceMode.osc, manual), isEmpty);
     });
     test('null source -> empty', () {
       expect(previewPaletteFor(null, manual), isEmpty);
