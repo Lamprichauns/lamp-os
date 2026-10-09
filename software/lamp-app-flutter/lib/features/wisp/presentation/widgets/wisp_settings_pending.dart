@@ -16,14 +16,17 @@ class WispSettingsPending extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(
-            width: 14, height: 14, // deliberate dimension, not spacing
+            width: 14,
+            height: 14, // deliberate dimension, not spacing
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: AppSpace.md),
-          Text('Reading settings from wisp…',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                  )),
+          Text(
+            'Reading settings from wisp…',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+          ),
         ],
       ),
     );

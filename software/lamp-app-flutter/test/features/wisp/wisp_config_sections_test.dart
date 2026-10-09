@@ -76,22 +76,23 @@ void main() {
       expect(repo.wispSectionsSupported, isTrue);
     });
 
-    test('falls back to CHAR_WISP_STATUS on a lamp without the section',
-        () async {
-      final ble = await connectedBle(
-        directStatus: '{"wispMac":"$_mac","name":"direct"}',
-      );
-      final repo = WispRepository(ble, _lampId);
+    test(
+      'falls back to CHAR_WISP_STATUS on a lamp without the section',
+      () async {
+        final ble = await connectedBle(
+          directStatus: '{"wispMac":"$_mac","name":"direct"}',
+        );
+        final repo = WispRepository(ble, _lampId);
 
-      final s = await repo.readStatus();
+        final s = await repo.readStatus();
 
-      expect(s.name, 'direct');
-      expect(repo.wispSectionsSupported, isFalse);
-      expect(await repo.readConfig(), isNull);
-    });
+        expect(s.name, 'direct');
+        expect(repo.wispSectionsSupported, isFalse);
+        expect(await repo.readConfig(), isNull);
+      },
+    );
 
-    test('"{}" from wispconfig (none cached yet) reads as no config',
-        () async {
+    test('"{}" from wispconfig (none cached yet) reads as no config', () async {
       final ble = await connectedBle();
       ble.seedSection(_lampId, 'wispstatus', _b('{}'));
       ble.seedSection(_lampId, 'wispconfig', _b('{}'));
@@ -103,18 +104,21 @@ void main() {
       expect(await repo.readConfig(), isNull);
     });
 
-    test('pollConfig writes a plaintext pollConfig wispOp even with a password',
-        () async {
-      final ble = await connectedBle();
-      final repo = WispRepository(ble, _lampId)..updatePassword('secret');
+    test(
+      'pollConfig writes a plaintext pollConfig wispOp even with a password',
+      () async {
+        final ble = await connectedBle();
+        final repo = WispRepository(ble, _lampId)..updatePassword('secret');
 
-      await repo.pollConfig();
+        await repo.pollConfig();
 
-      final written = ble.writesTo(_lampId, BleUuids.wispOp).single;
-      final decoded = jsonDecode(utf8.decode(written)) as Map<String, dynamic>;
-      expect(decoded['char'], 'wispOp');
-      expect(decoded['op'], 'pollConfig');
-    });
+        final written = ble.writesTo(_lampId, BleUuids.wispOp).single;
+        final decoded =
+            jsonDecode(utf8.decode(written)) as Map<String, dynamic>;
+        expect(decoded['char'], 'wispOp');
+        expect(decoded['op'], 'pollConfig');
+      },
+    );
   });
 
   group('WispNotifier config merge', () {
@@ -123,8 +127,10 @@ void main() {
       ble.seedSection(
         _lampId,
         'wispstatus',
-        _b('{"wispMac":"$_mac","configSplit":true,"source":"osc",'
-            '"configLastSeenMs":100}'),
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"configLastSeenMs":100}',
+        ),
       );
       ble.seedSection(_lampId, 'wispconfig', _b(_config()));
       final c = makeContainer(ble);
@@ -179,29 +185,33 @@ void main() {
       expect(c.read(wispNotifierProvider(_lampId)).value!.brightness, 25);
     });
 
-    test('the held config wins over the status copy of the same wisp',
-        () async {
-      final ble = await connectedBle();
-      ble.seedSection(
-        _lampId,
-        'wispstatus',
-        _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":100}'),
-      );
-      ble.seedSection(_lampId, 'wispconfig', _b(_config(px: 60)));
-      final c = makeContainer(ble);
-      await built(c);
+    test(
+      'the held config wins over the status copy of the same wisp',
+      () async {
+        final ble = await connectedBle();
+        ble.seedSection(
+          _lampId,
+          'wispstatus',
+          _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":100}'),
+        );
+        ble.seedSection(_lampId, 'wispconfig', _b(_config(px: 60)));
+        final c = makeContainer(ble);
+        await built(c);
 
-      ble.simulateNotify(
-        _lampId,
-        BleUuids.controlService,
-        BleUuids.wispStatus,
-        _b('{"wispMac":"$_mac","source":"osc","px":30,'
-            '"configLastSeenMs":100}'),
-      );
-      await settle();
+        ble.simulateNotify(
+          _lampId,
+          BleUuids.controlService,
+          BleUuids.wispStatus,
+          _b(
+            '{"wispMac":"$_mac","source":"osc","px":30,'
+            '"configLastSeenMs":100}',
+          ),
+        );
+        await settle();
 
-      expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 60);
-    });
+        expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 60);
+      },
+    );
 
     // A rival wisp took the slot: the old wisp's config must not dress it.
     test('a held config never merges onto another wisp', () async {
@@ -220,8 +230,10 @@ void main() {
         _lampId,
         BleUuids.controlService,
         BleUuids.wispStatus,
-        _b('{"wispMac":"11:22:33:44:55:66","configSplit":true,'
-            '"source":"osc"}'),
+        _b(
+          '{"wispMac":"11:22:33:44:55:66","configSplit":true,'
+          '"source":"osc"}',
+        ),
       );
       await settle();
 
@@ -266,8 +278,10 @@ void main() {
       ble.seedSection(
         _lampId,
         'wispstatus',
-        _b('{"wispMac":"$_mac","configSplit":true,"source":"osc",'
-            '"hasPassword":true,"configLastSeenMs":100}'),
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"hasPassword":true,"configLastSeenMs":100}',
+        ),
       );
       ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 4)));
       final c = makeContainer(ble);
@@ -281,8 +295,10 @@ void main() {
         _lampId,
         BleUuids.controlService,
         BleUuids.wispStatus,
-        _b('{"wispMac":"$_mac","configSplit":true,"source":"osc",'
-            '"hasPassword":true,"configLastSeenMs":200}'),
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"hasPassword":true,"configLastSeenMs":200}',
+        ),
       );
 
       expect(await future, isTrue);

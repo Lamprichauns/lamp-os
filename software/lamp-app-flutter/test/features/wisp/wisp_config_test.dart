@@ -6,7 +6,8 @@ import 'package:lamp_app/features/wisp/domain/wisp_config.dart';
 
 Uint8List _b(String s) => Uint8List.fromList(utf8.encode(s));
 
-const _full = '{"char":"wispConfig","ledType":"GRBW","px":60,"brightness":80,'
+const _full =
+    '{"char":"wispConfig","ledType":"GRBW","px":60,"brightness":80,'
     '"driftIntervalMs":90000,"driftFadePct":40,"shuffleSeed":7,"opSeq":3}';
 
 void main() {
@@ -32,7 +33,9 @@ void main() {
 
     test('a payload that is not a wispConfig → null', () {
       expect(
-        WispConfig.fromBytes(_b(_full.replaceFirst('wispConfig', 'wispStatus'))),
+        WispConfig.fromBytes(
+          _b(_full.replaceFirst('wispConfig', 'wispStatus')),
+        ),
         isNull,
       );
     });
