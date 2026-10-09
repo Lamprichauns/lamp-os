@@ -4,6 +4,7 @@
 
 using wisp::StaAction;
 using wisp::StaJoin;
+using wisp::staWanted;
 using State = wisp::StaJoin::State;
 
 void setUp() {}
@@ -260,8 +261,18 @@ void test_restart_drops_from_waiting_and_halted() {
   }
 }
 
+// Ethernet carries the feed when it is up, so the STA stays off the radio;
+// outside Osc nothing wants it either way.
+void test_sta_wanted_only_in_osc_without_ethernet() {
+  TEST_ASSERT_TRUE(staWanted(/*sourceIsOsc=*/true, /*ethernetUp=*/false));
+  TEST_ASSERT_FALSE(staWanted(true, true));
+  TEST_ASSERT_FALSE(staWanted(false, false));
+  TEST_ASSERT_FALSE(staWanted(false, true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_sta_wanted_only_in_osc_without_ethernet);
   RUN_TEST(test_idle_until_wanted);
   RUN_TEST(test_absent_ap_backs_off);
   RUN_TEST(test_ap_appears_later_joins);

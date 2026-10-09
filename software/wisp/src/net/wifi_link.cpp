@@ -74,7 +74,7 @@ void WifiLink::loop(bool wanted, uint32_t nowMs) {
     if (wanted) {
       clearMismatch();
     } else {
-      Serial.println("[wifi] source does not use the network; STA idle");
+      Serial.println("[wifi] STA not wanted (source not Osc, or Ethernet up); idle");
     }
   }
   wanted_ = wanted;
@@ -250,7 +250,8 @@ void WifiLink::reconnect() {
     Serial.println(
         "[wifi] no creds; staying disconnected (radio stays up for ESP-NOW)");
   } else if (!wanted_) {
-    Serial.printf("[wifi] creds for ssid=%s stored; joins only in Osc mode\n",
+    Serial.printf("[wifi] creds for ssid=%s stored; joins only in Osc mode "
+                  "without Ethernet\n",
                   ssid().c_str());
   } else {
     Serial.printf("[wifi] reconnect requested ssid=%s\n", ssid().c_str());

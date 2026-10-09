@@ -7,6 +7,7 @@
 #include "fleet/lamp_inventory.hpp"
 #include "net/mesh_link.hpp"
 #include "net/stage_beacon.hpp"
+#include "net/eth_link.hpp"
 #include "net/wifi_link.hpp"
 #include "osc/osc_listener.hpp"
 #include "paint/paint_distributor.hpp"
@@ -115,6 +116,8 @@ void SerialConsole::handleCommand(const String& cmd) {
     Serial.printf("[wifi] ssid='%s' connected=%d ip=%s\n",
                   wifi_.ssid().c_str(), wifi_.isConnected() ? 1 : 0,
                   WiFi.localIP().toString().c_str());
+  } else if (cmd == "eth:show") {
+    eth::printStatus(Serial);
   } else if (cmd == "wifi:retry") {
     wifi_.reconnect();
     Serial.println("[wisp.cmd] wifi retry: reconnecting with stored creds");
