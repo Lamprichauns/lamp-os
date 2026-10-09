@@ -46,6 +46,10 @@ with no changelog entry is incomplete.
 Claude: before treating a version bump as done, confirm `docs/CHANGELOG.md` has
 an entry for the new version; if it doesn't, stop and prompt to add one.
 
+Branch work goes under a single `## Unreleased` heading at the top of
+`docs/CHANGELOG.md`, renamed to the version when `VERSION` is bumped; a branch
+never bumps `VERSION`.
+
 ## Lock-ins (don't change without a protocol version bump)
 
 The mesh wire format carries a **receive range**, not a single version: one
