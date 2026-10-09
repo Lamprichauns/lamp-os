@@ -23,8 +23,7 @@ void addIfFits(JsonDocument& doc, size_t cap, const char* key,
   if (measureJson(doc) > cap) doc.remove(key);
 }
 
-void addConfigCopy(JsonDocument& doc, size_t cap, const WispConfigFields& c,
-                   bool isOff) {
+void addConfigCopy(JsonDocument& doc, size_t cap, const WispConfigFields& c) {
   // shuffleSeed drives the app's predictTuple() and opSeq confirms a sealed
   // op landed, so both outrank the cosmetics below.
   if (c.shuffleSeed != 0) {
@@ -33,13 +32,13 @@ void addConfigCopy(JsonDocument& doc, size_t cap, const WispConfigFields& c,
   if (c.opSeq != 0) {
     addIfFits(doc, cap, "opSeq", c.opSeq);
   }
-  if (!isOff) {
-    if (c.driftIntervalMs != kDefaultDriftIntervalMs) {
-      addIfFits(doc, cap, "driftIntervalMs", c.driftIntervalMs);
-    }
-    if (c.driftFadePct != kDefaultDriftFadePct) {
-      addIfFits(doc, cap, "driftFadePct", c.driftFadePct);
-    }
+  // Drift rides in every mode: the app's drift form is on screen in Off too,
+  // and an omitted field there reads as the parser default.
+  if (c.driftIntervalMs != kDefaultDriftIntervalMs) {
+    addIfFits(doc, cap, "driftIntervalMs", c.driftIntervalMs);
+  }
+  if (c.driftFadePct != kDefaultDriftFadePct) {
+    addIfFits(doc, cap, "driftFadePct", c.driftFadePct);
   }
   if (c.ledType && c.ledType[0] != '\0' &&
       std::strcmp(c.ledType, kDefaultLedType) != 0) {
@@ -106,7 +105,7 @@ size_t buildWispStatusJson(const WispStatusFields& f,
   // TODO: drop configCopy and its parameter, and set "configSplit":true on
   // the status, once the fleet's lamps carry wispConfig. That removal is what
   // takes the config fields off the 30 s heartbeat; see docs/dev/networking.md.
-  if (configCopy) addConfigCopy(doc, cap, *configCopy, isOff);
+  if (configCopy) addConfigCopy(doc, cap, *configCopy);
   return serializeJson(doc, out, outCap);
 }
 

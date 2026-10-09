@@ -281,9 +281,9 @@ void test_non_default_palette_and_drift_emitted() {
   TEST_ASSERT_EQUAL_INT(40, d["driftFadePct"].as<int>());
 }
 
-// Off mode emits offColor and suppresses the drift fields even when they
-// are non-default.
-void test_off_mode_emits_offcolor_not_drift() {
+// Off mode emits offColor and still carries both drift fields in the copy:
+// the app's drift form shows in every mode.
+void test_off_mode_emits_offcolor_and_drift() {
   wisp::WispStatusFields f = plain();
   f.source = "off";
   f.offR = 200; f.offG = 100; f.offB = 50; f.offW = 25;
@@ -297,8 +297,8 @@ void test_off_mode_emits_offcolor_not_drift() {
   JsonDocument d;
   TEST_ASSERT_FALSE(deserializeJson(d, out));
   TEST_ASSERT_EQUAL_STRING("c8643219", d["offColor"].as<const char*>());
-  TEST_ASSERT_TRUE(d["driftIntervalMs"].isNull());
-  TEST_ASSERT_TRUE(d["driftFadePct"].isNull());
+  TEST_ASSERT_EQUAL_UINT32(90000, d["driftIntervalMs"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_INT(40, d["driftFadePct"].as<int>());
 }
 
 // brightness omitted at the 100 default, emitted when the space is dimmed.
@@ -332,22 +332,28 @@ void test_no_config_copy_carries_no_config_field() {
   for (const char* k : configKeys) TEST_ASSERT_TRUE(d[k].isNull());
 }
 
-// Absolute worst case, untruncated: every field widest, Manual mode, both
-// mismatch fields, ethIp, the config copy. It fits CONTROL_MAX_PAYLOAD with
-// room to spare, so at the production cap nothing sheds.
+// Absolute worst case, untruncated: every field widest, Off mode (offColor
+// beside the drift fields), both mismatch fields, ethIp, the config copy. It
+// fits CONTROL_MAX_PAYLOAD with room to spare, so at the production cap
+// nothing sheds. Manual mode, without offColor, is 402.
 void test_worst_case_untruncated_length() {
   char out[1024];
-  size_t n = build(worstCase(), worstConfig(), out, sizeof(out), /*cap=*/4096);
-  TEST_ASSERT_EQUAL_UINT32(402, n);
+  wisp::WispStatusFields f = worstCase();
+  f.source = "off";
+  size_t n = build(f, worstConfig(), out, sizeof(out), /*cap=*/4096);
+  TEST_ASSERT_EQUAL_UINT32(421, n);
   TEST_ASSERT_TRUE(n <= lamp_protocol::CONTROL_MAX_PAYLOAD);
+  n = build(worstCase(), worstConfig(), out, sizeof(out), /*cap=*/4096);
+  TEST_ASSERT_EQUAL_UINT32(402, n);
 }
 
 // The widest status without its config copy: Off mode (offColor outweighs
 // the longer "manual"), every live field set. The lamp's merge adds up to
 // 301 B on top (test_wisp_status_merge), which is why the app reads it
 // through the wispstatus page section rather than the 512 B characteristic.
-// ArduinoJson passes control bytes through raw; only '"' and '\' escape,
-// so a name of 20 quotes (escaped to 40) is the true ceiling.
+// ArduinoJson escapes '"', '\' and \b \f \n \r \t to two bytes and passes
+// other control bytes raw, so a name of 20 quotes (escaped to 40) is the
+// true ceiling.
 void test_status_only_worst_case_pinned() {
   wisp::WispStatusFields f = worstCase();
   f.source = "off";
@@ -446,7 +452,7 @@ int main(int, char**) {
   RUN_TEST(test_op_seq_emitted);
   RUN_TEST(test_eth_ip_emitted_only_when_set);
   RUN_TEST(test_non_default_palette_and_drift_emitted);
-  RUN_TEST(test_off_mode_emits_offcolor_not_drift);
+  RUN_TEST(test_off_mode_emits_offcolor_and_drift);
   RUN_TEST(test_no_config_copy_carries_no_config_field);
   RUN_TEST(test_config_carries_every_field_at_defaults);
   RUN_TEST(test_config_worst_case_pinned);
