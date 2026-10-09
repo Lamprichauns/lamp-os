@@ -59,14 +59,19 @@ void test_reset_drops_live_without_edge() {
   TEST_ASSERT_TRUE(f.onPalette(1));
 }
 
-// Straylight restates a still palette every 10 s over UDP; that cadence
-// must never read as stale.
+// Straylight restates a still palette every 10 s over UDP. Arrival jitter
+// and one lost restate must never read as stale.
 void test_ten_second_restate_stays_live() {
   OscFreshness f;
-  for (uint32_t t = 0; t <= 120000; t += 10000) {
+  uint32_t t = 0;
+  for (int i = 0; i < 12; ++i) {
     f.onPalette(t);
-    TEST_ASSERT_FALSE(f.tick(t + 9999));
+    TEST_ASSERT_FALSE(f.tick(t + 10050));
+    t += 10050;
   }
+  // One restate dropped: the next lands a full cycle late.
+  TEST_ASSERT_FALSE(f.tick(t + 10100));
+  f.onPalette(t + 10100);
   TEST_ASSERT_TRUE(f.live());
 }
 

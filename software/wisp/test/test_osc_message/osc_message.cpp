@@ -183,11 +183,17 @@ void test_slip_back_to_back_and_oversize(void) {
   feedAll({0xC0, 'a', 0xC0, 0xC0, 'b', 0xC0});
   TEST_ASSERT_EQUAL_INT(2, frames);
 
+  // END END is an empty frame: the decoder keeps collecting rather than
+  // emitting nothing and dropping to text.
+  feedAll({0xC0, 0xC0, 'c', 0xC0});
+  TEST_ASSERT_EQUAL_INT(3, frames);
+  TEST_ASSERT_EQUAL_UINT(1, slip.frameLen());
+
   std::vector<uint8_t> big(SlipDecoder::kMaxFrame + 10, 'x');
   big.insert(big.begin(), 0xC0);
   big.push_back(0xC0);
   feedAll(big);
-  TEST_ASSERT_EQUAL_INT(2, frames);
+  TEST_ASSERT_EQUAL_INT(3, frames);
   // Back on text after the oversize frame's closing END.
   TEST_ASSERT_TRUE(slip.feed('z', 0) == SlipDecoder::Result::Text);
 }
