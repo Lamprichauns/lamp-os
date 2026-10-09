@@ -12,6 +12,10 @@ namespace {
 // The capture-less WiFi.onEvent lambda runs on the event task; it reaches the
 // bound WifiLink through this. begin() is idempotent, so one instance.
 WifiLink* s_self = nullptr;
+
+// Mesh-channel scan dwell. One channel, so the radio is off the mesh's
+// listen for at most this long per attempt.
+constexpr uint32_t kScanDwellMs = 120;
 }  // namespace
 
 void WifiLink::begin(WispConfig* config) {
@@ -23,9 +27,9 @@ void WifiLink::begin(WispConfig* config) {
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
-  // Retries are loop()'s, on a backoff. The core's auto-reconnect would rescan
-  // for a missing AP every few seconds, each scan pulling the one radio off
-  // the mesh channel long enough for lamps to age out.
+  // Retries are StaJoin's, on a backoff. The core's auto-reconnect would
+  // rescan every channel for a missing AP every few seconds, each scan pulling
+  // the one radio off the mesh long enough for lamps to age out.
   WiFi.setAutoReconnect(false);
 
   WiFi.onEvent([](WiFiEvent_t event, [[maybe_unused]] WiFiEventInfo_t info) {
@@ -37,9 +41,15 @@ void WifiLink::begin(WispConfig* config) {
       if (s_self) {
         s_self->pendingStaChannel_.store(WiFi.channel(),
                                          std::memory_order_relaxed);
+        s_self->connects_.fetch_add(1, std::memory_order_relaxed);
       }
     } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-      Serial.println("[wifi] disconnected");
+      const uint8_t reason = info.wifi_sta_disconnected.reason;
+      Serial.printf("[wifi] disconnected reason=%u\n", (unsigned)reason);
+      // ASSOC_LEAVE is the wisp's own disconnect; it fails no attempt.
+      if (s_self && reason != WIFI_REASON_ASSOC_LEAVE) {
+        s_self->disconnects_.fetch_add(1, std::memory_order_relaxed);
+      }
 #ifdef LAMP_DEBUG
     } else if (event == ARDUINO_EVENT_WIFI_AP_STACONNECTED) {
       const uint8_t* m = info.wifi_ap_staconnected.mac;
@@ -57,70 +67,113 @@ void WifiLink::begin(WispConfig* config) {
 
 void WifiLink::loop(bool wanted, uint32_t nowMs) {
   checkChannel();
-  if (wanted != wanted_) {
-    wanted_ = wanted;
-    if (wanted) {
-      backoff_.reset(nowMs);
-    } else {
-      backoff_.stop();
-      dropJoin();
-      Serial.println("[wifi] source does not use the network; STA idle");
-    }
+  wanted_ = wanted;
+  const StaAction edge = join_.setWanted(wanted, nowMs);
+  if (!wanted && edge == StaAction::Drop) {
+    Serial.println("[wifi] source does not use the network; STA idle");
   }
-  if (!wanted_ || channelMismatch_) return;
+  apply(edge);
 
-  const wl_status_t st = WiFi.status();
-  if (joining_) {
-    if (st == WL_CONNECTED) {
-      joining_ = false;
-      linked_ = true;
-      backoff_.stop();
-      return;
+  const uint32_t disc = disconnects_.load(std::memory_order_relaxed);
+  if (disc != seenDisconnects_) {
+    seenDisconnects_ = disc;
+    const StaJoin::State was = join_.state();
+    join_.onDisconnected(nowMs);
+    if (was == StaJoin::State::Joining || was == StaJoin::State::Linked) {
+      Serial.printf("[wifi] %s %s; retry in %lus\n", ssid().c_str(),
+                    was == StaJoin::State::Linked ? "link lost" : "join failed",
+                    (unsigned long)(join_.lastWaitMs() / 1000));
     }
-    const bool noAp = st == WL_NO_SSID_AVAIL;
-    if (noAp || st == WL_CONNECT_FAILED ||
-        nowMs - joinStartMs_ >= kJoinTimeoutMs) {
-      dropJoin();
-      const uint32_t waitMs = backoff_.failed(nowMs);
-      Serial.printf("[wifi] join %s failed (%s); retry in %lus\n",
-                    ssid().c_str(), noAp ? "AP not found" : "no link",
-                    (unsigned long)(waitMs / 1000));
-    }
-    return;
   }
-  if (linked_ && st != WL_CONNECTED) {
-    linked_ = false;
-    backoff_.reset(nowMs);
-    backoff_.failed(nowMs);
-    Serial.println("[wifi] link lost; retrying on backoff");
-    return;
+  const uint32_t conn = connects_.load(std::memory_order_relaxed);
+  if (conn != seenConnects_) {
+    seenConnects_ = conn;
+    join_.onConnected();
   }
-  if (!linked_ && backoff_.due(nowMs)) beginJoin(nowMs);
+
+  pollScan(nowMs);
+  const StaJoin::State before = join_.state();
+  const bool hasCreds = config_ && config_->wifiSsid().length() > 0 &&
+                        config_->wifiPw().length() > 0;
+  apply(join_.step(nowMs, hasCreds));
+  if ((before == StaJoin::State::Joining ||
+       before == StaJoin::State::Scanning) &&
+      join_.state() == StaJoin::State::Waiting) {
+    Serial.printf("[wifi] %s %s timed out; retry in %lus\n", ssid().c_str(),
+                  before == StaJoin::State::Joining ? "join" : "scan",
+                  (unsigned long)(join_.lastWaitMs() / 1000));
+  }
 }
 
-void WifiLink::beginJoin(uint32_t nowMs) {
-  const std::string s = ssid();
-  const std::string p = password();
-  if (s.empty() || p.empty()) {
-    backoff_.stop();
-    return;
+void WifiLink::apply(StaAction action) {
+  switch (action) {
+    case StaAction::None:
+      break;
+    case StaAction::StartScan:
+      startScan();
+      break;
+    case StaAction::Begin: {
+      const std::string s = ssid();
+      const std::string p = password();
+      Serial.printf("[wifi] %s found on ch %d; joining\n", s.c_str(),
+                    LAMP_ESPNOW_CHANNEL);
+      WiFi.begin(s.c_str(), p.c_str(), LAMP_ESPNOW_CHANNEL, scanBssid_);
+      break;
+    }
+    case StaAction::Drop:
+      dropJoin();
+      break;
   }
-  Serial.printf("[wifi] joining ssid=%s on ch %d\n", s.c_str(),
-                LAMP_ESPNOW_CHANNEL);
-  // Pinning the channel scans only the mesh channel, so the radio never
-  // leaves it and an AP on another channel is never joined.
-  WiFi.begin(s.c_str(), p.c_str(), LAMP_ESPNOW_CHANNEL);
-  joining_ = true;
-  joinStartMs_ = nowMs;
+}
+
+void WifiLink::startScan() {
+  const std::string s = ssid();
+  // Async, one channel, filtered to the stored SSID: loop() polls the result.
+  const int16_t r = WiFi.scanNetworks(/*async=*/true, /*show_hidden=*/false,
+                                      /*passive=*/false, kScanDwellMs,
+                                      LAMP_ESPNOW_CHANNEL, s.c_str());
+  if (r == WIFI_SCAN_FAILED) {
+    Serial.println("[wifi] mesh-channel scan failed to start");
+  }
+}
+
+void WifiLink::pollScan(uint32_t nowMs) {
+  if (join_.state() != StaJoin::State::Scanning) return;
+  const int16_t n = WiFi.scanComplete();
+  if (n == WIFI_SCAN_RUNNING) return;
+  bool found = false;
+  if (n > 0) {
+    int best = 0;
+    for (int i = 1; i < n; ++i) {
+      if (WiFi.RSSI(i) > WiFi.RSSI(best)) best = i;
+    }
+    WiFi.BSSID(static_cast<uint8_t>(best), scanBssid_);
+    found = true;
+  }
+  WiFi.scanDelete();
+  const StaAction a = join_.onScanDone(found, nowMs);
+  if (!found) {
+    Serial.printf("[wifi] %s not on ch %d; retry in %lus\n", ssid().c_str(),
+                  LAMP_ESPNOW_CHANNEL,
+                  (unsigned long)(join_.lastWaitMs() / 1000));
+  }
+  apply(a);
 }
 
 void WifiLink::dropJoin() {
-  joining_ = false;
-  linked_ = false;
-  // (false, false): drop association, keep stored creds and radio up; the STA
+  esp_wifi_scan_stop();
+  WiFi.scanDelete();
+  // Drop the association but keep the stored creds and the radio up; the STA
   // interface must stay up for ESP-NOW.
-  WiFi.disconnect(false, false);
-  esp_wifi_set_channel(LAMP_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  WiFi.disconnect(/*wifioff=*/false, /*eraseap=*/false);
+  // Setting the channel is refused while scanning, connecting or serving
+  // softAP stations, so only when the radio has actually left the mesh.
+  uint8_t primary = 0;
+  wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+  if (esp_wifi_get_channel(&primary, &second) == ESP_OK &&
+      primary != LAMP_ESPNOW_CHANNEL) {
+    esp_wifi_set_channel(LAMP_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  }
 }
 
 void WifiLink::checkChannel() {
@@ -136,12 +189,12 @@ void WifiLink::checkChannel() {
   channelMismatch_ = true;
   lastStaChannel_ = ch;
   Serial.printf("[wifi] AP ch=%d != mesh ch=%d; dropping association, "
-                "re-pinning radio to mesh, auto-reconnect off\n",
+                "re-pinning radio to mesh, retries halted\n",
                 ch, LAMP_ESPNOW_CHANNEL);
   // Shed the wrong-channel association and snap the radio back so ESP-NOW is
-  // restored; the backoff stops so nothing re-drags the radio.
+  // restored; retries halt so nothing re-drags the radio.
+  join_.halt();
   dropJoin();
-  backoff_.stop();
   if (!wasMismatch && onChange_) onChange_();
 }
 
@@ -153,21 +206,16 @@ void WifiLink::reconnect() {
   channelMismatch_ = false;
   lastStaChannel_ = 0;
   pendingStaChannel_.store(0, std::memory_order_relaxed);
-  dropJoin();
+  if (join_.restart(millis()) == StaAction::Drop) dropJoin();
   if (ssid().empty() || password().empty()) {
-    backoff_.stop();
     Serial.println(
         "[wifi] no creds; staying disconnected (radio stays up for ESP-NOW)");
-    return;
-  }
-  if (!wanted_) {
-    backoff_.stop();
+  } else if (!wanted_) {
     Serial.printf("[wifi] creds for ssid=%s stored; joins only in Osc mode\n",
                   ssid().c_str());
-    return;
+  } else {
+    Serial.printf("[wifi] reconnect requested ssid=%s\n", ssid().c_str());
   }
-  backoff_.reset(millis());
-  Serial.printf("[wifi] reconnect requested ssid=%s\n", ssid().c_str());
 }
 
 void WifiLink::startSoftAp(const char* ssid, const char* pass) {

@@ -38,10 +38,10 @@ Four links carry everything:
   transient overrides, expression announce, firmware distribution.
 - **Straylight → wisp** — OSC 1.0 palettes, as SLIP frames on the USB serial
   console or UDP datagrams on port 9000 (softAP or the wisp's STA LAN join).
-  The STA join runs only while the source is Osc, and only on mesh channel 6:
-  one shared radio serves both WiFi and ESP-NOW, so a scan elsewhere, or a
-  missing AP rescanned every few seconds, would drag the radio off the mesh.
-  Failed joins retry on a backoff.
+  The STA join runs only while the source is Osc, and joins only an AP a
+  channel-6-only scan found: one shared radio serves both WiFi and ESP-NOW, so
+  a scan elsewhere, or a missing AP rescanned every few seconds, would drag the
+  radio off the mesh. Failed attempts retry on a backoff.
 - **wisp → lamps** — ESP-NOW mesh (paint state + status beacon). The wisp reaches
   the app only by proxy: it broadcasts, lamps cache, the app reads off a
   connected lamp.

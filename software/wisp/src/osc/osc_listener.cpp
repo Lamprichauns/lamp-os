@@ -65,12 +65,16 @@ void OscListener::handlePacket(const uint8_t* data, size_t len,
                                const char* via) {
   float rgb[kManualPaletteMaxColors * 3];
   size_t n = 0;
-  if (!oscFindFloats(data, len, oscPaletteAddress(config_.oscRole()), rgb,
-                     kManualPaletteMaxColors * 3, n)) {
-    if (oscHasAddressPrefix(data, len, kStraylightAddressPrefix)) {
+  switch (oscClassifyFeedPacket(data, len, oscPaletteAddress(config_.oscRole()),
+                                kStraylightAddressPrefix, rgb,
+                                kManualPaletteMaxColors * 3, n)) {
+    case OscFeedPacket::Palette:
+      break;
+    case OscFeedPacket::Feed:
       controller_.onOscFeed(millis());
-    }
-    return;
+      return;
+    case OscFeedPacket::Other:
+      return;
   }
   if (n == 0 || n % 3 != 0) return;
   controller_.onOscPalette(rgb, n / 3, via, millis());

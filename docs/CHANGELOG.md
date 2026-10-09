@@ -22,8 +22,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   zone picker. A wisp that was set to Aurora comes up Off.
 - **The wisp stops hunting for missing WiFi.** It joins its saved network
   only while following Straylight, looks for it on the lamps' own channel
-  only, and waits longer between tries (up to five minutes) when it isn't
-  there. Searching for a network that was gone kept pulling the wisp away
+  only, joins only when it finds it there, and waits longer between tries (up
+  to five minutes) when it doesn't. Searching for a network that was gone kept pulling the wisp away
   from your lamps until they dropped out and went back to their own colours.
 
 ## 1.2.7

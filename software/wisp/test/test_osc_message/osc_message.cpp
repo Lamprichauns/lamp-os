@@ -157,6 +157,38 @@ void test_address_prefix_found_in_bundle(void) {
   TEST_ASSERT_FALSE(wisp::oscHasAddressPrefix(garbage, sizeof garbage, "/"));
 }
 
+void test_classify_feed_packet(void) {
+  using wisp::OscFeedPacket;
+  const auto b = unhex(kBundleHex);
+  float f[150];
+  size_t n = 0;
+  // The role's palette is in the bundle.
+  TEST_ASSERT_EQUAL_INT((int)OscFeedPacket::Palette,
+      (int)wisp::oscClassifyFeedPacket(b.data(), b.size(), kPaletteAddr,
+                                       "/straylight/", f, 150, n));
+  TEST_ASSERT_EQUAL_UINT(48, n);
+  // Another role: the rest of the feed only.
+  TEST_ASSERT_EQUAL_INT((int)OscFeedPacket::Feed,
+      (int)wisp::oscClassifyFeedPacket(b.data(), b.size(),
+                                       "/straylight/palette/fill/colours",
+                                       "/straylight/", f, 150, n));
+  // This role's palette with a type tag the reader rejects.
+  std::vector<uint8_t> bad(kPaletteAddr, kPaletteAddr + std::strlen(kPaletteAddr));
+  while (bad.size() % 4 != 0 || bad.size() <= std::strlen(kPaletteAddr)) {
+    bad.push_back(0);
+  }
+  for (char c : {',', 'T', '\0', '\0'}) bad.push_back(static_cast<uint8_t>(c));
+  TEST_ASSERT_EQUAL_INT((int)OscFeedPacket::Other,
+      (int)wisp::oscClassifyFeedPacket(bad.data(), bad.size(), kPaletteAddr,
+                                       "/straylight/", f, 150, n));
+  TEST_ASSERT_EQUAL_UINT(0, n);
+  // Nothing from the feed.
+  const uint8_t garbage[8] = {'x', 0, 0, 0, 0, 0, 0, 0};
+  TEST_ASSERT_EQUAL_INT((int)OscFeedPacket::Other,
+      (int)wisp::oscClassifyFeedPacket(garbage, sizeof garbage, kPaletteAddr,
+                                       "/straylight/", f, 150, n));
+}
+
 void test_slip_frame_with_escapes(void) {
   static SlipDecoder slip;
   const uint8_t payload[] = {0x01, 0xC0, 0x02, 0xDB, 0x03};
@@ -256,6 +288,7 @@ int main(int, char**) {
   RUN_TEST(test_rejects_truncation_and_overflow);
   RUN_TEST(test_unknown_type_tag_rejected);
   RUN_TEST(test_address_prefix_found_in_bundle);
+  RUN_TEST(test_classify_feed_packet);
   RUN_TEST(test_slip_frame_with_escapes);
   RUN_TEST(test_slip_back_to_back_and_oversize);
   RUN_TEST(test_slip_carries_straylight_bundle);

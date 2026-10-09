@@ -158,4 +158,17 @@ bool oscFindFloats(const uint8_t* data, size_t len, const char* address,
   return ok && ctx.found;
 }
 
+OscFeedPacket oscClassifyFeedPacket(const uint8_t* data, size_t len,
+                                    const char* address,
+                                    const char* feedPrefix, float* out,
+                                    size_t cap, size_t& count) {
+  if (oscFindFloats(data, len, address, out, cap, count)) {
+    return OscFeedPacket::Palette;
+  }
+  count = 0;
+  if (oscHasAddressPrefix(data, len, address)) return OscFeedPacket::Other;
+  return oscHasAddressPrefix(data, len, feedPrefix) ? OscFeedPacket::Feed
+                                                    : OscFeedPacket::Other;
+}
+
 }  // namespace wisp

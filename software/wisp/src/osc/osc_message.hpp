@@ -46,4 +46,18 @@ bool oscHasAddressPrefix(const uint8_t* data, size_t len, const char* prefix);
 bool oscFindFloats(const uint8_t* data, size_t len, const char* address,
                    float* out, size_t cap, size_t& count);
 
+enum class OscFeedPacket : uint8_t {
+  Palette,  // `address` parsed; its floats are in out/count
+  Feed,     // other messages under `feedPrefix`, and no `address` message
+  Other,    // anything else, including an `address` message that failed
+};
+
+// Sorts one packet for the palette listener. Only Feed may refresh a held
+// palette's liveness: a palette for this role that failed to parse says
+// nothing about whether the last good one is still current.
+OscFeedPacket oscClassifyFeedPacket(const uint8_t* data, size_t len,
+                                    const char* address,
+                                    const char* feedPrefix, float* out,
+                                    size_t cap, size_t& count);
+
 }  // namespace wisp

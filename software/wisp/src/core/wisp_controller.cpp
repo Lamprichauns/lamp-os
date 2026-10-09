@@ -183,6 +183,7 @@ void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
   // not drop a live stream.
   if (mode == wisp::WispSourceMode::Osc && haveAppliedMode_ &&
       appliedMode_ == mode && oscFresh_.live()) {
+    paint_.setPaintMode(true);
     renderRing();
     return;
   }

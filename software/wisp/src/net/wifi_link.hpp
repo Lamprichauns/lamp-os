@@ -1,9 +1,9 @@
 // WifiLink hosts the wisp's softAP for pre-mesh lamps. Brought up once at
 // boot on the mesh channel and left up; the ArtNet emitter gates on
 // canBroadcast() and pins the egress netif off isAp(). It also joins the
-// stored STA network, on the mesh channel only, while the source is Osc.
+// stored STA network while the source is Osc, on the policy in StaJoin.
 //
-// Coex: the mesh pins the radio to LAMP_ESPNOW_CHANNEL and sends ESP-NOW on
+// The mesh pins the radio to LAMP_ESPNOW_CHANNEL and sends ESP-NOW on
 // WIFI_IF_STA. The softAP runs in WIFI_AP_STA on the same channel, so the STA
 // netif (and the mesh) stays up and same-channel WiFi doesn't disturb ESP-NOW.
 
@@ -16,7 +16,7 @@
 #include <functional>
 #include <string>
 
-#include "util/retry_backoff.hpp"
+#include "net/sta_join.hpp"
 
 namespace wisp {
 
@@ -38,12 +38,12 @@ class WifiLink {
   void reconnect();
 
   // Loop-task driver. `wanted` is whether the source uses the network (Osc).
-  // While wanted and creds exist it joins the stored AP on the mesh channel
-  // only, retrying on a RetryBackoff schedule (no core auto-reconnect, so a
-  // missing AP never drives a scan every few seconds). Unwanted drops the
-  // association and stops retrying; creds stay in NVS. Also applies a
-  // deferred STA_GOT_IP channel check: the event only records the channel,
-  // the radio work runs here off the WiFi event task.
+  // While wanted and creds exist it scans the mesh channel for the stored
+  // SSID and joins only an AP found there, retrying on StaJoin's backoff (no
+  // core auto-reconnect). Unwanted drops the association and stops retrying;
+  // creds stay in NVS. Also applies a deferred STA_GOT_IP channel check: the
+  // event only records the channel, the radio work runs here off the WiFi
+  // event task.
   void loop(bool wanted, uint32_t nowMs);
 
   // softAP role on the mesh channel (WIFI_AP_STA so ESP-NOW keeps working).
@@ -93,17 +93,21 @@ class WifiLink {
   bool channelMismatch_ = false;
   int lastStaChannel_ = 0;
 
-  void beginJoin(uint32_t nowMs);
+  void apply(StaAction action);
+  void startScan();
+  void pollScan(uint32_t nowMs);
   void dropJoin();
   void checkChannel();
 
-  // A join that has neither connected nor failed by now is abandoned.
-  static constexpr uint32_t kJoinTimeoutMs = 15000;
+  StaJoin join_;
   bool wanted_ = false;
-  bool joining_ = false;
-  bool linked_ = false;
-  uint32_t joinStartMs_ = 0;
-  RetryBackoff backoff_;
+  uint8_t scanBssid_[6] = {0};
+  // Written by the WiFi event task, read by loop(): STA_DISCONNECTED events
+  // the wisp did not cause (reason other than ASSOC_LEAVE), and GOT_IP.
+  std::atomic<uint32_t> disconnects_{0};
+  std::atomic<uint32_t> connects_{0};
+  uint32_t seenDisconnects_ = 0;
+  uint32_t seenConnects_ = 0;
 
   std::function<void()> onChange_;
 };

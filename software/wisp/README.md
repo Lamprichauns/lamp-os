@@ -9,7 +9,7 @@ A small magical light that signals to others. Wisp is dedicated infrastructure (
 
 ## Off-by-default paint
 
-Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound, and the WiFi STA join to a stored network runs, only while the source mode is Osc; the join scans the mesh channel only and backs off (10 s doubling to 5 min) when the network isn't there, so the radio stays on the mesh. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
+Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound, and the WiFi STA join to a stored network runs, only while the source mode is Osc; each attempt scans the mesh channel only, joins only if the network is there, and backs off (10 s doubling to 5 min) when it isn't, so the radio stays on the mesh. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
 
 In Osc mode a stream gap is not an opt-out: after 30 s with nothing from Straylight (or as soon as Straylight sends a blank one for an unbound role) the wisp lets lamps ease home and shows its off color, but stays in Osc mode, and the next palette resumes painting with no app action.
 

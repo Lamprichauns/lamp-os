@@ -131,6 +131,23 @@ void main() {
     expect(find.textContaining('Connected'), findsWidgets);
   });
 
+  testWidgets(
+      'outside Straylight the WiFi row says it joins only while following it',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson:
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"manual"}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.byKey(const Key('wifi-config-row')), findsOneWidget);
+    expect(find.textContaining('Joins only while following Straylight'),
+        findsOneWidget);
+    expect(find.textContaining('Not connected'), findsNothing);
+  });
+
   testWidgets('tapping the WiFi row opens the network picker sheet',
       (tester) async {
     final c = await _makeContainer();
