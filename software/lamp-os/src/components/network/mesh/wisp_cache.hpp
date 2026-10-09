@@ -40,6 +40,10 @@ struct WispCache {
   // fields above. Empty until the first wispStatus has been seen.
   std::string lastStatusJson;
   uint32_t lastStatusMs = 0;
+  // Last wispConfig broadcast for this wisp (verbatim payload), served on
+  // the `wispconfig` page section. Empty until the first one is seen.
+  std::string lastConfigJson;
+  uint32_t lastConfigMs = 0;
   // Latest MSG_WISP_PALETTE from this wisp. Served raw on the `wisppalette`
   // page section (see copyManualPaletteBlob), kept off the notify-clobbered
   // status char. Interleaved R,G,B,W per color; 200 bytes = 50 colors * 4.

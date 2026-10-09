@@ -39,6 +39,11 @@ static void postPendingWispStatusJson(const uint8_t srcMac[6],
   lamp::pendingSlots.wispStatus.post(pendingMux, data, len, srcMac);
 }
 
+static void postPendingWispConfigJson(const uint8_t srcMac[6],
+                                      const char* data, size_t len) {
+  lamp::pendingSlots.wispConfig.post(pendingMux, data, len, srcMac);
+}
+
 // Apply a remote-op payload locally (either from BLE remoteOp drain when
 // targetMac==self/broadcast, or from an incoming ESP-NOW MSG_CONTROL_OP).
 // Both call sites run on the loop task (Core 1). The BLE remoteOp drain
@@ -115,6 +120,10 @@ static void applyRemoteOpLocal(const char* payloadJson, size_t len,
     // the wisp's MAC (preserved through gossip relay by MeshLink, which
     // copies op.sourceMac into the inbound slot).
     postPendingWispStatusJson(srcMac, payloadJson, len);
+
+  } else if (strcmp(ch, "wispConfig") == 0) {
+    // Same cache-and-notify path as wispStatus, for the wisp's settings.
+    postPendingWispConfigJson(srcMac, payloadJson, len);
   }
   // wispOp intentionally has NO branch here. The dedicated CHAR_WISP_OP
   // slot drain broadcasts a MSG_CONTROL_OP; the wisp(s) on the mesh

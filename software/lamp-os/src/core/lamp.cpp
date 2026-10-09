@@ -1077,6 +1077,7 @@ void lamp::Lamp::tick() {
   drainWispState();
   drainWispOp();
   drainWispStatus();
+  drainWispConfig();
   drainCommand();
   drainColorQuery();
   drainColorInfo();

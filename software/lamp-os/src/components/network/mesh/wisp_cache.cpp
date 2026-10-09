@@ -1,11 +1,10 @@
 #include "wisp_cache.hpp"
 
 #include "lamp_roster.hpp"
+#include "wisp_status_merge.hpp"
 
-#include <ArduinoJson.h>
-
-#include <cstdio>
 #include <cstring>
+#include <utility>
 
 namespace lamp {
 
@@ -32,6 +31,8 @@ static bool wispSlotFresh(const WispCache& cache, uint32_t nowMs) {
 void LampRoster::adoptWispLocked(const uint8_t mac[6], uint32_t nowMs) {
   wispCache_.lastStatusJson.clear();
   wispCache_.lastStatusMs = 0;
+  wispCache_.lastConfigJson.clear();
+  wispCache_.lastConfigMs = 0;
   wispCache_.lastHelloMs = 0;
   wispCache_.slotAdoptedMs = nowMs;
   wispCache_.lastSeenMs = nowMs;
@@ -104,6 +105,33 @@ void LampRoster::cacheWispStatus(const uint8_t mac[6],
   xSemaphoreGive(mutex_);
 }
 
+void LampRoster::cacheWispConfig(const uint8_t mac[6],
+                                 const char* json, size_t jsonLen) {
+  // Loop-task-only writer (Core 1); same locking as cacheWispStatus.
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  if (!admitWispLocked(mac, millis())) {
+    xSemaphoreGive(mutex_);
+    return;
+  }
+  wispCache_.lastConfigJson.assign(json, jsonLen);
+  wispCache_.lastConfigMs = millis();
+  xSemaphoreGive(mutex_);
+}
+
+void LampRoster::copyWispConfigJson(std::string& out) {
+  // BLE page-section open (Core 0); bounded take like the status read.
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(2)) != pdTRUE) {
+    out.assign("{}");
+    return;
+  }
+  if (wispCache_.lastConfigJson.empty()) {
+    out.assign("{}");
+  } else {
+    out.assign(wispCache_.lastConfigJson);
+  }
+  xSemaphoreGive(mutex_);
+}
+
 void LampRoster::cacheWispPalette(const uint8_t mac[6],
                                     const uint8_t* rgbw, uint8_t count) {
   // Loop-task-only writer (Core 1). portMAX_DELAY is safe; the BLE read
@@ -160,87 +188,36 @@ bool LampRoster::copyDisplayWispMac(uint8_t out[6], uint32_t nowMs) {
   return have;
 }
 
-std::string LampRoster::getWispStatusReadJson() {
+std::string LampRoster::getWispStatusReadJson(size_t maxLen) {
   // BLE on-read callback (Core 0); bounded take so it doesn't block
   // behind a loop-task writer. On timeout return "{}".
-  WispCache snap;
+  WispStatusMergeInput in;
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(2)) != pdTRUE) {
     return std::string("{}");
   }
-  snap = wispCache_;
+  in.present = wispCache_.present;
+  std::memcpy(in.mac, wispCache_.mac, 6);
+  in.wispVersion = wispCache_.wispVersion;
+  in.flags = wispCache_.flags;
+  in.lastHelloMs = wispCache_.lastHelloMs;
+  std::memcpy(in.helloPaletteIdPrefix, wispCache_.paletteIdPrefix,
+              sizeof(in.helloPaletteIdPrefix));
+  in.statusJson = wispCache_.lastStatusJson;
+  in.lastStatusMs = wispCache_.lastStatusMs;
+  in.lastConfigMs = wispCache_.lastConfigMs;
   xSemaphoreGive(mutex_);
 
-  // Local wisp-control state from ColorOverride, not from the cache.
-  // On a fresh app connection this fires immediately even if no hello
-  // has populated wispCache_ yet.
-  const bool haveLampState = lampWispStateProvider_ != nullptr;
-  LampWispState ws;
-  if (haveLampState) {
-    ws = lampWispStateProvider_();
+  // Local wisp-control state from ColorOverride, not from the cache, so a
+  // fresh app connection sees it even before any hello has been cached.
+  if (lampWispStateProvider_ != nullptr) {
+    LampWispState ws = lampWispStateProvider_();
+    in.haveLampState = true;
+    in.controllingBase = ws.controllingBase;
+    in.controllingShade = ws.controllingShade;
+    in.baseWispColor = std::move(ws.baseWispColor);
+    in.shadeWispColor = std::move(ws.shadeWispColor);
   }
-  const bool locallyControlling =
-      haveLampState && (ws.controllingBase || ws.controllingShade);
-
-  // "{}" on an empty return so the app's JSON decode succeeds with no
-  // fields and shows "no wisp detected".
-  if (!snap.present && snap.lastStatusJson.empty() && !locallyControlling) {
-    return std::string("{}");
-  }
-
-  JsonDocument doc;
-  // wispStatus payload is open-set and wisp-owned; start from it when present.
-  if (!snap.lastStatusJson.empty()) {
-    auto err = deserializeJson(doc, snap.lastStatusJson);
-    if (err) {
-      // Malformed payload: treat as empty to still serve hello-derived fields.
-      doc.clear();
-      doc.to<JsonObject>();
-    }
-  } else {
-    doc.to<JsonObject>();
-    doc["char"] = "wispStatus";
-  }
-
-  // Status-payload keys win; isNull() guard skips already-present fields.
-  if (snap.present) {
-    char macStr[18];
-    std::snprintf(macStr, sizeof(macStr),
-                  "%02X:%02X:%02X:%02X:%02X:%02X",
-                  snap.mac[0], snap.mac[1], snap.mac[2],
-                  snap.mac[3], snap.mac[4], snap.mac[5]);
-    if (doc["wispMac"].isNull())              doc["wispMac"] = macStr;
-    if (snap.wispVersion != 0 && doc["wispVersion"].isNull()) {
-      doc["wispVersion"] = snap.wispVersion;
-    }
-    if (snap.lastHelloMs != 0 && doc["helloFlags"].isNull()) {
-      doc["helloFlags"] = snap.flags;
-    }
-    if (snap.paletteIdPrefix[0] != '\0' && doc["helloPaletteIdPrefix"].isNull()) {
-      doc["helloPaletteIdPrefix"] = snap.paletteIdPrefix;
-    }
-    if (snap.lastHelloMs != 0 && doc["helloLastSeenMs"].isNull()) {
-      doc["helloLastSeenMs"] = snap.lastHelloMs;
-    }
-  }
-  if (snap.lastStatusMs != 0 && doc["statusLastSeenMs"].isNull()) {
-    doc["statusLastSeenMs"] = snap.lastStatusMs;
-  }
-
-  // ws snapshot reused from above so early-return and this merge see the same value.
-  if (haveLampState) {
-    doc["controllingBase"]  = ws.controllingBase;
-    doc["controllingShade"] = ws.controllingShade;
-    if (!ws.baseWispColor.empty()) {
-      doc["baseWispColor"] = ws.baseWispColor;
-    }
-    if (!ws.shadeWispColor.empty()) {
-      doc["shadeWispColor"] = ws.shadeWispColor;
-    }
-  }
-
-  std::string out;
-  serializeJson(doc, out);
-  return out;
+  return mergeWispStatusJson(in, maxLen);
 }
 
 size_t LampRoster::copyManualPaletteBlob(uint8_t* out, size_t cap) {

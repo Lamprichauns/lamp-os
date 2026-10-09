@@ -326,6 +326,15 @@ class LampRoster {
   void cacheWispStatus(const uint8_t mac[6],
                        const char* json, size_t jsonLen);
 
+  // Cache the latest wispConfig JSON broadcast. Same display-slot admission
+  // as cacheWispStatus. Loop-task-only writer (Core 1).
+  void cacheWispConfig(const uint8_t mac[6],
+                       const char* json, size_t jsonLen);
+
+  // Copy the cached wispConfig JSON into `out` for the `wispconfig` page
+  // section; "{}" when none is cached or the bounded take times out.
+  void copyWispConfigJson(std::string& out);
+
   // Cache the latest MSG_WISP_PALETTE. Same display-slot admission as
   // cacheWispHello. `rgbw` is `count * 4` interleaved R,G,B,W bytes;
   // `count` is clamped to kMaxWispPaletteColors. Loop-task-only writer
@@ -373,10 +382,10 @@ class LampRoster {
   // bounded take times out. The unicast target for the lamp's wisp control op.
   bool copyDisplayWispMac(uint8_t out[6], uint32_t nowMs);
 
-  // Build and return the JSON to serve on CHAR_WISP_STATUS reads.
-  // Merges the cached wispStatus payload with the last MSG_WISP_HELLO
-  // data. Returns "{}" if nothing has been cached for either path.
-  std::string getWispStatusReadJson();
+  // Build and return the merged wispStatus JSON (see mergeWispStatusJson).
+  // `maxLen` 0 serves it whole for the `wispstatus` page section;
+  // CHAR_WISP_STATUS passes kWispStatusCharMaxLen.
+  std::string getWispStatusReadJson(size_t maxLen);
 
   // Copy the cached manual palette (interleaved R,G,B,W per color) into
   // `out`, returning bytes written. Served on the `wisppalette` page

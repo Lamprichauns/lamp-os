@@ -36,6 +36,7 @@
 #include "expressions/expression_manager.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
 #include "components/network/mesh/proximity.hpp"
+#include "components/network/mesh/wisp_status_merge.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "write_router.hpp"
@@ -750,7 +751,7 @@ class WispStatusCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
-    c->setValue(lamp::lampRoster.getWispStatusReadJson());
+    c->setValue(lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen));
   }
 };
 
@@ -759,7 +760,7 @@ void notifyWispStatus() {
   // No subscriber to push to, and the onRead callback rebuilds fresh, so
   // skip the serialize+notify churn on every wisp mesh event with no client.
   if (!s_clientConnected) return;
-  auto json = lamp::lampRoster.getWispStatusReadJson();
+  auto json = lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen);
 #ifdef LAMP_DEBUG
   const bool sawCB = json.find("\"controllingBase\":true") != std::string::npos;
   const bool sawCS = json.find("\"controllingShade\":true") != std::string::npos;
@@ -930,7 +931,10 @@ struct SectionEntry {
 // the 512-byte ATT ceiling that caps the CHAR_WISP_CLAIMS direct read.
 // wisppalette is binary too (raw RGBW): a dedicated read path so the
 // frequent palette-less status NOTIFY can't clobber it.
-static const std::array<SectionEntry, 9> kSections = {{
+// wispstatus serves the CHAR_WISP_STATUS merge whole, past its 512 B ceiling;
+// wispconfig serves the cached wispConfig, "{}" until one arrives, so an
+// empty read means a lamp that predates both.
+static const std::array<SectionEntry, 11> kSections = {{
   {"lamp",    [](std::string& out) { s_config->lampSectionJsonCached(out); }},
   {"base",    [](std::string& out) { s_config->baseSectionJsonCached(out); }},
   {"shade",   [](std::string& out) { s_config->shadeSectionJsonCached(out); }},
@@ -948,6 +952,12 @@ static const std::array<SectionEntry, 9> kSections = {{
     static uint8_t buf[200];
     const size_t n = lamp::lampRoster.copyManualPaletteBlob(buf, sizeof(buf));
     out.assign(reinterpret_cast<const char*>(buf), n);
+  }},
+  {"wispstatus", [](std::string& out) {
+    out = lamp::lampRoster.getWispStatusReadJson(0);
+  }},
+  {"wispconfig", [](std::string& out) {
+    lamp::lampRoster.copyWispConfigJson(out);
   }},
 }};
 
@@ -1392,7 +1402,7 @@ void start(lamp::Config* config) {
 
   if (s_wifiStateChar) s_wifiStateChar->setValue(buildWifiStateJson(false));
   if (s_wispStatusChar) {
-    s_wispStatusChar->setValue(lamp::lampRoster.getWispStatusReadJson());
+    s_wispStatusChar->setValue(lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen));
   }
   if (s_stateNotify) s_stateNotify->setValue("{}");
   if (schemaVersionChar) {
