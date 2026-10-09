@@ -82,7 +82,6 @@ class StaJoin {
         if (!backoff_.due(nowMs)) return StaAction::None;
         if (!hasCreds) {
           state_ = State::Idle;
-          backoff_.stop();
           return StaAction::None;
         }
         state_ = State::Scanning;
@@ -146,7 +145,6 @@ class StaJoin {
     const bool active = state_ == State::Scanning || state_ == State::Joining ||
                         state_ == State::Linked;
     state_ = State::Idle;
-    backoff_.stop();
     return active ? StaAction::Drop : StaAction::None;
   }
 
