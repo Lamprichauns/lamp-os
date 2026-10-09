@@ -9,7 +9,7 @@
 #include "net/mesh_link.hpp"
 #include "paint/paint_distributor.hpp"
 #include "fleet/wisp_roster.hpp"
-#include "aurora/AuroraPaletteClient.h"
+#include "core/wisp_controller.hpp"
 #include "wire/lamp_protocol.hpp"
 #include "status/status_emitter.hpp"
 #include "status/seq_source.hpp"
@@ -18,13 +18,14 @@
 namespace wisp {
 
 void PresenceBeacon::begin(MeshLink* mesh, PaintDistributor* paint,
-                           CurrentPalette* palette, AuroraPaletteClient* aurora,
+                           CurrentPalette* palette,
+                           const WispController* controller,
                            WispRoster* roster, SeqSource* seq,
                            StatusEmitter* statusEmitter, WispConfig* config) {
   mesh_ = mesh;
   paint_ = paint;
   palette_ = palette;
-  aurora_ = aurora;
+  controller_ = controller;
   roster_ = roster;
   seq_ = seq;
   statusEmitter_ = statusEmitter;
@@ -73,13 +74,14 @@ void PresenceBeacon::pump() {
   }
 }
 
-uint8_t PresenceBeacon::computePresenceFlags(bool wifiNow, bool auroraNow) const {
+uint8_t PresenceBeacon::computePresenceFlags(bool wifiNow,
+                                             bool sourceLiveNow) const {
   uint8_t flags = 0;
   if (paint_ && paint_->paintMode()) {
     flags |= lamp_protocol::WISP_HELLO_FLAG_PAINT_MODE;
   }
   if (wifiNow)   flags |= lamp_protocol::WISP_HELLO_FLAG_WIFI_CONNECTED;
-  if (auroraNow) flags |= lamp_protocol::WISP_HELLO_FLAG_AURORA_CONNECTED;
+  if (sourceLiveNow) flags |= lamp_protocol::WISP_HELLO_FLAG_SOURCE_LIVE;
   return flags;
 }
 
@@ -87,8 +89,8 @@ void PresenceBeacon::emitStateEvent() {
   if (!mesh_ || !roster_) return;
   uint8_t srcMac[6] = {0};
   mesh_->getMac(srcMac);
-  const uint8_t flags = computePresenceFlags(WiFi.isConnected(),
-                                             aurora_ && aurora_->isStreaming());
+  const uint8_t flags = computePresenceFlags(
+      WiFi.isConnected(), controller_ && controller_->sourceLive());
   emitState(srcMac, flags);
 }
 
@@ -99,9 +101,9 @@ void PresenceBeacon::emit() {
   mesh_->getMac(srcMac);
 
   // Snapshot once so the HELLO frame and on-change diff see the same values.
-  const bool wifiNow   = WiFi.isConnected();
-  const bool auroraNow = aurora_ && aurora_->isStreaming();
-  const uint8_t flags  = computePresenceFlags(wifiNow, auroraNow);
+  const bool wifiNow       = WiFi.isConnected();
+  const bool sourceLiveNow = controller_ && controller_->sourceLive();
+  const uint8_t flags      = computePresenceFlags(wifiNow, sourceLiveNow);
 
   // mux-guarded snapshot: this timer task can race a loop-task update().
   char paletteIdPrefix[lamp_protocol::WISP_HELLO_PALETTE_ID_PREFIX_LEN] = {0};
@@ -143,12 +145,13 @@ void PresenceBeacon::emit() {
     }
   }
 
-  // WiFi/Aurora flips would otherwise wait up to 30s for the wispStatus heartbeat.
+  // WiFi/source-live flips would otherwise wait up to 30s for the wispStatus
+  // heartbeat.
   const bool helloFlagsChanged =
       haveLastHelloConn_ &&
-      (wifiNow != lastHelloWifi_ || auroraNow != lastHelloAurora_);
-  lastHelloWifi_     = wifiNow;
-  lastHelloAurora_   = auroraNow;
+      (wifiNow != lastHelloWifi_ || sourceLiveNow != lastHelloSourceLive_);
+  lastHelloWifi_       = wifiNow;
+  lastHelloSourceLive_ = sourceLiveNow;
   haveLastHelloConn_ = true;
   if (helloFlagsChanged && statusEmitter_) {
     statusEmitter_->triggerOnChange();
@@ -179,7 +182,7 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
                        lamp_protocol::WISP_STATE_ENTRY_SIZE];
   // Off packs no colors: the lamp finds its entry absent and eases home.
   const size_t stateCount =
-      (paint_ && paint_->paintMode())
+      (paint_ && paint_->painting())
           ? roster_->snapshotStateForBroadcast(stateEntries, sizeof(stateEntries))
           : 0;
   const uint8_t brightness = config_ ? config_->brightness() : 100;

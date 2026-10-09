@@ -29,7 +29,7 @@ class _FakeLampNearbyPeers extends LampNearbyPeersNotifier {
 const _devId = 'lamp-x';
 
 Future<ProviderContainer> _makeContainer({
-  String wispStatusJson = '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}',
+  String wispStatusJson = '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}',
   String wifiStateJson =
       '{"state":"idle","scanResults":[{"ssid":"homenet","rssi":-55,"encrypted":true}]}',
 }) async {
@@ -102,7 +102,7 @@ void main() {
       (tester) async {
     final c = await _makeContainer(
       wispStatusJson:
-          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"aurora"}',
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"osc"}',
     );
     addTearDown(c.dispose);
     await _pumpScreen(tester, c);
@@ -121,7 +121,7 @@ void main() {
       (tester) async {
     final c = await _makeContainer(
       wispStatusJson:
-          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":true,"source":"aurora"}',
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":true,"source":"osc"}',
     );
     addTearDown(c.dispose);
     await _pumpScreen(tester, c);
@@ -129,6 +129,23 @@ void main() {
 
     expect(find.byKey(const Key('wifi-config-row')), findsOneWidget);
     expect(find.textContaining('Connected'), findsWidgets);
+  });
+
+  testWidgets(
+      'outside Straylight the WiFi row says it joins only while following it',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson:
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"manual"}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.byKey(const Key('wifi-config-row')), findsOneWidget);
+    expect(find.textContaining('Joins only while following Straylight'),
+        findsOneWidget);
+    expect(find.textContaining('Not connected'), findsNothing);
   });
 
   testWidgets('tapping the WiFi row opens the network picker sheet',
@@ -162,7 +179,7 @@ void main() {
       _devId,
       BleUuids.controlService,
       BleUuids.wispStatus,
-      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}')),
+      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}')),
     );
     await ble.write(
       _devId,
@@ -233,7 +250,7 @@ void main() {
       _devId,
       BleUuids.controlService,
       BleUuids.wispStatus,
-      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}')),
+      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}')),
     );
     await ble.write(
       _devId,

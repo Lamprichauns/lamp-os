@@ -9,7 +9,6 @@ import '../../../core/ble/ble_client_provider.dart';
 import '../../../core/ble/uuids.dart';
 import '../data/wisp_password_store.dart';
 import '../data/wisp_repository.dart';
-import '../domain/zone_source.dart';
 import 'manual_palette_draft.dart';
 import '../domain/wisp_source_mode.dart';
 import '../domain/wisp_status.dart';
@@ -26,11 +25,10 @@ enum PaletteConfirmOutcome { confirmed, notConfirmed, sourceChanged }
 /// thereafter every wispStatus update from the wisp lands in `state`
 /// without a round-trip.
 ///
-/// `setZone` / `clearZone` delegate to the repository and rely on the
-/// wisp's on-change broadcast (≤ ~2s) to push the updated status back
-/// via CHAR_WISP_STATUS. Optimistically reflects the choice in local
-/// state so the chip highlight doesn't lag the tap; the notify either
-/// confirms or corrects it.
+/// `setOscRole` delegates to the repository and relies on the wisp's
+/// on-change broadcast (≤ ~2s) to push the updated status back via
+/// CHAR_WISP_STATUS. Optimistically reflects the choice in local state so
+/// the picker doesn't lag the tap; the notify either confirms or corrects it.
 @Riverpod(name: 'wispNotifierProvider')
 class WispNotifier extends _$WispNotifier {
   StreamSubscription<Uint8List>? _sub;
@@ -415,49 +413,20 @@ class WispNotifier extends _$WispNotifier {
     unawaited(_readManualPaletteSection());
   }
 
-  /// Pin the wisp to [zoneId]. Optimistically updates local state to
-  /// `zoneSource: appOp` so the UI feels responsive; the next status
-  /// notify will replace this with the wisp's authoritative view.
+  /// Select the Straylight palette role. Optimistically updates local
+  /// state; the next status notify replaces it with the wisp's view.
   ///
-  /// On BLE write failure, rolls the optimistic state back to its
-  /// pre-call snapshot before rethrowing. Without the rollback the user sees
-  /// the chip "stick" on the failed selection even though the wisp never
-  /// received the op, with no notify coming to reconcile it.
-  Future<void> setZone(int zoneId) async {
+  /// On BLE write failure, rolls the optimistic state back to its pre-call
+  /// snapshot before rethrowing, so the picker never sticks on a role the
+  /// wisp never received.
+  Future<void> setOscRole(OscRole role) async {
     final prev = state;
     final cur = state.value ?? WispStatus.empty;
-    state = AsyncData(cur.copyWith(
-      currentZone: zoneId,
-      zoneSource: ZoneSource.appOp,
-    ));
+    state = AsyncData(cur.copyWith(oscRole: role));
     try {
-      await _repo.setZone(zoneId);
+      await _repo.setOscRole(role);
     } catch (e, st) {
-      debugPrint('WispNotifier.setZone($zoneId) failed: $e\n$st');
-      if (_disposed) rethrow;
-      state = prev;
-      rethrow;
-    }
-  }
-
-  /// Clear the persisted zone pin. After the wisp processes this, the
-  /// next status update will show `zoneSource: firstSeen` (or `none`
-  /// if no zone has been observed yet).
-  ///
-  /// Rolls optimistic state back on write failure (see [setZone]).
-  Future<void> clearZone() async {
-    final prev = state;
-    final cur = state.value ?? WispStatus.empty;
-    state = AsyncData(cur.copyWith(
-      // Don't optimistically null currentZone -- the wisp may keep
-      // following whatever it was on until firstSeen kicks in. Just
-      // flip the source so the "Clear selection" button hides.
-      zoneSource: ZoneSource.firstSeen,
-    ));
-    try {
-      await _repo.clearZone();
-    } catch (e, st) {
-      debugPrint('WispNotifier.clearZone() failed: $e\n$st');
+      debugPrint('WispNotifier.setOscRole($role) failed: $e\n$st');
       if (_disposed) rethrow;
       state = prev;
       rethrow;
@@ -748,7 +717,7 @@ class WispNotifier extends _$WispNotifier {
     }
   }
 
-  /// Set the wisp source mode (Off / Manual / Aurora).
+  /// Set the wisp source mode (Off / Manual / Osc).
   /// Optimistically reflects in local state so the pill picker doesn't
   /// lag the tap, then resends until the wisp's wispStatus echoes the mode
   /// back (the op can be dropped at the BLE write or the mesh relay).

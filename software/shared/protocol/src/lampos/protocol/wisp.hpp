@@ -16,7 +16,7 @@
 //    0    6    header (see header.hpp)
 //    6    6    sourceMac
 //   12    4    wispVersion (LE, packed semver)
-//   16    1    flags (WISP_HELLO_FLAG_PAINT_MODE|WIFI_CONNECTED|AURORA_CONNECTED)
+//   16    1    flags (WISP_HELLO_FLAG_PAINT_MODE|WIFI_CONNECTED|SOURCE_LIVE)
 //   17    8    paletteIdPrefix (WISP_HELLO_PALETTE_ID_PREFIX_LEN)
 //   25   16    carriedFwChannel ({type}-{channel}, WISP_HELLO_FW_CHANNEL_LEN)
 //   41    4    carriedFwVersion (LE)
@@ -70,7 +70,8 @@ constexpr size_t WISP_HELLO_FIXED_SIZE            = HEADER_SIZE + 6 + 4 + 1 +
                                                     WISP_HELLO_FW_CHANNEL_LEN + 4;  // 45
 constexpr uint8_t WISP_HELLO_FLAG_PAINT_MODE        = 0x01;
 constexpr uint8_t WISP_HELLO_FLAG_WIFI_CONNECTED    = 0x02;
-constexpr uint8_t WISP_HELLO_FLAG_AURORA_CONNECTED  = 0x04;
+// Set while the wisp's streamed palette source (OSC) is fresh.
+constexpr uint8_t WISP_HELLO_FLAG_SOURCE_LIVE       = 0x04;
 // WISP_HELLO TLV trailer (v0x05+). Same shape as HELLO's:
 //   [tlv_count 1] [type 1][len 1][value len] x tlv_count
 // Sized at 96 to hold the fixed fields plus a full TLV trailer without
@@ -92,9 +93,8 @@ constexpr size_t kMaxWispClaimEntries    = 100;
 // + w[count]. The W plane rides after the RGB block so parsers that read
 // only count*3 stay compatible (parseWispPalette is `len <` tolerant).
 // Cap kMaxWispPaletteColors at 50 to keep the frame well under the
-// 250-byte ESP-NOW limit: 13 + 50*3 + 50 = 213 bytes. Aurora palettes can
-// be larger than 50; the wisp truncates when emitting and logs once on
-// truncation so an operator notices the shape mismatch.
+// 250-byte ESP-NOW limit: 13 + 50*3 + 50 = 213 bytes. The wisp truncates a
+// larger palette when emitting and logs once so an operator notices.
 constexpr size_t WISP_PALETTE_FIXED_PREFIX = HEADER_SIZE + 6 + 1;  // 13
 constexpr size_t WISP_PALETTE_ENTRY_SIZE   = 3;                    // R, G, B
 constexpr size_t kMaxWispPaletteColors     = 50;

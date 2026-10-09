@@ -43,7 +43,7 @@ void main() {
       BleUuids.controlService,
       BleUuids.wispStatus,
       Uint8List.fromList(
-          utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}')),
+          utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}')),
     );
     final c = makeContainer(ble);
     // Keep the provider alive across the confirm-timeout wait; a bare read

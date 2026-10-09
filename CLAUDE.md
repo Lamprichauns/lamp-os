@@ -8,8 +8,8 @@ ESP32-based smart-lamp fleet. Three components:
   Each signed binary is type-gated via the `{type}-{channel}` slot in the
   LSIG footer, so a cross-variant OTA is silently dropped.
 - **`software/wisp/`**, wisp infrastructure node (Seeed Xiao ESP32-C6,
-  external antenna). Aurora palette subscriber + mesh paint distributor +
-  status beacon. Build env `seeed_xiao_esp32_c6`.
+  external antenna). OSC palette receiver (Straylight) + mesh paint
+  distributor + status beacon. Build env `seeed_xiao_esp32_c6`.
 - **`software/lamp-app-flutter/`**, iOS/Android control app (Flutter).
   Talks BLE GATT to lamps; no direct mesh participation.
   Form spacing + grouping convention: [`software/lamp-app-flutter/docs/FORM_STYLING.md`](software/lamp-app-flutter/docs/FORM_STYLING.md).
@@ -45,6 +45,10 @@ with no changelog entry is incomplete.
 
 Claude: before treating a version bump as done, confirm `docs/CHANGELOG.md` has
 an entry for the new version; if it doesn't, stop and prompt to add one.
+
+Branch work goes under a single `## Unreleased` heading at the top of
+`docs/CHANGELOG.md`, renamed to the version when `VERSION` is bumped; a branch
+never bumps `VERSION`.
 
 ## Lock-ins (don't change without a protocol version bump)
 

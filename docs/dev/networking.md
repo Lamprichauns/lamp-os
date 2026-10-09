@@ -1,8 +1,8 @@
 # Lamp OS networking reference
 
 This document describes the communication protocols that move data between the
-lamps, the wisp infrastructure node, the Flutter app, and the Aurora palette
-device — the **ESP-NOW mesh** between lamps, the **BLE GATT** link to the phone,
+lamps, the wisp infrastructure node, the Flutter app, and the Straylight
+palette feed (OSC) — the **ESP-NOW mesh** between lamps, the **BLE GATT** link to the phone,
 and the firmware-distribution messages. It is the authoritative wire-format
 reference; if code and this doc disagree, the code wins and this doc should be
 updated.
@@ -11,20 +11,18 @@ updated.
 
 ```
                                  ╔═══════════════════════════╗
-                                 ║       Aurora device       ║
+                                 ║        Straylight         ║
                                  ║      (palette source)     ║
                                  ╚════════════╤══════════════╝
-                                              │ LAN (WiFi)
-                                              │ mDNS discovery
-                                              │ WebSocket subscription
-                                              │ Protobuf notifications
-                                              │ HTTP palette fetch
+                                              │ OSC 1.0
+                                              │ SLIP over USB serial, or
+                                              │ UDP :9000 (softAP / STA)
                                               ▼
             ┌──────────────────────────────────────────────────────┐
             │                       wisp                           │
             │              Seeed Xiao ESP32-C6, external antenna   │
             │                                                      │
-            │   Aurora client  ──►  CurrentPalette                 │
+            │   OscListener    ──►  CurrentPalette                 │
             │                       TupleSampler                   │
             │                       PaintDistributor               │
             │                                                      │
@@ -131,8 +129,15 @@ carriedFwChannel(16 utf-8, null-padded) + carriedFwVersion(4 LE) +
 tlv_count(1) + TLV trailer (v0x05+)
 = 45 bytes fixed (WISP_HELLO_FIXED_SIZE); wisp emits 46 (tlv_count=0),
   cap WISP_HELLO_MAX_SIZE = 96
-flags bit 0 = paintMode, bit 1 = wifiConnected, bit 2 = auroraConnected
+flags bit 0 = paintMode, bit 1 = wifiConnected, bit 2 = sourceLive
 ```
+Bit 2 (`WISP_HELLO_FLAG_SOURCE_LIVE`) is the same signal as wispStatus
+`sourceLive`: Osc mode, a non-blank palette held, and something from the
+Straylight feed within the last 30 s. It reuses the bit position the retired
+Aurora source used for "connected", with no protocol version bump: no
+receiver gates on bit 2 (lamps ignore the flags byte; the app reads the same
+signal from wispStatus `sourceLive`, and `helloFlags` is only passed through),
+so no parser contract changed.
 The TLV trailer shares HELLO's shape (`tlv_count(1)`, then `type(1) + len(1)
 + value(len)` per TLV); the wisp emits `tlv_count=0` and the parser skips
 unknown types by length (forward-compat).
@@ -156,8 +161,8 @@ header(6) + sourceMac(6) + count(1) + rgb[count*3] + w[count]
 ```
 - **Sender**: wisp(s) only. Lamps cache on receipt (dedup ring `wispPaletteDedup_`) and re-relay one hop only when heard direct; they never originate.
 - **Cadence**: piggybacked on the existing 30 s `emitStatus()` tick, emitted right after `MSG_CONTROL_OP wispStatus` in the same broadcast pass. Also fired on `triggerOnChange()` after a `setManualPalette` wispOp, so app edits propagate within ~2 s.
-- **Encoding**: a packed R, G, B block followed by a per-color W plane. The plane is a length-gated trailer: `parseWispPalette` accepts frames longer than `count*3` (it always has), so parsers that read only the RGB block skip it, and frames without it parse with `w == nullptr` (W reads as 0). W is **warm white** — the lamp grid's dedicated warm emitter, "amber" in ArtNet fixture terms. Aurora's amber channel folds into the same plane; RGB-only surfaces (the wisp's WS2812 ring, the app's gradient bar) fold W back into RGB with the shared warm-bias math.
-- **Truncation**: Aurora palettes can exceed 50 colors; the wisp builder caps at `kMaxWispPaletteColors` and logs once per oversize burst (`[wisp.beacon] manualPalette truncated:`). The full palette stays usable on the wisp side for actual paint distribution, only the app's view of the palette gets the cap.
+- **Encoding**: a packed R, G, B block followed by a per-color W plane. The plane is a length-gated trailer: `parseWispPalette` accepts frames longer than `count*3` (it always has), so parsers that read only the RGB block skip it, and frames without it parse with `w == nullptr` (W reads as 0). W is **warm white** — the lamp grid's dedicated warm emitter, "amber" in ArtNet fixture terms. RGB-only surfaces (the wisp's WS2812 ring, the app's gradient bar) fold W back into RGB with the shared warm-bias math.
+- **Manual only**: the frame carries the stored manual palette in every source mode. An OSC palette is never broadcast here, so in Osc mode the app has no copy of the live palette beyond `paletteIdPrefix`.
 - **Lamp-side cache**: each lamp stores the latest `(mac, rgbw[], count)` in `LampRoster::WispCache.manualPaletteRgbw` (interleaved R,G,B,W). The cache is exposed to the app inside `CHAR_WISP_STATUS` reads as a base64-encoded `palette` field beside a `paletteBpp: 4` stride discriminator, see the wispStatus envelope below.
 
 **`MSG_WISP_PAINT` (0x27)**, **retired**. The wisp no longer emits it; `MSG_WISP_STATE` carries the same per-lamp base/shade colors and feeds the app's "Painted lamps" preview. The wire format (`header(6) + sourceMac(6) + count(1) + entries[count*12]`, entry `lampMac(6) + baseRGB(3) + shadeRGB(3)`) and its parser remain for backward-compat; the lamp's receive routing is dormant.
@@ -169,7 +174,7 @@ presenceFlags(1) + count(1) + entries[count*12]
   entry: lampMac(6) + baseRGB(3) + shadeRGB(3)
 = 19..1459 bytes  (count ≤ WISP_STATE_MAX_ENTRIES = 120)
 ```
-- **Sender**: wisp(s) only. In Off (paint disabled) the wisp packs zero entries, so every claimed lamp finds its MAC absent and eases home. No gossip relay (direct radio range only); it re-covers the whole claimed set on its own cadence.
+- **Sender**: wisp(s) only. In Off (paint disabled), and in Osc mode while the stream is stale, the wisp packs zero entries, so every claimed lamp finds its MAC absent and eases home. No gossip relay (direct radio range only); it re-covers the whole claimed set on its own cadence.
 - **Off / presence**: presence holds while STATE from the display wisp keeps naming this lamp. A fresh STATE that drops the lamp eases it home now; total STATE silence ages presence out after `kWispStateFreshMs` (60 s) as a failsafe. A paint-mode edge emits STATE out of cadence so on/off lands within a frame or two, not up to one steady tick.
 - **Cadence**: on even presence ticks (every ~4 s), alternating with `MSG_WISP_CLAIM` (odd ticks) so the single core never sends two fat frames back-to-back. No resend ring: at up to 1459 B it overflows the claim-sized resend slot. Edge coverage instead comes from a burst window (`kStateBurstMs` ≈ 2 s, `kStateBurstIntervalMs` ≈ 700 ms in `presence_beacon.hpp`): a paint-mode edge re-emits STATE a few times over ~2 s so a take/release lost to coex is caught without waiting the full 4 s re-cover. Burst emits skip any pump that already ran a tick frame, so they never collide with the alternating HELLO/CLAIM/STATE on the single core; the 4 s re-cover remains the backstop.
 - **Per-frame globals**: `brightness` (space brightness), `driftRateMs` (drift interval, matches `WispConfig::driftIntervalMs`), `presenceFlags` (the same bitfield as this tick's `MSG_WISP_HELLO` flags, incl `WISP_HELLO_FLAG_PAINT_MODE`).
@@ -198,10 +203,8 @@ Off mode (source == "off") — carries `offColor`, no drift fields:
 {
   "char":"wispStatus",
   "source": "off",
-  "currentZone": 3,
-  "zoneSource": "nvs",
   "wifiConnected": true,
-  "auroraConnected": true,
+  "sourceLive": false,
   "lastSeenMs": 14823,
   "hasPassword": true,
   "offColor": "ffb43c00",
@@ -209,38 +212,36 @@ Off mode (source == "off") — carries `offColor`, no drift fields:
 }
 ```
 
-Manual/Aurora mode — carries drift fields, no `offColor`:
+Manual/Osc mode — carries drift fields, no `offColor`; `oscRole` rides in any mode off its default:
 ```json
 {
   "char":"wispStatus",
-  "source": "aurora",
-  "currentZone": 3,
-  "zoneSource": "nvs",
+  "source": "osc",
   "wifiConnected": true,
-  "auroraConnected": true,
+  "sourceLive": true,
   "lastSeenMs": 14823,
+  "oscRole": "secondary",
   "paletteIdPrefix": "abc12345",
   "name": "living room",
   "driftIntervalMs": 90000,
-  "driftFadePct": 40,
-  "observedZones": [0, 3, 7]
+  "driftFadePct": 40
 }
 ```
 - **Sender**: wisp(s) only. Lamps gossip-relay (the `MSG_CONTROL_OP` relay rule) but never originate. The wisp's shared seq counter starts at a random value at boot so a quick double reboot cannot replay `(mac, type, seq)` tuples still cached in peers' dedup rings.
-- **Cadence**: on-change + 30 s heartbeat, coalesced to at most one emit per 5 s (a due emit inside the window is deferred, never dropped). A change opens a ~20 s burst that re-broadcasts the status every 2 s, so at least one copy clears a multi-second coex reception blackout on the lamps and the app's control-op confirmation survives. Change triggers: any applied wispOp, WiFi connect/disconnect edge, Aurora connect/disconnect edge, `pollStatus`. `MSG_WISP_PALETTE` is emitted in the same tick (see Tier 1) so the app's view of the palette converges on the same cadence.
-- **Payload budget — degrade by construction**: guaranteed ≤ 576 B (`CONTROL_MAX_PAYLOAD`). A guaranteed core — `char`, `source`, `currentZone`, `zoneSource`, `wifiConnected`, `auroraConnected`, `lastSeenMs`, plus `hasPassword` when true — is pinned by a native test at ≤ 179 B at worst-case field widths, so the builder always produces a frame. Every other field is add-if-fits in priority order: `offColor`, `paletteIdPrefix`, `shuffleSeed`, `opSeq`, `name`, `driftIntervalMs`, `driftFadePct`, `range`, `observedZones` (greedy, one entry at a time), `ledType`, `px`, `wifiChannelMismatch`, `wifiApChannel`, `brightness`. `offColor` and `paletteIdPrefix` outrank the cosmetics: the prefix is the app's palette re-read trigger, and a dropped `offColor` silently renders the app's amber default. `opSeq` sits above the cosmetics so a sealed-op confirmation isn't crowded off the wire by a name or LED-config field. The mismatch fields sit just above `brightness`: below `px` (app-critical) but above the one pure cosmetic, so the pathological worst case (602 B — every field widest, all 16 observed zones, plus the two mismatch fields; `test_status_json`'s `test_wifi_mismatch_untruncated_length`) sheds only `brightness`, never `px` or the mismatch signal.
-- **Omit-when-default**: a field whose value equals the app parser's missing-field default is left off the wire — `hasPassword` false, `shuffleSeed` 0, `opSeq` 0, `driftIntervalMs` 120000, `driftFadePct` 50, `range` 0, `ledType` "GRB", `px` 30, `brightness` 100, `wifiChannelMismatch` false, `wifiApChannel` 0, empty `name` / `paletteIdPrefix` / `observedZones`.
-- **`zoneSource`**: `"nvs"` | `"firstSeen"` | `"appOp"` | `"none"`.
-- **`source`**: `"aurora"` | `"manual"` | `"off"`. Consumed by the Flutter app to surface and round-trip the source-toggle state.
+- **Cadence**: on-change + 30 s heartbeat, coalesced to at most one emit per 5 s (a due emit inside the window is deferred, never dropped). A change opens a ~20 s burst that re-broadcasts the status every 2 s, so at least one copy clears a multi-second coex reception blackout on the lamps and the app's control-op confirmation survives. Change triggers: any applied wispOp, WiFi connect/disconnect edge, OSC stream live/stale edge, `pollStatus`. `MSG_WISP_PALETTE` is emitted in the same tick (see Tier 1) so the app's view of the palette converges on the same cadence.
+- **Payload budget — degrade by construction**: guaranteed ≤ 576 B (`CONTROL_MAX_PAYLOAD`). A guaranteed core — `char`, `source`, `wifiConnected`, `sourceLive`, `lastSeenMs`, plus `hasPassword` when true — is pinned by a native test at ≤ 179 B at worst-case field widths (123 B today), so the builder always produces a frame. Every other field is add-if-fits in priority order: `offColor` (Off only), `oscRole`, `paletteIdPrefix`, `shuffleSeed`, `opSeq`, `name`, `driftIntervalMs`, `driftFadePct`, `range`, `ledType`, `px`, `wifiChannelMismatch`, `wifiApChannel`, `brightness`. `offColor`, `oscRole` and `paletteIdPrefix` outrank the cosmetics: the prefix is the app's palette re-read trigger, a dropped `offColor` silently renders the app's amber default, and a dropped `oscRole` shows the wrong role selected. `opSeq` sits above the cosmetics so a sealed-op confirmation isn't crowded off the wire by a name or LED-config field. The mismatch fields sit just above `brightness`: below `px` (app-critical) but above the one pure cosmetic. The pathological worst case (376 B — Manual mode, every field widest, both mismatch fields; `test_status_json`'s `test_worst_case_untruncated_length`) fits the cap whole, so nothing sheds today; the order governs only if the frame grows.
+- **Omit-when-default**: a field whose value equals the app parser's missing-field default is left off the wire — `hasPassword` false, `shuffleSeed` 0, `opSeq` 0, `driftIntervalMs` 120000, `driftFadePct` 50, `range` 0, `ledType` "GRB", `px` 30, `brightness` 100, `wifiChannelMismatch` false, `wifiApChannel` 0, `oscRole` "primary", empty `name` / `paletteIdPrefix`. `sourceLive` is always sent, so an absent key reads as an older wisp.
+- **`source`**: `"off"` | `"manual"` | `"osc"`. Consumed by the Flutter app to surface and round-trip the source-toggle state. A wisp that stored the retired Aurora mode boots as `"off"`; an app reading `"aurora"` from an older wisp maps it to off.
+- **`sourceLive`**: `true` while `source == "osc"`, a non-blank palette has arrived on the role's address, and something from the Straylight feed (that palette or any other `/straylight/` message) arrived within the last 30 s; the same signal as HELLO flag bit 2. The app shows "Waiting for Straylight" while it is false in Osc mode.
+- **`oscRole`**: `"primary"` | `"secondary"` | `"tertiary"` | `"fill"`, the Straylight palette the wisp follows. Present in every source mode when the role is not `"primary"` (the app default), so the app shows the stored role the moment Straylight is picked.
 - **`offColor`**: packed lowercase-hex `"rrggbbww"` (8 chars, no `#`), the ring color used in Off mode (W = warm white). Present only when `source == "off"`. The app also accepts the legacy 3-/4-int RGBW array shape from older wisps, and defaults to warm amber when absent.
 - **`paletteIdPrefix`**: first 8 chars of the live palette id. In Manual mode the id is an 8-char FNV-1a hash over the palette's canonical wire bytes (r,g,b per color, plus w only when w != 0), so the app confirms a `setManualPalette` write by matching this prefix against the hash it computes locally (`WispRepository.paletteIdHash`) on the reliable status NOTIFY. Cleared (and therefore omitted) on the transition to Off — Off plays nothing.
 - **`driftIntervalMs`** / **`driftFadePct`**: drift cadence + fade depth. Present only when `source != "off"` (mode-exclusive with `offColor`, so the two never compete for budget).
 - **`name`**: wisp display name, ≤ 20 characters.
 - **`hasPassword`**: `true` when the wisp has a control password set; omitted when false (the app default).
 - **`opSeq`**: monotonic counter the wisp bumps each time it accepts and applies a *sealed* wispOp (plaintext ops don't move it). Sealed ops carry no direct ACK, so the app confirms one landed by watching this advance — the password-change flow persists the new secret only after `opSeq` steps past the value it read before sending. RAM-only: resets to 0 on wisp reboot, so the app treats only a strict increase as confirmation. Omitted at 0.
-- **`observedZones`**: capped at 16 entries (oldest-eviction FIFO) before the greedy budget truncation.
 - **`lastSeenMs`**: wisp-local `millis()` at emission. Does not survive wisp reboot, the app does local-epoch math for "X seconds ago" UI rather than trusting this value across reconnects.
-- **`wifiChannelMismatch`** / **`wifiApChannel`**: set when the wisp's channel-6 STA guard (see below) dropped an association to an AP on the wrong channel. `wifiChannelMismatch` true explains a `wifiConnected` false the app would otherwise blame on bad creds; `wifiApChannel` is the offending channel. Both omitted in the normal case. Recovery is a `wifiReconnect` (or fresh `setWifi`) op.
+- **`wifiChannelMismatch`** / **`wifiApChannel`**: set when the wisp's channel-6 STA guard (see below) dropped an association to an AP on the wrong channel. `wifiChannelMismatch` true explains a `wifiConnected` false the app would otherwise blame on bad creds; `wifiApChannel` is the offending channel. Both omitted in the normal case. Recovery is a `wifiReconnect` or fresh `setWifi` op, or switching the source away from Straylight and back, any of which clears the flag and re-emits.
 - `manualPalette` is intentionally NOT carried here, it ships via the separate `MSG_WISP_PALETTE` broadcast.
 - **Lamp-side cache**: each lamp keeps the latest `wispStatus` per wisp MAC in `LampRoster`. `CHAR_WISP_STATUS` reads merge this cache with the last `MSG_WISP_HELLO` snapshot AND the cached manualPalette for the same MAC, served as a base64-encoded `palette` field beside `paletteBpp: 4` — the explicit stride discriminator. The app keys the stride on it, never on blob length (ambiguous at `len % 12 == 0`); absent means 3, the RGB stride older lamp firmware serves.
 
@@ -258,8 +259,8 @@ When a password is set, the wisp rejects plaintext (both `0x01`-prefixed and bar
 **Replay protection.** The wisp maintains a RAM-only bounded nonce ring (32 entries). A seen nonce is rejected; a forced reboot resets the ring. Config ops are low-value and idempotent, so reboot-replay is an accepted ceiling.
 
 ```json
-{"char":"wispOp","op":"setZone","zoneId":3}
-{"char":"wispOp","op":"clearZone"}
+{"char":"wispOp","op":"setSource","mode":"osc"}
+{"char":"wispOp","op":"setOscRole","role":"secondary"}
 {"char":"wispOp","op":"setWifi","ssid":"...","pw":"..."}
 {"char":"wispOp","op":"setDrift","intervalMs":120000,"fadePct":50}
 {"char":"wispOp","op":"setName","name":"living room"}
@@ -270,11 +271,15 @@ When a password is set, the wisp rejects plaintext (both `0x01`-prefixed and bar
 - **Sender**: the Flutter app writes the payload (sealed or plaintext) to `CHAR_WISP_OP` on any paired lamp; the lamp unicasts it as `MSG_CONTROL_OP` to its display-slot wisp's MAC (dropped when no display wisp is in range).
 - **Receiver**: the addressed wisp only. Lamps do NOT apply a `wispOp` locally, there is no `wispOp` branch in `applyRemoteOpLocal`, by design.
 - **Wisp dedup**: the wisp runs its own 64-slot `controlOpDedup_` ring keyed on `(sourceMac, msgType, seq)` so the unicast resend copies of the same op don't re-apply.
-- **NVS persistence**: `setZone` and `clearZone` persist via `WispConfig` (NVS namespace `"wisp"`, key `selZone`). The wisp boots into the persisted zone if one is set.
-- **`setWifi`**: persists credentials to NVS and triggers a reconnect attempt. The relay lamp passes the payload through opaque; the wisp handles the WiFi join.
-- **`wifiReconnect`**: re-attempts the STA join with the stored creds. The recovery path after the channel-6 guard drops an association (which disables auto-reconnect); clears the mismatch guard and re-enables auto-reconnect. Read-only w.r.t. NVS.
+- **`setSource`**: `mode` is `"off"` | `"manual"` | `"osc"` (or numeric 0 | 1 | 3); anything else, `"aurora"` and 2 included, is `Malformed` and changes nothing. Persisted to NVS (key `srcMode`); a stored 2 or unknown value loads as Off. Selecting Manual or Osc turns paint mode on, which is the paint opt-in. Manual with an empty palette paints nothing: lamps ease home rather than keep the previous source's colours. In Osc the wisp listens for OSC 1.0 on USB serial (SLIP, sharing the console) and UDP port 9000 on every interface, reading flat RGB floats 0..1 (1..50 colours) from `/straylight/palette/<role>/colours`, bundles included. Once a palette is held, any parsed packet carrying a `/straylight/` address keeps it live; with nothing from the feed for 30 s (`OscFreshness::kStaleMs`, three of Straylight's 10 s UDP restates) the wisp holds lamps and its ring at Off (STATE packs no entries, ArtNet stops) with paint mode kept, and the next palette resumes painting with no app action. A blank palette (no channel above zero, which Straylight sends for a role with nothing bound) counts as no palette and drops to that hold at once. The ring follows every palette change; lamp re-assignment, the out-of-cadence STATE and ArtNet follow at most once a second, trailing edge included, so a fast-moving palette cannot flood the mesh. A role change keeps painting the old role's palette until the new role's first one lands.
+- **OSC transport**: USB serial is the recommended path. Over UDP the wisp receives Straylight's whole feed (every param, level and palette, not only its role's palette), all of it airtime on the shared channel-6 radio. lwIP queues at most 6 datagrams per socket and the loop drains it once per pass, behind a 5 ms `delay()`; a restate burst arrives faster than that and overflows the queue, and the palettes, sent last, are what drop. That can happen on every restate, so a palette change lost that way is not repaired by the next restate either: the lamps hold the old palette until the palette changes again and that datagram lands. The feed keepalive above stops this from also reading as stale. SLIP frames on serial share the text console: a frame that goes 200 ms without a byte is dropped and the console is back on text.
+- **`setOscRole`**: `role` is `"primary"` | `"secondary"` | `"tertiary"` | `"fill"`; anything else is `Malformed`. Persisted to NVS (key `oscRole`, u8, unknown loads as primary). Gated like every config op: sealed when a password is set. In Osc mode a role change keeps the stream live and lamps on the old role's palette until the new role's first palette lands.
+- **`setWifi`**: persists credentials to NVS and restarts the STA join schedule (an attempt at once while the source is Osc). The relay lamp passes the payload through opaque; the wisp handles the WiFi join.
+- **`wifiReconnect`**: restarts the STA join with the stored creds. The recovery path after the channel-6 guard drops an association; clears the mismatch guard. Read-only w.r.t. NVS.
 
-**Channel-6 STA guard.** The wisp shares one radio between ESP-NOW (pinned to `LAMP_ESPNOW_CHANNEL` = 6) and its STA join. Associating to an AP on any other channel drags the radio off 6 and silently breaks the mesh. On a `GOT_IP` whose channel != 6 the wisp refuses to stay associated: it drops the association, re-pins the radio to channel 6, and disables auto-reconnect (so association churn can't re-drag the radio every few seconds). It does not retry on its own — recovery is an explicit `wifiReconnect` or `setWifi`. The drop flips `wifiChannelMismatch` on and triggers an immediate `wispStatus` re-emit (no waiting for the 30 s heartbeat); a later clean channel-6 association clears it and re-emits.
+**When the STA joins.** The STA join runs only while the source is Osc, the one mode that uses the LAN; in Off and Manual the wisp never scans or joins, and switching to either drops any association. Stored credentials stay in NVS throughout. The policy is `StaJoin` (`net/sta_join.hpp`, pure, natively tested); `WifiLink` carries it out. Each attempt first runs an async active scan of channel 6 only (`WiFi.scanNetworks` with the channel and the stored SSID as filters, 120 ms dwell, bounded by a 5 s timeout; a result on another channel is ignored). Only when the SSID is found there does the wisp call `WiFi.begin(ssid, pass, 6, bssid)` with the strongest BSSID the scan saw; not found counts as a failure with no wider scan. The channel argument to `WiFi.begin` is only where the driver's own scan starts, so the pre-scan is what keeps a missing or off-channel AP from triggering an all-channel scan; the driver can still scan further if the AP vanishes between the two. Attempts are judged by WiFi events, never by `WiFi.status()`, which the Arduino core latches from the last event: an STA disconnect the wisp did not cause (any reason but `ASSOC_LEAVE`) or 15 s without `GOT_IP` fails a join, and a `GOT_IP` in any wanted state is adopted, the core's one-shot first-connect retry included, except while halted by the channel guard; a `GOT_IP` while halted or while the source does not want the network is dropped at once, since that retry ignores `setAutoReconnect(false)` and can link after the wisp has left Osc. Disconnects and `GOT_IP`s are applied in the order they happened, and any that arrived before the wisp's own last drop are ignored, so a `GOT_IP` for a link already dropped is never adopted; the channel guard checks the channel each adopted `GOT_IP` carried. While linked, the STA netif's connected bit (not latched like `WiFi.status()`) backs up the disconnect event. The core's auto-reconnect is off; failures retry on a backoff (`RetryBackoff`: 10 s, doubling to a 5 min cap), restarted on entering Osc and on `setWifi` / `wifiReconnect`, and a lost link retries after 10 s. An AP that is not there therefore costs one single-channel scan per backoff step rather than an all-channel scan every few seconds, which is what pulled the radio off the mesh long enough for lamps to age out of the roster. The status does not say which network the wisp is failing to find; `[wifi] <ssid> not on ch 6; retry in Ns` on the console does. A drop re-pins the radio to channel 6 only when it has actually left it, since the driver refuses a channel change while scanning, connecting or serving softAP stations.
+
+**Channel-6 STA guard.** The wisp shares one radio between ESP-NOW (pinned to `LAMP_ESPNOW_CHANNEL` = 6) and its STA join. Associating to an AP on any other channel drags the radio off 6 and silently breaks the mesh. On a `GOT_IP` whose channel != 6 the wisp refuses to stay associated: it drops the association, re-pins the radio to channel 6, and halts retries (so association churn can't re-drag the radio). It does not retry on its own — recovery is an explicit `wifiReconnect` or `setWifi`, or re-entering Osc, all operator acts that clear the halt and the flag. With every join made to a BSSID found on channel 6 this fires only if the AP moves channel after the join. The drop flips `wifiChannelMismatch` on and triggers an immediate `wispStatus` re-emit (no waiting for the 30 s heartbeat). Only the recovery acts above clear it, each re-emitting the status.
 - **`setDrift`**: sets the color-drift cadence. `intervalMs` [30000..3600000]: how often each lamp is re-targeted in milliseconds. `fadePct` [0..100]: fade length as a percentage of the interval. Persisted to NVS; reflected in the next `wispStatus` broadcast under `driftIntervalMs`/`driftFadePct`.
 - **`setName`**: sets the wisp's display name, clamped to 20 characters. Persisted to NVS (key `wispName`). Reflected in the next `wispStatus` broadcast under `name`.
 - **`setPassword`**: sets or clears the wisp control password. Persisted to NVS (key `wispPassword`). When factory-fresh (no current password), a plaintext `setPassword` is accepted. When a password already exists, `setPassword` must arrive sealed under the OLD password; the decrypt step authenticates the caller before the password is replaced. An empty `"password"` field clears the password (removes the NVS key), reverting to open access.
@@ -501,7 +506,7 @@ lamp A                       mesh                            lamp B (in range)
 ```
 wisp                                mesh                    lamp
   │                                   │                       │
-  │── Aurora palette change           │                       │
+  │── OSC / manual palette change     │                       │
   │── TupleSampler.assign(macA, p)    │                       │
   │   → {baseColor, shadeColor}       │                       │
   │── roster.setLampPaint(A, base, shade)  (no wire send)     │
@@ -519,9 +524,9 @@ wisp                                mesh                    lamp
   │                                   │                       │── wisp LayerStack eases in;
   │                                   │                       │   presence holds while fresh
   │                                   │                       │
-  │── source→Off: MSG_WISP_STATE      │                       │── own MAC absent in fresh
-  │   with zero entries (event-driven)│                       │   frame → clearWispState,
-  │                                   │                       │   ease home now
+  │── source→Off, or OSC stream stale:│                       │── own MAC absent in fresh
+  │   MSG_WISP_STATE with zero entries│                       │   frame → clearWispState,
+  │   (event-driven)                  │                       │   ease home now
 ```
 
 In steady manual mode STATE re-covers the whole claimed set every ~4 s, well
@@ -552,7 +557,7 @@ arm and scoped to the display wisp): a 30 s
 just the frame identifier there). Whether the lamp reliably sees the wisp
 take / release control reads directly off the adopt/release edges and counts.
 
-### Phone picks a wisp zone via mesh proxy
+### Phone picks the wisp's Straylight role via mesh proxy
 
 ```
 phone        lamp A (paired)             mesh                    wisp
@@ -560,23 +565,25 @@ phone        lamp A (paired)             mesh                    wisp
   │── BLE write ─►│                        │                       │
   │  CHAR_WISP_OP│                        │                       │
   │  {char:wispOp│                        │                       │
-  │   op:setZone│                        │                       │
-  │   zoneId:3} │                        │                       │
+  │   op:setOscRole                       │                       │
+  │   role:fill} │                        │                       │
   │              │── MSG_CONTROL_OP ──────►│── ESP-NOW broadcast ─►│
   │              │   payload: same JSON   │                       │
   │              │                        │                       │── controlOpDedup_.record
   │              │                        │                       │── WispOpDispatcher.dispatch
   │              │                        │                       │── WispConfig
-  │              │                        │                       │   .setSelectedZone(3)
-  │              │                        │                       │   (NVS: "wisp"/selZone)
-  │              │                        │                       │── ZoneSelector.setFromOp(3)
-  │              │                        │                       │── StatusBeacon
+  │              │                        │                       │   .setOscRole(Fill)
+  │              │                        │                       │   (NVS: "wisp"/oscRole)
+  │              │                        │                       │── listen on
+  │              │                        │                       │   /straylight/palette/
+  │              │                        │                       │   fill/colours
+  │              │                        │                       │── StatusEmitter
   │              │                        │                       │   .triggerOnChange()
   │              │                        │── ESP-NOW broadcast ◄─│
   │              │                        │   MSG_CONTROL_OP
   │              │                        │   {char:wispStatus,
-  │              │                        │    currentZone:3,
-  │              │                        │    zoneSource:"appOp",
+  │              │                        │    source:"osc",
+  │              │                        │    oscRole:"fill",
   │              │                        │    ...}
   │              │── applyRemoteOpLocal ◄─│                       │
   │              │   char=="wispStatus"  │                       │
@@ -588,8 +595,8 @@ phone        lamp A (paired)             mesh                    wisp
   │── BLE notify ◄│                        │                       │
   │  CHAR_WISP_  │                        │                       │
   │  STATUS      │                        │                       │
-  │  {currentZone:3,                     │                       │
-  │   zoneSource:"appOp",...}             │                       │
+  │  {oscRole:"fill",                    │                       │
+  │   sourceLive:...,...}                 │                       │
 ```
 
 `setWifi` follows the same proxy shape (BLE → `MSG_CONTROL_OP` → wisp dispatch → status broadcast); the wisp-side handler is currently a stub.

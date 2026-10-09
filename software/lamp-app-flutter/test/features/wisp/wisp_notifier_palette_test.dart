@@ -396,13 +396,13 @@ void main() {
         () async {
       final ble = InMemoryBleClient();
       await primeStatus(
-          ble, '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}');
+          ble, '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}');
       final c = makeContainer(ble: ble);
 
       c.listen(wispNotifierProvider(lampId), (_, _) {});
       final initial =
           await c.read(wispNotifierProvider(lampId).future);
-      expect(initial.source, WispSourceMode.aurora);
+      expect(initial.source, WispSourceMode.osc);
 
       final n = c.read(wispNotifierProvider(lampId).notifier);
       final f = n.setSource(WispSourceMode.off);
@@ -421,7 +421,7 @@ void main() {
         () async {
       final ble = InMemoryBleClient();
       await primeStatus(
-          ble, '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}');
+          ble, '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}');
       final c = makeContainer(ble: ble);
       c.listen(wispNotifierProvider(lampId), (_, _) {});
       await c.read(wispNotifierProvider(lampId).future);
@@ -438,7 +438,7 @@ void main() {
 
       // Optimistic flip rolled back to ground truth; op resent, not once.
       expect(c.read(wispNotifierProvider(lampId)).value!.source,
-          WispSourceMode.aurora);
+          WispSourceMode.osc);
       expect(ble.writesTo(lampId, BleUuids.wispOp).length, greaterThan(1));
     });
 

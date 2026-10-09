@@ -59,7 +59,7 @@ void test_wisp_hello_roundtrip() {
   const size_t n = lp::buildWispHello(
       buf, sizeof(buf), /*seq=*/0x1234, kSrcMac,
       /*wispVersion=*/0x01020304,
-      /*flags=*/lp::WISP_HELLO_FLAG_PAINT_MODE | lp::WISP_HELLO_FLAG_AURORA_CONNECTED,
+      /*flags=*/lp::WISP_HELLO_FLAG_PAINT_MODE | lp::WISP_HELLO_FLAG_SOURCE_LIVE,
       palette, 8,
       channel, 15,
       /*carriedFwVersion=*/0xCAFEF00D);
@@ -72,7 +72,7 @@ void test_wisp_hello_roundtrip() {
   TEST_ASSERT_EQUAL_UINT16(0x1234, out.seq);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(kSrcMac, out.sourceMac, 6);
   TEST_ASSERT_EQUAL_UINT32(0x01020304u, out.wispVersion);
-  TEST_ASSERT_EQUAL_UINT8(lp::WISP_HELLO_FLAG_PAINT_MODE | lp::WISP_HELLO_FLAG_AURORA_CONNECTED,
+  TEST_ASSERT_EQUAL_UINT8(lp::WISP_HELLO_FLAG_PAINT_MODE | lp::WISP_HELLO_FLAG_SOURCE_LIVE,
                           out.flags);
   TEST_ASSERT_EQUAL_STRING("palette7", out.paletteIdPrefix);
   TEST_ASSERT_EQUAL_STRING("standard-stable", out.carriedFwChannel);

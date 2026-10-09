@@ -63,7 +63,7 @@ List<PaintedLampEntry> resolvePaintedLamps({
 
 /// The palette the per-lamp preview should sample. Only Manual mode paints a
 /// palette the app can predict per lamp: Off paints nothing to the grid (the
-/// offColor lives only on the wisp's own ring) and the Aurora palette isn't
+/// offColor lives only on the wisp's own ring) and the Straylight palette isn't
 /// carried to the app, so both yield an empty palette and the rows render
 /// dashes -- accurately showing the grid is getting nothing the app can read.
 List<LampColor> previewPaletteFor(

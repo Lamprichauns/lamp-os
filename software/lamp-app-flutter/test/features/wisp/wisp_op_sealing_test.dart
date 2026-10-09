@@ -10,6 +10,7 @@ import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/core/ble/lamp_crypto.dart';
 import 'package:lamp_app/core/ble/uuids.dart';
 import 'package:lamp_app/features/wisp/application/wisp_notifier.dart';
+import 'package:lamp_app/features/wisp/domain/wisp_source_mode.dart';
 import 'package:lamp_app/features/wisp/data/wisp_password_store.dart';
 
 void main() {
@@ -39,7 +40,7 @@ void main() {
   }
 
   group('WispOpSealing — wire framing', () {
-    test('setZone sealed with password produces 0x02-prefixed wispOp', () async {
+    test('setOscRole sealed with password produces 0x02-prefixed wispOp', () async {
       final ble = InMemoryBleClient();
       await primeStatus(ble, '{"wispMac":"$wispMac"}');
       final c = makeContainer(ble: ble);
@@ -48,7 +49,7 @@ void main() {
 
       // Cache a password then write an op.
       await n.cachePassword(wispMac, 'hunter2');
-      await n.setZone(3);
+      await n.setOscRole(OscRole.secondary);
 
       final wire = ble.writesTo(lampId, BleUuids.wispOp).last;
       expect(wire[0], LampCrypto.magicCiphertext,
@@ -57,7 +58,7 @@ void main() {
       expect(wire.length, greaterThan(1 + 12 + 16));
     });
 
-    test('setZone sealed op round-trips with the correct salt/info', () async {
+    test('setOscRole sealed op round-trips with the correct salt/info', () async {
       final ble = InMemoryBleClient();
       await primeStatus(ble, '{"wispMac":"$wispMac"}');
       final c = makeContainer(ble: ble);
@@ -65,7 +66,7 @@ void main() {
       final n = c.read(wispNotifierProvider(lampId).notifier);
 
       await n.cachePassword(wispMac, 'hunter2');
-      await n.setZone(5);
+      await n.setOscRole(OscRole.fill);
 
       final wire = ble.writesTo(lampId, BleUuids.wispOp).last;
       final plain = await LampCrypto.decryptOpForTesting(
@@ -75,11 +76,11 @@ void main() {
         charShortName: 'wispOp',
       );
       final decoded = jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
-      expect(decoded['op'], 'setZone');
-      expect(decoded['zoneId'], 5);
+      expect(decoded['op'], 'setOscRole');
+      expect(decoded['role'], 'fill');
     });
 
-    test('setZone without password sends plaintext (no 0x02 prefix)', () async {
+    test('setOscRole without password sends plaintext (no 0x02 prefix)', () async {
       final ble = InMemoryBleClient();
       await primeStatus(ble, '{"wispMac":"$wispMac"}');
       final c = makeContainer(ble: ble);
@@ -87,7 +88,7 @@ void main() {
       final n = c.read(wispNotifierProvider(lampId).notifier);
 
       // No password cached — plaintext.
-      await n.setZone(3);
+      await n.setOscRole(OscRole.secondary);
 
       final wire = ble.writesTo(lampId, BleUuids.wispOp).last;
       expect(wire[0], isNot(LampCrypto.magicCiphertext));
@@ -205,7 +206,7 @@ void main() {
       expect(decoded['password'], 'newpass');
 
       // The confirmed new password is now cached: a later op seals under it.
-      await n.setZone(7);
+      await n.setOscRole(OscRole.tertiary);
       final next = ble.writesTo(lampId, BleUuids.wispOp).last;
       final nextPlain = await LampCrypto.decryptOpForTesting(
         next,
@@ -213,7 +214,7 @@ void main() {
         saltUuid16: uuidSaltLE16(BleUuids.wispOp),
         charShortName: 'wispOp',
       );
-      expect((jsonDecode(utf8.decode(nextPlain)) as Map)['op'], 'setZone');
+      expect((jsonDecode(utf8.decode(nextPlain)) as Map)['op'], 'setOscRole');
     });
 
     test('setPassword with WRONG current password returns false and leaves the store untouched', () async {
@@ -255,7 +256,7 @@ void main() {
       expect(decoded['password'], '');
 
       // After a confirmed clear the cached password is gone: next op goes plaintext.
-      await n.setZone(1);
+      await n.setOscRole(OscRole.primary);
       final nextWire = ble.writesTo(lampId, BleUuids.wispOp).last;
       expect(nextWire[0], isNot(LampCrypto.magicCiphertext));
     });

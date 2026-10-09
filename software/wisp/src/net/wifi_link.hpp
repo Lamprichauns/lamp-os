@@ -1,8 +1,9 @@
 // WifiLink hosts the wisp's softAP for pre-mesh lamps. Brought up once at
 // boot on the mesh channel and left up; the ArtNet emitter gates on
-// canBroadcast() and pins the egress netif off isAp().
+// canBroadcast() and pins the egress netif off isAp(). It also joins the
+// stored STA network while the source is Osc, on the policy in StaJoin.
 //
-// Coex: the mesh pins the radio to LAMP_ESPNOW_CHANNEL and sends ESP-NOW on
+// The mesh pins the radio to LAMP_ESPNOW_CHANNEL and sends ESP-NOW on
 // WIFI_IF_STA. The softAP runs in WIFI_AP_STA on the same channel, so the STA
 // netif (and the mesh) stays up and same-channel WiFi doesn't disturb ESP-NOW.
 
@@ -15,6 +16,8 @@
 #include <functional>
 #include <string>
 
+#include "net/sta_join.hpp"
+
 namespace wisp {
 
 class WispConfig;
@@ -23,22 +26,26 @@ class WifiLink {
  public:
   enum class Mode : uint8_t { Off, Sta, Ap };
 
-  // Bind to WispConfig and, if persisted creds exist, kick a WiFi.begin().
-  // Idempotent. config must outlive this WifiLink (main.cpp owns both).
+  // Bind to WispConfig. Joins nothing: the STA join runs from loop() only
+  // while it is wanted. Idempotent. config must outlive this WifiLink
+  // (main.cpp owns both).
   void begin(WispConfig* config);
 
-  // Re-read creds, drop any association, attempt a fresh WiFi.begin(). Called
-  // after a setWifi op persists new creds. No-ops (with a log) if creds empty.
-  // Clears any channel-mismatch guard and re-enables auto-reconnect. After a
-  // mismatch the wisp does not retry on its own; recovery is an explicit
-  // reconnect (a fresh setWifi or the wifiReconnect op).
+  // Re-read creds and restart the join schedule: drops any association and,
+  // while the join is wanted, attempts at once. Called after a setWifi op
+  // persists new creds. Clears the channel-mismatch guard, which is
+  // otherwise sticky: after a mismatch the wisp does not retry until this or
+  // until the source re-enters Osc.
   void reconnect();
 
-  // Drains a deferred STA_GOT_IP verdict on the loop task. The GOT_IP event
-  // only records the associated channel; the heavy radio work (drop the
-  // wrong-channel association, re-pin the radio to the mesh channel) runs
-  // here to keep the WiFi event task out of re-entrant radio calls.
-  void loop();
+  // Loop-task driver. `wanted` is whether the source uses the network (Osc).
+  // While wanted and creds exist it scans the mesh channel for the stored
+  // SSID and joins only an AP found there, retrying on StaJoin's backoff (no
+  // core auto-reconnect). Unwanted drops the association and stops retrying;
+  // creds stay in NVS. Re-entering Osc clears a channel-mismatch halt. Also
+  // applies a deferred STA_GOT_IP channel check: the event only records the
+  // channel, the radio work runs here off the WiFi event task.
+  void loop(bool wanted, uint32_t nowMs);
 
   // softAP role on the mesh channel (WIFI_AP_STA so ESP-NOW keeps working).
   // ssid/pass are the wisp's own network, not the WispConfig STA creds.
@@ -60,9 +67,9 @@ class WifiLink {
   bool isConnected() const;
 
   // True once an AP association landed on a channel other than the mesh
-  // channel and the guard dropped it. Cleared by reconnect() or a clean
-  // mesh-channel association. apChannel() is the offending channel (0 when
-  // no mismatch). Loop-task state, read by the status emitter.
+  // channel and the guard dropped it. Cleared by reconnect() or by the
+  // source re-entering Osc. apChannel() is the offending channel (0 when no
+  // mismatch). Loop-task state, read by the status emitter.
   bool channelMismatch() const { return channelMismatch_; }
   int apChannel() const { return lastStaChannel_; }
 
@@ -81,11 +88,33 @@ class WifiLink {
   Mode mode_ = Mode::Off;
   bool apUp_ = false;
 
-  // Channel carried by a STA_GOT_IP event, handed from the WiFi event task to
-  // loop(). 0 means nothing pending; loop() exchanges it back to 0.
-  std::atomic<int> pendingStaChannel_{0};
   bool channelMismatch_ = false;
   int lastStaChannel_ = 0;
+
+  void apply(StaAction action);
+  void startScan();
+  void pollScan(uint32_t nowMs);
+  void dropJoin();
+  void checkChannel(int ch);
+  void clearMismatch();
+  void onStaDisconnected(uint32_t nowMs);
+  void onStaConnected();
+
+  StaJoin join_;
+  bool wanted_ = false;
+  uint8_t scanBssid_[6] = {0};
+  // Written by the WiFi event task, read by loop(). Every event takes the
+  // next eventSeq_; lastDisconnectSeq_ is the latest STA_DISCONNECTED the
+  // wisp did not cause (reason other than ASSOC_LEAVE), lastConnectSeq_ the
+  // latest GOT_IP and lastConnectChannel_ its channel. loop() applies new
+  // events in sequence order; appliedSeq_ is the newest applied, and anything
+  // at or below it is stale. dropJoin() swallows every event so far, so a
+  // GOT_IP for a link already dropped is never adopted.
+  std::atomic<uint32_t> eventSeq_{0};
+  std::atomic<uint32_t> lastDisconnectSeq_{0};
+  std::atomic<uint32_t> lastConnectSeq_{0};
+  std::atomic<int> lastConnectChannel_{0};
+  uint32_t appliedSeq_ = 0;
 
   std::function<void()> onChange_;
 };

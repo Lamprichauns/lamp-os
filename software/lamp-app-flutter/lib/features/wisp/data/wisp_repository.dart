@@ -87,31 +87,24 @@ class WispRepository {
     }
   }
 
-  /// Pin the wisp to [zoneId]. Persisted in wisp NVS; survives reboot.
-  Future<void> setZone(int zoneId) async {
-    await _writeOp({
-      'char': 'wispOp',
-      'op': 'setZone',
-      'zoneId': zoneId,
-    });
-  }
-
-  /// Revert the wisp to first-seen-wins. Clears the NVS pin.
-  Future<void> clearZone() async {
-    await _writeOp({
-      'char': 'wispOp',
-      'op': 'clearZone',
-    });
-  }
-
   /// Source mode. Wisp persists in NVS and applies the
-  /// appropriate transition (Off → broadcast RESTORE; Manual → push
-  /// stored palette into CurrentPalette; Aurora → resume subscription).
+  /// appropriate transition (Off → lamps ease home; Manual → push stored
+  /// palette into CurrentPalette; Osc → paint from the Straylight stream).
   Future<void> setSource(WispSourceMode mode) async {
     await _writeOp({
       'char': 'wispOp',
       'op': 'setSource',
       'mode': wispSourceModeWire(mode),
+    });
+  }
+
+  /// Straylight palette role the wisp follows in Osc mode. Persisted in
+  /// wisp NVS.
+  Future<void> setOscRole(OscRole role) async {
+    await _writeOp({
+      'char': 'wispOp',
+      'op': 'setOscRole',
+      'role': oscRoleWire(role),
     });
   }
 

@@ -1,5 +1,5 @@
 // A local copy of the algorithm pins the contract independently (no
-// CurrentPalette / aurora pull-in). The production sampleTupleAtPositions is
+// CurrentPalette pull-in). The production sampleTupleAtPositions is
 // also exercised directly, including a golden-parity check that guards the
 // sampleTupleForMac refactor against the same golden bytes.
 

@@ -10,8 +10,7 @@
 #include "net/mesh_link.hpp"
 #include "net/wifi_link.hpp"
 #include "config/wisp_config.hpp"
-#include "config/zone_selector.hpp"
-#include "aurora/AuroraPaletteClient.h"
+#include "core/wisp_controller.hpp"
 #include "wire/lamp_protocol.hpp"
 #include "status/status_json.hpp"
 #include "status/seq_source.hpp"
@@ -25,13 +24,11 @@ constexpr size_t kPaletteIdPrefixLen = lamp_protocol::WISP_HELLO_PALETTE_ID_PREF
 
 }  // namespace
 
-void StatusEmitter::begin(MeshLink* mesh, ZoneSelector* zone,
-                          AuroraPaletteClient* aurora, WispConfig* config,
-                          CurrentPalette* palette, SeqSource* seq,
-                          WifiLink* wifi) {
+void StatusEmitter::begin(MeshLink* mesh, const WispController* controller,
+                          WispConfig* config, CurrentPalette* palette,
+                          SeqSource* seq, WifiLink* wifi) {
   mesh_ = mesh;
-  zone_ = zone;
-  aurora_ = aurora;
+  controller_ = controller;
   config_ = config;
   palette_ = palette;
   seq_ = seq;
@@ -86,18 +83,14 @@ void StatusEmitter::pump() {
 }
 
 void StatusEmitter::checkConnEdges() {
-  const bool wifiConn   = WiFi.isConnected();
-  const bool auroraConn = aurora_ && aurora_->isStreaming();
+  const bool wifiConn = WiFi.isConnected();
   if (!haveLastConnState_) {
     haveLastConnState_ = true;
-  } else if (wifiConn != lastWifiConnected_ ||
-             auroraConn != lastAuroraConnected_) {
-    Serial.printf("[wisp.beacon] connectivity edge wifi=%d aurora=%d\n",
-                  (int)wifiConn, (int)auroraConn);
+  } else if (wifiConn != lastWifiConnected_) {
+    Serial.printf("[wisp.beacon] connectivity edge wifi=%d\n", (int)wifiConn);
     triggerOnChange();
   }
-  lastWifiConnected_   = wifiConn;
-  lastAuroraConnected_ = auroraConn;
+  lastWifiConnected_ = wifiConn;
 }
 
 void StatusEmitter::emitStatus() {
@@ -113,19 +106,9 @@ void StatusEmitter::emitStatus() {
   mesh_->getMac(srcMac);
 
   const bool wifiConn   = WiFi.isConnected();
-  const bool auroraConn = aurora_ && aurora_->isStreaming();
+  const bool sourceLive = controller_ && controller_->sourceLive();
   const bool wifiChannelMismatch = wifi_ && wifi_->channelMismatch();
   const int  wifiApChannel = wifi_ ? wifi_->apChannel() : 0;
-  const int  currentZone = zone_ ? zone_->currentZone() : -1;
-  const char* zoneSrc    = zone_ ? zoneSourceName(zone_->source())
-                                 : zoneSourceName(ZoneSource::None);
-
-  // copyObserved is mux-guarded against concurrent observe() calls.
-  int obsBuf[kMaxObservedZones];
-  size_t obsCount = 0;
-  if (zone_) {
-    obsCount = zone_->copyObserved(obsBuf, kMaxObservedZones);
-  }
 
   char paletteIdPrefix[kPaletteIdPrefixLen + 1] = {0};
   if (palette_) {
@@ -137,13 +120,15 @@ void StatusEmitter::emitStatus() {
   const uint32_t lastSeenMs = millis();
 
   // manualPalette excluded: emitted separately via MSG_WISP_PALETTE (buildWispPalette).
-  const char* sourceName = "aurora";  // safe default for nullptr config
+  const char* sourceName = "off";
+  const char* oscRole = nullptr;
   if (config_) {
     switch (config_->sourceMode()) {
       case WispSourceMode::Off:    sourceName = "off";    break;
       case WispSourceMode::Manual: sourceName = "manual"; break;
-      case WispSourceMode::Aurora: sourceName = "aurora"; break;
+      case WispSourceMode::Osc:    sourceName = "osc";    break;
     }
+    oscRole = oscRoleName(config_->oscRole());
   }
 
   uint8_t offR = 0, offG = 0, offB = 0, offW = 0;
@@ -172,9 +157,8 @@ void StatusEmitter::emitStatus() {
     brightness = config_->brightness();
   }
   const WispStatusFields fields{
-      currentZone, zoneSrc, obsBuf, obsCount,
-      wifiConn, auroraConn, paletteIdPrefix, lastSeenMs,
-      sourceName, offR, offG, offB, offW, hasOffColor, shuffleSeed,
+      wifiConn, sourceLive, paletteIdPrefix, lastSeenMs,
+      sourceName, oscRole, offR, offG, offB, offW, hasOffColor, shuffleSeed,
       driftIntervalMs, driftFadePct, wispName, hasPassword,
       ledType, pixelCount, opSeq, brightness,
       wifiChannelMismatch, wifiApChannel };
