@@ -67,9 +67,9 @@ class WifiLink {
   bool isConnected() const;
 
   // True once an AP association landed on a channel other than the mesh
-  // channel and the guard dropped it. Cleared by reconnect(), by the source
-  // re-entering Osc, or by a clean mesh-channel association. apChannel() is the offending channel (0 when
-  // no mismatch). Loop-task state, read by the status emitter.
+  // channel and the guard dropped it. Cleared by reconnect() or by the
+  // source re-entering Osc. apChannel() is the offending channel (0 when no
+  // mismatch). Loop-task state, read by the status emitter.
   bool channelMismatch() const { return channelMismatch_; }
   int apChannel() const { return lastStaChannel_; }
 
