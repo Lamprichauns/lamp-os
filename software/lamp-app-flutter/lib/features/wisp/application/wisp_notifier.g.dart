@@ -9,9 +9,12 @@ part of 'wisp_notifier.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// Owns the live [WispStatus] for a single lamp. On build it does one
-/// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-/// thereafter every wispStatus update from the wisp lands in `state`
-/// without a round-trip.
+/// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+/// lamp without it) and subscribes to the status notify stream; thereafter
+/// every wispStatus update from the wisp lands in `state` without a
+/// round-trip. The wisp's settings come from the `wispconfig` section when
+/// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+/// moves, and are merged over whatever the status carried.
 ///
 /// `setOscRole` delegates to the repository and relies on the wisp's
 /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -22,9 +25,12 @@ part of 'wisp_notifier.dart';
 final wispNotifierProvider = WispNotifierFamily._();
 
 /// Owns the live [WispStatus] for a single lamp. On build it does one
-/// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-/// thereafter every wispStatus update from the wisp lands in `state`
-/// without a round-trip.
+/// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+/// lamp without it) and subscribes to the status notify stream; thereafter
+/// every wispStatus update from the wisp lands in `state` without a
+/// round-trip. The wisp's settings come from the `wispconfig` section when
+/// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+/// moves, and are merged over whatever the status carried.
 ///
 /// `setOscRole` delegates to the repository and relies on the wisp's
 /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -33,9 +39,12 @@ final wispNotifierProvider = WispNotifierFamily._();
 final class WispNotifierProvider
     extends $AsyncNotifierProvider<WispNotifier, WispStatus> {
   /// Owns the live [WispStatus] for a single lamp. On build it does one
-  /// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-  /// thereafter every wispStatus update from the wisp lands in `state`
-  /// without a round-trip.
+  /// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+  /// lamp without it) and subscribes to the status notify stream; thereafter
+  /// every wispStatus update from the wisp lands in `state` without a
+  /// round-trip. The wisp's settings come from the `wispconfig` section when
+  /// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+  /// moves, and are merged over whatever the status carried.
   ///
   /// `setOscRole` delegates to the repository and relies on the wisp's
   /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -77,12 +86,15 @@ final class WispNotifierProvider
   }
 }
 
-String _$wispNotifierHash() => r'c81d2d5f6ad110902bcc24506c972d2bec0251da';
+String _$wispNotifierHash() => r'177ecf8283402e2f65305eb0b12a4e7aad917a32';
 
 /// Owns the live [WispStatus] for a single lamp. On build it does one
-/// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-/// thereafter every wispStatus update from the wisp lands in `state`
-/// without a round-trip.
+/// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+/// lamp without it) and subscribes to the status notify stream; thereafter
+/// every wispStatus update from the wisp lands in `state` without a
+/// round-trip. The wisp's settings come from the `wispconfig` section when
+/// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+/// moves, and are merged over whatever the status carried.
 ///
 /// `setOscRole` delegates to the repository and relies on the wisp's
 /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -108,9 +120,12 @@ final class WispNotifierFamily extends $Family
       );
 
   /// Owns the live [WispStatus] for a single lamp. On build it does one
-  /// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-  /// thereafter every wispStatus update from the wisp lands in `state`
-  /// without a round-trip.
+  /// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+  /// lamp without it) and subscribes to the status notify stream; thereafter
+  /// every wispStatus update from the wisp lands in `state` without a
+  /// round-trip. The wisp's settings come from the `wispconfig` section when
+  /// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+  /// moves, and are merged over whatever the status carried.
   ///
   /// `setOscRole` delegates to the repository and relies on the wisp's
   /// on-change broadcast (≤ ~2s) to push the updated status back via
@@ -125,9 +140,12 @@ final class WispNotifierFamily extends $Family
 }
 
 /// Owns the live [WispStatus] for a single lamp. On build it does one
-/// read of `CHAR_WISP_STATUS` and subscribes to its notify stream;
-/// thereafter every wispStatus update from the wisp lands in `state`
-/// without a round-trip.
+/// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
+/// lamp without it) and subscribes to the status notify stream; thereafter
+/// every wispStatus update from the wisp lands in `state` without a
+/// round-trip. The wisp's settings come from the `wispconfig` section when
+/// the lamp serves it, re-read whenever the status's `configLastSeenMs`
+/// moves, and are merged over whatever the status carried.
 ///
 /// `setOscRole` delegates to the repository and relies on the wisp's
 /// on-change broadcast (≤ ~2s) to push the updated status back via
