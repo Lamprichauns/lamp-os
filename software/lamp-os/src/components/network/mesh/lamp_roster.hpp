@@ -327,8 +327,9 @@ class LampRoster {
                        const char* json, size_t jsonLen);
 
   // Cache the latest wispConfig JSON broadcast. Same display-slot admission
-  // as cacheWispStatus. Loop-task-only writer (Core 1).
-  void cacheWispConfig(const uint8_t mac[6],
+  // as cacheWispStatus. Returns true only when the cached bytes changed,
+  // which is when configLastSeenMs moves. Loop-task-only writer (Core 1).
+  bool cacheWispConfig(const uint8_t mac[6],
                        const char* json, size_t jsonLen);
 
   // Copy the cached wispConfig JSON into `out` for the `wispconfig` page

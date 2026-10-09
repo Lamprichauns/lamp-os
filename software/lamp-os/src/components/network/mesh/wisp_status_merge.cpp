@@ -82,4 +82,12 @@ std::string mergeWispStatusJson(const WispStatusMergeInput& in, size_t maxLen) {
   return out;
 }
 
+bool storeIfChanged(std::string& cached, const char* json, size_t len) {
+  if (cached.size() == len && cached.compare(0, len, json, len) == 0) {
+    return false;
+  }
+  cached.assign(json, len);
+  return true;
+}
+
 }  // namespace lamp

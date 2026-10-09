@@ -954,7 +954,8 @@ static const std::array<SectionEntry, 11> kSections = {{
     out.assign(reinterpret_cast<const char*>(buf), n);
   }},
   {"wispstatus", [](std::string& out) {
-    out = lamp::lampRoster.getWispStatusReadJson(0);
+    const std::string json = lamp::lampRoster.getWispStatusReadJson(0);
+    out.assign(json.data(), json.size());
   }},
   {"wispconfig", [](std::string& out) {
     lamp::lampRoster.copyWispConfigJson(out);

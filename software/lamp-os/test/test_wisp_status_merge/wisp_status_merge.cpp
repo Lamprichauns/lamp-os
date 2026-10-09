@@ -14,6 +14,7 @@
 
 using lamp::kWispStatusCharMaxLen;
 using lamp::mergeWispStatusJson;
+using lamp::storeIfChanged;
 using lamp::WispStatusMergeInput;
 
 namespace {
@@ -124,6 +125,19 @@ void test_status_payload_keys_win() {
   TEST_ASSERT_EQUAL_UINT32(7, d["wispVersion"].as<uint32_t>());
 }
 
+// A re-sent identical config leaves the cache alone, so configLastSeenMs and
+// the app's re-read move only on a real change.
+void test_store_if_changed_only_on_new_bytes() {
+  std::string cached;
+  const char a[] = R"({"char":"wispConfig","px":30})";
+  const char b[] = R"({"char":"wispConfig","px":31})";
+  TEST_ASSERT_TRUE(storeIfChanged(cached, a, sizeof(a) - 1));
+  TEST_ASSERT_FALSE(storeIfChanged(cached, a, sizeof(a) - 1));
+  TEST_ASSERT_TRUE(storeIfChanged(cached, b, sizeof(b) - 1));
+  TEST_ASSERT_EQUAL_STRING(b, cached.c_str());
+  TEST_ASSERT_TRUE(storeIfChanged(cached, b, sizeof(b) - 2));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_nothing_known_serves_empty_object);
@@ -132,5 +146,6 @@ int main(int, char**) {
   RUN_TEST(test_capped_merge_sheds_diagnostics_to_fit);
   RUN_TEST(test_capped_merge_keeps_diagnostics_when_it_fits);
   RUN_TEST(test_status_payload_keys_win);
+  RUN_TEST(test_store_if_changed_only_on_new_bytes);
   return UNITY_END();
 }

@@ -36,4 +36,9 @@ struct WispStatusMergeInput {
 // it can still exceed maxLen when the wisp's own payload does.
 std::string mergeWispStatusJson(const WispStatusMergeInput& in, size_t maxLen);
 
+// Replace `cached` with the payload when its bytes differ, returning whether
+// they did. The wisp re-sends an unchanged config through a change burst; only
+// a real change should move configLastSeenMs and cost the app a re-read.
+bool storeIfChanged(std::string& cached, const char* json, size_t len);
+
 }  // namespace lamp

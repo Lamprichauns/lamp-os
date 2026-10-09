@@ -580,15 +580,14 @@ void Lamp::drainWispStatus() {
   }
 }
 
-// Cache wispConfig and notify CHAR_WISP_STATUS subscribers, whose merged
-// configLastSeenMs is the app's cue to re-read the wispconfig section.
+// Cache wispConfig and, when it changed, notify CHAR_WISP_STATUS subscribers,
+// whose merged configLastSeenMs is the app's cue to re-read wispconfig.
 void Lamp::drainWispConfig() {
   if (lamp::pendingSlots.wispConfig.valid) {
     char buf[lamp::kPendingWispConfig + 1];
     uint8_t srcMac[6];
     uint16_t len = lamp::pendingSlots.wispConfig.drain(pendingMux, buf, srcMac);
-    if (len > 0) {
-      lamp::lampRoster.cacheWispConfig(srcMac, buf, len);
+    if (len > 0 && lamp::lampRoster.cacheWispConfig(srcMac, buf, len)) {
       ble_control::notifyWispStatus();
     }
   }

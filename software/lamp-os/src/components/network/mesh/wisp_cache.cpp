@@ -105,17 +105,17 @@ void LampRoster::cacheWispStatus(const uint8_t mac[6],
   xSemaphoreGive(mutex_);
 }
 
-void LampRoster::cacheWispConfig(const uint8_t mac[6],
+bool LampRoster::cacheWispConfig(const uint8_t mac[6],
                                  const char* json, size_t jsonLen) {
-  // Loop-task-only writer (Core 1); same locking as cacheWispStatus.
   xSemaphoreTake(mutex_, portMAX_DELAY);
   if (!admitWispLocked(mac, millis())) {
     xSemaphoreGive(mutex_);
-    return;
+    return false;
   }
-  wispCache_.lastConfigJson.assign(json, jsonLen);
-  wispCache_.lastConfigMs = millis();
+  const bool changed = storeIfChanged(wispCache_.lastConfigJson, json, jsonLen);
+  if (changed) wispCache_.lastConfigMs = millis();
   xSemaphoreGive(mutex_);
+  return changed;
 }
 
 void LampRoster::copyWispConfigJson(std::string& out) {
