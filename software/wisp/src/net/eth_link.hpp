@@ -10,10 +10,11 @@
 
 namespace wisp::eth {
 
-// Probes for a W5500 once and, when one answers, starts it with DHCP. With
-// none fitted the probe fails in at most ~200 ms and hands every pin back to
-// its reset state, so nothing is driven afterwards and nothing retries.
-void begin();
+// Probes for a W5500 once and, when one answers, starts it with DHCP under
+// `name` made a valid hostname (read at boot only). With none fitted the probe
+// fails in at most ~200 ms and resets every pin, so nothing is driven
+// afterwards and nothing retries.
+void begin(const char* name);
 
 // Link up and a DHCP lease held: the OSC feed can arrive over the cable.
 bool up();

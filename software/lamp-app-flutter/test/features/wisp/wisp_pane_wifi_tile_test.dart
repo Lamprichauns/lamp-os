@@ -162,6 +162,22 @@ void main() {
     expect(find.textContaining('Not connected'), findsNothing);
   });
 
+  testWidgets('on Ethernet a held channel mismatch is not shown',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,'
+          '"source":"osc","ethIp":"10.0.0.42",'
+          '"wifiChannelMismatch":true,"wifiApChannel":1}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.textContaining('Off while on Ethernet (10.0.0.42)'),
+        findsOneWidget);
+    expect(find.textContaining('channel conflict'), findsNothing);
+  });
+
   testWidgets('tapping the WiFi row opens the network picker sheet',
       (tester) async {
     final c = await _makeContainer();

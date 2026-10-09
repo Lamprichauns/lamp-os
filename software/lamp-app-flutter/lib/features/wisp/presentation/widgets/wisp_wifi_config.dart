@@ -29,11 +29,13 @@ class _WifiConfigRowState extends ConsumerState<WifiConfigRow> {
 
   @override
   Widget build(BuildContext context) {
-    final mismatch = widget.status.wifiChannelMismatch;
+    final ethIp = widget.status.ethIp;
+    // On Ethernet the WiFi join is off, so a held mismatch flag is stale; the
+    // wisp clears it once the join is wanted again.
+    final mismatch = widget.status.wifiChannelMismatch && ethIp.isEmpty;
     // The wisp joins WiFi only while following Straylight, so outside that
     // mode "not connected" says nothing about the saved network.
     final followsStraylight = widget.status.source == WispSourceMode.osc;
-    final ethIp = widget.status.ethIp;
     final subtitle = _busy
         ? 'Sending credentials to wisp…'
         : mismatch

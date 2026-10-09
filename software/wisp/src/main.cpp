@@ -130,7 +130,7 @@ void setup() {
   meshRouter.setSelfMac(selfMac);
 
   wifi.begin(&wispConfig);
-  wisp::eth::begin();
+  wisp::eth::begin(stageApSsid(wispConfig).c_str());
   stageBeacon.begin(buildInstanceId().c_str(), &wispConfig);
   const std::string ssid = stageApSsid(wispConfig);
   wifi.startSoftAp(ssid.c_str(), kStageApPass);

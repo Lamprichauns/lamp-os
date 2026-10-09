@@ -7,6 +7,8 @@
 
 #include <cstdio>
 
+#include "net/hostname.hpp"
+
 namespace wisp::eth {
 
 namespace {
@@ -14,6 +16,7 @@ namespace {
 constexpr spi_host_device_t kSpiHost = SPI2_HOST;
 constexpr int kPhyAddr = 1;
 constexpr int kNoResetPin = -1;
+constexpr size_t kHostnameCap = 32;
 constexpr int kPins[] = {WISP_ETH_SCK, WISP_ETH_MISO, WISP_ETH_MOSI,
                          WISP_ETH_CS, WISP_ETH_INT};
 
@@ -49,14 +52,17 @@ void logEvent(arduino_event_id_t event, arduino_event_info_t info) {
 
 }  // namespace
 
-void begin() {
+void begin(const char* name) {
   if (s_present) return;
   s_present = ETH.begin(ETH_PHY_W5500, kPhyAddr, WISP_ETH_CS, WISP_ETH_INT,
                         kNoResetPin, kSpiHost, WISP_ETH_SCK, WISP_ETH_MISO,
                         WISP_ETH_MOSI);
   if (!s_present) {
     // A failed probe leaves the bus initialized with SCK and MOSI driven.
-    spi_bus_free(kSpiHost);
+    const esp_err_t freed = spi_bus_free(kSpiHost);
+    if (freed != ESP_OK) {
+      Serial.printf("[eth] spi_bus_free failed: %d\n", (int)freed);
+    }
     for (const int pin : kPins) gpio_reset_pin(static_cast<gpio_num_t>(pin));
     Serial.printf("[eth] no W5500 (cs=%d); Ethernet off\n", WISP_ETH_CS);
     return;
@@ -64,18 +70,22 @@ void begin() {
   // The core turns all-multicast on; a lighting LAN's sACN would then cost an
   // SPI read and a heap buffer per frame for packets nothing here wants.
   ETH.receiveAllMulticast(false);
+  // DHCP starts on link-up, after this, so the lease request carries it.
+  char hostname[kHostnameCap];
+  toHostname(name, "wisp", hostname, sizeof(hostname));
+  ETH.setHostname(hostname);
   Network.onEvent(logEvent);
-  Serial.println("[eth] W5500 up; waiting for link");
+  Serial.printf("[eth] W5500 up as %s; waiting for link\n", hostname);
 }
 
 bool up() { return s_present && ETH.connected() && ETH.hasIP(); }
 
 void formatIp(char* out, size_t cap) {
-  if (!up()) {
-    if (cap > 0) out[0] = '\0';
-    return;
-  }
-  formatAddr(ETH.localIP(), out, cap);
+  if (cap > 0) out[0] = '\0';
+  if (!up()) return;
+  const IPAddress ip = ETH.localIP();
+  if (ip == IPAddress()) return;
+  formatAddr(ip, out, cap);
 }
 
 void printStatus(Print& out) {

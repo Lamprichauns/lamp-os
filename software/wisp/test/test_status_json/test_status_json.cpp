@@ -280,8 +280,8 @@ void test_brightness_omitted_at_default_emitted_when_dimmed() {
 }
 
 // Absolute worst case, untruncated: every field widest, Manual mode, both
-// mismatch fields, ethIp. It fits CONTROL_MAX_PAYLOAD with room to spare, so at the
-// production cap nothing sheds.
+// mismatch fields, ethIp. It fits CONTROL_MAX_PAYLOAD with room to spare, so
+// at the production cap nothing sheds.
 void test_worst_case_untruncated_length() {
   wisp::WispStatusFields f = worstCase();
   char out[1024];

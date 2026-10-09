@@ -41,9 +41,21 @@ A WIZnet W5500 SPI module gives the wisp a cable to the venue network, so the OS
 
 The pins are the `WISP_ETH_*` build flags in `platformio.ini`. They avoid everything the wisp and the board already use: D1 (GPIO 1) drives the LED ring, D0 (GPIO 0) is kept free, D6/D7 (GPIO 16/17) are UART0 where the ROM prints its boot log, GPIO 3 and 14 are the RF switch and antenna select, GPIO 12/13 are USB, and none of the C6 strapping pins (GPIO 4, 5, 8, 9, 15) is used. D4/D5 (GPIO 22/23, the board's I2C pair) stay free. Use a 3.3 V module.
 
-At boot the wisp probes for the W5500 once (`ETH.begin`, DHCP). With no module fitted the probe fails within about 200 ms, the SPI bus is freed and the five pins go back to their reset state, the console prints `[eth] no W5500 (cs=21); Ethernet off`, and nothing retries; the wisp behaves exactly as one without the code. The probe does drive SCLK, MOSI and CS for that moment, which is why those header pins are reserved for the module.
+At boot the wisp probes for the W5500 once (`ETH.begin`, DHCP). With no module fitted the probe fails within about 200 ms, the SPI bus is freed and the five pins are reset (`gpio_reset_pin`: GPIO function, output and input off, weak pull-up on), the console prints `[eth] no W5500 (cs=21); Ethernet off`, and nothing retries; the wisp behaves as one without the code. The GPIO ISR service the probe installed stays installed, which costs nothing while no pin uses it. The probe does drive SCLK, MOSI and CS for that moment, which is why those header pins are reserved for the module.
 
-With a module fitted, Ethernet counts as up when it has a link and a DHCP lease. While it is up the STA join is not wanted even in Osc, and an association already held drops; when the cable or lease goes, a wisp in Osc with stored credentials starts the channel-6 join again at once. The OSC socket listens on every interface, so Straylight (or anything else sending OSC) points at the Ethernet address on UDP 9000. The address shows in the app's WiFi row (`ethIp` in `wispStatus`) and on the console with `eth:show`. IPv4 multicast is blocked at the chip, so multicast sACN on a lighting LAN costs the wisp nothing.
+A module-less boot also prints the framework's own error lines just before `[eth] no W5500`, and they are expected:
+
+- `E (..) w5500.mac: w5500_reset(..): reset timeout` then `E (..) w5500.mac: emac_w5500_init(..): reset w5500 failed`, or, when the floating MISO line reads as a cleared reset bit, `E (..) w5500.mac: W5500 version mismatched, expected 0x04, got 0x..` then `E (..) w5500.mac: emac_w5500_init(..): verify chip ID failed`
+- `E (..) esp_eth: esp_eth_driver_install(..): init mac failed`
+- `[..][E][ETH.cpp:..] beginSPI(): SPI Ethernet driver install failed: ..`
+
+With a module fitted, Ethernet counts as up when it has a link and a DHCP lease. While it is up the STA join is not wanted even in Osc, and an association already held drops; when the cable or lease goes, a wisp in Osc with stored credentials starts the channel-6 join again at once. The OSC socket listens on every interface, so Straylight (or anything else sending OSC) points at the Ethernet address on UDP 9000. The address shows in the app's WiFi row (`ethIp` in `wispStatus`) and on the console with `eth:show`. The DHCP hostname is the softAP SSID made hostname-safe (`wisp-<name>`, lowercase, invalid characters as hyphens), set at boot, so a rename shows in the router's lease table after the next reboot.
+
+IPv4 multicast is blocked at the chip, so multicast sACN on a lighting LAN costs the wisp nothing. Broadcast is not filtered: every broadcast frame (ARP, Art-Net broadcast and ArtPoll, DHCP, discovery chatter) costs an SPI read and a heap buffer of a full frame in the W5500 receive task, which runs above the wisp's loop on the C6's one core. Put the wisp on a segment that does not carry broadcast Art-Net.
+
+The softAP for pre-mesh lamps is 192.168.4.0/24 (the core's default). A venue LAN on that same subnet collides with it: the wisp cannot tell which side an address is on. Give the venue network any other range.
+
+IP forwarding is on in the prebuilt framework (`CONFIG_LWIP_IP_FORWARD=y`), so the wisp plainly routes between the softAP and Ethernet, with no NAT. A softAP lamp's packet addressed off its subnet goes out the cable, and replies cannot find their way back unless the venue router has a route to 192.168.4.0/24. This is the same exposure the STA join already had. Turning it off takes a `custom_sdkconfig` entry, at the cost of a full IDF rebuild; the wisp does not do that.
 
 ## How the user talks to it
 
