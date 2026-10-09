@@ -2,11 +2,10 @@
 
 A small magical light that signals to others. Wisp is dedicated infrastructure (Seeed Xiao ESP32-C6 with a remote antenna) — the rebuilt identity of the old `software/artnet-repeater/` board. It is not a lamp; it is a non-participating helper that sits at the edge of the mesh.
 
-## Three jobs
+## Two jobs
 
 1. **Palette bridge.** Follows a palette from Straylight over OSC 1.0 (SLIP frames on the USB serial console, or UDP port 9000 on the softAP or its STA LAN join) and fans out per-lamp paired colors to the mesh over ESP-NOW. The app picks which Straylight palette role it follows (primary, secondary, tertiary or fill); the address is `/straylight/palette/<role>/colours`, flat RGB floats 0..1.
-2. **Firmware carrier.** Holds the latest signed lamp firmware blob and pushes it out to any lamp on the mesh running an older version (single-peer-at-a-time, signed with ed25519, channel-matched). Wisp itself is flashed via USB; it never self-updates.
-3. **ArtNet bridge.** Paints pre-mesh lamps, which have no mesh stack and take color only as ArtNet DMX over WiFi. This is the reason wisp runs a softAP and a BLE stage beacon at all — see below.
+2. **ArtNet bridge.** Paints pre-mesh lamps, which have no mesh stack and take color only as ArtNet DMX over WiFi. This is the reason wisp runs a softAP and a BLE stage beacon at all — see below.
 
 ## Painting pre-mesh lamps
 
@@ -18,7 +17,7 @@ Emission is ~1 Hz (a faster stream would steal TX airtime from ESP-NOW RX on the
 
 ## Off-by-default paint
 
-Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound, and the WiFi STA join to a stored network runs, only while the source mode is Osc; each attempt scans the mesh channel only, joins only if the network is there, and backs off (10 s doubling to 5 min) when it isn't, so the radio stays on the mesh. **Choosing Manual or Straylight in the app is the opt-in to paint, and the choice is stored.** A fresh wisp starts Off and paints nothing until someone picks a source. After a reboot or power blip the stored source comes back and painting resumes: Manual repaints its stored palette, Straylight resumes as soon as a palette arrives. Off comes back as Off.
+Status reporting and mesh-inventory tracking run unconditionally at boot. The OSC UDP listener is bound, and the WiFi STA join to a stored network runs, only while the source mode is Osc; each attempt scans the mesh channel only, joins only if the network is there, and backs off (10 s doubling to 5 min) when it isn't, so the radio stays on the mesh. **Choosing Manual or Straylight in the app is the opt-in to paint, and the choice is stored.** A fresh wisp starts Off and paints nothing until someone picks a source. After a reboot or power blip the stored source comes back and painting resumes: Manual repaints its stored palette, Straylight resumes as soon as a palette arrives. Off comes back as Off.
 
 In Osc mode a stream gap is not an opt-out: after 30 s with nothing from Straylight (or as soon as Straylight sends a blank one for an unbound role) the wisp lets lamps ease home and shows its off color, but stays in Osc mode, and the next palette resumes painting with no app action.
 
@@ -32,4 +31,4 @@ Wisp has no BLE. The app talks to wisp via any nearby lamp acting as a proxy: th
 
 ## Wire format
 
-Wisp/lamp message types (`MSG_WISP_HELLO`, `MSG_WISP_PALETTE`, `MSG_OVERRIDE_COLORS`/`MSG_RESTORE_COLORS`, `MSG_CONTROL_OP` wisp envelopes) and the OTA exchange (`MSG_FW_OFFER` … `MSG_FW_RESULT`) are documented in [`docs/dev/networking.md`](../../docs/dev/networking.md). LSIG signed-firmware footer format lives alongside the build scripts at [`scripts/README.md`](../../scripts/README.md).
+The messages the wisp sends (`MSG_WISP_HELLO`, `MSG_WISP_CLAIM`, `MSG_WISP_STATE`, `MSG_WISP_PALETTE`, `MSG_OVERRIDE_BRIGHTNESS`, `MSG_CONTROL_OP` wisp envelopes) are documented in [`docs/dev/networking.md`](../../docs/dev/networking.md). The wisp takes no part in the lamps' firmware OTA; it is flashed over USB only. LSIG signed-firmware footer format lives alongside the build scripts at [`scripts/README.md`](../../scripts/README.md).
