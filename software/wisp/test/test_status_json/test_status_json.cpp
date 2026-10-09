@@ -346,7 +346,8 @@ void test_worst_case_untruncated_length() {
 // the longer "manual"), every live field set. The lamp's merge adds up to
 // 301 B on top (test_wisp_status_merge), which is why the app reads it
 // through the wispstatus page section rather than the 512 B characteristic.
-// A name of 20 control bytes escapes to 120, the true ceiling.
+// ArduinoJson passes control bytes through raw; only '"' and '\' escape,
+// so a name of 20 quotes (escaped to 40) is the true ceiling.
 void test_status_only_worst_case_pinned() {
   wisp::WispStatusFields f = worstCase();
   f.source = "off";
@@ -354,10 +355,9 @@ void test_status_only_worst_case_pinned() {
   size_t n = wisp::buildWispStatusJson(f, nullptr, out, sizeof(out), 4096);
   TEST_ASSERT_EQUAL_UINT32(295, n);
 
-  f.name = "\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-           "\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01";
+  f.name = "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"";
   n = wisp::buildWispStatusJson(f, nullptr, out, sizeof(out), 4096);
-  TEST_ASSERT_EQUAL_UINT32(395, n);
+  TEST_ASSERT_EQUAL_UINT32(315, n);
   TEST_ASSERT_TRUE(n <= lamp_protocol::CONTROL_MAX_PAYLOAD);
 }
 
