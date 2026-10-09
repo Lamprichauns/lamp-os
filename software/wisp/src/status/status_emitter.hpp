@@ -72,6 +72,7 @@ class StatusEmitter {
   std::atomic<bool> statusDue_{false};
 
   bool lastWifiConnected_ = false;
+  bool lastEthUp_ = false;
   bool haveLastConnState_ = false;
 
   uint32_t lastEmitMs_ = 0;

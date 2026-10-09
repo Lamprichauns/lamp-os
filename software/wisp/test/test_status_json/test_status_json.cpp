@@ -15,8 +15,8 @@ void setUp() {}
 void tearDown() {}
 
 // Every optional field at its widest non-default value, Manual mode (widest
-// source with oscRole + drift fields), both mismatch fields: the widest frame
-// the builder can make.
+// source with oscRole + drift fields), both mismatch fields and the widest
+// Ethernet address: the widest frame the builder can make.
 static wisp::WispStatusFields worstCase() {
   return wisp::WispStatusFields{
       false, false, "abcdef12", 4294967295u, "manual", "secondary",
@@ -25,7 +25,8 @@ static wisp::WispStatusFields worstCase() {
       /*name=*/"12345678901234567890", /*hasPassword=*/true,
       /*ledType=*/"GRBW", /*pixelCount=*/65535,
       /*opSeq=*/4294967295u, /*brightness=*/99,
-      /*wifiChannelMismatch=*/true, /*wifiApChannel=*/11 };
+      /*wifiChannelMismatch=*/true, /*wifiApChannel=*/11,
+      /*ethIp=*/"255.255.255.255" };
 }
 
 // Defaults everywhere, Manual mode.
@@ -170,6 +171,24 @@ void test_defaults_omitted() {
   TEST_ASSERT_TRUE(d["paletteIdPrefix"].isNull());
   TEST_ASSERT_TRUE(d["oscRole"].isNull());
   TEST_ASSERT_TRUE(d["opSeq"].isNull());
+  TEST_ASSERT_TRUE(d["ethIp"].isNull());
+}
+
+// ethIp rides only while Ethernet is up; an empty address is omitted.
+void test_eth_ip_emitted_only_when_set() {
+  wisp::WispStatusFields f = plain();
+  f.ethIp = "";
+  char out[256];
+  TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
+  JsonDocument d;
+  TEST_ASSERT_FALSE(deserializeJson(d, out));
+  TEST_ASSERT_TRUE(d["ethIp"].isNull());
+
+  f.ethIp = "10.0.0.42";
+  TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
+  JsonDocument d2;
+  TEST_ASSERT_FALSE(deserializeJson(d2, out));
+  TEST_ASSERT_EQUAL_STRING("10.0.0.42", d2["ethIp"].as<const char*>());
 }
 
 // Non-default identity fields ride the wire when the frame has room.
@@ -261,13 +280,13 @@ void test_brightness_omitted_at_default_emitted_when_dimmed() {
 }
 
 // Absolute worst case, untruncated: every field widest, Manual mode, both
-// mismatch fields. It fits CONTROL_MAX_PAYLOAD with room to spare, so at the
-// production cap nothing sheds.
+// mismatch fields, ethIp. It fits CONTROL_MAX_PAYLOAD with room to spare, so
+// at the production cap nothing sheds.
 void test_worst_case_untruncated_length() {
   wisp::WispStatusFields f = worstCase();
   char out[1024];
   size_t n = wisp::buildWispStatusJson(f, out, sizeof(out), /*cap=*/4096);
-  TEST_ASSERT_EQUAL_UINT32(376, n);
+  TEST_ASSERT_EQUAL_UINT32(402, n);
   TEST_ASSERT_TRUE(n <= lamp_protocol::CONTROL_MAX_PAYLOAD);
 }
 
@@ -279,13 +298,14 @@ void test_worst_case_fits_control_op_at_production_cap() {
   char json[1024];
   size_t jsonLen = wisp::buildWispStatusJson(
       f, json, sizeof(json), lamp_protocol::CONTROL_MAX_PAYLOAD);
-  TEST_ASSERT_EQUAL_UINT32(376, jsonLen);
+  TEST_ASSERT_EQUAL_UINT32(402, jsonLen);
   JsonDocument d;
   TEST_ASSERT_FALSE(deserializeJson(d, json));
   TEST_ASSERT_EQUAL_STRING("secondary", d["oscRole"].as<const char*>());
   TEST_ASSERT_EQUAL_INT(65535, d["px"].as<int>());
   TEST_ASSERT_TRUE(d["wifiChannelMismatch"].as<bool>());
   TEST_ASSERT_EQUAL_INT(11, d["wifiApChannel"].as<int>());
+  TEST_ASSERT_EQUAL_STRING("255.255.255.255", d["ethIp"].as<const char*>());
   TEST_ASSERT_EQUAL_INT(99, d["brightness"].as<int>());
 
   static const uint8_t kTarget[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
@@ -311,6 +331,7 @@ int main(int, char**) {
   RUN_TEST(test_defaults_omitted);
   RUN_TEST(test_non_default_identity_fields_emitted);
   RUN_TEST(test_op_seq_emitted);
+  RUN_TEST(test_eth_ip_emitted_only_when_set);
   RUN_TEST(test_non_default_palette_and_drift_emitted);
   RUN_TEST(test_off_mode_emits_offcolor_not_drift);
   return UNITY_END();

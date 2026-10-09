@@ -1,7 +1,7 @@
 // WifiLink hosts the wisp's softAP for pre-mesh lamps. Brought up once at
 // boot on the mesh channel and left up; the ArtNet emitter gates on
 // canBroadcast() and pins the egress netif off isAp(). It also joins the
-// stored STA network while the source is Osc, on the policy in StaJoin.
+// stored STA network while staWanted() holds, on the policy in StaJoin.
 //
 // The mesh pins the radio to LAMP_ESPNOW_CHANNEL and sends ESP-NOW on
 // WIFI_IF_STA. The softAP runs in WIFI_AP_STA on the same channel, so the STA
@@ -35,16 +35,17 @@ class WifiLink {
   // while the join is wanted, attempts at once. Called after a setWifi op
   // persists new creds. Clears the channel-mismatch guard, which is
   // otherwise sticky: after a mismatch the wisp does not retry until this or
-  // until the source re-enters Osc.
+  // until the join becomes wanted again (re-entering Osc, or Ethernet going
+  // down in Osc).
   void reconnect();
 
-  // Loop-task driver. `wanted` is whether the source uses the network (Osc).
+  // Loop-task driver. `wanted` is staWanted(): Osc, with Ethernet not up.
   // While wanted and creds exist it scans the mesh channel for the stored
   // SSID and joins only an AP found there, retrying on StaJoin's backoff (no
   // core auto-reconnect). Unwanted drops the association and stops retrying;
-  // creds stay in NVS. Re-entering Osc clears a channel-mismatch halt. Also
-  // applies a deferred STA_GOT_IP channel check: the event only records the
-  // channel, the radio work runs here off the WiFi event task.
+  // creds stay in NVS. Becoming wanted again clears a channel-mismatch halt.
+  // Also applies a deferred STA_GOT_IP channel check: the event only records
+  // the channel, the radio work runs here off the WiFi event task.
   void loop(bool wanted, uint32_t nowMs);
 
   // softAP role on the mesh channel (WIFI_AP_STA so ESP-NOW keeps working).
@@ -67,8 +68,8 @@ class WifiLink {
   bool isConnected() const;
 
   // True once an AP association landed on a channel other than the mesh
-  // channel and the guard dropped it. Cleared by reconnect() or by the
-  // source re-entering Osc. apChannel() is the offending channel (0 when no
+  // channel and the guard dropped it. Cleared by reconnect() or by the join
+  // becoming wanted again. apChannel() is the offending channel (0 when no
   // mismatch). Loop-task state, read by the status emitter.
   bool channelMismatch() const { return channelMismatch_; }
   int apChannel() const { return lastStaChannel_; }

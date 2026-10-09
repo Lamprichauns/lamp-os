@@ -14,6 +14,12 @@
 
 namespace wisp {
 
+// The STA serves only the OSC feed, so it is wanted in Osc unless Ethernet
+// already carries the feed.
+constexpr bool staWanted(bool sourceIsOsc, bool ethernetUp) {
+  return sourceIsOsc && !ethernetUp;
+}
+
 enum class StaAction : uint8_t {
   None,
   StartScan,  // scan the mesh channel for the stored SSID

@@ -22,6 +22,7 @@ class WispStatus {
     this.wifiConnected = false,
     this.wifiChannelMismatch = false,
     this.wifiApChannel = 0,
+    this.ethIp = '',
     this.sourceLive = false,
     this.paletteIdPrefix = '',
     this.lastSeenMs,
@@ -65,6 +66,11 @@ class WispStatus {
   /// The channel the home AP was on when [wifiChannelMismatch] tripped.
   /// 0 when absent/unknown.
   final int wifiApChannel;
+
+  /// The wisp's Ethernet address while its cable link holds a DHCP lease;
+  /// empty otherwise. While set the wisp keeps WiFi off and takes the
+  /// Straylight feed over the cable, so [wifiConnected] is false.
+  final String ethIp;
 
   /// True while the wisp's palette stream is live: source is
   /// [WispSourceMode.osc] and a palette arrived recently. False in every
@@ -252,6 +258,7 @@ class WispStatus {
       wifiConnected: asBool(json['wifiConnected']),
       wifiChannelMismatch: asBool(json['wifiChannelMismatch']),
       wifiApChannel: asInt(json['wifiApChannel']) ?? 0,
+      ethIp: asString(json['ethIp']),
       sourceLive: asBool(json['sourceLive']),
       paletteIdPrefix: asString(json['paletteIdPrefix']),
       lastSeenMs: asInt(json['lastSeenMs']),
@@ -301,6 +308,7 @@ class WispStatus {
       wifiConnected: wifiConnected,
       wifiChannelMismatch: wifiChannelMismatch,
       wifiApChannel: wifiApChannel,
+      ethIp: ethIp,
       sourceLive: sourceLive,
       paletteIdPrefix: paletteIdPrefix,
       lastSeenMs: lastSeenMs,
@@ -336,6 +344,7 @@ class WispStatus {
           wifiConnected == other.wifiConnected &&
           wifiChannelMismatch == other.wifiChannelMismatch &&
           wifiApChannel == other.wifiApChannel &&
+          ethIp == other.ethIp &&
           sourceLive == other.sourceLive &&
           paletteIdPrefix == other.paletteIdPrefix &&
           lastSeenMs == other.lastSeenMs &&
@@ -370,7 +379,7 @@ class WispStatus {
         lastSeenMs,
         wispMac,
         wispVersion,
-        Object.hash(wifiChannelMismatch, wifiApChannel, helloFlags,
+        Object.hash(wifiChannelMismatch, wifiApChannel, ethIp, helloFlags,
             helloPaletteIdPrefix, helloLastSeenMs),
         statusLastSeenMs,
         Object.hash(source, oscRole),

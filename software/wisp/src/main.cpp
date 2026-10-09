@@ -18,6 +18,8 @@
 
 #include "artnet/artnet_emitter.hpp"
 #include "net/stage_beacon.hpp"
+#include "net/eth_link.hpp"
+#include "net/sta_join.hpp"
 #include "net/wifi_link.hpp"
 #include "console/serial_console.hpp"
 #include "osc/osc_listener.hpp"
@@ -49,8 +51,8 @@ std::string stageApSsid(const wisp::WispConfig& config) {
   return std::string("wisp-") + name.c_str();
 }
 
-// GPIO 1 (D1): D0 = GPIO 0 = BOOT strap pin; leaving it free keeps
-// USB-recover (download mode) working without unplugging the strip.
+// GPIO 1 (D1). The C6's BOOT strap is GPIO 9, which is not on the header, so
+// download mode works whatever the strip is wired to.
 constexpr uint8_t  kTestStripPin        = 1;
 // Sized to kMaxRingPixels so the internal buffer covers any configured count;
 // applyLedConfig() sets the real format + length after config is loaded.
@@ -128,6 +130,7 @@ void setup() {
   meshRouter.setSelfMac(selfMac);
 
   wifi.begin(&wispConfig);
+  wisp::eth::begin(stageApSsid(wispConfig).c_str());
   stageBeacon.begin(buildInstanceId().c_str(), &wispConfig);
   const std::string ssid = stageApSsid(wispConfig);
   wifi.startSoftAp(ssid.c_str(), kStageApPass);
@@ -161,7 +164,7 @@ void setup() {
   Serial.println("[wisp] paint distributor + status beacon online");
   Serial.println("[wisp] cmds: paint:on/off  stage:on/off");
   Serial.println("[wisp] cmds: src:off/manual/osc  osc:role <primary|secondary|tertiary|fill>");
-  Serial.println("[wisp] cmds: wifi:set <ssid> <pass>  wifi:show");
+  Serial.println("[wisp] cmds: wifi:set <ssid> <pass>  wifi:show  eth:show");
 }
 
 void loop() {
@@ -170,7 +173,10 @@ void loop() {
   static uint32_t lastClaimsMs = 0;
   const uint32_t now = millis();
 
-  wifi.loop(wispConfig.sourceMode() == wisp::WispSourceMode::Osc, now);
+  wifi.loop(wisp::staWanted(
+                wispConfig.sourceMode() == wisp::WispSourceMode::Osc,
+                wisp::eth::up()),
+            now);
   serialConsole.pump();
   meshRouter.drainPendingOps();
   // Beacon work runs here on the 8KB loop stack; the FreeRTOS timers only flag.
