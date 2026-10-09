@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lamp_app/core/ble/ble_client_provider.dart';
+import 'package:lamp_app/features/wisp/application/wisp_notifier.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_status.dart';
 import 'package:lamp_app/features/wisp/presentation/widgets/drift_controls.dart';
 import 'package:lamp_app/features/wisp/presentation/widgets/space_brightness_slider.dart';
@@ -19,10 +20,19 @@ const _unknown = WispStatus(wispMac: 'AA:BB:CC:DD:EE:FF');
 // One client for every pump, so a re-pump updates the same scope.
 final _ble = InMemoryBleClient();
 
+// Watches the notifier the way the wisp screen does, so the auto-dispose
+// provider the forms write through stays alive for the test.
 Widget _wrap(Widget child) => ProviderScope(
   overrides: [bleClientProvider.overrideWithValue(_ble)],
   child: MaterialApp(
-    home: Scaffold(body: SingleChildScrollView(child: child)),
+    home: Scaffold(
+      body: Consumer(
+        builder: (context, ref, _) {
+          ref.watch(wispNotifierProvider(_lampId));
+          return SingleChildScrollView(child: child);
+        },
+      ),
+    ),
   ),
 );
 
