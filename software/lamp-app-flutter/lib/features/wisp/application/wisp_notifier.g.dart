@@ -86,7 +86,7 @@ final class WispNotifierProvider
   }
 }
 
-String _$wispNotifierHash() => r'177ecf8283402e2f65305eb0b12a4e7aad917a32';
+String _$wispNotifierHash() => r'30c3bafd9a981b33d5730f2c85de83a1eb12532d';
 
 /// Owns the live [WispStatus] for a single lamp. On build it does one
 /// status read (the `wispstatus` page section, or `CHAR_WISP_STATUS` on a
