@@ -41,4 +41,8 @@ std::string mergeWispStatusJson(const WispStatusMergeInput& in, size_t maxLen);
 // a real change should move configLastSeenMs and cost the app a re-read.
 bool storeIfChanged(std::string& cached, const char* json, size_t len);
 
+// True when `json` parses as a JSON object. A malformed wispConfig is dropped
+// before it can replace the cached one or move configLastSeenMs.
+bool isJsonObject(const char* json, size_t len);
+
 }  // namespace lamp

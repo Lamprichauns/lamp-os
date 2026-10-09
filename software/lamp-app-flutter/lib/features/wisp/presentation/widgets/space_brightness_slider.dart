@@ -25,10 +25,15 @@ class SpaceBrightnessSlider extends ConsumerStatefulWidget {
 }
 
 class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
-  // Follows the wisp's value whenever it arrives or changes, except while the
-  // slider is held: re-seeding then would fight the drag.
+  // Follows the wisp's value whenever it differs from the slider, except
+  // while the slider is held and for a while after release: the write is
+  // debounced, so a status from mid-drag can still arrive carrying an
+  // intermediate value. The hold ends when the wisp echoes the released
+  // value or after _echoHold, whichever comes first.
+  static const Duration _echoHold = Duration(milliseconds: 2500);
   late double _value;
   bool _dragging = false;
+  DateTime? _holdUntil;
 
   @override
   void initState() {
@@ -42,9 +47,13 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
     super.didUpdateWidget(old);
     final s = widget.status;
     if (!s.configKnown || _dragging) return;
-    if (!old.status.configKnown || old.status.brightness != s.brightness) {
-      _seed();
+    final shown = s.brightness == _value.round();
+    final hold = _holdUntil;
+    if (hold != null) {
+      if (!shown && DateTime.now().isBefore(hold)) return;
+      _holdUntil = null;
     }
+    if (!shown) _seed();
   }
 
   void _seed() {
@@ -94,6 +103,7 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
                 },
                 onChangeEnd: (_) {
                   _dragging = false;
+                  _holdUntil = DateTime.now().add(_echoHold);
                   notifier.flushBrightness();
                 },
               ),

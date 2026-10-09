@@ -14,6 +14,7 @@
 
 using lamp::kWispStatusCharMaxLen;
 using lamp::mergeWispStatusJson;
+using lamp::isJsonObject;
 using lamp::storeIfChanged;
 using lamp::WispStatusMergeInput;
 
@@ -138,6 +139,16 @@ void test_store_if_changed_only_on_new_bytes() {
   TEST_ASSERT_TRUE(storeIfChanged(cached, b, sizeof(b) - 2));
 }
 
+// A malformed or non-object wispConfig never reaches the cache.
+void test_is_json_object_rejects_malformed() {
+  const char ok[] = R"({"char":"wispConfig","px":30})";
+  const char cut[] = R"({"char":"wispConfig","px":3)";
+  const char arr[] = R"([1,2])";
+  TEST_ASSERT_TRUE(isJsonObject(ok, sizeof(ok) - 1));
+  TEST_ASSERT_FALSE(isJsonObject(cut, sizeof(cut) - 1));
+  TEST_ASSERT_FALSE(isJsonObject(arr, sizeof(arr) - 1));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_nothing_known_serves_empty_object);
@@ -147,5 +158,6 @@ int main(int, char**) {
   RUN_TEST(test_capped_merge_keeps_diagnostics_when_it_fits);
   RUN_TEST(test_status_payload_keys_win);
   RUN_TEST(test_store_if_changed_only_on_new_bytes);
+  RUN_TEST(test_is_json_object_rejects_malformed);
   return UNITY_END();
 }

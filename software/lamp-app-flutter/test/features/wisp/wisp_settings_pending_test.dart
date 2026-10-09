@@ -157,4 +157,71 @@ void main() {
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 300));
   });
+
+  // Writes are debounced, so a status from mid-drag can arrive after release
+  // carrying an intermediate value. The slider holds the released value until
+  // the wisp echoes it, then follows the wisp again.
+  testWidgets('a released brightness slider holds until the wisp echoes it', (
+    tester,
+  ) async {
+    WispStatus at(int b) => WispStatus(
+      wispMac: 'AA:BB:CC:DD:EE:FF',
+      brightness: b,
+      configKnown: true,
+    );
+    Future<void> deliver(int b) => tester.pumpWidget(
+      _wrap(SpaceBrightnessSlider(lampId: _lampId, status: at(b))),
+    );
+    double shown() => tester.widget<Slider>(find.byType(Slider)).value;
+
+    await deliver(30);
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChangeStart!(30);
+    slider.onChanged!(45);
+    await tester.pump();
+    tester.widget<Slider>(find.byType(Slider)).onChanged!(60);
+    await tester.pump();
+    tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(60);
+    await tester.pump();
+
+    await deliver(45);
+    expect(shown(), 60);
+
+    await deliver(60);
+    expect(shown(), 60);
+    await deliver(70);
+    expect(shown(), 70);
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('a released drift slider holds until the wisp echoes it', (
+    tester,
+  ) async {
+    WispStatus at(int fade) => WispStatus(
+      wispMac: 'AA:BB:CC:DD:EE:FF',
+      driftFadePct: fade,
+      configKnown: true,
+    );
+    Future<void> deliver(int fade) => tester.pumpWidget(
+      _wrap(DriftControls(lampId: _lampId, status: at(fade))),
+    );
+    Slider fade() => tester.widgetList<Slider>(find.byType(Slider)).last;
+
+    await deliver(30);
+    fade().onChangeStart!(30);
+    fade().onChanged!(45);
+    await tester.pump();
+    fade().onChanged!(60);
+    await tester.pump();
+    fade().onChangeEnd!(60);
+    await tester.pump();
+
+    await deliver(45);
+    expect(fade().value, 60);
+
+    await deliver(60);
+    await deliver(70);
+    expect(fade().value, 70);
+    await tester.pump(const Duration(milliseconds: 400));
+  });
 }

@@ -82,6 +82,11 @@ std::string mergeWispStatusJson(const WispStatusMergeInput& in, size_t maxLen) {
   return out;
 }
 
+bool isJsonObject(const char* json, size_t len) {
+  JsonDocument doc;
+  return !deserializeJson(doc, json, len) && doc.is<JsonObject>();
+}
+
 bool storeIfChanged(std::string& cached, const char* json, size_t len) {
   if (cached.size() == len && cached.compare(0, len, json, len) == 0) {
     return false;

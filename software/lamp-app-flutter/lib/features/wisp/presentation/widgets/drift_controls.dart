@@ -36,11 +36,16 @@ class DriftControls extends ConsumerStatefulWidget {
 }
 
 class _DriftControlsState extends ConsumerState<DriftControls> {
-  // Follows the wisp's values whenever they arrive or change, except while a
-  // slider is held: re-seeding then would fight the drag.
+  // Follows the wisp's values whenever they differ from the sliders, except
+  // while a slider is held and for a while after release: the writes are
+  // debounced, so a status from mid-drag can still arrive carrying an
+  // intermediate value. The hold ends when the wisp echoes the released
+  // value or after _echoHold, whichever comes first.
+  static const Duration _echoHold = Duration(milliseconds: 2500);
   late double _pos;
   late int _fadePct;
   bool _dragging = false;
+  DateTime? _holdUntil;
 
   @override
   void initState() {
@@ -54,17 +59,21 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
     super.didUpdateWidget(old);
     final s = widget.status;
     if (!s.configKnown || _dragging) return;
-    if (!old.status.configKnown ||
-        old.status.driftIntervalMs != s.driftIntervalMs ||
-        old.status.driftFadePct != s.driftFadePct) {
-      _seed();
+    final shown =
+        s.driftIntervalMs == posToMs(_pos) && s.driftFadePct == _fadePct;
+    final hold = _holdUntil;
+    if (hold != null) {
+      if (!shown && DateTime.now().isBefore(hold)) return;
+      _holdUntil = null;
     }
+    if (!shown) _seed();
   }
 
   void _dragStart(double _) => _dragging = true;
 
   void _dragEnd(double _) {
     _dragging = false;
+    _holdUntil = DateTime.now().add(_echoHold);
     ref.read(wispNotifierProvider(widget.lampId).notifier).flushDrift();
   }
 

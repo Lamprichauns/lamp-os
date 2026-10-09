@@ -21,6 +21,7 @@
 #include "components/firmware/fs_ota.hpp"
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
+#include "components/network/mesh/wisp_status_merge.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "config/config.hpp"
@@ -587,7 +588,8 @@ void Lamp::drainWispConfig() {
     char buf[lamp::kPendingWispConfig + 1];
     uint8_t srcMac[6];
     uint16_t len = lamp::pendingSlots.wispConfig.drain(pendingMux, buf, srcMac);
-    if (len > 0 && lamp::lampRoster.cacheWispConfig(srcMac, buf, len)) {
+    if (len > 0 && lamp::isJsonObject(buf, len) &&
+        lamp::lampRoster.cacheWispConfig(srcMac, buf, len)) {
       ble_control::notifyWispStatus();
     }
   }

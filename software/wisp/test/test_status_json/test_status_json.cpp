@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <ArduinoJson.h>
 #include <cstdint>
+#include <cstring>
 #include "status/status_json.hpp"
 #include "wire/lamp_protocol.hpp"
 
@@ -434,6 +435,19 @@ void test_config_too_small_buffer_returns_zero() {
       0, wisp::buildWispConfigJson(worstConfig(), out, sizeof(out)));
 }
 
+// The lamp routes these broadcasts by their leading bytes
+// (peekWispBroadcast), so "char" must serialize first in both.
+void test_builders_write_char_first() {
+  char out[512];
+  size_t n = build(worstCase(), worstConfig(), out, sizeof(out),
+                   lamp_protocol::CONTROL_MAX_PAYLOAD);
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_EQUAL_INT(0, std::strncmp(out, "{\"char\":\"wispStatus\"", 20));
+  n = wisp::buildWispConfigJson(worstConfig(), out, sizeof(out));
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_EQUAL_INT(0, std::strncmp(out, "{\"char\":\"wispConfig\"", 20));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_core_worst_case_pinned_under_cap);
@@ -457,5 +471,6 @@ int main(int, char**) {
   RUN_TEST(test_config_carries_every_field_at_defaults);
   RUN_TEST(test_config_worst_case_pinned);
   RUN_TEST(test_config_too_small_buffer_returns_zero);
+  RUN_TEST(test_builders_write_char_first);
   return UNITY_END();
 }
