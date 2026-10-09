@@ -6,9 +6,7 @@
 #include <cstring>
 #include <lampos/led_types.hpp>
 
-#include "aurora/AuroraPaletteClient.h"
 #include "config/wisp_config.hpp"
-#include "config/zone_selector.hpp"
 #include "paint/paint_distributor.hpp"
 #include "paint/palette_id.hpp"
 #include "artnet/artnet_emitter.hpp"
@@ -26,7 +24,6 @@ void WispController::pushManualPaletteToCurrent() {
   Palette p;
   // Content hash so the app confirms this exact palette on the status NOTIFY.
   p.id = manualPaletteId(cols);
-  // Float-channel shape (not hexColors): the 24-bit hex form can't carry W.
   p.colors.reserve(cols.size());
   for (const auto& c : cols) {
     PaletteColor pc;
@@ -41,13 +38,14 @@ void WispController::pushManualPaletteToCurrent() {
   artnet_.onPaletteChanged();
 }
 
+bool WispController::sourceLive() const {
+  return config_.sourceMode() == wisp::WispSourceMode::Osc && oscFresh_.live();
+}
+
 bool WispController::effectiveOff() const {
   const wisp::WispSourceMode mode = config_.sourceMode();
-  const bool auroraLive =
-      mode == wisp::WispSourceMode::Aurora && aurora_.isStreaming();
   return mode == wisp::WispSourceMode::Off ||
-         (mode == wisp::WispSourceMode::Aurora && !auroraLive) ||
-         (mode == wisp::WispSourceMode::Osc && oscLastFloats_ == 0);
+         (mode == wisp::WispSourceMode::Osc && !oscFresh_.live());
 }
 
 // Fill `pixels` (pre-gamma RGB, length px*3) from the current source state.
@@ -56,10 +54,6 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
   size_t numStops = 0;
 
   const wisp::WispSourceMode mode = config_.sourceMode();
-  const bool auroraLive =
-      mode == wisp::WispSourceMode::Aurora && aurora_.isStreaming();
-  const bool oscLive =
-      mode == wisp::WispSourceMode::Osc && oscLastFloats_ > 0;
   if (mode == wisp::WispSourceMode::Manual) {
     const auto& cols = config_.manualPalette();
     const size_t n = cols.size() > wisp::kManualPaletteMaxColors
@@ -71,7 +65,7 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
                               stopsRgb[i * 3 + 2]);
     }
     numStops = n;
-  } else if (auroraLive || oscLive) {
+  } else if (sourceLive()) {
     const auto& cols = palette_.colors();
     const size_t n = cols.size() > wisp::kManualPaletteMaxColors
                          ? wisp::kManualPaletteMaxColors
@@ -84,7 +78,7 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
     }
     numStops = n;
   }
-  // Off, Aurora-with-no-stream and Osc-with-no-palette show the off-color.
+  // Off and Osc-with-a-stale-stream show the off-color.
   // Manual with empty palette falls through to warm-white.
   if (off) {
     const wisp::ManualPaletteColor offColor = config_.offColor();
@@ -160,84 +154,38 @@ void WispController::applyLedConfig() {
   renderRing();
 }
 
+void WispController::resetOscStream() {
+  oscFresh_.reset();
+  oscLastFloats_ = 0;
+  palette_.clear();
+}
+
 void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
   switch (mode) {
     case wisp::WispSourceMode::Off:
-      aurora_.setActive(false);
       paint_.setPaintMode(false);
+      paint_.setSourceLive(true);
       // Off plays nothing; a stale paletteIdPrefix would keep triggering
       // app-side palette re-reads.
       palette_.clear();
       Serial.println("[wisp] source=Off — paintMode off, STATE clears paint");
       break;
     case wisp::WispSourceMode::Manual:
-      aurora_.setActive(false);
+      paint_.setSourceLive(true);
       paint_.setPaintMode(true);
       pushManualPaletteToCurrent();
       Serial.println("[wisp] source=Manual — paintMode on");
       break;
-    case wisp::WispSourceMode::Aurora:
-      // Clear stale palette; onAuroraPalette enables paint when a live
-      // palette arrives; loop's liveness check disables it if stream drops.
-      aurora_.setActive(true);
-      palette_.clear();
-      paint_.setPaintMode(aurora_.isStreaming());
-      // Re-seed the liveness edge; a drop while inactive is not a fresh edge.
-      auroraWasStreaming_ = aurora_.isStreaming();
-      Serial.printf("[wisp] source=Aurora — %s\n",
-                    aurora_.isStreaming() ? "stream live"
-                                          : "no stream, holding off");
-      break;
     case wisp::WispSourceMode::Osc:
-      // Paint mode is left to the operator's paint:on; a palette arriving
-      // never enables it.
-      aurora_.setActive(false);
-      palette_.clear();
-      oscLastFloats_ = 0;
-      paint_.setPaintMode(false);
-      Serial.println("[wisp] source=Osc — waiting for palette, paint off");
+      // Choosing Osc is the paint opt-in. Lamps stay at Off until the first
+      // palette makes the stream live.
+      resetOscStream();
+      paint_.setSourceLive(false);
+      paint_.setPaintMode(true);
+      Serial.printf("[wisp] source=Osc — paintMode on, waiting for %s\n",
+                    oscPaletteAddress(config_.oscRole()));
       break;
   }
-  renderRing();
-}
-
-void WispController::onAuroraPalette(int zone, const Palette& p) {
-  zones_.observe(zone);
-
-  // First-seen latch: only when neither NVS nor an app op has chosen a zone.
-  if (zones_.latchFirstSeen(zone)) {
-    Serial.printf("[wisp] claimed Aurora zone %d (source=firstSeen)\n", zone);
-    status_.triggerOnChange();
-  }
-
-  if (zone != zones_.currentZone()) {
-#ifdef LAMP_DEBUG
-    Serial.printf("[wisp] ignoring zone %d palette (selected %d, source=%s)\n",
-                  zone, zones_.currentZone(),
-                  wisp::zoneSourceName(zones_.source()));
-#endif
-    return;
-  }
-
-  // Only Aurora mode lets these callbacks drive CurrentPalette; Manual/Off
-  // would have their palette overwritten by the next Aurora notify.
-  if (config_.sourceMode() != wisp::WispSourceMode::Aurora) {
-    return;
-  }
-
-  palette_.update(p, millis());
-#ifdef LAMP_DEBUG
-  const auto& cols = palette_.colors();
-  Serial.printf("[wisp] palette change: %s with %u colors\n",
-                palette_.paletteId().c_str(),
-                (unsigned)cols.size());
-  for (size_t i = 0; i < cols.size(); ++i) {
-    Serial.printf("  [%u] r=%u g=%u b=%u w=%u\n",
-                  (unsigned)i, cols[i].r, cols[i].g, cols[i].b, cols[i].w);
-  }
-#endif
-  paint_.setPaintMode(true);
-  artnet_.onPaletteChanged();
   renderRing();
 }
 
@@ -256,15 +204,10 @@ void WispController::applyOpResult(DispatchResult res) {
       status_.triggerOnChange();
       break;
     }
-    case wisp::DispatchResult::AppliedZoneChange: {
-      if (config_.hasSelectedZone()) {
-        const int newZone = config_.selectedZone();
-        zones_.setFromOp(newZone);
-        Serial.printf("[wisp] zone set by app op to %d (source=appOp)\n",
-                      newZone);
-      } else {
-        zones_.clearFromOp();
-        Serial.println("[wisp] zone cleared by app op (source=none)");
+    case wisp::DispatchResult::AppliedOscRole: {
+      // The old role's palette is not this role's: wait for a fresh one.
+      if (config_.sourceMode() == wisp::WispSourceMode::Osc) {
+        applySourceModeTransition(wisp::WispSourceMode::Osc);
       }
       status_.triggerOnChange();
       break;
@@ -274,7 +217,7 @@ void WispController::applyOpResult(DispatchResult res) {
       status_.triggerOnChange();
       break;
     case wisp::DispatchResult::AppliedOffColor:
-      if (config_.sourceMode() == wisp::WispSourceMode::Off) {
+      if (effectiveOff()) {
         renderRing();
       }
       status_.triggerOnChange();
@@ -312,36 +255,21 @@ void WispController::applyOpResult(DispatchResult res) {
   }
 }
 
-void WispController::tickAuroraLiveness() {
-  // Edge-triggered: stream drop turns paint off (STATE clears); onAuroraPalette
-  // re-enables paint when a fresh palette arrives.
-  if (config_.sourceMode() != wisp::WispSourceMode::Aurora) return;
-  const bool streaming = aurora_.isStreaming();
-  if (auroraWasStreaming_ && !streaming) {
-    palette_.clear();
-    paint_.setPaintMode(false);
-    renderRing();
-    status_.triggerOnChange();
-    Serial.println("[wisp] Aurora stream dropped — holding off");
-  }
-  auroraWasStreaming_ = streaming;
-}
-
 void WispController::onOscPalette(const float* rgb, size_t colours,
                                   const char* via, uint32_t nowMs) {
   static_assert(kOscMaxFloats == wisp::kManualPaletteMaxColors * 3,
                 "OSC palette buffer must hold a manual-size palette");
   if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
+  if (colours == 0) return;
   if (colours > wisp::kManualPaletteMaxColors) {
     colours = wisp::kManualPaletteMaxColors;
   }
   const size_t floats = colours * 3;
-  oscLastRxMs_ = nowMs;
-  if (floats == oscLastFloats_ &&
+  const bool resumed = oscFresh_.onPalette(nowMs);
+  if (!resumed && floats == oscLastFloats_ &&
       std::memcmp(rgb, oscLast_, floats * sizeof(float)) == 0) {
     return;
   }
-  const bool wasLive = oscLastFloats_ > 0;
   std::memcpy(oscLast_, rgb, floats * sizeof(float));
   oscLastFloats_ = floats;
 
@@ -360,12 +288,16 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
                                       floats * sizeof(float)));
   oscScratch_.id = id;
   palette_.update(oscScratch_, nowMs);
-  paint_.onPaletteChanged();
+  if (resumed) {
+    paint_.setSourceLive(true);
+    status_.triggerOnChange();
+  } else {
+    paint_.onPaletteChanged();
+  }
   artnet_.onPaletteChanged();
   renderRing();
-  if (!wasLive) status_.triggerOnChange();
 
-  if (!wasLive || nowMs - oscLastLogMs_ >= 1000) {
+  if (resumed || nowMs - oscLastLogMs_ >= 1000) {
     oscLastLogMs_ = nowMs;
     Serial.printf("[osc] palette n=%u via %s\n", (unsigned)colours, via);
   }
@@ -373,13 +305,12 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
 
 void WispController::tickOscLiveness(uint32_t now) {
   if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
-  if (oscLastFloats_ == 0 || now - oscLastRxMs_ < kOscStaleMs) return;
-  oscLastFloats_ = 0;
-  palette_.clear();
-  paint_.setPaintMode(false);
+  if (!oscFresh_.tick(now)) return;
+  resetOscStream();
+  paint_.setSourceLive(false);
   renderRing();
   status_.triggerOnChange();
-  Serial.println("[osc] palette stale — holding off, paint off");
+  Serial.println("[osc] palette stale — holding lamps at Off, paint mode kept");
 }
 
 }  // namespace wisp

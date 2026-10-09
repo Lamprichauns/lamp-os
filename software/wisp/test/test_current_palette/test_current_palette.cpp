@@ -8,41 +8,53 @@
 void setUp() {}
 void tearDown() {}
 
-static Palette makeFloat(const PaletteColor& c) {
-  Palette p;
-  p.id = "warm";
+static wisp::Palette single(const wisp::PaletteColor& c) {
+  wisp::Palette p;
+  p.id = "p";
   p.colors.push_back(c);
   return p;
 }
 
-// W is warm white; an amber-encoded palette folds its warmth into W. Without
-// the fold W stays 0 and the warm palette renders cold.
-void test_amber_folds_into_warm_white() {
-  PaletteColor c;
-  c.r = 0.3f; c.g = 0.0f; c.b = 0.1f; c.w = 0.0f; c.am = 0.5f; c.u = 0.0f;
+void test_float_channels_quantize_to_bytes() {
+  wisp::PaletteColor c;
+  c.r = 1.0f; c.g = 0.5f; c.b = 0.0f; c.w = 0.2f;
   wisp::CurrentPalette cp;
-  cp.update(makeFloat(c), 0);
+  cp.update(single(c), 0);
   TEST_ASSERT_EQUAL(1, cp.colors().size());
   const wisp::RGBW out = cp.colors()[0];
-  TEST_ASSERT_TRUE(out.w > 0);          // amber lifts the warm-white channel
+  TEST_ASSERT_EQUAL_UINT8(255, out.r);
+  TEST_ASSERT_EQUAL_UINT8(128, out.g);
+  TEST_ASSERT_EQUAL_UINT8(0, out.b);
+  TEST_ASSERT_EQUAL_UINT8(51, out.w);
 }
 
-// hexColors (pure 24-bit RGB) has no amber and must pass through unchanged.
-void test_hex_colors_unaffected() {
-  Palette p;
-  p.id = "hex";
-  p.hexColors.push_back(0x00FFD800);  // amber-ish RGB, no separate channels
+// An OSC sender is untrusted: out-of-range floats clamp instead of wrapping.
+void test_out_of_range_channels_clamp() {
+  wisp::PaletteColor c;
+  c.r = 2.0f; c.g = -1.0f; c.b = 1.0001f; c.w = 0.0f;
   wisp::CurrentPalette cp;
-  cp.update(p, 0);
+  cp.update(single(c), 0);
   const wisp::RGBW out = cp.colors()[0];
-  TEST_ASSERT_EQUAL_UINT8(0xFF, out.r);
-  TEST_ASSERT_EQUAL_UINT8(0xD8, out.g);
-  TEST_ASSERT_EQUAL_UINT8(0x00, out.b);
+  TEST_ASSERT_EQUAL_UINT8(255, out.r);
+  TEST_ASSERT_EQUAL_UINT8(0, out.g);
+  TEST_ASSERT_EQUAL_UINT8(255, out.b);
+}
+
+void test_id_and_clear() {
+  wisp::PaletteColor c;
+  wisp::CurrentPalette cp;
+  cp.update(single(c), 42);
+  TEST_ASSERT_EQUAL_STRING("p", cp.paletteId().c_str());
+  TEST_ASSERT_EQUAL_UINT32(42, cp.lastChangeMs());
+  cp.clear();
+  TEST_ASSERT_TRUE(cp.paletteId().empty());
+  TEST_ASSERT_TRUE(cp.colors().empty());
 }
 
 int main(int, char**) {
   UNITY_BEGIN();
-  RUN_TEST(test_amber_folds_into_warm_white);
-  RUN_TEST(test_hex_colors_unaffected);
+  RUN_TEST(test_float_channels_quantize_to_bytes);
+  RUN_TEST(test_out_of_range_channels_clamp);
+  RUN_TEST(test_id_and_clear);
   return UNITY_END();
 }

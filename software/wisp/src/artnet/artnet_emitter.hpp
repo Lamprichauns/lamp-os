@@ -18,7 +18,7 @@ class ArtnetEmitter {
  public:
   void begin(CurrentPalette* palette, WifiLink* wifi);
 
-  // Called on every palette change (Aurora or manual). Kicks an immediate
+  // Called on every palette change (Manual or OSC). Kicks an immediate
   // emit if WiFi is connected.
   void onPaletteChanged();
 
@@ -27,7 +27,7 @@ class ArtnetEmitter {
   // up the current colors.
   void tick(uint32_t nowMs);
 
-  // Gates emission. Off (source Off, or Aurora with no live stream) sets
+  // Gates emission. Off (source Off, or OSC with a stale stream) sets
   // this false so old lamps keep their last frame instead of being driven
   // to the off-color over ArtNet; mesh lamps get the equivalent release
   // via isWispActive=0.

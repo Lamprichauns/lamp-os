@@ -6,15 +6,12 @@
 namespace wisp {
 
 struct WispStatusFields {
-  int          currentZone;
-  const char*  zoneSource;
-  const int*   observedZones;
-  size_t       observedCount;
   bool         wifiConnected;
-  bool         auroraConnected;
+  bool         sourceLive;
   const char*  paletteIdPrefix;
   uint32_t     lastSeenMs;
   const char*  source;
+  const char*  oscRole;  // emitted only when source is "osc"
   uint8_t      offR, offG, offB, offW;
   bool         hasOffColor;
   uint8_t      shuffleSeed;

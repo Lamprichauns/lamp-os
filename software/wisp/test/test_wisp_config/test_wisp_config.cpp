@@ -131,6 +131,62 @@ void test_set_brightness_roundtrips_and_clamps() {
   TEST_ASSERT_EQUAL_INT(100, (int)cfg.brightness());
 }
 
+// A wisp that stored the retired Aurora mode (2) boots into Off.
+void test_legacy_aurora_source_loads_as_off() {
+  {
+    Preferences p;
+    p.putInt("srcMode", 2);
+  }
+  wisp::WispConfig cfg;
+  cfg.begin();
+  TEST_ASSERT_EQUAL_INT((int)wisp::WispSourceMode::Off, (int)cfg.sourceMode());
+}
+
+void test_osc_source_roundtrips() {
+  wisp::WispConfig cfg;
+  cfg.begin();
+  cfg.setSourceMode(wisp::WispSourceMode::Osc);
+  wisp::WispConfig reload;
+  reload.begin();
+  TEST_ASSERT_EQUAL_INT((int)wisp::WispSourceMode::Osc, (int)reload.sourceMode());
+}
+
+void test_osc_role_defaults_primary_and_persists() {
+  wisp::WispConfig cfg;
+  cfg.begin();
+  TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Primary, (int)cfg.oscRole());
+  cfg.setOscRole(wisp::OscRole::Tertiary);
+  wisp::WispConfig reload;
+  reload.begin();
+  TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Tertiary, (int)reload.oscRole());
+}
+
+void test_corrupt_osc_role_loads_as_primary() {
+  {
+    Preferences p;
+    p.putUChar("oscRole", 9);
+  }
+  wisp::WispConfig cfg;
+  cfg.begin();
+  TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Primary, (int)cfg.oscRole());
+}
+
+void test_osc_address_built_per_role() {
+  TEST_ASSERT_EQUAL_STRING("/straylight/palette/primary/colours",
+                           wisp::oscPaletteAddress(wisp::OscRole::Primary));
+  TEST_ASSERT_EQUAL_STRING("/straylight/palette/secondary/colours",
+                           wisp::oscPaletteAddress(wisp::OscRole::Secondary));
+  TEST_ASSERT_EQUAL_STRING("/straylight/palette/tertiary/colours",
+                           wisp::oscPaletteAddress(wisp::OscRole::Tertiary));
+  TEST_ASSERT_EQUAL_STRING("/straylight/palette/fill/colours",
+                           wisp::oscPaletteAddress(wisp::OscRole::Fill));
+  wisp::OscRole r = wisp::OscRole::Primary;
+  TEST_ASSERT_TRUE(wisp::oscRoleFromName("secondary", r));
+  TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Secondary, (int)r);
+  TEST_ASSERT_FALSE(wisp::oscRoleFromName("Primary", r));
+  TEST_ASSERT_FALSE(wisp::oscRoleFromName(nullptr, r));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_name_default_is_empty);
@@ -149,5 +205,10 @@ int main(int, char**) {
   RUN_TEST(test_set_pixel_count_zero_clamped_to_one);
   RUN_TEST(test_brightness_default_is_full);
   RUN_TEST(test_set_brightness_roundtrips_and_clamps);
+  RUN_TEST(test_legacy_aurora_source_loads_as_off);
+  RUN_TEST(test_osc_source_roundtrips);
+  RUN_TEST(test_osc_role_defaults_primary_and_persists);
+  RUN_TEST(test_corrupt_osc_role_loads_as_primary);
+  RUN_TEST(test_osc_address_built_per_role);
   return UNITY_END();
 }

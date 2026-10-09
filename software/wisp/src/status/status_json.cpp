@@ -14,6 +14,7 @@ constexpr uint8_t  kDefaultDriftFadePct    = 50;
 constexpr uint16_t kDefaultPixelCount      = 30;
 constexpr char     kDefaultLedType[]       = "GRB";
 constexpr uint8_t  kDefaultBrightness      = 100;
+constexpr char     kDefaultOscRole[]       = "primary";
 
 template <typename T>
 void addIfFits(JsonDocument& doc, size_t cap, const char* key,
@@ -30,28 +31,32 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
   // Guaranteed core. Worst-case serialized width is pinned well under cap by
   // test_status_json, so the optional fields below can only ever be dropped,
   // never force a failed frame.
-  doc["char"]            = "wispStatus";
-  doc["source"]          = f.source;
-  doc["currentZone"]     = f.currentZone;
-  doc["zoneSource"]      = f.zoneSource;
-  doc["wifiConnected"]   = f.wifiConnected;
-  doc["auroraConnected"] = f.auroraConnected;
-  doc["lastSeenMs"]      = f.lastSeenMs;
+  doc["char"]          = "wispStatus";
+  doc["source"]        = f.source;
+  doc["wifiConnected"] = f.wifiConnected;
+  doc["sourceLive"]    = f.sourceLive;
+  doc["lastSeenMs"]    = f.lastSeenMs;
   if (f.hasPassword) {
     doc["hasPassword"] = true;
   }
 
   const bool isOff = f.source && std::strcmp(f.source, "off") == 0;
+  const bool isOsc = f.source && std::strcmp(f.source, "osc") == 0;
 
-  // Add-if-fits in priority order. offColor and paletteIdPrefix outrank the
-  // cosmetic fields: a dropped prefix stalls the app's palette re-read and a
-  // dropped offColor silently renders the app's amber default.
+  // Add-if-fits in priority order. offColor, oscRole and paletteIdPrefix
+  // outrank the cosmetic fields: a dropped prefix stalls the app's palette
+  // re-read, a dropped offColor silently renders the app's amber default and
+  // a dropped oscRole shows the wrong role selected. offColor and oscRole are
+  // mode-exclusive, so they never compete for budget.
   if (isOff && f.hasOffColor) {
     char hex[9];
     std::snprintf(hex, sizeof(hex), "%02x%02x%02x%02x",
                   f.offR, f.offG, f.offB, f.offW);
     doc["offColor"] = hex;
     if (measureJson(doc) > cap) doc.remove("offColor");
+  }
+  if (isOsc && f.oscRole && std::strcmp(f.oscRole, kDefaultOscRole) != 0) {
+    addIfFits(doc, cap, "oscRole", f.oscRole);
   }
   if (f.paletteIdPrefix && f.paletteIdPrefix[0] != '\0') {
     addIfFits(doc, cap, "paletteIdPrefix", f.paletteIdPrefix);
@@ -74,14 +79,6 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
     if (f.driftFadePct != kDefaultDriftFadePct) {
       addIfFits(doc, cap, "driftFadePct", f.driftFadePct);
     }
-  }
-  if (f.observedCount > 0) {
-    JsonArray z = doc["observedZones"].to<JsonArray>();
-    for (size_t i = 0; i < f.observedCount; ++i) {
-      z.add(f.observedZones[i]);
-      if (measureJson(doc) > cap) { z.remove(z.size() - 1); break; }
-    }
-    if (z.size() == 0) doc.remove("observedZones");
   }
   if (f.ledType && f.ledType[0] != '\0' &&
       std::strcmp(f.ledType, kDefaultLedType) != 0) {

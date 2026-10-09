@@ -12,7 +12,6 @@ class StageBeacon;
 class WifiLink;
 class StatusEmitter;
 class LampInventory;
-class ZoneSelector;
 class OscListener;
 class WispConfig;
 enum class WispSourceMode : uint8_t;
@@ -23,7 +22,7 @@ public:
 
   SerialConsole(PaintDistributor& paint, WispConfig& config,
                 StageBeacon& stage, WifiLink& wifi, StatusEmitter& status,
-                LampInventory& inventory, ZoneSelector& zones,
+                LampInventory& inventory,
                 SourceTransitionFn onSourceTransition);
 
   // Read available serial bytes; SLIP frames go to the OSC sink, everything
@@ -32,7 +31,7 @@ public:
 
   void setOscSink(OscListener* osc) { osc_ = osc; }
 
-  // Print current lamp roster + zone state to Serial.
+  // Print the current lamp roster to Serial.
   void dumpInventory();
 
 private:
@@ -45,7 +44,6 @@ private:
   WifiLink& wifi_;
   StatusEmitter& status_;
   LampInventory& inventory_;
-  ZoneSelector& zones_;
   SourceTransitionFn onSourceTransition_;
 
   String buf_;

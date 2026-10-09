@@ -70,16 +70,13 @@ Serial-ingress commands (`scripts/bench_cmd.py`), `core/lamp_test_action.cpp`:
 
 | Tag | Source | Prints |
 |---|---|---|
-| `[wisp]` | `wisp/src/core/wisp_controller.cpp`, `console/serial_console.cpp`, `main.cpp` | Roster dump, zone/source/paintMode state |
+| `[wisp]` | `wisp/src/core/wisp_controller.cpp`, `console/serial_console.cpp`, `main.cpp` | Roster dump, source/paintMode state |
 | `[wisploop]` | `wisp/src/main.cpp` | Loop stall (`stall=..ms`) |
 | `[wispheap]` | `wisp/src/status/status_emitter.cpp` | Wisp free + largest heap (`free=.. largest=..`) |
 | `[mesh]` | `wisp/src/net/mesh_link.cpp` | Wisp ESP-NOW init / ready (ch, mac) |
 | `[wifi]` | `wisp/src/net/wifi_link.cpp`, `console/serial_console.cpp` | Wisp WiFi link state; channel-6 guard drop logs `AP ch=N != mesh ch=6; dropping association, re-pinning radio to mesh, auto-reconnect off` |
 | `[bright]` | `wisp/src/paint/paint_distributor.cpp` | Per-lamp brightness send (`send %u->mac seq=..`) |
-| `[client]` | `wisp/src/aurora/AuroraPaletteClient.cpp` | Aurora client idle / armed / static-host |
-| `[ws]` | `wisp/src/aurora/AuroraWsConnection.cpp` | Aurora WebSocket connecting / lost |
-| `[mdns]` | `wisp/src/aurora/AuroraDiscovery.cpp` | mDNS Aurora discovery (found / begin-failed) |
-| `[http]` | `wisp/src/aurora/PaletteFetcher.cpp` | HTTP palette fetch (`GET palette .. -> ..`) |
+| `[osc]` | `wisp/src/core/wisp_controller.cpp`, `osc/osc_listener.cpp` | OSC palette in (`palette n=.. via serial\|udp`, at most 1/s), stream stale, UDP listen / bind failures |
 | `[artnet]` | `wisp/src/artnet/artnet_emitter.cpp` | Art-Net UDP emit (ready / frame-build-failed) |
 | `[stage]` | `wisp/src/net/stage_beacon.cpp` | Stage BLE beacon advertise (creds, mfg-data size) |
 

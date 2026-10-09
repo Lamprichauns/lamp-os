@@ -6,7 +6,7 @@
 // path (per-lamp colors), so a paint-mode edge also emits STATE out of cadence
 // via PaintDistributor's dirty flag, then re-emits it a few times over a short
 // burst window so the take/release edge survives a coex drop instead of waiting
-// on the 4s re-cover. A WiFi/Aurora flag flip triggers
+// on the 4s re-cover. A WiFi/source-live flag flip triggers
 // StatusEmitter's on-change path so the app sees it within 2s rather than
 // waiting on the 30s heartbeat. The timer only flags the emit due; pump() runs
 // the build + broadcast on the loop task, off the 2KB timer stack.
@@ -28,8 +28,6 @@ using PresenceBeaconTimerHandle = TimerHandle_t;
 using PresenceBeaconTimerHandle = void*;
 #endif
 
-class AuroraPaletteClient;
-
 namespace wisp {
 
 class CurrentPalette;
@@ -37,6 +35,7 @@ class MeshLink;
 class PaintDistributor;
 class StatusEmitter;
 class WispConfig;
+class WispController;
 class WispRoster;
 struct SeqSource;
 
@@ -54,7 +53,8 @@ inline bool stateBurstDue(uint32_t now, uint32_t burstUntilMs,
 class PresenceBeacon {
  public:
   void begin(MeshLink* mesh, PaintDistributor* paint, CurrentPalette* palette,
-             AuroraPaletteClient* aurora, WispRoster* roster, SeqSource* seq,
+             const WispController* controller, WispRoster* roster,
+             SeqSource* seq,
              StatusEmitter* statusEmitter, WispConfig* config);
 
   // Call once after begin().
@@ -68,11 +68,12 @@ class PresenceBeacon {
   void emitClaim(const uint8_t srcMac[6]);  // full-set MSG_WISP_CLAIM
   // full-set MSG_WISP_STATE; presenceFlags carries the same WISP_HELLO_FLAG_*
   // bits computed for the HELLO this tick. Packs color entries only while
-  // paint is on, so Off broadcasts an empty set and lamps ease home.
+  // painting, so Off or a stale source broadcasts an empty set and lamps
+  // ease home.
   void emitState(const uint8_t srcMac[6], uint8_t presenceFlags);
   // Out-of-cadence STATE for a paint-mode edge; recomputes mac + flags.
   void emitStateEvent();
-  uint8_t computePresenceFlags(bool wifiNow, bool auroraNow) const;
+  uint8_t computePresenceFlags(bool wifiNow, bool sourceLiveNow) const;
 
   // Re-broadcast a just-sent frame (same seq) `copies` more times, kResendGapMs
   // apart: an unacked broadcast has no retry, so a receiver whose scan-listen
@@ -83,7 +84,7 @@ class PresenceBeacon {
   MeshLink* mesh_ = nullptr;
   PaintDistributor* paint_ = nullptr;
   CurrentPalette* palette_ = nullptr;
-  AuroraPaletteClient* aurora_ = nullptr;
+  const WispController* controller_ = nullptr;
   WispRoster* roster_ = nullptr;
   SeqSource* seq_ = nullptr;
   StatusEmitter* statusEmitter_ = nullptr;
@@ -93,9 +94,9 @@ class PresenceBeacon {
   // Set from the timer task, cleared in pump() on the loop task.
   std::atomic<bool> helloDue_{false};
 
-  bool lastHelloWifi_     = false;
-  bool lastHelloAurora_   = false;
-  bool haveLastHelloConn_ = false;
+  bool lastHelloWifi_       = false;
+  bool lastHelloSourceLive_ = false;
+  bool haveLastHelloConn_   = false;
 
   // 2s-tick counter driving the phased claim/paint sub-multiples.
   uint32_t beaconTick_ = 0;

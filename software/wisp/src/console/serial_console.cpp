@@ -4,7 +4,6 @@
 #include <esp_wifi.h>
 
 #include "config/wisp_config.hpp"
-#include "config/zone_selector.hpp"
 #include "fleet/lamp_inventory.hpp"
 #include "net/mesh_link.hpp"
 #include "net/stage_beacon.hpp"
@@ -18,7 +17,6 @@ namespace wisp {
 SerialConsole::SerialConsole(PaintDistributor& paint, WispConfig& config,
                              StageBeacon& stage, WifiLink& wifi,
                              StatusEmitter& status, LampInventory& inventory,
-                             ZoneSelector& zones,
                              SourceTransitionFn onSourceTransition)
     : paint_(paint),
       config_(config),
@@ -26,7 +24,6 @@ SerialConsole::SerialConsole(PaintDistributor& paint, WispConfig& config,
       wifi_(wifi),
       status_(status),
       inventory_(inventory),
-      zones_(zones),
       onSourceTransition_(std::move(onSourceTransition)) {}
 
 void SerialConsole::pump() {
@@ -73,10 +70,6 @@ void SerialConsole::dumpInventory() {
                   e.name, formatVersion(e.firmwareVersion).c_str(),
                   (unsigned long)ageMs);
   }
-  Serial.printf("[wisp] zone=%d source=%s observed=%u\n",
-                zones_.currentZone(),
-                zoneSourceName(zones_.source()),
-                (unsigned)zones_.observedCount());
 #endif
 }
 
@@ -88,17 +81,29 @@ void SerialConsole::handleCommand(const String& cmd) {
   } else if (cmd == "paint:off") {
     paint_.setPaintMode(false);
     Serial.println("[wisp.cmd] paint mode OFF");
-  } else if (cmd == "src:off" || cmd == "src:manual" ||
-             cmd == "src:aurora" || cmd == "src:osc") {
+  } else if (cmd == "src:off" || cmd == "src:manual" || cmd == "src:osc") {
     const WispSourceMode m =
         cmd.endsWith("off")    ? WispSourceMode::Off
       : cmd.endsWith("manual") ? WispSourceMode::Manual
-      : cmd.endsWith("osc")    ? WispSourceMode::Osc
-                               : WispSourceMode::Aurora;
+                               : WispSourceMode::Osc;
     config_.setSourceMode(m);
     onSourceTransition_(m);
     status_.triggerOnChange();
     Serial.printf("[wisp.cmd] source mode = %s\n", cmd.c_str() + 4);
+  } else if (cmd.startsWith("osc:role ")) {
+    OscRole role = OscRole::Primary;
+    if (!oscRoleFromName(cmd.c_str() + 9, role)) {
+      Serial.println(
+          "[wisp.cmd] usage: osc:role <primary|secondary|tertiary|fill>");
+      return;
+    }
+    config_.setOscRole(role);
+    if (config_.sourceMode() == WispSourceMode::Osc) {
+      onSourceTransition_(WispSourceMode::Osc);
+    }
+    status_.triggerOnChange();
+    Serial.printf("[wisp.cmd] osc role = %s (%s)\n", oscRoleName(role),
+                  oscPaletteAddress(role));
   } else if (cmd == "stage:on") {
     stage_.refreshAdvert();
   } else if (cmd == "stage:off") {

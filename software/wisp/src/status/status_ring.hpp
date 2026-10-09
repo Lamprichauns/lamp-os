@@ -16,8 +16,7 @@ inline constexpr size_t kStatusRingPixelCount = 30;
 // Upper bound for configurable pixel count (NVS / app-settable).
 inline constexpr size_t kMaxRingPixels = 100;
 
-// Warm-white fallback when the ring has no palette (Off, or empty Manual/
-// Aurora). Pulled warmer than a neutral warm-white because at brightness 40
+// Warm-white fallback when the ring has no palette (empty Manual). Pulled warmer than a neutral warm-white because at brightness 40
 // (~16% scale) the WS2812 compresses the R:G:B ratio and washes a paler tint
 // out; these scale to roughly (40, 24, 8) on the LEDs, a clear candle-amber.
 inline constexpr uint8_t kWarmWhiteR = 255;
@@ -113,7 +112,7 @@ inline void lerpRing(const uint8_t* from, const uint8_t* to, uint8_t* out,
   }
 }
 
-// Fold an Aurora RGBW sample to RGB for the NEO_GRB ring (no W channel). The
+// Fold an RGBW palette sample to RGB for the NEO_GRB ring (no W channel). The
 // W contribution biases warm (most lands on R, some on G, almost none on B)
 // so a mostly-white palette still reads warm rather than washed-out. Each
 // channel clamps to 255.

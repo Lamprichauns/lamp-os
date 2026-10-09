@@ -12,15 +12,15 @@
 #include <lampos/led_types.hpp>
 
 #include "config/manual_palette_color.hpp"
+#include "osc/osc_role.hpp"
 
 namespace wisp {
 
-// Wire encoding (NVS u8 + wispOp + wispStatus): 0=Off, 1=Manual, 2=Aurora,
-// 3=Osc.
+// Wire encoding (NVS u8 + wispOp + wispStatus): 0=Off, 1=Manual, 3=Osc.
+// 2 is retired; a stored 2 loads as Off.
 enum class WispSourceMode : uint8_t {
   Off    = 0,
   Manual = 1,
-  Aurora = 2,
   Osc    = 3,
 };
 
@@ -36,17 +36,6 @@ class WispConfig {
   // Safe to call once at boot from setup().
   void begin();
 
-  // -1 sentinel means "no zone selected yet". 0 is a valid Aurora zone, so
-  // 0 can't be the unset sentinel.
-  int selectedZone() const { return selectedZone_; }
-  bool hasSelectedZone() const { return selectedZone_ >= 0; }
-
-  // Write-through to NVS. Negative values are rejected (use clearSelectedZone).
-  void setSelectedZone(int zone);
-
-  // Removes the key from NVS and resets the cache to -1.
-  void clearSelectedZone();
-
   // SECURITY: stored in plaintext NVS (not encrypted by default). Anyone with
   // flash-dump access can read these. Harden via NVS encryption if needed.
   const String& wifiSsid() const { return wifiSsid_; }
@@ -57,6 +46,10 @@ class WispConfig {
 
   WispSourceMode sourceMode() const { return sourceMode_; }
   void setSourceMode(WispSourceMode mode);
+
+  // Straylight palette role followed in Osc mode.
+  OscRole oscRole() const { return oscRole_; }
+  void setOscRole(OscRole role);
 
   // Replace-only; empty is valid (lamps revert to their own behavior).
   const std::vector<ManualPaletteColor>& manualPalette() const {
@@ -114,10 +107,10 @@ class WispConfig {
   Preferences prefs_;
   bool        opened_ = false;
 
-  int    selectedZone_ = -1;
   String wifiSsid_;
   String wifiPw_;
   WispSourceMode sourceMode_ = WispSourceMode::Off;
+  OscRole oscRole_ = OscRole::Primary;
   std::vector<ManualPaletteColor> manualPalette_;
   ManualPaletteColor offColor_ = {255, 150, 50, 0};
   uint8_t shuffleSeed_ = 0;

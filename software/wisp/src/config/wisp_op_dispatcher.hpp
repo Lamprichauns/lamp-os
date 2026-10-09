@@ -1,5 +1,5 @@
 // WispOpDispatcher parses + routes a MSG_CONTROL_OP payload (JSON).
-// Wire: {"char":"wispOp","op":"setZone","zoneId":3} etc.
+// Wire: {"char":"wispOp","op":"setSource","mode":"osc"} etc.
 // WifiLink/StageBeacon pointers are nullable for tests that skip the setWifi path.
 
 #pragma once
@@ -17,9 +17,9 @@ class StageBeacon;
 
 enum class DispatchResult {
   Ignored,             // payload not addressed to this wisp (e.g. wispStatus echo)
-  AppliedZoneChange,   // setZone / clearZone applied
   AppliedWifiChange,   // setWifi persisted + WifiLink/StageBeacon kicked
-  AppliedSourceChange, // setSource applied (Off/Manual/Aurora)
+  AppliedSourceChange, // setSource applied (Off/Manual/Osc)
+  AppliedOscRole,      // setOscRole applied
   AppliedManualPalette,// setManualPalette stored
   AppliedOffColor,     // setOffColor stored (Off-mode wisp-ring color)
   AppliedShuffle,      // shuffle: bumped shuffleSeed, re-roll queued

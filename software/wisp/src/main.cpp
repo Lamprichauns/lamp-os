@@ -14,9 +14,7 @@
 #include "status/status_ring.hpp"
 #include "config/wisp_config.hpp"
 #include "config/wisp_op_dispatcher.hpp"
-#include "config/zone_selector.hpp"
 #include "core/wisp_controller.hpp"
-#include "aurora/AuroraPaletteClient.h"
 
 #include "artnet/artnet_emitter.hpp"
 #include "net/stage_beacon.hpp"
@@ -34,7 +32,6 @@ wisp::SeqSource wispSeq;
 wisp::StatusEmitter statusEmitter;
 wisp::PresenceBeacon presenceBeacon;
 wisp::WispRoster wispRoster;
-AuroraPaletteClient auroraClient;
 wisp::WifiLink wifi;
 wisp::StageBeacon stageBeacon;
 wisp::ArtnetEmitter artnetEmitter;
@@ -65,17 +62,15 @@ constexpr uint8_t  kStatusRingBrightness = 40;
 wisp::WispConfig wispConfig;
 wisp::WispOpDispatcher wispOpDispatcher(wispConfig);
 wisp::crypto::RecentNonces wispOpNonces;
-wisp::ZoneSelector zoneSelector;
 
 wisp::WispController controller(currentPalette, paintDistributor, wispConfig,
-                                zoneSelector, auroraClient, statusEmitter,
-                                artnetEmitter, testStrip);
+                                statusEmitter, artnetEmitter, testStrip);
 
 wisp::MeshRouter meshRouter(
     inventory, wispRoster, wispOpDispatcher,
     [](wisp::DispatchResult r) { controller.applyOpResult(r); });
 
-// Stable across reboots; Aurora uses it to recognize returning subscribers.
+// Stable across reboots; the stage beacon's BLE device name.
 String buildInstanceId() {
   uint64_t mac = ESP.getEfuseMac();
   char buf[32];
@@ -86,10 +81,10 @@ String buildInstanceId() {
 
 wisp::SerialConsole serialConsole(
     paintDistributor, wispConfig, stageBeacon,
-    wifi, statusEmitter, inventory, zoneSelector,
+    wifi, statusEmitter, inventory,
     [](wisp::WispSourceMode m) { controller.applySourceModeTransition(m); });
 
-wisp::OscListener oscListener(controller);
+wisp::OscListener oscListener(controller, wispConfig);
 
 }  // namespace
 
@@ -108,13 +103,6 @@ void setup() {
   testStrip.setBrightness(kStatusRingBrightness);
 
   wispConfig.begin();
-  if (wispConfig.hasSelectedZone()) {
-    const int z = wispConfig.selectedZone();
-    zoneSelector.setFromNvs(z);
-    Serial.printf("[wisp] zone %d from NVS\n", z);
-  } else {
-    Serial.println("[wisp] no zone in NVS; will latch first-seen Aurora zone");
-  }
 
   // Apply NVS-configured format + pixel count to the physical strip.
   controller.applyLedConfig();
@@ -147,14 +135,6 @@ void setup() {
   wispOpDispatcher.setWifiSinks(&wifi, &stageBeacon);
   wispOpDispatcher.setNonces(&wispOpNonces);
 
-  auroraClient.setInstanceId(buildInstanceId().c_str());
-  auroraClient.onActivePalette(
-      [](int zone, const Palette& p) { controller.onAuroraPalette(zone, p); });
-  auroraClient.onZoneObserved([](int zone) { zoneSelector.observe(zone); });
-  auroraClient.begin();
-  Serial.printf("[wisp] aurora client started as %s\n",
-                buildInstanceId().c_str());
-
   paintDistributor.begin(&inventory, &mesh, &currentPalette, &wispRoster);
   paintDistributor.setShuffleSeed(wispConfig.shuffleSeed());
   paintDistributor.setDriftInterval(wispConfig.driftIntervalMs(),
@@ -166,11 +146,11 @@ void setup() {
   wispSeq.counter = static_cast<uint16_t>(esp_random());
 
   // carriedFw* zero-fill; wire layout retained for back-compat with older lamps.
-  statusEmitter.begin(&mesh, &zoneSelector, &auroraClient, &wispConfig,
-                      &currentPalette, &wispSeq, &wifi);
+  statusEmitter.begin(&mesh, &controller, &wispConfig, &currentPalette,
+                      &wispSeq, &wifi);
   wifi.setOnChangeCallback([] { statusEmitter.triggerOnChange(); });
   presenceBeacon.begin(&mesh, &paintDistributor, &currentPalette,
-                       &auroraClient, &wispRoster, &wispSeq, &statusEmitter,
+                       &controller, &wispRoster, &wispSeq, &statusEmitter,
                        &wispConfig);
   statusEmitter.startTimer();
   presenceBeacon.startTimer();
@@ -179,7 +159,8 @@ void setup() {
 
   Serial.println("[wisp] paint distributor + status beacon online");
   Serial.println("[wisp] cmds: paint:on/off  stage:on/off");
-  Serial.println("[wisp] cmds: src:off/manual/aurora/osc  wifi:set <ssid> <pass>  wifi:show");
+  Serial.println("[wisp] cmds: src:off/manual/osc  osc:role <primary|secondary|tertiary|fill>");
+  Serial.println("[wisp] cmds: wifi:set <ssid> <pass>  wifi:show");
 }
 
 void loop() {
@@ -188,7 +169,6 @@ void loop() {
   static uint32_t lastClaimsMs = 0;
   const uint32_t now = millis();
 
-  auroraClient.loop();
   wifi.loop();
   serialConsole.pump();
   meshRouter.drainPendingOps();
@@ -204,7 +184,6 @@ void loop() {
     paintDistributor.refreshDriftRoster(/*paintNewcomers=*/true);
   }
   oscListener.poll(wispConfig.sourceMode() == wisp::WispSourceMode::Osc, now);
-  controller.tickAuroraLiveness();
   controller.tickOscLiveness(millis());
   controller.tickRingFade(now);
 

@@ -4,12 +4,14 @@ A small magical light that signals to others. Wisp is dedicated infrastructure (
 
 ## Two jobs
 
-1. **Palette bridge.** Discovers an Aurora device on the LAN (mDNS + WebSocket + Protobuf + HTTP), follows its active palette, and fans out per-lamp paired colors to the mesh as transient base-color overrides over ESP-NOW.
+1. **Palette bridge.** Follows a palette from Straylight over OSC 1.0 (SLIP frames on the USB serial console, or UDP port 9000 on the softAP or its STA LAN join) and fans out per-lamp paired colors to the mesh over ESP-NOW. The app picks which Straylight palette role it follows (primary, secondary, tertiary or fill); the address is `/straylight/palette/<role>/colours`, flat RGB floats 0..1.
 2. **Firmware carrier.** Holds the latest signed lamp firmware blob and pushes it out to any lamp on the mesh running an older version (single-peer-at-a-time, signed with ed25519, channel-matched). Wisp itself is flashed via USB; it never self-updates.
 
 ## Off-by-default paint
 
-Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. Aurora discovery and the notification WebSocket run only while the source mode is Aurora. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
+Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound only while the source mode is Osc. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
+
+In Osc mode a stream gap is not an opt-out: after 10 s with no palette the wisp lets lamps ease home and shows its off color, but stays in Osc mode, and the next palette resumes painting with no app action.
 
 Lamp overrides are transient (RAM-only on the lamp side). When wisp drops or paint mode goes off, lamps re-render their saved base config. The user's stored config is never touched.
 

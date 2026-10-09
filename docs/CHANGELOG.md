@@ -5,6 +5,21 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Added
+- **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
+  source in the app and choose which of Straylight's palettes to follow —
+  Primary, Secondary, Tertiary or Fill. The wisp takes it over USB or the
+  network. If Straylight goes quiet for about ten seconds your lamps ease back
+  to their own colours and the app says it's waiting; when Straylight comes
+  back the lamps pick its palette up again on their own.
+
+### Changed
+- **Aurora is gone.** The wisp's Aurora palette source, which never shipped
+  past "untested", has been removed from the wisp and the app, along with its
+  zone picker. A wisp that was set to Aurora comes up Off.
+
 ## 1.2.7
 
 ### Changed

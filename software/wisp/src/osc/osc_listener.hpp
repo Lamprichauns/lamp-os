@@ -1,7 +1,8 @@
 // OscListener feeds OSC packets from USB serial (SLIP frames, handed in by
-// SerialConsole) and UDP into WispController's OSC palette input. Loop task
-// only. The UDP socket is bound on every interface (softAP and STA) while
-// `poll(true)` and closed on `poll(false)`.
+// SerialConsole) and UDP into WispController's OSC palette input, reading
+// the address for the configured role. Loop task only. The UDP socket is
+// bound on every interface (softAP and STA) while `poll(true)` and closed on
+// `poll(false)`.
 
 #pragma once
 
@@ -11,16 +12,14 @@
 namespace wisp {
 
 class WispController;
+class WispConfig;
 
-// ponytail: one fixed address; make it configurable when a second sender
-// or role is wanted.
-inline constexpr char kOscPaletteAddress[] =
-    "/straylight/palette/primary/colours";
 inline constexpr uint16_t kOscUdpPort = 9000;
 
 class OscListener {
  public:
-  explicit OscListener(WispController& controller) : controller_(controller) {}
+  OscListener(WispController& controller, const WispConfig& config)
+      : controller_(controller), config_(config) {}
 
   void poll(bool active, uint32_t nowMs);
   void handlePacket(const uint8_t* data, size_t len, const char* via);
@@ -30,6 +29,7 @@ class OscListener {
   void close();
 
   WispController& controller_;
+  const WispConfig& config_;
   int fd_ = -1;
   uint32_t lastOpenAttemptMs_ = 0;
   bool attempted_ = false;

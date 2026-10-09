@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include "config/zone_selector.hpp"
 #include "status/status_ring.hpp"
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
@@ -31,10 +30,10 @@ inline SemaphoreHandle_t asHandle(void* m) {
 }
 
 constexpr const char* kNamespace      = "wisp";
-constexpr const char* kKeyZone        = "selZone";
 constexpr const char* kKeySsid        = "wifiSsid";
 constexpr const char* kKeyPw          = "wifiPw";
 constexpr const char* kKeySourceMode  = "srcMode";
+constexpr const char* kKeyOscRole     = "oscRole";
 // Legacy packed RGB blob (3 bytes/color), read-only for migration.
 constexpr const char* kKeyManualPaletteRgb = "manualPal";
 // Packed RGBW blob (4 bytes/color). A separate key because length parity
@@ -55,13 +54,12 @@ WispSourceMode coerceSourceMode(int raw) {
   switch (raw) {
     case static_cast<int>(WispSourceMode::Off):
     case static_cast<int>(WispSourceMode::Manual):
-    case static_cast<int>(WispSourceMode::Aurora):
     case static_cast<int>(WispSourceMode::Osc):
       return static_cast<WispSourceMode>(raw);
     default:
-      // Unknown / corrupted NVS value: fall back to Aurora so a partially-
-      // flashed wisp doesn't strand itself in Off with no operator nearby.
-      return WispSourceMode::Aurora;
+      // Unknown or retired values (2) load as Off so a stored mode never
+      // surprises lamps.
+      return WispSourceMode::Off;
   }
 }
 }  // namespace
@@ -74,19 +72,18 @@ void WispConfig::begin() {
   opened_ = prefs_.begin(kNamespace, /*readOnly=*/false);
   if (!opened_) {
     Serial.println("[wisp.cfg] Preferences::begin('wisp') failed");
-    selectedZone_ = -1;
     wifiSsid_     = String();
     wifiPw_       = String();
     return;
   }
-  selectedZone_ = prefs_.getInt(kKeyZone, -1);
   wifiSsid_     = prefs_.getString(kKeySsid, String());
   wifiPw_       = prefs_.getString(kKeyPw, String());
-  // Off default: a fresh wisp with no Aurora bus otherwise broadcasts
-  // empty-palette frames that fight operator BLE color edits.
+  // Off default: a fresh wisp otherwise broadcasts empty-palette frames
+  // that fight operator BLE color edits.
   sourceMode_   = coerceSourceMode(
       prefs_.getInt(kKeySourceMode,
                     static_cast<int>(WispSourceMode::Off)));
+  oscRole_      = coerceOscRole(prefs_.getUChar(kKeyOscRole, 0));
 
   manualPalette_.clear();
   const size_t paletteLen = prefs_.getBytesLength(kKeyManualPalette);
@@ -173,39 +170,19 @@ void WispConfig::begin() {
     brightness_ = raw > 100 ? 100 : raw;
   }
 
-  Serial.printf("[wisp.cfg] loaded selZone=%d ssid='%s' pw=%s "
-                "srcMode=%d manualColors=%u offColor=%u,%u,%u shuffleSeed=%u "
+  Serial.printf("[wisp.cfg] loaded ssid='%s' pw=%s "
+                "srcMode=%d oscRole=%s manualColors=%u offColor=%u,%u,%u "
+                "shuffleSeed=%u "
                 "driftIntv=%u ms driftFade=%u%% name='%s' hasPassword=%d\n",
-                selectedZone_, wifiSsid_.c_str(),
+                wifiSsid_.c_str(),
                 wifiPw_.length() ? "<set>" : "<empty>",
-                static_cast<int>(sourceMode_),
+                static_cast<int>(sourceMode_), oscRoleName(oscRole_),
                 (unsigned)manualPalette_.size(),
                 offColor_.r, offColor_.g, offColor_.b,
                 (unsigned)shuffleSeed_,
                 (unsigned)driftIntervalMs_,
                 (unsigned)driftFadePct_,
                 name_.c_str(), (int)(password_.length() > 0));
-}
-
-void WispConfig::setSelectedZone(int zone) {
-  if (!isValidZone(zone)) {
-    Serial.printf("[wisp.cfg] setSelectedZone(%d) rejected — use clearSelectedZone() for <0, or zone must be 0..%d\n",
-                  zone, kMaxZoneId);
-    return;
-  }
-  selectedZone_ = zone;
-  if (opened_) {
-    prefs_.putInt(kKeyZone, zone);
-  }
-  Serial.printf("[wisp.cfg] selZone <= %d\n", zone);
-}
-
-void WispConfig::clearSelectedZone() {
-  selectedZone_ = -1;
-  if (opened_) {
-    prefs_.remove(kKeyZone);
-  }
-  Serial.println("[wisp.cfg] selZone cleared");
 }
 
 void WispConfig::setWifi(const String& ssid, const String& pw) {
@@ -235,6 +212,14 @@ void WispConfig::setSourceMode(WispSourceMode mode) {
     prefs_.putInt(kKeySourceMode, static_cast<int>(mode));
   }
   Serial.printf("[wisp.cfg] sourceMode <= %d\n", static_cast<int>(mode));
+}
+
+void WispConfig::setOscRole(OscRole role) {
+  oscRole_ = role;
+  if (opened_) {
+    prefs_.putUChar(kKeyOscRole, static_cast<uint8_t>(role));
+  }
+  Serial.printf("[wisp.cfg] oscRole <= %s\n", oscRoleName(role));
 }
 
 void WispConfig::setManualPalette(

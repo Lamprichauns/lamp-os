@@ -1,25 +1,23 @@
-// WispController is the source-mode + Aurora orchestration brain.
+// WispController is the source-mode orchestration brain.
 //
-// Owns the mode-transition, manual-palette push, Aurora palette callback,
-// Aurora-liveness edge handling, and the op-result application invoked by
+// Owns the mode-transition, manual-palette push, OSC palette input and
+// stream-liveness handling, and the op-result application invoked by
 // MeshRouter after a CONTROL_OP dispatch. Triggers the status-ring render.
-// All methods run on the loop task except onAuroraPalette, which fires from
-// auroraClient.loop() (also the loop task).
+// Loop task only.
 
 #pragma once
 
 #include "paint/current_palette.hpp"  // CurrentPalette, Palette
 #include "config/wisp_op_dispatcher.hpp"  // DispatchResult
+#include "osc/osc_freshness.hpp"
 #include "status/status_ring.hpp"  // kMaxRingPixels
 
 class Adafruit_NeoPixel;
-class AuroraPaletteClient;
 
 namespace wisp {
 
 class PaintDistributor;
 class WispConfig;
-class ZoneSelector;
 class StatusEmitter;
 class ArtnetEmitter;
 enum class WispSourceMode : uint8_t;
@@ -27,14 +25,11 @@ enum class WispSourceMode : uint8_t;
 class WispController {
  public:
   WispController(CurrentPalette& palette, PaintDistributor& paint,
-                 WispConfig& config, ZoneSelector& zones,
-                 AuroraPaletteClient& aurora, StatusEmitter& status,
+                 WispConfig& config, StatusEmitter& status,
                  ArtnetEmitter& artnet, Adafruit_NeoPixel& strip)
       : palette_(palette),
         paint_(paint),
         config_(config),
-        zones_(zones),
-        aurora_(aurora),
         status_(status),
         artnet_(artnet),
         strip_(strip) {}
@@ -42,23 +37,20 @@ class WispController {
   // Idempotent: safe at boot (from NVS) and on every mode flip.
   void applySourceModeTransition(WispSourceMode mode);
 
-  // Aurora active-palette callback. Zone latch + filter + palette push + ring.
-  void onAuroraPalette(int zone, const Palette& p);
-
   // Apply the DispatchResult from a CONTROL_OP. MeshRouter result callback.
   void applyOpResult(DispatchResult res);
 
-  // Loop-task edge detector: Aurora stream drop holds paint off + re-emits.
-  void tickAuroraLiveness();
-
   // OSC palette input (flat RGB floats 0..1). Applied only in Osc mode;
-  // an unchanged palette only refreshes liveness. Never turns paint on.
+  // an unchanged palette only refreshes liveness. Never changes paint mode.
   void onOscPalette(const float* rgb, size_t colours, const char* via,
                     uint32_t nowMs);
 
-  // Osc mode with no palette for kOscStaleMs: clear + paint off, like an
-  // Aurora stream drop.
+  // Osc mode with no palette for OscFreshness::kStaleMs: hold lamps and ring
+  // at Off with paint mode kept, until the next palette.
   void tickOscLiveness(uint32_t now);
+
+  // Osc mode with a fresh palette. HELLO flag bit 2 + wispStatus sourceLive.
+  bool sourceLive() const;
 
   // Re-init the strip from the current LED format + pixel count config.
   // Call once after config load; call again after setLedStrip op.
@@ -77,19 +69,17 @@ class WispController {
   CurrentPalette& palette_;
   PaintDistributor& paint_;
   WispConfig& config_;
-  ZoneSelector& zones_;
-  AuroraPaletteClient& aurora_;
   StatusEmitter& status_;
   ArtnetEmitter& artnet_;
   Adafruit_NeoPixel& strip_;
 
-  bool auroraWasStreaming_ = false;
+  void resetOscStream();
 
-  static constexpr uint32_t kOscStaleMs = 10000;
   static constexpr size_t kOscMaxFloats = 150;  // kManualPaletteMaxColors * 3
+  OscFreshness oscFresh_;
+  // Last applied palette; an identical one only refreshes liveness.
   float oscLast_[kOscMaxFloats] = {0};
-  size_t oscLastFloats_ = 0;  // 0 = no live OSC palette
-  uint32_t oscLastRxMs_ = 0;
+  size_t oscLastFloats_ = 0;
   uint32_t oscLastLogMs_ = 0;
   // Reused across changes so a streaming palette never reallocates.
   Palette oscScratch_;
