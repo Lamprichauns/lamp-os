@@ -1,6 +1,7 @@
 // artnet_frame is a pure, host-portable ArtNet DMX frame builder for the wisp
-// backwards-compat ArtNet bridge. Produces the exact 530-byte wire format
-// that software/lamp-os/src/components/network/artnet.cpp decodes.
+// backwards-compat ArtNet bridge. Produces the exact 530-byte universe-1 frame
+// pre-mesh lamp firmware decodes; those lamps reject any other packet length.
+// Channels per fixture: shade RGBW, base RGBW, mode, parameter.
 //
 // No Arduino, no FreeRTOS. Caller owns the buffer; the builder only fills it in.
 
