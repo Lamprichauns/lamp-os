@@ -9,6 +9,7 @@ import '../../../../core/widgets/lamp_card.dart';
 import '../../../../core/widgets/settings_row.dart';
 import '../../application/wisp_notifier.dart';
 import '../../domain/wisp_status.dart';
+import 'wisp_settings_pending.dart';
 
 /// Maps a slider position [0..1] to milliseconds [30000..3600000]
 /// on a logarithmic scale (base 120). p=0 → 30 s, p=1 → 60 min.
@@ -44,6 +45,17 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
   @override
   void initState() {
     super.initState();
+    _seed();
+  }
+
+  // Seeds once the wisp's real settings are known, never from placeholders.
+  @override
+  void didUpdateWidget(DriftControls old) {
+    super.didUpdateWidget(old);
+    if (!old.status.configKnown && widget.status.configKnown) _seed();
+  }
+
+  void _seed() {
     _pos = msToPos(widget.status.driftIntervalMs).clamp(0.0, 1.0);
     _fadePct = widget.status.driftFadePct.clamp(0, 100);
   }
@@ -58,59 +70,62 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SettingsGroupHeading('Color drift'),
-        LampCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _LabelRow(left: 'How often', right: _intervalLabel()),
-              Slider(
-                min: 0,
-                max: 1,
-                value: _pos,
-                onChanged: (v) {
-                  setState(() => _pos = v);
-                  notifier.setDrift(posToMs(v), _fadePct);
-                },
-                onChangeEnd: (_) => notifier.flushDrift(),
-              ),
-              const SizedBox(height: AppSpace.lg),
-              _LabelRow(left: 'Fade', right: '$_fadePct%'),
-              Slider(
-                min: 0,
-                max: 100,
-                divisions: 100,
-                value: _fadePct.toDouble(),
-                onChanged: (v) {
-                  setState(() => _fadePct = v.round());
-                  notifier.setDrift(posToMs(_pos), v.round());
-                },
-                onChangeEnd: (_) => notifier.flushDrift(),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Snappy',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    Text(
-                      'Flowing',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
+        if (!widget.status.configKnown)
+          const LampCard(child: WispSettingsPending())
+        else
+          LampCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LabelRow(left: 'How often', right: _intervalLabel()),
+                Slider(
+                  min: 0,
+                  max: 1,
+                  value: _pos,
+                  onChanged: (v) {
+                    setState(() => _pos = v);
+                    notifier.setDrift(posToMs(v), _fadePct);
+                  },
+                  onChangeEnd: (_) => notifier.flushDrift(),
                 ),
-              ),
-            ],
+                const SizedBox(height: AppSpace.lg),
+                _LabelRow(left: 'Fade', right: '$_fadePct%'),
+                Slider(
+                  min: 0,
+                  max: 100,
+                  divisions: 100,
+                  value: _fadePct.toDouble(),
+                  onChanged: (v) {
+                    setState(() => _fadePct = v.round());
+                    notifier.setDrift(posToMs(_pos), v.round());
+                  },
+                  onChangeEnd: (_) => notifier.flushDrift(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Snappy',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      Text(
+                        'Flowing',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

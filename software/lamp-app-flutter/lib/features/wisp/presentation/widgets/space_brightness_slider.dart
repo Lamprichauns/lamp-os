@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../application/wisp_notifier.dart';
 import '../../domain/wisp_status.dart';
+import 'wisp_settings_pending.dart';
 
 /// Top space-dimmer control above the palette gradient bar. Scales every
 /// claimed lamp together without touching their colors. Deliberately relative
@@ -31,6 +32,17 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
   @override
   void initState() {
     super.initState();
+    _seed();
+  }
+
+  // Seeds once the wisp's real settings are known, never from placeholders.
+  @override
+  void didUpdateWidget(SpaceBrightnessSlider old) {
+    super.didUpdateWidget(old);
+    if (!old.status.configKnown && widget.status.configKnown) _seed();
+  }
+
+  void _seed() {
     _value = widget.status.brightness.clamp(0, 100).toDouble();
   }
 
@@ -62,17 +74,20 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            Slider(
-              min: 0,
-              max: 100,
-              value: _value,
-              label: _value >= 99.5 ? 'Full' : 'Dimmer',
-              onChanged: (v) {
-                setState(() => _value = v);
-                notifier.setBrightness(v.round());
-              },
-              onChangeEnd: (_) => notifier.flushBrightness(),
-            ),
+            if (!widget.status.configKnown)
+              const WispSettingsPending()
+            else
+              Slider(
+                min: 0,
+                max: 100,
+                value: _value,
+                label: _value >= 99.5 ? 'Full' : 'Dimmer',
+                onChanged: (v) {
+                  setState(() => _value = v);
+                  notifier.setBrightness(v.round());
+                },
+                onChangeEnd: (_) => notifier.flushBrightness(),
+              ),
           ],
         ),
       ),

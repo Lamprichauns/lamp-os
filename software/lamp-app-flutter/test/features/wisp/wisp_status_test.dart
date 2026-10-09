@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lamp_app/features/wisp/domain/wisp_config.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_source_mode.dart';
 import 'package:lamp_app/features/wisp/domain/wisp_status.dart';
 
@@ -281,6 +282,77 @@ void main() {
       expect(s.ethIp, '10.0.0.42');
       expect(WispStatus.fromBytes(_b('{"wispMac":"AA:BB:CC:DD:EE:FF"}')).ethIp,
           '');
+    });
+  });
+
+  group('WispStatus config knowledge', () {
+    test('a status the wisp sent carries known config', () {
+      final s = WispStatus.fromBytes(_b(
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc","px":60}',
+      ));
+      expect(s.configKnown, isTrue);
+      expect(s.pixelCount, 60);
+    });
+
+    // Hello-only merge: the lamp has no wispStatus payload yet, so the
+    // config fields are parser defaults, not the wisp's settings.
+    test('no wisp payload (no source) → config unknown', () {
+      final s = WispStatus.fromBytes(_b('{"wispMac":"AA:BB:CC:DD:EE:FF"}'));
+      expect(s.present, isTrue);
+      expect(s.configKnown, isFalse);
+    });
+
+    test('configSplit marks the status config-free → unknown', () {
+      final s = WispStatus.fromBytes(_b(
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc","configSplit":true}',
+      ));
+      expect(s.configKnown, isFalse);
+    });
+
+    test('configLastSeenMs parses; absent → null', () {
+      expect(
+        WispStatus.fromBytes(_b(
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","configLastSeenMs":1234}',
+        )).configLastSeenMs,
+        1234,
+      );
+      expect(
+        WispStatus.fromBytes(_b('{"wispMac":"AA:BB:CC:DD:EE:FF"}'))
+            .configLastSeenMs,
+        isNull,
+      );
+    });
+
+    test('withConfig overlays every config field and marks it known', () {
+      const config = WispConfig(
+        ledType: 'BGR',
+        pixelCount: 12,
+        brightness: 40,
+        driftIntervalMs: 60000,
+        driftFadePct: 10,
+        shuffleSeed: 9,
+        opSeq: 5,
+      );
+      final s = WispStatus.fromBytes(_b(
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","configSplit":true,"source":"off"}',
+      )).withConfig(config);
+      expect(s.configKnown, isTrue);
+      expect(s.ledType, 'BGR');
+      expect(s.pixelCount, 12);
+      expect(s.brightness, 40);
+      expect(s.driftIntervalMs, 60000);
+      expect(s.driftFadePct, 10);
+      expect(s.shuffleSeed, 9);
+      expect(s.opSeq, 5);
+      expect(s.source, WispSourceMode.off);
+    });
+
+    test('copyWith keeps config knowledge', () {
+      final s = WispStatus.fromBytes(_b(
+        '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc","configLastSeenMs":7}',
+      )).copyWith(brightness: 30);
+      expect(s.configKnown, isTrue);
+      expect(s.configLastSeenMs, 7);
     });
   });
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../control/domain/lamp_color.dart';
+import 'wisp_config.dart';
 import 'wisp_source_mode.dart';
 
 /// Default Off-mode color. Matches the wisp firmware's NVS-default for
@@ -48,6 +49,8 @@ class WispStatus {
     this.pixelCount = 30,
     this.opSeq = 0,
     this.brightness = 100,
+    this.configKnown = false,
+    this.configLastSeenMs,
   });
 
   /// Sentinel for "no wisp has been heard on this lamp yet" (lamp
@@ -163,6 +166,18 @@ class WispStatus {
   /// lamps: 100 = untouched, lower dims the whole space together. Absent on
   /// legacy wisps and omitted at the default; defaults to 100.
   final int brightness;
+
+  /// True when [ledType], [pixelCount], [brightness], the drift fields,
+  /// [shuffleSeed] and [opSeq] hold the wisp's real settings: either a
+  /// `wispConfig` was merged in ([withConfig]), or the wisp's own status
+  /// carried them (`source` present and no `configSplit`). False means those
+  /// fields are placeholders a settings form must not show or write back.
+  final bool configKnown;
+
+  /// Lamp-side `millis()` when the lamp cached the wisp's latest
+  /// `wispConfig`. Absent on lamps that predate it, or until one arrives; a
+  /// change means the `wispconfig` section holds something new.
+  final int? configLastSeenMs;
 
   /// Convenience: is either surface currently wisp-painted?
   bool get controlling => controllingBase || controllingShade;
@@ -289,6 +304,23 @@ class WispStatus {
       pixelCount: asInt(json['px']) ?? 30,
       opSeq: asInt(json['opSeq']) ?? 0,
       brightness: asInt(json['brightness']) ?? 100,
+      configKnown: json.containsKey('source') && json['configSplit'] != true,
+      configLastSeenMs: asInt(json['configLastSeenMs']),
+    );
+  }
+
+  /// This status with [config]'s settings in place of whatever the status
+  /// carried, marked [configKnown].
+  WispStatus withConfig(WispConfig config) {
+    return _copy(
+      ledType: config.ledType,
+      pixelCount: config.pixelCount,
+      brightness: config.brightness,
+      driftIntervalMs: config.driftIntervalMs,
+      driftFadePct: config.driftFadePct,
+      shuffleSeed: config.shuffleSeed,
+      opSeq: config.opSeq,
+      configKnown: true,
     );
   }
 
@@ -303,6 +335,35 @@ class WispStatus {
     String? ledType,
     int? pixelCount,
     int? brightness,
+  }) {
+    return _copy(
+      source: source,
+      oscRole: oscRole,
+      offColor: offColor,
+      driftIntervalMs: driftIntervalMs,
+      driftFadePct: driftFadePct,
+      name: name,
+      hasPassword: hasPassword,
+      ledType: ledType,
+      pixelCount: pixelCount,
+      brightness: brightness,
+    );
+  }
+
+  WispStatus _copy({
+    WispSourceMode? source,
+    OscRole? oscRole,
+    LampColor? offColor,
+    int? driftIntervalMs,
+    int? driftFadePct,
+    String? name,
+    bool? hasPassword,
+    String? ledType,
+    int? pixelCount,
+    int? brightness,
+    int? shuffleSeed,
+    int? opSeq,
+    bool? configKnown,
   }) {
     return WispStatus(
       wifiConnected: wifiConnected,
@@ -325,15 +386,17 @@ class WispStatus {
       controllingShade: controllingShade,
       baseWispColor: baseWispColor,
       shadeWispColor: shadeWispColor,
-      shuffleSeed: shuffleSeed,
+      shuffleSeed: shuffleSeed ?? this.shuffleSeed,
       driftIntervalMs: driftIntervalMs ?? this.driftIntervalMs,
       driftFadePct: driftFadePct ?? this.driftFadePct,
       name: name ?? this.name,
       hasPassword: hasPassword ?? this.hasPassword,
       ledType: ledType ?? this.ledType,
       pixelCount: pixelCount ?? this.pixelCount,
-      opSeq: opSeq,
+      opSeq: opSeq ?? this.opSeq,
       brightness: brightness ?? this.brightness,
+      configKnown: configKnown ?? this.configKnown,
+      configLastSeenMs: configLastSeenMs,
     );
   }
 
@@ -369,7 +432,9 @@ class WispStatus {
           ledType == other.ledType &&
           pixelCount == other.pixelCount &&
           opSeq == other.opSeq &&
-          brightness == other.brightness;
+          brightness == other.brightness &&
+          configKnown == other.configKnown &&
+          configLastSeenMs == other.configLastSeenMs;
 
   @override
   int get hashCode => Object.hash(
@@ -390,6 +455,14 @@ class WispStatus {
         driftIntervalMs,
         driftFadePct,
         Object.hash(
-            name, hasPassword, ledType, pixelCount, opSeq, brightness),
+          name,
+          hasPassword,
+          ledType,
+          pixelCount,
+          opSeq,
+          brightness,
+          configKnown,
+          configLastSeenMs,
+        ),
       );
 }
