@@ -11,7 +11,7 @@ struct WispStatusFields {
   const char*  paletteIdPrefix;
   uint32_t     lastSeenMs;
   const char*  source;
-  const char*  oscRole;  // emitted only when source is "osc"
+  const char*  oscRole;  // omitted at "primary"
   uint8_t      offR, offG, offB, offW;
   bool         hasOffColor;
   uint8_t      shuffleSeed;

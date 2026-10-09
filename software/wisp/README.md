@@ -9,11 +9,11 @@ A small magical light that signals to others. Wisp is dedicated infrastructure (
 
 ## Off-by-default paint
 
-Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound only while the source mode is Osc. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
+Status reporting, mesh-inventory tracking, and firmware push all run unconditionally at boot. The OSC UDP listener is bound, and the WiFi STA join to a stored network runs, only while the source mode is Osc; the join scans the mesh channel only and backs off (10 s doubling to 5 min) when the network isn't there, so the radio stays on the mesh. **Palette painting requires explicit user opt-in via the app each boot.** A power blip therefore never surprises lamps with a sudden color change — wisp comes back up watching, not painting.
 
-In Osc mode a stream gap is not an opt-out: after 30 s with no palette (or as soon as Straylight sends a blank one for an unbound role) the wisp lets lamps ease home and shows its off color, but stays in Osc mode, and the next palette resumes painting with no app action.
+In Osc mode a stream gap is not an opt-out: after 30 s with nothing from Straylight (or as soon as Straylight sends a blank one for an unbound role) the wisp lets lamps ease home and shows its off color, but stays in Osc mode, and the next palette resumes painting with no app action.
 
-Prefer USB serial for the OSC feed. Over UDP the wisp hears Straylight's whole feed, not just its palette, on the radio it shares with the mesh, and a restate burst can overflow lwIP's 6-datagram socket queue and drop the palette until the next change or restate.
+Prefer USB serial for the OSC feed. Over UDP the wisp hears Straylight's whole feed, not just its palette, on the radio it shares with the mesh, and a restate burst can overflow lwIP's 6-datagram socket queue and drop the palette, possibly on every restate, so a change lost that way waits for the next change.
 
 Lamp overrides are transient (RAM-only on the lamp side). When wisp drops or paint mode goes off, lamps re-render their saved base config. The user's stored config is never touched.
 

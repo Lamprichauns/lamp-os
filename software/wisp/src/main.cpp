@@ -170,7 +170,7 @@ void loop() {
   static uint32_t lastClaimsMs = 0;
   const uint32_t now = millis();
 
-  wifi.loop();
+  wifi.loop(wispConfig.sourceMode() == wisp::WispSourceMode::Osc, now);
   serialConsole.pump();
   meshRouter.drainPendingOps();
   // Beacon work runs here on the 8KB loop stack; the FreeRTOS timers only flag.

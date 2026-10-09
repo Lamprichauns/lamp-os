@@ -15,6 +15,7 @@ class WispController;
 class WispConfig;
 
 inline constexpr uint16_t kOscUdpPort = 9000;
+inline constexpr char kStraylightAddressPrefix[] = "/straylight/";
 
 class OscListener {
  public:

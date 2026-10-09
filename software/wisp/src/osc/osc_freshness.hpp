@@ -25,6 +25,14 @@ class OscFreshness {
     return edge;
   }
 
+  // Any other packet from the feed. Keeps a held palette live: over UDP the
+  // palette rides last in each restate burst and is the datagram lwIP drops
+  // when its queue overflows, while the rest of the feed still arrives.
+  // Never makes a stale stream live.
+  void onFeed(uint32_t nowMs) {
+    if (live_) lastRxMs_ = nowMs;
+  }
+
   // True on the live -> stale edge.
   bool tick(uint32_t nowMs) {
     if (!live_ || nowMs - lastRxMs_ < kStaleMs) return false;

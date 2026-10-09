@@ -14,11 +14,12 @@ constexpr size_t CORE_PIN = 179;
 void setUp() {}
 void tearDown() {}
 
-// Every optional field at its widest non-default value, Osc mode (oscRole +
-// drift fields), both mismatch fields: the widest frame the builder can make.
+// Every optional field at its widest non-default value, Manual mode (widest
+// source with oscRole + drift fields), both mismatch fields: the widest frame
+// the builder can make.
 static wisp::WispStatusFields worstCase() {
   return wisp::WispStatusFields{
-      false, false, "abcdef12", 4294967295u, "osc", "secondary",
+      false, false, "abcdef12", 4294967295u, "manual", "secondary",
       255, 255, 255, 255, true, /*shuffleSeed=*/255,
       /*driftIntervalMs=*/3600000, /*driftFadePct=*/100,
       /*name=*/"12345678901234567890", /*hasPassword=*/true,
@@ -100,6 +101,7 @@ void test_fully_loaded_worst_case_never_fails() {
 void test_offcolor_and_prefix_outrank_cosmetics() {
   wisp::WispStatusFields f = worstCase();
   f.source = "off";
+  f.oscRole = "primary";
   f.wifiChannelMismatch = false;
   f.brightness = 100;
   f.opSeq = 0;
@@ -114,8 +116,7 @@ void test_offcolor_and_prefix_outrank_cosmetics() {
   TEST_ASSERT_TRUE(d["ledType"].isNull());
 }
 
-// Priority: in Osc mode oscRole takes offColor's slot and outranks the
-// cosmetics the same way.
+// Priority: oscRole outranks the cosmetics the same way.
 void test_osc_role_outranks_cosmetics() {
   wisp::WispStatusFields f = worstCase();
   char out[256];
@@ -129,27 +130,25 @@ void test_osc_role_outranks_cosmetics() {
   TEST_ASSERT_TRUE(d["ledType"].isNull());
 }
 
-// oscRole rides only in Osc mode and only off its "primary" default.
-void test_osc_role_omitted_at_default_and_outside_osc() {
-  wisp::WispStatusFields f = plain();
-  f.source = "osc";
-  char out[256];
-  TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
-  JsonDocument d;
-  TEST_ASSERT_FALSE(deserializeJson(d, out));
-  TEST_ASSERT_TRUE(d["oscRole"].isNull());
+// oscRole is omitted at its "primary" default and rides in every mode off
+// it, so the app already shows the stored role when Osc is picked.
+void test_osc_role_omitted_at_default_and_emitted_in_every_mode() {
+  const char* sources[] = {"off", "manual", "osc"};
+  for (const char* src : sources) {
+    wisp::WispStatusFields f = plain();
+    f.source = src;
+    char out[256];
+    TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
+    JsonDocument d;
+    TEST_ASSERT_FALSE(deserializeJson(d, out));
+    TEST_ASSERT_TRUE(d["oscRole"].isNull());
 
-  f.oscRole = "fill";
-  TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
-  JsonDocument d2;
-  TEST_ASSERT_FALSE(deserializeJson(d2, out));
-  TEST_ASSERT_EQUAL_STRING("fill", d2["oscRole"].as<const char*>());
-
-  f.source = "manual";
-  TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
-  JsonDocument d3;
-  TEST_ASSERT_FALSE(deserializeJson(d3, out));
-  TEST_ASSERT_TRUE(d3["oscRole"].isNull());
+    f.oscRole = "fill";
+    TEST_ASSERT_TRUE(wisp::buildWispStatusJson(f, out, sizeof(out), CAP) > 0);
+    JsonDocument d2;
+    TEST_ASSERT_FALSE(deserializeJson(d2, out));
+    TEST_ASSERT_EQUAL_STRING("fill", d2["oscRole"].as<const char*>());
+  }
 }
 
 // Omit-when-default: every field whose absence the app parser reconstructs
@@ -261,14 +260,14 @@ void test_brightness_omitted_at_default_emitted_when_dimmed() {
   TEST_ASSERT_EQUAL_INT(40, d2["brightness"].as<int>());
 }
 
-// Absolute worst case, untruncated: every field widest, Osc mode, both
+// Absolute worst case, untruncated: every field widest, Manual mode, both
 // mismatch fields. It fits CONTROL_MAX_PAYLOAD with room to spare, so at the
 // production cap nothing sheds.
 void test_worst_case_untruncated_length() {
   wisp::WispStatusFields f = worstCase();
   char out[1024];
   size_t n = wisp::buildWispStatusJson(f, out, sizeof(out), /*cap=*/4096);
-  TEST_ASSERT_EQUAL_UINT32(373, n);
+  TEST_ASSERT_EQUAL_UINT32(376, n);
   TEST_ASSERT_TRUE(n <= lamp_protocol::CONTROL_MAX_PAYLOAD);
 }
 
@@ -280,7 +279,7 @@ void test_worst_case_fits_control_op_at_production_cap() {
   char json[1024];
   size_t jsonLen = wisp::buildWispStatusJson(
       f, json, sizeof(json), lamp_protocol::CONTROL_MAX_PAYLOAD);
-  TEST_ASSERT_EQUAL_UINT32(373, jsonLen);
+  TEST_ASSERT_EQUAL_UINT32(376, jsonLen);
   JsonDocument d;
   TEST_ASSERT_FALSE(deserializeJson(d, json));
   TEST_ASSERT_EQUAL_STRING("secondary", d["oscRole"].as<const char*>());
@@ -308,7 +307,7 @@ int main(int, char**) {
   RUN_TEST(test_fully_loaded_worst_case_never_fails);
   RUN_TEST(test_offcolor_and_prefix_outrank_cosmetics);
   RUN_TEST(test_osc_role_outranks_cosmetics);
-  RUN_TEST(test_osc_role_omitted_at_default_and_outside_osc);
+  RUN_TEST(test_osc_role_omitted_at_default_and_emitted_in_every_mode);
   RUN_TEST(test_defaults_omitted);
   RUN_TEST(test_non_default_identity_fields_emitted);
   RUN_TEST(test_op_seq_emitted);

@@ -149,6 +149,14 @@ void test_unknown_type_tag_rejected(void) {
   TEST_ASSERT_FALSE(wisp::oscFindFloats(msg, sizeof msg, "/x", f, 4, n));
 }
 
+void test_address_prefix_found_in_bundle(void) {
+  const auto b = unhex(kBundleHex);
+  TEST_ASSERT_TRUE(wisp::oscHasAddressPrefix(b.data(), b.size(), "/straylight/"));
+  TEST_ASSERT_FALSE(wisp::oscHasAddressPrefix(b.data(), b.size(), "/other/"));
+  const uint8_t garbage[8] = {'x', 0, 0, 0, 0, 0, 0, 0};
+  TEST_ASSERT_FALSE(wisp::oscHasAddressPrefix(garbage, sizeof garbage, "/"));
+}
+
 void test_slip_frame_with_escapes(void) {
   static SlipDecoder slip;
   const uint8_t payload[] = {0x01, 0xC0, 0x02, 0xDB, 0x03};
@@ -247,6 +255,7 @@ int main(int, char**) {
   RUN_TEST(test_nested_bundle);
   RUN_TEST(test_rejects_truncation_and_overflow);
   RUN_TEST(test_unknown_type_tag_rejected);
+  RUN_TEST(test_address_prefix_found_in_bundle);
   RUN_TEST(test_slip_frame_with_escapes);
   RUN_TEST(test_slip_back_to_back_and_oversize);
   RUN_TEST(test_slip_carries_straylight_bundle);

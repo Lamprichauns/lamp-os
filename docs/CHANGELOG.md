@@ -20,6 +20,11 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **Aurora is gone.** The wisp's Aurora palette source, which never shipped
   past "untested", has been removed from the wisp and the app, along with its
   zone picker. A wisp that was set to Aurora comes up Off.
+- **The wisp stops hunting for missing WiFi.** It joins its saved network
+  only while following Straylight, looks for it on the lamps' own channel
+  only, and waits longer between tries (up to five minutes) when it isn't
+  there. Searching for a network that was gone kept pulling the wisp away
+  from your lamps until they dropped out and went back to their own colours.
 
 ## 1.2.7
 

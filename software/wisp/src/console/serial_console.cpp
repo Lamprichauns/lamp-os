@@ -32,6 +32,11 @@ void SerialConsole::pump() {
     if (ch < 0) break;
     const SlipDecoder::Result r =
         slip_.feed(static_cast<uint8_t>(ch), millis());
+    if (r != SlipDecoder::Result::Text) {
+      // A frame byte ends any partial text line, so the tail of a frame cut
+      // off by the idle reset cannot join a command at the next frame.
+      buf_ = String();
+    }
     if (r == SlipDecoder::Result::Frame) {
       if (osc_) osc_->handlePacket(slip_.frame(), slip_.frameLen(), "serial");
       continue;

@@ -35,7 +35,8 @@ class WispController {
         artnet_(artnet),
         strip_(strip) {}
 
-  // Idempotent: safe at boot (from NVS) and on every mode flip.
+  // Safe at boot (from NVS), on every mode flip and on a repeat of the
+  // current mode, which leaves lamps as they are (a live Osc stream is kept).
   void applySourceModeTransition(WispSourceMode mode);
 
   // Apply the DispatchResult from a CONTROL_OP. MeshRouter result callback.
@@ -48,6 +49,9 @@ class WispController {
   // edge included. Never changes paint mode.
   void onOscPalette(const float* rgb, size_t colours, const char* via,
                     uint32_t nowMs);
+
+  // Any other packet from the Straylight feed: keeps a held palette live.
+  void onOscFeed(uint32_t nowMs);
 
   // Osc mode with no palette for OscFreshness::kStaleMs: hold lamps and ring
   // at Off with paint mode kept, until the next palette. Also releases a
@@ -86,6 +90,9 @@ class WispController {
   // A fast-moving palette re-colours lamps at most this often; each pass
   // re-assigns every lamp and bursts STATE over the mesh.
   static constexpr uint32_t kOscPaintIntervalMs = 1000;
+  // Last mode applySourceModeTransition ran, for the Osc re-select check.
+  WispSourceMode appliedMode_ = WispSourceMode::Off;
+  bool haveAppliedMode_ = false;
   OscFreshness oscFresh_;
   RateGate oscPaintGate_{kOscPaintIntervalMs};
   // Last applied palette and its role; an identical one only refreshes

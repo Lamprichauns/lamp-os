@@ -67,6 +67,9 @@ void OscListener::handlePacket(const uint8_t* data, size_t len,
   size_t n = 0;
   if (!oscFindFloats(data, len, oscPaletteAddress(config_.oscRole()), rgb,
                      kManualPaletteMaxColors * 3, n)) {
+    if (oscHasAddressPrefix(data, len, kStraylightAddressPrefix)) {
+      controller_.onOscFeed(millis());
+    }
     return;
   }
   if (n == 0 || n % 3 != 0) return;

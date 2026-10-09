@@ -84,6 +84,30 @@ void test_blank_palette_detected() {
   TEST_ASSERT_FALSE(wisp::isBlankPalette(oneLit, 6));
 }
 
+// Over UDP the palette datagram can drop on every restate while the rest of
+// the feed lands: feed traffic keeps a held palette live.
+void test_feed_keeps_held_palette_live() {
+  OscFreshness f;
+  f.onPalette(0);
+  for (uint32_t t = 10000; t <= 120000; t += 10000) {
+    f.onFeed(t);
+    TEST_ASSERT_FALSE(f.tick(t + 9999));
+  }
+  TEST_ASSERT_TRUE(f.live());
+}
+
+// Feed traffic never makes a stream live: a palette must arrive first.
+void test_feed_does_not_make_stale_live() {
+  OscFreshness f;
+  f.onFeed(100);
+  TEST_ASSERT_FALSE(f.live());
+  f.onPalette(0);
+  TEST_ASSERT_TRUE(f.tick(OscFreshness::kStaleMs));
+  f.onFeed(OscFreshness::kStaleMs + 1);
+  TEST_ASSERT_FALSE(f.live());
+  TEST_ASSERT_TRUE(f.onPalette(OscFreshness::kStaleMs + 2));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_first_palette_is_live_edge);
@@ -94,5 +118,7 @@ int main(int, char**) {
   RUN_TEST(test_reset_drops_live_without_edge);
   RUN_TEST(test_ten_second_restate_stays_live);
   RUN_TEST(test_blank_palette_detected);
+  RUN_TEST(test_feed_keeps_held_palette_live);
+  RUN_TEST(test_feed_does_not_make_stale_live);
   return UNITY_END();
 }

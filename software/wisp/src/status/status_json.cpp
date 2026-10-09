@@ -41,13 +41,12 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
   }
 
   const bool isOff = f.source && std::strcmp(f.source, "off") == 0;
-  const bool isOsc = f.source && std::strcmp(f.source, "osc") == 0;
 
   // Add-if-fits in priority order. offColor, oscRole and paletteIdPrefix
   // outrank the cosmetic fields: a dropped prefix stalls the app's palette
   // re-read, a dropped offColor silently renders the app's amber default and
-  // a dropped oscRole shows the wrong role selected. offColor and oscRole are
-  // mode-exclusive, so they never compete for budget.
+  // a dropped oscRole shows the wrong role selected. oscRole rides in every
+  // mode so the app shows the right role the moment Osc is picked.
   if (isOff && f.hasOffColor) {
     char hex[9];
     std::snprintf(hex, sizeof(hex), "%02x%02x%02x%02x",
@@ -55,7 +54,7 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
     doc["offColor"] = hex;
     if (measureJson(doc) > cap) doc.remove("offColor");
   }
-  if (isOsc && f.oscRole && std::strcmp(f.oscRole, kDefaultOscRole) != 0) {
+  if (f.oscRole && std::strcmp(f.oscRole, kDefaultOscRole) != 0) {
     addIfFits(doc, cap, "oscRole", f.oscRole);
   }
   if (f.paletteIdPrefix && f.paletteIdPrefix[0] != '\0') {

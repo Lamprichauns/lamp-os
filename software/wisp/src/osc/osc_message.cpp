@@ -126,6 +126,30 @@ void findOne(const OscMessage& m, void* raw) {
 
 }  // namespace
 
+namespace {
+
+struct PrefixCtx {
+  const char* prefix;
+  size_t prefixLen;
+  bool found;
+};
+
+void matchPrefix(const OscMessage& m, void* raw) {
+  auto* ctx = static_cast<PrefixCtx*>(raw);
+  if (std::strncmp(m.address, ctx->prefix, ctx->prefixLen) == 0) {
+    ctx->found = true;
+  }
+}
+
+}  // namespace
+
+bool oscHasAddressPrefix(const uint8_t* data, size_t len, const char* prefix) {
+  if (!prefix) return false;
+  PrefixCtx ctx{prefix, std::strlen(prefix), false};
+  const bool ok = oscForEachMessage(data, len, matchPrefix, &ctx);
+  return ok && ctx.found;
+}
+
 bool oscFindFloats(const uint8_t* data, size_t len, const char* address,
                    float* out, size_t cap, size_t& count) {
   FindCtx ctx{address, out, cap, 0, false};

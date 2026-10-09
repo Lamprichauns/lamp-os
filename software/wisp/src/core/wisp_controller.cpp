@@ -17,7 +17,8 @@
 namespace wisp {
 
 // An empty palette pushes nothing; the caller has already marked the source
-// not-live so lamps ease home.
+// not-live so lamps ease home. The caller renders the ring and then emits
+// ArtNet, in that order, since the ring render opens the ArtNet gate.
 void WispController::pushManualPaletteToCurrent() {
   const auto& cols = config_.manualPalette();
   if (cols.empty()) return;
@@ -35,7 +36,6 @@ void WispController::pushManualPaletteToCurrent() {
   }
   palette_.update(p, millis());
   paint_.onPaletteChanged();
-  artnet_.onPaletteChanged();
 }
 
 bool WispController::sourceLive() const {
@@ -117,8 +117,9 @@ void WispController::renderRing() {
   const bool off = effectiveOff();
   // Old lamps get released on ArtNet the same way mesh lamps are released
   // (isWispActive=0): no frames at all, rather than being driven to the
-  // off-color. Stays immediate; only the local ring fades.
-  artnet_.setActive(!off);
+  // off-color or, with no palette, to black. Stays immediate; only the local
+  // ring fades.
+  artnet_.setActive(!off && !palette_.colors().empty());
 
   uint8_t target[wisp::kMaxRingPixels * 3];
   computeRingPixels(target, px, off);
@@ -138,7 +139,11 @@ void WispController::renderRing() {
 
 void WispController::tickRingFade(uint32_t now) {
   if (!fading_) return;
-  const uint8_t w = wisp::ringFadeWeight(now - fadeStartMs_, wisp::kRingFadeMs);
+  // renderRing stamps fadeStartMs_ with millis(), which can be later than the
+  // loop-start `now`; that reads as no time elapsed rather than a wrap.
+  const int32_t dt = static_cast<int32_t>(now - fadeStartMs_);
+  const uint32_t elapsed = dt < 0 ? 0 : static_cast<uint32_t>(dt);
+  const uint8_t w = wisp::ringFadeWeight(elapsed, wisp::kRingFadeMs);
   uint8_t frame[wisp::kMaxRingPixels * 3];
   wisp::lerpRing(fadeFrom_, fadeTo_, frame, fadePx_ * 3, w);
   showPixels(frame, fadePx_);
@@ -174,6 +179,15 @@ void WispController::pushOscPaint() {
 }
 
 void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
+  // Re-selecting Osc (an app resend after a lost confirm, or src:osc) must
+  // not drop a live stream.
+  if (mode == wisp::WispSourceMode::Osc && haveAppliedMode_ &&
+      appliedMode_ == mode && oscFresh_.live()) {
+    renderRing();
+    return;
+  }
+  haveAppliedMode_ = true;
+  appliedMode_ = mode;
   switch (mode) {
     case wisp::WispSourceMode::Off:
       paint_.setPaintMode(false);
@@ -203,6 +217,7 @@ void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
       break;
   }
   renderRing();
+  if (mode == wisp::WispSourceMode::Manual) artnet_.onPaletteChanged();
 }
 
 void WispController::applyOpResult(DispatchResult res) {
@@ -218,6 +233,7 @@ void WispController::applyOpResult(DispatchResult res) {
         paint_.setSourceLive(!config_.manualPalette().empty());
         pushManualPaletteToCurrent();
         renderRing();
+        artnet_.onPaletteChanged();
       }
       status_.triggerOnChange();
       break;
@@ -325,6 +341,11 @@ void WispController::onOscPalette(const float* rgb, size_t colours,
     oscLastLogMs_ = nowMs;
     Serial.printf("[osc] palette n=%u via %s\n", (unsigned)colours, via);
   }
+}
+
+void WispController::onOscFeed(uint32_t nowMs) {
+  if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
+  oscFresh_.onFeed(nowMs);
 }
 
 void WispController::tickOscLiveness(uint32_t now) {
