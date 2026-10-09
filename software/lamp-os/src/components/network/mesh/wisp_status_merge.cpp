@@ -9,9 +9,10 @@ namespace lamp {
 namespace {
 
 // Lamp-side diagnostics, in the order they shed under maxLen.
+// configLastSeenMs never sheds: it is the app's cue to re-read wispconfig.
 constexpr const char* kShedOrder[] = {
     "helloPaletteIdPrefix", "helloLastSeenMs", "statusLastSeenMs",
-    "configLastSeenMs",     "helloFlags",
+    "helloFlags",
 };
 
 }  // namespace
