@@ -15,7 +15,8 @@ Everything lives under [`software/`](../../software/).
   (`upesy_wroom_standard` / `_snafu` / `_staff`). Source: `software/lamp-os/src/`.
 - **`wisp/`** — the infrastructure node (Seeed XIAO ESP32-C6, external antenna).
   Takes a palette from Straylight over OSC (USB serial or UDP), samples it, and
-  distributes paint to lamps over the mesh; beacons its status. USB-flash-only (no OTA).
+  distributes paint to lamps over the mesh (and to pre-mesh lamps as ArtNet DMX
+  over its own softAP); beacons its status. USB-flash-only (no OTA).
   Build env `seeed_xiao_esp32_c6`. Source: `software/wisp/src/`.
 - **`lamp-app-flutter/`** — the iOS/Android control app. Talks BLE GATT to lamps;
   no direct mesh participation. Source: `software/lamp-app-flutter/lib/`.
@@ -28,9 +29,11 @@ Everything lives under [`software/`](../../software/).
                                                                 │ ESP-NOW (channel 6)
                                                                 ▼
         Phone ──BLE GATT (NimBLE, AES-GCM)──► Lamp ◄──ESP-NOW mesh──► Lamp ◄──► Lamp N
+
+        wisp ──softAP + BLE stage beacon, ArtNet DMX over UDP──► pre-mesh lamps
 ```
 
-Four links carry everything:
+Five links carry everything:
 
 - **app ↔ lamp** — BLE GATT, app-layer AES-GCM auth. Settings, colors,
   expressions, OTA push.
@@ -45,6 +48,9 @@ Four links carry everything:
 - **wisp → lamps** — ESP-NOW mesh (paint state + status beacon). The wisp reaches
   the app only by proxy: it broadcasts, lamps cache, the app reads off a
   connected lamp.
+- **wisp → pre-mesh lamps** — ArtNet DMX over UDP/6454, on a wisp-hosted softAP
+  whose credentials ride a BLE stage beacon. The only path to lamps too old to
+  speak mesh. Details: [`software/wisp/README.md`](../../software/wisp/README.md).
 
 Full topology and channel details: [`networking.md`](networking.md#topology).
 
@@ -72,6 +78,7 @@ Full topology and channel details: [`networking.md`](networking.md#topology).
 | Variants | `software/lamp-os/src/lamps/{standard,snafu,staff}/` |
 | Shared protocol / crypto / LED | `software/shared/{protocol,crypto,led-common}/` |
 | Wisp OSC / paint / status | `software/wisp/src/{osc,paint,status}/` |
+| Wisp ArtNet bridge (pre-mesh lamps) | `software/wisp/src/artnet/`, `src/net/{wifi_link,stage_beacon}` |
 | App | `software/lamp-app-flutter/lib/` |
 
 ## The lock-ins

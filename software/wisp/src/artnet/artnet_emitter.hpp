@@ -27,10 +27,10 @@ class ArtnetEmitter {
   // up the current colors.
   void tick(uint32_t nowMs);
 
-  // Gates emission. Off (source Off, or OSC with a stale stream) sets
-  // this false so old lamps keep their last frame instead of being driven
-  // to the off-color over ArtNet; mesh lamps get the equivalent release
-  // via isWispActive=0.
+  // Gates emission. Off (source Off, an OSC stream gone stale, or an empty
+  // palette) stops frames rather than sending an off-color: pre-mesh lamps
+  // hit their 30 s ArtNet timeout and fade back to their own scene. Mesh
+  // lamps get the equivalent release via isWispActive=0.
   void setActive(bool active);
 
  private:
