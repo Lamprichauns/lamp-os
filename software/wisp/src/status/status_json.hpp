@@ -25,6 +25,7 @@ struct WispStatusFields {
   uint8_t      brightness = 100;
   bool         wifiChannelMismatch = false;
   int          wifiApChannel = 0;
+  const char*  ethIp = nullptr;  // omitted when Ethernet is not up
 };
 
 // Serialize a wispStatus JSON into `out` (capacity `outCap`). A guaranteed

@@ -7,6 +7,7 @@
 #include <lampos/led_types.hpp>
 
 #include "paint/current_palette.hpp"
+#include "net/eth_link.hpp"
 #include "net/mesh_link.hpp"
 #include "net/wifi_link.hpp"
 #include "config/wisp_config.hpp"
@@ -84,13 +85,16 @@ void StatusEmitter::pump() {
 
 void StatusEmitter::checkConnEdges() {
   const bool wifiConn = WiFi.isConnected();
+  const bool ethUp = eth::up();
   if (!haveLastConnState_) {
     haveLastConnState_ = true;
-  } else if (wifiConn != lastWifiConnected_) {
-    Serial.printf("[wisp.beacon] connectivity edge wifi=%d\n", (int)wifiConn);
+  } else if (wifiConn != lastWifiConnected_ || ethUp != lastEthUp_) {
+    Serial.printf("[wisp.beacon] connectivity edge wifi=%d eth=%d\n",
+                  (int)wifiConn, (int)ethUp);
     triggerOnChange();
   }
   lastWifiConnected_ = wifiConn;
+  lastEthUp_ = ethUp;
 }
 
 void StatusEmitter::emitStatus() {
@@ -109,6 +113,8 @@ void StatusEmitter::emitStatus() {
   const bool sourceLive = controller_ && controller_->sourceLive();
   const bool wifiChannelMismatch = wifi_ && wifi_->channelMismatch();
   const int  wifiApChannel = wifi_ ? wifi_->apChannel() : 0;
+  char ethIp[16];
+  eth::formatIp(ethIp, sizeof(ethIp));
 
   char paletteIdPrefix[kPaletteIdPrefixLen + 1] = {0};
   if (palette_) {
@@ -161,7 +167,7 @@ void StatusEmitter::emitStatus() {
       sourceName, oscRole, offR, offG, offB, offW, hasOffColor, shuffleSeed,
       driftIntervalMs, driftFadePct, wispName, hasPassword,
       ledType, pixelCount, opSeq, brightness,
-      wifiChannelMismatch, wifiApChannel };
+      wifiChannelMismatch, wifiApChannel, ethIp };
 
   char jsonBuf[kStatusJsonBufLen];
   const size_t jsonLen = buildWispStatusJson(
