@@ -26,8 +26,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at
   all. The app now reads the wisp's status and its settings separately, in
-  pieces, with no size limit, once your lamps are updated; older apps on
-  updated lamps get a trimmed status that fits. Until the wisp's settings
+  pieces, with no size limit, once your lamps are updated. Updated lamps also
+  trim what they hand older apps, which brings a typical fully set-up wisp
+  back under the limit, though not every possible one. Until the wisp's settings
   have arrived, the drift, brightness and LED controls show that they're
   loading instead of showing made-up values you could accidentally save.
 
