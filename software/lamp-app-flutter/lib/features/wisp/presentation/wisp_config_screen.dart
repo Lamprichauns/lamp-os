@@ -99,8 +99,8 @@ class _WispBodyState extends ConsumerState<_WispBody> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final notifier = ref.read(wispNotifierProvider(widget.lampId).notifier);
-      unawaited(notifier.pollStatus());
-      unawaited(notifier.pollConfig());
+      // In turn: FbpBleClient has no internal lock to serialize two writes.
+      unawaited(notifier.pollStatus().then((_) => notifier.pollConfig()));
     });
   }
 
