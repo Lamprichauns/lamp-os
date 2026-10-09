@@ -58,7 +58,6 @@ class StaJoin {
                         state_ == State::Linked;
     if (!wanted_) {
       state_ = State::Idle;
-      backoff_.stop();
       return active ? StaAction::Drop : StaAction::None;
     }
     arm(nowMs);
@@ -71,7 +70,6 @@ class StaJoin {
     const bool active = state_ != State::Idle && state_ != State::Waiting &&
                         state_ != State::Halted;
     state_ = State::Halted;
-    backoff_.stop();
     return active ? StaAction::Drop : StaAction::None;
   }
 
