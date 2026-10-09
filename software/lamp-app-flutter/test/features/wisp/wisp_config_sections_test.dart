@@ -51,9 +51,11 @@ void main() {
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
-  // Build, then let build's trailing claims read finish so a re-read the
-  // test triggers is not skipped as busy.
+  // Build and keep the auto-dispose provider alive, then let build's
+  // trailing claims read finish so a re-read the test triggers is not
+  // skipped as busy.
   Future<void> built(ProviderContainer c) async {
+    c.listen(wispNotifierProvider(_lampId), (_, _) {});
     await c.read(wispNotifierProvider(_lampId).future);
     await settle();
   }
