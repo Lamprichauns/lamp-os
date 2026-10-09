@@ -53,7 +53,7 @@ With a module fitted, Ethernet counts as up when it has a link and a DHCP lease.
 
 IPv4 multicast is blocked at the chip, so multicast sACN on a lighting LAN costs the wisp nothing. Broadcast is not filtered: every broadcast frame (ARP, Art-Net broadcast and ArtPoll, DHCP, discovery chatter) costs an SPI read and a heap buffer of a full frame in the W5500 receive task, which runs above the wisp's loop on the C6's one core. Put the wisp on a segment that does not carry broadcast Art-Net.
 
-The softAP for pre-mesh lamps is 192.168.4.0/24 (the core's default). A venue LAN on that same subnet collides with it: the wisp cannot tell which side an address is on. Give the venue network any other range.
+The softAP for pre-mesh lamps is 192.168.4.0/24 (the core's default). A venue LAN on that same subnet collides with it. Art-Net to softAP lamps is pinned to the softAP netif, so painting pre-mesh lamps is unaffected; the risk is IP traffic toward the venue side, such as replies to the OSC sender, which the wisp may route out the softAP instead of the cable. Give the venue network any other range.
 
 IP forwarding is on in the prebuilt framework (`CONFIG_LWIP_IP_FORWARD=y`), so the wisp plainly routes between the softAP and Ethernet, with no NAT. A softAP lamp's packet addressed off its subnet goes out the cable, and replies cannot find their way back unless the venue router has a route to 192.168.4.0/24. This is the same exposure the STA join already had. Turning it off takes a `custom_sdkconfig` entry, at the cost of a full IDF rebuild; the wisp does not do that.
 
