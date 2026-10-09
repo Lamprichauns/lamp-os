@@ -174,16 +174,19 @@ void main() {
     );
     double shown() => tester.widget<Slider>(find.byType(Slider)).value;
 
+    // The notifier writes each dragged value into its state, so the widget
+    // rebuilds with them mid-drag, as it does on screen.
     await deliver(30);
-    final slider = tester.widget<Slider>(find.byType(Slider));
-    slider.onChangeStart!(30);
-    slider.onChanged!(45);
-    await tester.pump();
+    tester.widget<Slider>(find.byType(Slider)).onChangeStart!(30);
+    tester.widget<Slider>(find.byType(Slider)).onChanged!(45);
+    await deliver(45);
     tester.widget<Slider>(find.byType(Slider)).onChanged!(60);
-    await tester.pump();
+    await deliver(60);
     tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(60);
     await tester.pump();
 
+    // A rebuild with the unchanged optimistic 60 is not the wisp's echo.
+    await deliver(60);
     await deliver(45);
     expect(shown(), 60);
 

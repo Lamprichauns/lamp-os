@@ -28,8 +28,10 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
   // Follows the wisp's value whenever it differs from the slider, except
   // while the slider is held and for a while after release: the write is
   // debounced, so a status from mid-drag can still arrive carrying an
-  // intermediate value. The hold ends when the wisp echoes the released
-  // value or after _echoHold, whichever comes first.
+  // intermediate value. The hold ends when a status change brings the
+  // released value or after _echoHold, whichever comes first. A rebuild with
+  // an unchanged status does not count: setBrightness already wrote the
+  // dragged value into the notifier's state, so that is not the wisp's echo.
   static const Duration _echoHold = Duration(milliseconds: 2500);
   late double _value;
   bool _dragging = false;
@@ -50,7 +52,8 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
     final shown = s.brightness == _value.round();
     final hold = _holdUntil;
     if (hold != null) {
-      if (!shown && DateTime.now().isBefore(hold)) return;
+      final echoed = shown && old.status.brightness != s.brightness;
+      if (!echoed && DateTime.now().isBefore(hold)) return;
       _holdUntil = null;
     }
     if (!shown) _seed();
