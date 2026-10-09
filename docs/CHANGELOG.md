@@ -15,6 +15,11 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   about thirty seconds, or the palette you picked has nothing in it, your
   lamps ease back to their own colours and the app says it's waiting; when
   Straylight comes back the lamps pick its palette up again on their own.
+- **The wisp can take Straylight over a network cable.** Fit a W5500
+  Ethernet module (wiring in the wisp README) and plug the wisp into the
+  venue network: Straylight's feed arrives over the cable, the wisp's WiFi
+  stays off so the mesh keeps its radio, and the app shows the wisp's
+  network address. A wisp with no module works exactly as before.
 
 ### Changed
 - **Aurora is gone.** The wisp's Aurora palette source, which never shipped

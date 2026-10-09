@@ -40,11 +40,13 @@ Five links carry everything:
 - **lamp ↔ lamp** — ESP-NOW broadcast mesh, channel 6. Presence, greetings,
   transient overrides, expression announce, firmware distribution.
 - **Straylight → wisp** — OSC 1.0 palettes, as SLIP frames on the USB serial
-  console or UDP datagrams on port 9000 (softAP or the wisp's STA LAN join).
-  The STA join runs only while the source is Osc, and joins only an AP a
-  channel-6-only scan found: one shared radio serves both WiFi and ESP-NOW, so
-  a scan elsewhere, or a missing AP rescanned every few seconds, would drag the
-  radio off the mesh. Failed attempts retry on a backoff.
+  console or UDP datagrams on port 9000 (softAP, the wisp's STA LAN join, or
+  wired Ethernet through an optional W5500 on SPI, which keeps the feed off the
+  radio). The STA join runs only while the source is Osc and Ethernet is not
+  up, and joins only an AP a channel-6-only scan found: one shared radio serves
+  both WiFi and ESP-NOW, so a scan elsewhere, or a missing AP rescanned every
+  few seconds, would drag the radio off the mesh. Failed attempts retry on a
+  backoff.
 - **wisp → lamps** — ESP-NOW mesh (paint state + status beacon). The wisp reaches
   the app only by proxy: it broadcasts, lamps cache, the app reads off a
   connected lamp.
@@ -79,6 +81,7 @@ Full topology and channel details: [`networking.md`](networking.md#topology).
 | Shared protocol / crypto / LED | `software/shared/{protocol,crypto,led-common}/` |
 | Wisp OSC / paint / status | `software/wisp/src/{osc,paint,status}/` |
 | Wisp ArtNet bridge (pre-mesh lamps) | `software/wisp/src/artnet/`, `src/net/{wifi_link,stage_beacon}` |
+| Wisp wired Ethernet (W5500) | `software/wisp/src/net/eth_link`, STA rule `staWanted()` in `src/net/sta_join.hpp` |
 | App | `software/lamp-app-flutter/lib/` |
 
 ## The lock-ins
