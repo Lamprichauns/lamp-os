@@ -205,33 +205,30 @@ void main() {
 
     // During the changeover the status copy is the fresher source: a config
     // re-read can be skipped or lost, the status cannot fall behind it.
-    test(
-      'a status that carries config wins over the held config',
-      () async {
-        final ble = await connectedBle();
-        ble.seedSection(
-          _lampId,
-          'wispstatus',
-          _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":100}'),
-        );
-        ble.seedSection(_lampId, 'wispconfig', _b(_config(px: 60)));
-        final c = makeContainer(ble);
-        await built(c);
+    test('a status that carries config wins over the held config', () async {
+      final ble = await connectedBle();
+      ble.seedSection(
+        _lampId,
+        'wispstatus',
+        _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":100}'),
+      );
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(px: 60)));
+      final c = makeContainer(ble);
+      await built(c);
 
-        ble.simulateNotify(
-          _lampId,
-          BleUuids.controlService,
-          BleUuids.wispStatus,
-          _b(
-            '{"wispMac":"$_mac","source":"osc","px":30,'
-            '"configLastSeenMs":100}',
-          ),
-        );
-        await settle();
+      ble.simulateNotify(
+        _lampId,
+        BleUuids.controlService,
+        BleUuids.wispStatus,
+        _b(
+          '{"wispMac":"$_mac","source":"osc","px":30,'
+          '"configLastSeenMs":100}',
+        ),
+      );
+      await settle();
 
-        expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 30);
-      },
-    );
+      expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 30);
+    });
 
     // A rival wisp took the slot: the old wisp's config must not dress it.
     test('a held config never merges onto another wisp', () async {
@@ -329,7 +326,8 @@ void main() {
     // read as an advance.
     test('a stale held config never lowers the opSeq baseline', () async {
       final ble = await connectedBle();
-      const status = '{"wispMac":"$_mac","source":"osc","hasPassword":true,'
+      const status =
+          '{"wispMac":"$_mac","source":"osc","hasPassword":true,'
           '"opSeq":5,"configLastSeenMs":100}';
       ble.seedSection(_lampId, 'wispstatus', _b(status));
       ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 4)));
@@ -344,7 +342,12 @@ void main() {
         _lampId,
         BleUuids.controlService,
         BleUuids.wispStatus,
-        _b(status.replaceFirst('"configLastSeenMs":100', '"configLastSeenMs":200')),
+        _b(
+          status.replaceFirst(
+            '"configLastSeenMs":100',
+            '"configLastSeenMs":200',
+          ),
+        ),
       );
 
       expect(await future, isFalse);
@@ -357,7 +360,8 @@ void main() {
     test('a password op waits for an in-flight config read', () async {
       final ble = _HeldConfigBle();
       await ble.connect(_lampId);
-      const split = '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+      const split =
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
           '"hasPassword":true,"configLastSeenMs":100}';
       ble.seedSection(_lampId, 'wispstatus', _b(split));
       ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 4)));
@@ -371,7 +375,12 @@ void main() {
         _lampId,
         BleUuids.controlService,
         BleUuids.wispStatus,
-        _b(split.replaceFirst('"configLastSeenMs":100', '"configLastSeenMs":200')),
+        _b(
+          split.replaceFirst(
+            '"configLastSeenMs":100',
+            '"configLastSeenMs":200',
+          ),
+        ),
       );
       await settle();
 

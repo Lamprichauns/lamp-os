@@ -92,8 +92,9 @@ void main() {
 
   // A later status from the wisp with different values moves the sliders;
   // the configKnown edge is not the only re-seed.
-  testWidgets('drift sliders follow a changed value from the wisp',
-      (tester) async {
+  testWidgets('drift sliders follow a changed value from the wisp', (
+    tester,
+  ) async {
     const first = WispStatus(
       wispMac: 'AA:BB:CC:DD:EE:FF',
       driftFadePct: 15,
@@ -116,8 +117,9 @@ void main() {
   });
 
   // While the user holds the slider, an incoming value must not yank it.
-  testWidgets('a held brightness slider ignores incoming values',
-      (tester) async {
+  testWidgets('a held brightness slider ignores incoming values', (
+    tester,
+  ) async {
     const first = WispStatus(
       wispMac: 'AA:BB:CC:DD:EE:FF',
       brightness: 40,
@@ -126,8 +128,9 @@ void main() {
     await tester.pumpWidget(
       _wrap(const SpaceBrightnessSlider(lampId: _lampId, status: first)),
     );
-    final gesture =
-        await tester.startGesture(tester.getCenter(find.byType(Slider)));
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(Slider)),
+    );
     await gesture.moveBy(const Offset(30, 0));
     await tester.pump(const Duration(milliseconds: 200));
     final held = tester.widget<Slider>(find.byType(Slider)).value;
