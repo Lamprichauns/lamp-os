@@ -23,9 +23,40 @@ void addIfFits(JsonDocument& doc, size_t cap, const char* key,
   if (measureJson(doc) > cap) doc.remove(key);
 }
 
+void addConfigCopy(JsonDocument& doc, size_t cap, const WispConfigFields& c,
+                   bool isOff) {
+  // shuffleSeed drives the app's predictTuple() and opSeq confirms a sealed
+  // op landed, so both outrank the cosmetics below.
+  if (c.shuffleSeed != 0) {
+    addIfFits(doc, cap, "shuffleSeed", c.shuffleSeed);
+  }
+  if (c.opSeq != 0) {
+    addIfFits(doc, cap, "opSeq", c.opSeq);
+  }
+  if (!isOff) {
+    if (c.driftIntervalMs != kDefaultDriftIntervalMs) {
+      addIfFits(doc, cap, "driftIntervalMs", c.driftIntervalMs);
+    }
+    if (c.driftFadePct != kDefaultDriftFadePct) {
+      addIfFits(doc, cap, "driftFadePct", c.driftFadePct);
+    }
+  }
+  if (c.ledType && c.ledType[0] != '\0' &&
+      std::strcmp(c.ledType, kDefaultLedType) != 0) {
+    addIfFits(doc, cap, "ledType", c.ledType);
+  }
+  if (c.pixelCount > 0 && c.pixelCount != kDefaultPixelCount) {
+    addIfFits(doc, cap, "px", c.pixelCount);
+  }
+  if (c.brightness != kDefaultBrightness) {
+    addIfFits(doc, cap, "brightness", c.brightness);
+  }
+}
+
 }  // namespace
 
-size_t buildWispStatusJson(const WispStatusFields& f, char* out,
+size_t buildWispStatusJson(const WispStatusFields& f,
+                           const WispConfigFields* configCopy, char* out,
                            size_t outCap, size_t cap) {
   JsonDocument doc;
   // Guaranteed core. Worst-case serialized width is pinned well under cap by
@@ -43,10 +74,10 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
   const bool isOff = f.source && std::strcmp(f.source, "off") == 0;
 
   // Add-if-fits in priority order. offColor, oscRole and paletteIdPrefix
-  // outrank the cosmetic fields: a dropped prefix stalls the app's palette
-  // re-read, a dropped offColor silently renders the app's amber default and
-  // a dropped oscRole shows the wrong role selected. oscRole rides in every
-  // mode so the app shows the right role the moment Osc is picked.
+  // lead: a dropped prefix stalls the app's palette re-read, a dropped
+  // offColor silently renders the app's amber default and a dropped oscRole
+  // shows the wrong role selected. oscRole rides in every mode so the app
+  // shows the right role the moment Osc is picked.
   if (isOff && f.hasOffColor) {
     char hex[9];
     std::snprintf(hex, sizeof(hex), "%02x%02x%02x%02x",
@@ -60,35 +91,11 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
   if (f.paletteIdPrefix && f.paletteIdPrefix[0] != '\0') {
     addIfFits(doc, cap, "paletteIdPrefix", f.paletteIdPrefix);
   }
-  // shuffleSeed drives the app's predictTuple(); keep it above the cosmetics.
-  if (f.shuffleSeed != 0) {
-    addIfFits(doc, cap, "shuffleSeed", f.shuffleSeed);
-  }
-  // opSeq confirms a sealed op landed (app password-verify); above cosmetics.
-  if (f.opSeq != 0) {
-    addIfFits(doc, cap, "opSeq", f.opSeq);
-  }
   if (f.name && f.name[0] != '\0') {
     addIfFits(doc, cap, "name", f.name);
   }
-  if (!isOff) {
-    if (f.driftIntervalMs != kDefaultDriftIntervalMs) {
-      addIfFits(doc, cap, "driftIntervalMs", f.driftIntervalMs);
-    }
-    if (f.driftFadePct != kDefaultDriftFadePct) {
-      addIfFits(doc, cap, "driftFadePct", f.driftFadePct);
-    }
-  }
-  if (f.ledType && f.ledType[0] != '\0' &&
-      std::strcmp(f.ledType, kDefaultLedType) != 0) {
-    addIfFits(doc, cap, "ledType", f.ledType);
-  }
-  if (f.pixelCount > 0 && f.pixelCount != kDefaultPixelCount) {
-    addIfFits(doc, cap, "px", f.pixelCount);
-  }
   // ethIp and the mismatch fields explain a wifiConnected=false the app would
-  // otherwise blame on bad creds. Below px (app-critical) but above
-  // brightness: only a true cosmetic sheds under budget pressure, never px.
+  // otherwise blame on bad creds.
   if (f.ethIp && f.ethIp[0] != '\0') {
     addIfFits(doc, cap, "ethIp", f.ethIp);
   }
@@ -96,9 +103,25 @@ size_t buildWispStatusJson(const WispStatusFields& f, char* out,
     addIfFits(doc, cap, "wifiChannelMismatch", true);
     if (f.wifiApChannel > 0) addIfFits(doc, cap, "wifiApChannel", f.wifiApChannel);
   }
-  if (f.brightness != kDefaultBrightness) {
-    addIfFits(doc, cap, "brightness", f.brightness);
-  }
+  // TODO: drop configCopy and its parameter, and set "configSplit":true on
+  // the status, once the fleet's lamps carry wispConfig. That removal is what
+  // takes the config fields off the 30 s heartbeat; see docs/dev/networking.md.
+  if (configCopy) addConfigCopy(doc, cap, *configCopy, isOff);
+  return serializeJson(doc, out, outCap);
+}
+
+size_t buildWispConfigJson(const WispConfigFields& f, char* out,
+                           size_t outCap) {
+  JsonDocument doc;
+  doc["char"]            = "wispConfig";
+  doc["ledType"]         = f.ledType ? f.ledType : kDefaultLedType;
+  doc["px"]              = f.pixelCount;
+  doc["brightness"]      = f.brightness;
+  doc["driftIntervalMs"] = f.driftIntervalMs;
+  doc["driftFadePct"]    = f.driftFadePct;
+  doc["shuffleSeed"]     = f.shuffleSeed;
+  doc["opSeq"]           = f.opSeq;
+  if (measureJson(doc) >= outCap) return 0;
   return serializeJson(doc, out, outCap);
 }
 

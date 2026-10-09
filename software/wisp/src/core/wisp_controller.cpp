@@ -280,6 +280,9 @@ void WispController::applyOpResult(DispatchResult res) {
     case wisp::DispatchResult::PollStatus:
       status_.triggerOnChange();
       break;
+    case wisp::DispatchResult::PollConfig:
+      status_.pollConfig();
+      break;
     case wisp::DispatchResult::Rejected:
     case wisp::DispatchResult::Ignored:
     case wisp::DispatchResult::Malformed:

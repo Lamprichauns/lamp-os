@@ -15,6 +15,7 @@
 #include "wire/lamp_protocol.hpp"
 #include "status/status_json.hpp"
 #include "status/seq_source.hpp"
+#include "util/fnv1a.hpp"
 
 namespace wisp {
 
@@ -63,9 +64,16 @@ void StatusEmitter::triggerOnChange() {
   burstUntilMs_ = millis() + kStatusBurstMs;
 }
 
+void StatusEmitter::pollConfig() {
+  configPollDue_.store(true, std::memory_order_relaxed);
+}
+
 void StatusEmitter::pump() {
   checkConnEdges();
   const uint32_t now = millis();
+  if (configPollDue_.exchange(false, std::memory_order_relaxed)) {
+    configCadence_.poll();
+  }
   bool bursting = false;
   if (burstUntilMs_ != 0) {
     if (static_cast<int32_t>(now - burstUntilMs_) < 0) {
@@ -74,13 +82,25 @@ void StatusEmitter::pump() {
       burstUntilMs_ = 0;
     }
   }
-  if (!statusDue_.load(std::memory_order_relaxed) && !bursting) return;
-  const uint32_t minInterval = bursting ? kStatusBurstIntervalMs : kMinEmitIntervalMs;
-  if (haveEmitted_ && now - lastEmitMs_ < minInterval) return;
-  statusDue_.store(false, std::memory_order_relaxed);
-  haveEmitted_ = true;
-  lastEmitMs_ = now;
-  emitStatus();
+  if (statusDue_.load(std::memory_order_relaxed) || bursting) {
+    const uint32_t minInterval = bursting ? kStatusBurstIntervalMs : kMinEmitIntervalMs;
+    if ((!haveEmitted_ || now - lastEmitMs_ >= minInterval) &&
+        configCadence_.statusClear(now)) {
+      statusDue_.store(false, std::memory_order_relaxed);
+      haveEmitted_ = true;
+      lastEmitMs_ = now;
+      emitStatus();
+      char configJson[kConfigJsonBufLen];
+      const size_t n = buildConfig(configJson, sizeof(configJson));
+      configCadence_.onStatusEmitted(
+          now, fnv1a(reinterpret_cast<const uint8_t*>(configJson), n));
+      return;
+    }
+  }
+  if (configCadence_.configDue(now)) {
+    configCadence_.onConfigEmitted(now);
+    emitConfig();
+  }
 }
 
 void StatusEmitter::checkConnEdges() {
@@ -105,9 +125,6 @@ void StatusEmitter::emitStatus() {
                 (unsigned)esp_get_free_heap_size(),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 #endif
-
-  uint8_t srcMac[6] = {0};
-  mesh_->getMac(srcMac);
 
   const bool wifiConn   = WiFi.isConnected();
   const bool sourceLive = controller_ && controller_->sourceLive();
@@ -139,39 +156,25 @@ void StatusEmitter::emitStatus() {
 
   uint8_t offR = 0, offG = 0, offB = 0, offW = 0;
   bool hasOffColor = false;
-  uint8_t shuffleSeed = 0;
-  uint32_t driftIntervalMs = 0;
-  uint8_t driftFadePct = 0;
   const char* wispName = "";
   bool hasPassword = false;
-  const char* ledType = "GRB";
-  uint16_t pixelCount = 30;
-  uint32_t opSeq = 0;
-  uint8_t brightness = 100;
   if (config_) {
     const auto off = config_->offColor();
     offR = off.r; offG = off.g; offB = off.b; offW = off.w;
     hasOffColor = true;
-    shuffleSeed = config_->shuffleSeed();
-    driftIntervalMs = config_->driftIntervalMs();
-    driftFadePct = config_->driftFadePct();
     wispName = config_->name().c_str();
     hasPassword = config_->password().length() > 0;
-    ledType = lampos::led::byteOrderToString(config_->ledFormat());
-    pixelCount = config_->pixelCount();
-    opSeq = config_->opSeq();
-    brightness = config_->brightness();
   }
   const WispStatusFields fields{
       wifiConn, sourceLive, paletteIdPrefix, lastSeenMs,
-      sourceName, oscRole, offR, offG, offB, offW, hasOffColor, shuffleSeed,
-      driftIntervalMs, driftFadePct, wispName, hasPassword,
-      ledType, pixelCount, opSeq, brightness,
-      wifiChannelMismatch, wifiApChannel, ethIp };
+      sourceName, oscRole, offR, offG, offB, offW, hasOffColor,
+      wispName, hasPassword, wifiChannelMismatch, wifiApChannel, ethIp };
+  const WispConfigFields configCopy = configFields();
 
   char jsonBuf[kStatusJsonBufLen];
   const size_t jsonLen = buildWispStatusJson(
-      fields, jsonBuf, sizeof(jsonBuf), lamp_protocol::CONTROL_MAX_PAYLOAD);
+      fields, &configCopy, jsonBuf, sizeof(jsonBuf),
+      lamp_protocol::CONTROL_MAX_PAYLOAD);
 
   // Emit palette first: a wispStatus build failure must not suppress it.
   emitPalette();
@@ -180,8 +183,42 @@ void StatusEmitter::emitStatus() {
     Serial.println("[wisp.beacon] wispStatus JSON build failed");
     return;
   }
+  broadcastControlOp(jsonBuf, jsonLen, "wispStatus");
+}
 
-  // SeqSource mux: concurrent HELLO and wispStatus emits must not share a seq.
+WispConfigFields StatusEmitter::configFields() const {
+  WispConfigFields c;
+  if (!config_) return c;
+  c.ledType = lampos::led::byteOrderToString(config_->ledFormat());
+  c.pixelCount = config_->pixelCount();
+  c.brightness = config_->brightness();
+  c.driftIntervalMs = config_->driftIntervalMs();
+  c.driftFadePct = config_->driftFadePct();
+  c.shuffleSeed = config_->shuffleSeed();
+  c.opSeq = config_->opSeq();
+  return c;
+}
+
+size_t StatusEmitter::buildConfig(char* out, size_t outCap) const {
+  return buildWispConfigJson(configFields(), out, outCap);
+}
+
+void StatusEmitter::emitConfig() {
+  if (!mesh_) return;
+  char jsonBuf[kConfigJsonBufLen];
+  const size_t jsonLen = buildConfig(jsonBuf, sizeof(jsonBuf));
+  if (jsonLen == 0) {
+    Serial.println("[wisp.beacon] wispConfig JSON build failed");
+    return;
+  }
+  broadcastControlOp(jsonBuf, jsonLen, "wispConfig");
+}
+
+void StatusEmitter::broadcastControlOp(const char* json, size_t jsonLen,
+                                       const char* what) {
+  uint8_t srcMac[6] = {0};
+  mesh_->getMac(srcMac);
+  // SeqSource mux: concurrent HELLO and control-op emits must not share a seq.
   uint8_t frame[lamp_protocol::CONTROL_MAX_SIZE];
   size_t frameLen = 0;
   uint16_t seq = 0;
@@ -190,10 +227,10 @@ void StatusEmitter::emitStatus() {
   frameLen = lamp_protocol::buildControlOp(
       frame, sizeof(frame), seq,
       kBroadcastMac, srcMac,
-      reinterpret_cast<const uint8_t*>(jsonBuf), jsonLen);
+      reinterpret_cast<const uint8_t*>(json), jsonLen);
   WISP_SEQ_PORTMUX_EXIT(&seq_->mux);
   if (!frameLen) {
-    Serial.println("[wisp.beacon] buildControlOp(wispStatus) failed");
+    Serial.printf("[wisp.beacon] buildControlOp(%s) failed\n", what);
     return;
   }
   mesh_->broadcast(frame, frameLen);
