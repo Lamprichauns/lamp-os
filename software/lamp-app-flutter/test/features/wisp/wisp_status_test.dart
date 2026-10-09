@@ -337,6 +337,7 @@ void main() {
         '{"wispMac":"AA:BB:CC:DD:EE:FF","configSplit":true,"source":"off"}',
       )).withConfig(config);
       expect(s.configKnown, isTrue);
+      expect(s.carriesConfig, isFalse);
       expect(s.ledType, 'BGR');
       expect(s.pixelCount, 12);
       expect(s.brightness, 40);

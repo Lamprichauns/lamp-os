@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -50,6 +51,15 @@ void main() {
   }
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+  // Wait until the sealed op has gone out, i.e. its baseline is fixed.
+  Future<void> opSent(InMemoryBleClient ble) async {
+    for (var i = 0; i < 200; i++) {
+      if (ble.writesTo(_lampId, BleUuids.wispOp).isNotEmpty) return;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    fail('the sealed op was never written');
+  }
 
   // Build and keep the auto-dispose provider alive, then let build's
   // trailing claims read finish so a re-read the test triggers is not
@@ -168,7 +178,10 @@ void main() {
       ble.seedSection(
         _lampId,
         'wispstatus',
-        _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":100}'),
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"configLastSeenMs":100}',
+        ),
       );
       ble.seedSection(_lampId, 'wispconfig', _b(_config(brightness: 80)));
       final c = makeContainer(ble);
@@ -179,7 +192,10 @@ void main() {
         _lampId,
         BleUuids.controlService,
         BleUuids.wispStatus,
-        _b('{"wispMac":"$_mac","source":"osc","configLastSeenMs":200}'),
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"configLastSeenMs":200}',
+        ),
       );
       await settle();
       await settle();
@@ -187,8 +203,10 @@ void main() {
       expect(c.read(wispNotifierProvider(_lampId)).value!.brightness, 25);
     });
 
+    // During the changeover the status copy is the fresher source: a config
+    // re-read can be skipped or lost, the status cannot fall behind it.
     test(
-      'the held config wins over the status copy of the same wisp',
+      'a status that carries config wins over the held config',
       () async {
         final ble = await connectedBle();
         ble.seedSection(
@@ -211,7 +229,7 @@ void main() {
         );
         await settle();
 
-        expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 60);
+        expect(c.read(wispNotifierProvider(_lampId)).value!.pixelCount, 30);
       },
     );
 
@@ -291,7 +309,7 @@ void main() {
       final n = c.read(wispNotifierProvider(_lampId).notifier);
 
       final future = n.setPassword('newpass', currentPassword: 'oldpass');
-      await settle();
+      await opSent(ble);
       ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 5)));
       ble.simulateNotify(
         _lampId,
@@ -304,6 +322,115 @@ void main() {
       );
 
       expect(await future, isTrue);
+    });
+
+    // The held config (opSeq 4) lags the status copy (5). The baseline is the
+    // status's 5, so the config catching up to 5 after a rejected op does not
+    // read as an advance.
+    test('a stale held config never lowers the opSeq baseline', () async {
+      final ble = await connectedBle();
+      const status = '{"wispMac":"$_mac","source":"osc","hasPassword":true,'
+          '"opSeq":5,"configLastSeenMs":100}';
+      ble.seedSection(_lampId, 'wispstatus', _b(status));
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 4)));
+      final c = makeContainer(ble);
+      await built(c);
+      final n = c.read(wispNotifierProvider(_lampId).notifier);
+
+      final future = n.setPassword('newpass', currentPassword: 'wrongpass');
+      await opSent(ble);
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 5)));
+      ble.simulateNotify(
+        _lampId,
+        BleUuids.controlService,
+        BleUuids.wispStatus,
+        _b(status.replaceFirst('"configLastSeenMs":100', '"configLastSeenMs":200')),
+      );
+
+      expect(await future, isFalse);
+    });
+
+    // A config read already in flight when the op starts lands opSeq 6. The
+    // op waits it out and reads its own baseline (6), rather than skipping
+    // as busy and baselining from the 4 it held, which the in-flight read's
+    // 6 would then falsely confirm.
+    test('a password op waits for an in-flight config read', () async {
+      final ble = _HeldConfigBle();
+      await ble.connect(_lampId);
+      const split = '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"hasPassword":true,"configLastSeenMs":100}';
+      ble.seedSection(_lampId, 'wispstatus', _b(split));
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 4)));
+      final c = makeContainer(ble);
+      await built(c);
+      final n = c.read(wispNotifierProvider(_lampId).notifier);
+
+      ble.holdConfig = Completer<void>();
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(opSeq: 6)));
+      ble.simulateNotify(
+        _lampId,
+        BleUuids.controlService,
+        BleUuids.wispStatus,
+        _b(split.replaceFirst('"configLastSeenMs":100', '"configLastSeenMs":200')),
+      );
+      await settle();
+
+      final future = n.setPassword('newpass', currentPassword: 'wrongpass');
+      await settle();
+      ble.holdConfig!.complete();
+      ble.holdConfig = null;
+
+      expect(await future, isFalse);
+    });
+
+    // Every read at build landed before the auth handshake, so the sections
+    // looked absent. A notify carrying configLastSeenMs, which only a lamp
+    // with the sections merges, turns them on and the config is read.
+    test('a notify with configLastSeenMs enables the sections', () async {
+      final ble = await connectedBle(directStatus: '{"wispMac":"$_mac"}');
+      final c = makeContainer(ble);
+      await built(c);
+
+      ble.seedSection(_lampId, 'wispconfig', _b(_config(px: 44)));
+      ble.simulateNotify(
+        _lampId,
+        BleUuids.controlService,
+        BleUuids.wispStatus,
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"configLastSeenMs":300}',
+        ),
+      );
+      await settle();
+      await settle();
+
+      final s = c.read(wispNotifierProvider(_lampId)).value!;
+      expect(s.configKnown, isTrue);
+      expect(s.pixelCount, 44);
+    });
+
+    // A split status with nothing to read: refuse rather than baseline from
+    // a placeholder 0.
+    test('a split status with no config refuses a sealed op', () async {
+      final ble = await connectedBle();
+      ble.seedSection(
+        _lampId,
+        'wispstatus',
+        _b(
+          '{"wispMac":"$_mac","configSplit":true,"source":"osc",'
+          '"hasPassword":true}',
+        ),
+      );
+      ble.seedSection(_lampId, 'wispconfig', _b('{}'));
+      final c = makeContainer(ble);
+      await built(c);
+      final n = c.read(wispNotifierProvider(_lampId).notifier);
+
+      await expectLater(
+        n.setPassword('newpass', currentPassword: 'oldpass'),
+        throwsStateError,
+      );
+      expect(ble.writesTo(_lampId, BleUuids.wispOp), isEmpty);
     });
 
     test('pollConfig writes once inside the rate-limit window', () async {
@@ -324,4 +451,17 @@ void main() {
       expect(ops, ['pollConfig']);
     });
   });
+}
+
+/// Holds every `wispconfig` read while [holdConfig] is set, so a test can
+/// leave a config read in flight.
+class _HeldConfigBle extends InMemoryBleClient {
+  Completer<void>? holdConfig;
+
+  @override
+  Future<Uint8List> readSection(String deviceId, String name) async {
+    final hold = holdConfig;
+    if (name == 'wispconfig' && hold != null) await hold.future;
+    return super.readSection(deviceId, name);
+  }
 }

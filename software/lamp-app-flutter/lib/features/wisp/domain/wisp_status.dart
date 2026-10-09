@@ -50,6 +50,8 @@ class WispStatus {
     this.opSeq = 0,
     this.brightness = 100,
     this.configKnown = false,
+    this.carriesConfig = false,
+    this.configSplit = false,
     this.configLastSeenMs,
   });
 
@@ -168,11 +170,20 @@ class WispStatus {
   final int brightness;
 
   /// True when [ledType], [pixelCount], [brightness], the drift fields,
-  /// [shuffleSeed] and [opSeq] hold the wisp's real settings: either a
-  /// `wispConfig` was merged in ([withConfig]), or the wisp's own status
-  /// carried them (`source` present and no `configSplit`). False means those
-  /// fields are placeholders a settings form must not show or write back.
+  /// [shuffleSeed] and [opSeq] hold the wisp's real settings: either the
+  /// status [carriesConfig] or a `wispConfig` was merged in ([withConfig]).
+  /// False means those fields are placeholders a settings form must not show
+  /// or write back.
   final bool configKnown;
+
+  /// True when this status's own payload carried the wisp's settings (the
+  /// wisp sent it and it is not [configSplit]). Such a status is
+  /// authoritative for them; a merged `wispConfig` never overrides it.
+  final bool carriesConfig;
+
+  /// The wisp marked this status as carrying no settings; they come only
+  /// from its `wispConfig`.
+  final bool configSplit;
 
   /// Lamp-side `millis()` when the lamp cached the wisp's latest
   /// `wispConfig`. Absent on lamps that predate it, or until one arrives; a
@@ -269,6 +280,8 @@ class WispStatus {
 
     final sourceRaw = json['source'];
     final oscRoleRaw = json['oscRole'];
+    final configSplit = json['configSplit'] == true;
+    final carriesConfig = json.containsKey('source') && !configSplit;
     return WispStatus(
       wifiConnected: asBool(json['wifiConnected']),
       wifiChannelMismatch: asBool(json['wifiChannelMismatch']),
@@ -304,7 +317,9 @@ class WispStatus {
       pixelCount: asInt(json['px']) ?? 30,
       opSeq: asInt(json['opSeq']) ?? 0,
       brightness: asInt(json['brightness']) ?? 100,
-      configKnown: json.containsKey('source') && json['configSplit'] != true,
+      configKnown: carriesConfig,
+      carriesConfig: carriesConfig,
+      configSplit: configSplit,
       configLastSeenMs: asInt(json['configLastSeenMs']),
     );
   }
@@ -396,6 +411,8 @@ class WispStatus {
       opSeq: opSeq ?? this.opSeq,
       brightness: brightness ?? this.brightness,
       configKnown: configKnown ?? this.configKnown,
+      carriesConfig: carriesConfig,
+      configSplit: configSplit,
       configLastSeenMs: configLastSeenMs,
     );
   }
@@ -434,6 +451,8 @@ class WispStatus {
           opSeq == other.opSeq &&
           brightness == other.brightness &&
           configKnown == other.configKnown &&
+          carriesConfig == other.carriesConfig &&
+          configSplit == other.configSplit &&
           configLastSeenMs == other.configLastSeenMs;
 
   @override
@@ -462,7 +481,7 @@ class WispStatus {
           opSeq,
           brightness,
           configKnown,
-          configLastSeenMs,
+          Object.hash(carriesConfig, configSplit, configLastSeenMs),
         ),
       );
 }

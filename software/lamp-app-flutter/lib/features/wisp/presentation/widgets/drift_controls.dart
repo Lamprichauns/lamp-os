@@ -36,11 +36,11 @@ class DriftControls extends ConsumerStatefulWidget {
 }
 
 class _DriftControlsState extends ConsumerState<DriftControls> {
-  // Local slider state is authoritative after mount; the wisp echoes back
-  // the written value, so a re-seed on every status change would fight an
-  // in-progress drag.
+  // Follows the wisp's values whenever they arrive or change, except while a
+  // slider is held: re-seeding then would fight the drag.
   late double _pos;
   late int _fadePct;
+  bool _dragging = false;
 
   @override
   void initState() {
@@ -48,11 +48,24 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
     _seed();
   }
 
-  // Seeds once the wisp's real settings are known, never from placeholders.
+  // Never seeds from placeholders: the form shows pending until configKnown.
   @override
   void didUpdateWidget(DriftControls old) {
     super.didUpdateWidget(old);
-    if (!old.status.configKnown && widget.status.configKnown) _seed();
+    final s = widget.status;
+    if (!s.configKnown || _dragging) return;
+    if (!old.status.configKnown ||
+        old.status.driftIntervalMs != s.driftIntervalMs ||
+        old.status.driftFadePct != s.driftFadePct) {
+      _seed();
+    }
+  }
+
+  void _dragStart(double _) => _dragging = true;
+
+  void _dragEnd(double _) {
+    _dragging = false;
+    ref.read(wispNotifierProvider(widget.lampId).notifier).flushDrift();
   }
 
   void _seed() {
@@ -82,11 +95,12 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
                   min: 0,
                   max: 1,
                   value: _pos,
+                  onChangeStart: _dragStart,
                   onChanged: (v) {
                     setState(() => _pos = v);
                     notifier.setDrift(posToMs(v), _fadePct);
                   },
-                  onChangeEnd: (_) => notifier.flushDrift(),
+                  onChangeEnd: _dragEnd,
                 ),
                 const SizedBox(height: AppSpace.lg),
                 _LabelRow(left: 'Fade', right: '$_fadePct%'),
@@ -95,11 +109,12 @@ class _DriftControlsState extends ConsumerState<DriftControls> {
                   max: 100,
                   divisions: 100,
                   value: _fadePct.toDouble(),
+                  onChangeStart: _dragStart,
                   onChanged: (v) {
                     setState(() => _fadePct = v.round());
                     notifier.setDrift(posToMs(_pos), v.round());
                   },
-                  onChangeEnd: (_) => notifier.flushDrift(),
+                  onChangeEnd: _dragEnd,
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),

@@ -25,9 +25,10 @@ class SpaceBrightnessSlider extends ConsumerStatefulWidget {
 }
 
 class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
-  // Local slider state is authoritative after mount; the wisp echoes back
-  // the written value, so re-seeding on every status change would fight a drag.
+  // Follows the wisp's value whenever it arrives or changes, except while the
+  // slider is held: re-seeding then would fight the drag.
   late double _value;
+  bool _dragging = false;
 
   @override
   void initState() {
@@ -35,11 +36,15 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
     _seed();
   }
 
-  // Seeds once the wisp's real settings are known, never from placeholders.
+  // Never seeds from placeholders: the slider shows pending until configKnown.
   @override
   void didUpdateWidget(SpaceBrightnessSlider old) {
     super.didUpdateWidget(old);
-    if (!old.status.configKnown && widget.status.configKnown) _seed();
+    final s = widget.status;
+    if (!s.configKnown || _dragging) return;
+    if (!old.status.configKnown || old.status.brightness != s.brightness) {
+      _seed();
+    }
   }
 
   void _seed() {
@@ -82,11 +87,15 @@ class _SpaceBrightnessSliderState extends ConsumerState<SpaceBrightnessSlider> {
                 max: 100,
                 value: _value,
                 label: _value >= 99.5 ? 'Full' : 'Dimmer',
+                onChangeStart: (_) => _dragging = true,
                 onChanged: (v) {
                   setState(() => _value = v);
                   notifier.setBrightness(v.round());
                 },
-                onChangeEnd: (_) => notifier.flushBrightness(),
+                onChangeEnd: (_) {
+                  _dragging = false;
+                  notifier.flushBrightness();
+                },
               ),
           ],
         ),

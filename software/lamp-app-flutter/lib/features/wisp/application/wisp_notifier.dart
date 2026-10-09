@@ -258,6 +258,7 @@ class WispNotifier extends _$WispNotifier {
         .listen((bytes) {
       if (_disposed) return;
       final next = WispStatus.fromBytes(bytes);
+      if (next.configLastSeenMs != null) _repo.noteWispSections();
       // An empty or MTU-truncated notify on a lamp that serves the status
       // whole: re-read it there rather than drop the update.
       if (!next.present && _repo.wispSectionsSupported) {
@@ -476,17 +477,31 @@ class WispNotifier extends _$WispNotifier {
     _onIncoming(status);
   }
 
-  /// [status] with the held config merged in, when that config came from the
-  /// same wisp.
+  /// [status] with the held config merged in, when the status carries no
+  /// settings of its own and the config came from the same wisp. A status
+  /// that [WispStatus.carriesConfig] is the fresher of the two: a config
+  /// re-read can be skipped or lost, a status cannot go stale behind it.
   WispStatus _withHeldConfig(WispStatus status) {
     final config = _config;
     if (config == null ||
+        status.carriesConfig ||
         status.wispMac == null ||
         status.wispMac != _configMac) {
       return status;
     }
     return status.withConfig(config);
   }
+
+  // Bounded wait for an in-flight read, so a caller that needs the section's
+  // current contents reads it rather than skipping as busy.
+  Future<void> _awaitReadsIdle() async {
+    final deadline = DateTime.now().add(_readIdleTimeout);
+    while (_readBusy && !_disposed && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+
+  static const Duration _readIdleTimeout = Duration(seconds: 3);
 
   // The lamp stamps configLastSeenMs when a wispConfig lands; a new stamp
   // means the section holds something to read. Busy reads leave the stamp
@@ -676,13 +691,20 @@ class WispNotifier extends _$WispNotifier {
     required String currentGuess,
     required Future<void> Function() sendOp,
   }) async {
-    // opSeq rides the config: when the status carried none, read the
-    // section first so the baseline is the wisp's, not a placeholder 0.
+    // opSeq rides the config: refresh it from the section first, waiting out
+    // any read in flight, so the baseline is the wisp's current value. A
+    // split status with no config to read has no baseline at all, and a
+    // placeholder 0 would let any later opSeq confirm a rejected change.
     final cur = state.value;
-    if (cur != null && !cur.configKnown && _repo.wispSectionsSupported) {
-      await _readConfigSection(cur);
+    if (cur != null && _repo.wispSectionsSupported) {
+      await _awaitReadsIdle();
+      await _readConfigSection(state.value ?? cur);
     }
-    final baseline = state.value?.opSeq ?? 0;
+    final now = state.value;
+    if (now != null && now.configSplit && !now.configKnown) {
+      throw StateError('wisp settings not loaded; opSeq baseline unknown');
+    }
+    final baseline = now?.opSeq ?? 0;
     final prevCached = _cachedPassword;
     // Watch for the confirming status before sending so a fast echo can't slip
     // through between the write and the listen.

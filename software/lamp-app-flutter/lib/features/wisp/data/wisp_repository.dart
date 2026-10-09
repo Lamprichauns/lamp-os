@@ -40,6 +40,11 @@ class WispRepository {
   /// the same as a lamp that predates the sections, so only a hit counts.
   bool get wispSectionsSupported => _wispSectionsSupported;
 
+  /// Record that the lamp serves the wisp sections, from a status only such a
+  /// lamp merges (`configLastSeenMs`), so a build whose reads all landed
+  /// before the auth handshake does not leave the sections unused.
+  void noteWispSections() => _wispSectionsSupported = true;
+
   /// One-shot read of the merged wispStatus JSON: whole from the
   /// `wispstatus` page section, or from CHAR_WISP_STATUS (capped at 512 B)
   /// on a lamp without it. Empty / `"{}"` / unparseable payloads map to
