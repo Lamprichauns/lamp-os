@@ -51,6 +51,15 @@ class WispController {
   // Loop-task edge detector: Aurora stream drop holds paint off + re-emits.
   void tickAuroraLiveness();
 
+  // OSC palette input (flat RGB floats 0..1). Applied only in Osc mode;
+  // an unchanged palette only refreshes liveness. Never turns paint on.
+  void onOscPalette(const float* rgb, size_t colours, const char* via,
+                    uint32_t nowMs);
+
+  // Osc mode with no palette for kOscStaleMs: clear + paint off, like an
+  // Aurora stream drop.
+  void tickOscLiveness(uint32_t now);
+
   // Re-init the strip from the current LED format + pixel count config.
   // Call once after config load; call again after setLedStrip op.
   void applyLedConfig();
@@ -75,6 +84,15 @@ class WispController {
   Adafruit_NeoPixel& strip_;
 
   bool auroraWasStreaming_ = false;
+
+  static constexpr uint32_t kOscStaleMs = 10000;
+  static constexpr size_t kOscMaxFloats = 150;  // kManualPaletteMaxColors * 3
+  float oscLast_[kOscMaxFloats] = {0};
+  size_t oscLastFloats_ = 0;  // 0 = no live OSC palette
+  uint32_t oscLastRxMs_ = 0;
+  uint32_t oscLastLogMs_ = 0;
+  // Reused across changes so a streaming palette never reallocates.
+  Palette oscScratch_;
 
   // Own-ring crossfade state. shown_ mirrors the last emitted (pre-gamma)
   // frame so a fresh Off<->painting flip can blend out of whatever is lit.

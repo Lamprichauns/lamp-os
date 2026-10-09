@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
+#include <cstdio>
 #include <cstring>
 #include <lampos/led_types.hpp>
 
@@ -13,6 +14,7 @@
 #include "artnet/artnet_emitter.hpp"
 #include "status/status_emitter.hpp"
 #include "status/status_ring.hpp"
+#include "util/fnv1a.hpp"
 
 namespace wisp {
 
@@ -44,7 +46,8 @@ bool WispController::effectiveOff() const {
   const bool auroraLive =
       mode == wisp::WispSourceMode::Aurora && aurora_.isStreaming();
   return mode == wisp::WispSourceMode::Off ||
-         (mode == wisp::WispSourceMode::Aurora && !auroraLive);
+         (mode == wisp::WispSourceMode::Aurora && !auroraLive) ||
+         (mode == wisp::WispSourceMode::Osc && oscLastFloats_ == 0);
 }
 
 // Fill `pixels` (pre-gamma RGB, length px*3) from the current source state.
@@ -55,6 +58,8 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
   const wisp::WispSourceMode mode = config_.sourceMode();
   const bool auroraLive =
       mode == wisp::WispSourceMode::Aurora && aurora_.isStreaming();
+  const bool oscLive =
+      mode == wisp::WispSourceMode::Osc && oscLastFloats_ > 0;
   if (mode == wisp::WispSourceMode::Manual) {
     const auto& cols = config_.manualPalette();
     const size_t n = cols.size() > wisp::kManualPaletteMaxColors
@@ -66,7 +71,7 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
                               stopsRgb[i * 3 + 2]);
     }
     numStops = n;
-  } else if (auroraLive) {
+  } else if (auroraLive || oscLive) {
     const auto& cols = palette_.colors();
     const size_t n = cols.size() > wisp::kManualPaletteMaxColors
                          ? wisp::kManualPaletteMaxColors
@@ -79,7 +84,7 @@ void WispController::computeRingPixels(uint8_t* pixels, size_t px, bool off) {
     }
     numStops = n;
   }
-  // Off and Aurora-with-no-stream show the operator off-color.
+  // Off, Aurora-with-no-stream and Osc-with-no-palette show the off-color.
   // Manual with empty palette falls through to warm-white.
   if (off) {
     const wisp::ManualPaletteColor offColor = config_.offColor();
@@ -182,6 +187,15 @@ void WispController::applySourceModeTransition(wisp::WispSourceMode mode) {
       Serial.printf("[wisp] source=Aurora — %s\n",
                     aurora_.isStreaming() ? "stream live"
                                           : "no stream, holding off");
+      break;
+    case wisp::WispSourceMode::Osc:
+      // Paint mode is left to the operator's paint:on; a palette arriving
+      // never enables it.
+      aurora_.setActive(false);
+      palette_.clear();
+      oscLastFloats_ = 0;
+      paint_.setPaintMode(false);
+      Serial.println("[wisp] source=Osc — waiting for palette, paint off");
       break;
   }
   renderRing();
@@ -311,6 +325,61 @@ void WispController::tickAuroraLiveness() {
     Serial.println("[wisp] Aurora stream dropped — holding off");
   }
   auroraWasStreaming_ = streaming;
+}
+
+void WispController::onOscPalette(const float* rgb, size_t colours,
+                                  const char* via, uint32_t nowMs) {
+  static_assert(kOscMaxFloats == wisp::kManualPaletteMaxColors * 3,
+                "OSC palette buffer must hold a manual-size palette");
+  if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
+  if (colours > wisp::kManualPaletteMaxColors) {
+    colours = wisp::kManualPaletteMaxColors;
+  }
+  const size_t floats = colours * 3;
+  oscLastRxMs_ = nowMs;
+  if (floats == oscLastFloats_ &&
+      std::memcmp(rgb, oscLast_, floats * sizeof(float)) == 0) {
+    return;
+  }
+  const bool wasLive = oscLastFloats_ > 0;
+  std::memcpy(oscLast_, rgb, floats * sizeof(float));
+  oscLastFloats_ = floats;
+
+  oscScratch_.colors.resize(colours);
+  for (size_t i = 0; i < colours; ++i) {
+    PaletteColor& pc = oscScratch_.colors[i];
+    pc = PaletteColor{};
+    pc.r = rgb[i * 3 + 0];
+    pc.g = rgb[i * 3 + 1];
+    pc.b = rgb[i * 3 + 2];
+  }
+  // 8 hex chars fits SSO, so the id write never allocates.
+  char id[9];
+  std::snprintf(id, sizeof(id), "%08x",
+                (unsigned)wisp::fnv1a(reinterpret_cast<const uint8_t*>(rgb),
+                                      floats * sizeof(float)));
+  oscScratch_.id = id;
+  palette_.update(oscScratch_, nowMs);
+  paint_.onPaletteChanged();
+  artnet_.onPaletteChanged();
+  renderRing();
+  if (!wasLive) status_.triggerOnChange();
+
+  if (!wasLive || nowMs - oscLastLogMs_ >= 1000) {
+    oscLastLogMs_ = nowMs;
+    Serial.printf("[osc] palette n=%u via %s\n", (unsigned)colours, via);
+  }
+}
+
+void WispController::tickOscLiveness(uint32_t now) {
+  if (config_.sourceMode() != wisp::WispSourceMode::Osc) return;
+  if (oscLastFloats_ == 0 || now - oscLastRxMs_ < kOscStaleMs) return;
+  oscLastFloats_ = 0;
+  palette_.clear();
+  paint_.setPaintMode(false);
+  renderRing();
+  status_.triggerOnChange();
+  Serial.println("[osc] palette stale — holding off, paint off");
 }
 
 }  // namespace wisp

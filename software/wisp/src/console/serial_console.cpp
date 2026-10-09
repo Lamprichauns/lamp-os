@@ -9,6 +9,7 @@
 #include "net/mesh_link.hpp"
 #include "net/stage_beacon.hpp"
 #include "net/wifi_link.hpp"
+#include "osc/osc_listener.hpp"
 #include "paint/paint_distributor.hpp"
 #include "status/status_emitter.hpp"
 
@@ -32,6 +33,12 @@ void SerialConsole::pump() {
   while (Serial.available() > 0) {
     int ch = Serial.read();
     if (ch < 0) break;
+    const SlipDecoder::Result r = slip_.feed(static_cast<uint8_t>(ch));
+    if (r == SlipDecoder::Result::Frame) {
+      if (osc_) osc_->handlePacket(slip_.frame(), slip_.frameLen(), "serial");
+      continue;
+    }
+    if (r == SlipDecoder::Result::Consumed) continue;
     if (ch == '\r') continue;  // strip CR from CRLF line endings
     if (ch == '\n') {
       String cmd = buf_;
@@ -81,10 +88,12 @@ void SerialConsole::handleCommand(const String& cmd) {
   } else if (cmd == "paint:off") {
     paint_.setPaintMode(false);
     Serial.println("[wisp.cmd] paint mode OFF");
-  } else if (cmd == "src:off" || cmd == "src:manual" || cmd == "src:aurora") {
+  } else if (cmd == "src:off" || cmd == "src:manual" ||
+             cmd == "src:aurora" || cmd == "src:osc") {
     const WispSourceMode m =
         cmd.endsWith("off")    ? WispSourceMode::Off
       : cmd.endsWith("manual") ? WispSourceMode::Manual
+      : cmd.endsWith("osc")    ? WispSourceMode::Osc
                                : WispSourceMode::Aurora;
     config_.setSourceMode(m);
     onSourceTransition_(m);

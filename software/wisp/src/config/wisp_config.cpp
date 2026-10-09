@@ -56,6 +56,7 @@ WispSourceMode coerceSourceMode(int raw) {
     case static_cast<int>(WispSourceMode::Off):
     case static_cast<int>(WispSourceMode::Manual):
     case static_cast<int>(WispSourceMode::Aurora):
+    case static_cast<int>(WispSourceMode::Osc):
       return static_cast<WispSourceMode>(raw);
     default:
       // Unknown / corrupted NVS value: fall back to Aurora so a partially-

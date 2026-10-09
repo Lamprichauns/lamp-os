@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <functional>
 
+#include "osc/slip_decoder.hpp"
+
 namespace wisp {
 
 class PaintDistributor;
@@ -11,6 +13,7 @@ class WifiLink;
 class StatusEmitter;
 class LampInventory;
 class ZoneSelector;
+class OscListener;
 class WispConfig;
 enum class WispSourceMode : uint8_t;
 
@@ -23,8 +26,11 @@ public:
                 LampInventory& inventory, ZoneSelector& zones,
                 SourceTransitionFn onSourceTransition);
 
-  // Read available serial bytes; dispatch complete lines as commands.
+  // Read available serial bytes; SLIP frames go to the OSC sink, everything
+  // else dispatches as text command lines.
   void pump();
+
+  void setOscSink(OscListener* osc) { osc_ = osc; }
 
   // Print current lamp roster + zone state to Serial.
   void dumpInventory();
@@ -43,6 +49,8 @@ private:
   SourceTransitionFn onSourceTransition_;
 
   String buf_;
+  OscListener* osc_ = nullptr;
+  SlipDecoder slip_;
 };
 
 }  // namespace wisp

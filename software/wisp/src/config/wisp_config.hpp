@@ -15,11 +15,13 @@
 
 namespace wisp {
 
-// Wire encoding (NVS u8 + wispOp + wispStatus): 0=Off, 1=Manual, 2=Aurora.
+// Wire encoding (NVS u8 + wispOp + wispStatus): 0=Off, 1=Manual, 2=Aurora,
+// 3=Osc.
 enum class WispSourceMode : uint8_t {
   Off    = 0,
   Manual = 1,
   Aurora = 2,
+  Osc    = 3,
 };
 
 // Must not exceed lamp_protocol::kMaxWispPaletteColors; setManualPalette enforces this.

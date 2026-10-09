@@ -143,6 +143,7 @@ void StatusEmitter::emitStatus() {
       case WispSourceMode::Off:    sourceName = "off";    break;
       case WispSourceMode::Manual: sourceName = "manual"; break;
       case WispSourceMode::Aurora: sourceName = "aurora"; break;
+      case WispSourceMode::Osc:    sourceName = "osc";    break;
     }
   }
 

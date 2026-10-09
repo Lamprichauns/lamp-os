@@ -135,7 +135,7 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
   }
 
   if (strcmp(op, "setSource") == 0) {
-    // Accept "mode":"off|manual|aurora" or numeric 0|1|2. Coerce server-side
+    // Accept "mode":"off|manual|aurora|osc" or numeric 0..3. Coerce server-side
     // so an unexpected wire value doesn't strand the wisp in an unknown mode.
     WispSourceMode resolved = WispSourceMode::Aurora;
     bool resolvedOk = false;
@@ -151,10 +151,13 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
       } else if (strcmp(s, "aurora") == 0) {
         resolved = WispSourceMode::Aurora;
         resolvedOk = true;
+      } else if (strcmp(s, "osc") == 0) {
+        resolved = WispSourceMode::Osc;
+        resolvedOk = true;
       }
     } else if (modeVar.is<int>()) {
       const int v = modeVar.as<int>();
-      if (v >= 0 && v <= 2) {
+      if (v >= 0 && v <= 3) {
         resolved = static_cast<WispSourceMode>(v);
         resolvedOk = true;
       }

@@ -1,0 +1,137 @@
+#include "osc/osc_message.hpp"
+
+#include <cstring>
+
+namespace wisp {
+
+namespace {
+
+constexpr char kBundleTag[8] = {'#', 'b', 'u', 'n', 'd', 'l', 'e', '\0'};
+constexpr size_t kBundleHeaderLen = 16;  // "#bundle\0" + 8-byte time tag
+
+uint32_t readU32(const uint8_t* p) {
+  return (static_cast<uint32_t>(p[0]) << 24) |
+         (static_cast<uint32_t>(p[1]) << 16) |
+         (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+// Padded size of the OSC-string at data[pos], or 0 if it is not terminated
+// inside the packet.
+size_t stringSpan(const uint8_t* data, size_t len, size_t pos) {
+  const void* nul = std::memchr(data + pos, 0, len - pos);
+  if (!nul) return 0;
+  const size_t n = static_cast<const uint8_t*>(nul) - (data + pos);
+  const size_t padded = (n + 4) & ~static_cast<size_t>(3);
+  return pos + padded <= len ? padded : 0;
+}
+
+bool walk(const uint8_t* data, size_t len, OscMessageFn fn, void* ctx,
+          int depth) {
+  if (len < 4 || len % 4 != 0) return false;
+  if (data[0] == '/') {
+    OscMessage m;
+    if (!oscParseMessage(data, len, m)) return false;
+    fn(m, ctx);
+    return true;
+  }
+  if (len < kBundleHeaderLen || std::memcmp(data, kBundleTag, 8) != 0)
+    return false;
+  if (depth >= kOscMaxBundleDepth) return false;
+  size_t pos = kBundleHeaderLen;
+  while (pos < len) {
+    if (len - pos < 4) return false;
+    const uint32_t size = readU32(data + pos);
+    pos += 4;
+    if (size == 0 || size > len - pos) return false;
+    if (!walk(data + pos, size, fn, ctx, depth + 1)) return false;
+    pos += size;
+  }
+  return true;
+}
+
+}  // namespace
+
+bool oscParseMessage(const uint8_t* data, size_t len, OscMessage& out) {
+  if (!data || len < 8 || len % 4 != 0 || data[0] != '/') return false;
+  const size_t addrSpan = stringSpan(data, len, 0);
+  if (addrSpan == 0 || addrSpan >= len) return false;
+  if (data[addrSpan] != ',') return false;
+  const size_t tagSpan = stringSpan(data, len, addrSpan);
+  if (tagSpan == 0) return false;
+  out.address = reinterpret_cast<const char*>(data);
+  out.tags = reinterpret_cast<const char*>(data + addrSpan + 1);
+  out.args = data + addrSpan + tagSpan;
+  out.argsLen = len - addrSpan - tagSpan;
+  return true;
+}
+
+bool oscForEachMessage(const uint8_t* data, size_t len, OscMessageFn fn,
+                       void* ctx) {
+  if (!data || !fn) return false;
+  return walk(data, len, fn, ctx, 0);
+}
+
+bool oscFloatArgs(const OscMessage& msg, float* out, size_t cap,
+                  size_t& count) {
+  count = 0;
+  size_t pos = 0;
+  for (const char* t = msg.tags; *t; ++t) {
+    switch (*t) {
+      case 'f':
+      case 'i': {
+        if (msg.argsLen - pos < 4 || count >= cap) return false;
+        const uint32_t raw = readU32(msg.args + pos);
+        float v;
+        if (*t == 'f') {
+          std::memcpy(&v, &raw, sizeof v);
+        } else {
+          v = static_cast<float>(static_cast<int32_t>(raw));
+        }
+        out[count++] = v;
+        pos += 4;
+        break;
+      }
+      case 's': {
+        if (pos >= msg.argsLen) return false;
+        const size_t span = stringSpan(msg.args, msg.argsLen, pos);
+        if (span == 0) return false;
+        pos += span;
+        break;
+      }
+      default:
+        return false;
+    }
+  }
+  return true;
+}
+
+namespace {
+
+struct FindCtx {
+  const char* address;
+  float* out;
+  size_t cap;
+  size_t count;
+  bool found;
+};
+
+void findOne(const OscMessage& m, void* raw) {
+  auto* ctx = static_cast<FindCtx*>(raw);
+  if (ctx->found || std::strcmp(m.address, ctx->address) != 0) return;
+  size_t n = 0;
+  if (!oscFloatArgs(m, ctx->out, ctx->cap, n)) return;
+  ctx->count = n;
+  ctx->found = true;
+}
+
+}  // namespace
+
+bool oscFindFloats(const uint8_t* data, size_t len, const char* address,
+                   float* out, size_t cap, size_t& count) {
+  FindCtx ctx{address, out, cap, 0, false};
+  const bool ok = oscForEachMessage(data, len, findOne, &ctx);
+  count = ctx.count;
+  return ok && ctx.found;
+}
+
+}  // namespace wisp

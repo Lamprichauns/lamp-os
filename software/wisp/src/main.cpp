@@ -22,6 +22,7 @@
 #include "net/stage_beacon.hpp"
 #include "net/wifi_link.hpp"
 #include "console/serial_console.hpp"
+#include "osc/osc_listener.hpp"
 
 namespace {
 
@@ -88,10 +89,16 @@ wisp::SerialConsole serialConsole(
     wifi, statusEmitter, inventory, zoneSelector,
     [](wisp::WispSourceMode m) { controller.applySourceModeTransition(m); });
 
+wisp::OscListener oscListener(controller);
+
 }  // namespace
 
 void setup() {
+  // A bundled OSC frame runs to ~1.4 KB; the default CDC RX buffer would
+  // overflow between loop passes.
+  Serial.setRxBufferSize(2048);
   Serial.begin(115200);
+  serialConsole.setOscSink(&oscListener);
   // USB-CDC needs a moment after USB enumerate before printf is ready.
   delay(200);
   Serial.println("wisp: boot");
@@ -172,7 +179,7 @@ void setup() {
 
   Serial.println("[wisp] paint distributor + status beacon online");
   Serial.println("[wisp] cmds: paint:on/off  stage:on/off");
-  Serial.println("[wisp] cmds: src:off/manual/aurora  wifi:set <ssid> <pass>  wifi:show");
+  Serial.println("[wisp] cmds: src:off/manual/aurora/osc  wifi:set <ssid> <pass>  wifi:show");
 }
 
 void loop() {
@@ -196,7 +203,9 @@ void loop() {
     wispRoster.recomputeClaims(obs, n, now);
     paintDistributor.refreshDriftRoster(/*paintNewcomers=*/true);
   }
+  oscListener.poll(wispConfig.sourceMode() == wisp::WispSourceMode::Osc, now);
   controller.tickAuroraLiveness();
+  controller.tickOscLiveness(millis());
   controller.tickRingFade(now);
 
   paintDistributor.tick(now);
