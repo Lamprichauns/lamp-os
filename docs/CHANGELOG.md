@@ -21,7 +21,23 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   stays off so the mesh keeps its radio, and the app shows the wisp's
   network address. A wisp with no module works exactly as before.
 
+### Fixed
+- **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
+  a password, Ethernet and custom LED and drift settings, the wisp's status
+  could outgrow what one Bluetooth read carries, and the app showed no wisp at
+  all. The app now reads the wisp's status and its settings separately, in
+  pieces, with no size limit, once your lamps are updated; older apps on
+  updated lamps get a trimmed status that fits. Until the wisp's settings
+  have arrived, the drift, brightness and LED controls show that they're
+  loading instead of showing made-up values you could accidentally save.
+
 ### Changed
+- **The wisp sends its settings on their own.** Its LED, brightness and drift
+  settings now go out when they change or when the app asks, rather than only
+  inside the status every lamp passes along every thirty seconds. For this
+  release the status still carries them too, so lamps that haven't updated
+  keep showing them; the mesh airtime this saves arrives with a later update,
+  once every lamp understands the new message.
 - **Aurora is gone.** The wisp's Aurora palette source, which never shipped
   past "untested", has been removed from the wisp and the app, along with its
   zone picker. A wisp that was set to Aurora comes up Off.

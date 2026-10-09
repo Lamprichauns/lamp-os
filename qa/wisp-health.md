@@ -43,7 +43,9 @@ give it a few seconds to rejoin.
 grep "wispStatus JSON build failed" /tmp/wisp.log
 ```
 
-Exact line: `[wisp.beacon] wispStatus JSON build failed`
+Exact line: `[wisp.beacon] wispStatus JSON build failed` (or `wispConfig JSON
+build failed`, the settings message; its worst case is pinned at 148 B, so
+this one means the emitter's buffer shrank or a field was added)
 (`status_emitter.cpp`; cap is `CONTROL_MAX_PAYLOAD = 576` in the shared
 `control_op.hpp`). Effect: the status beacon stops (app-side wisp status goes
 stale/absent) while paint keeps working. Fix is trimming whatever grew the
