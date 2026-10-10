@@ -30,11 +30,20 @@ struct Model {
   HomeModeSettings homeMode;
 };
 
-void parseInto(const char* json, Model& m) {
+bool parseInto(const char* json, Model& m) {
   JsonDocument doc;
   deserializeJson(doc, json);
-  config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
-                         m.expressions, m.homeMode);
+  return config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
+                                m.expressions, m.homeMode);
+}
+
+std::string expressionEntry(const char* type, int target, int colors, int params) {
+  std::string e = std::string("{\"type\":\"") + type +
+                  "\",\"enabled\":true,\"target\":" + std::to_string(target);
+  for (int i = 0; i < params; ++i) e += ",\"p" + std::to_string(i) + "\":" + std::to_string(i);
+  e += ",\"colors\":[";
+  for (int i = 0; i < colors; ++i) e += std::string(i ? "," : "") + "\"#ff000000\"";
+  return e + "]}";
 }
 }  // namespace
 
@@ -195,6 +204,54 @@ void test_round_trip_preserves_fields() {
   TEST_ASSERT_EQUAL_STRING("twinkle", b.expressions.expressions[0].type.c_str());
   TEST_ASSERT_TRUE(b.expressions.expressions[0].enabled);
   TEST_ASSERT_EQUAL_UINT(1, b.expressions.expressions[0].colors.size());
+}
+
+void test_expressions_within_caps_load_whole() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" +
+                     expressionEntry("pulse", 1, 8, 16) + "]}";
+  Model m;
+  TEST_ASSERT_TRUE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT(8, m.expressions.expressions[0].colors.size());
+  TEST_ASSERT_EQUAL_UINT(16, m.expressions.expressions[0].parameters.size());
+}
+
+// An over-cap stored config loads truncated (colours, parameters, entries)
+// and reports it, so the lamp boots with a bounded config instead of growing
+// it forever.
+void test_over_cap_stored_expressions_truncate_on_load() {
+  std::string json = "{\"lamp\":{},\"expressions\":[";
+  for (size_t i = 0; i < config_codec::kMaxExpressions + 5; ++i) {
+    json += (i ? "," : "") + expressionEntry("pulse", 1, 60, 40);
+  }
+  json += "]}";
+  Model m;
+  TEST_ASSERT_FALSE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressions, m.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressionColors,
+                         m.expressions.expressions[0].colors.size());
+  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressionParams,
+                         m.expressions.expressions[0].parameters.size());
+}
+
+// A stored entry with an out-of-range target keeps its target: remove matches
+// it exactly, so the user can still delete it.
+void test_stored_out_of_range_target_kept() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" +
+                     expressionEntry("pulse", 7, 1, 0) + "]}";
+  Model m;
+  TEST_ASSERT_TRUE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT8(7, m.expressions.expressions[0].target);
+}
+
+void test_parse_expression_upsert_defaults_enabled() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"type\":\"pulse\"}");
+  ExpressionConfig cfg;
+  TEST_ASSERT_TRUE(config_codec::parseExpression(doc.as<JsonObject>(), cfg, true));
+  TEST_ASSERT_TRUE(cfg.enabled);
+  TEST_ASSERT_EQUAL_UINT8(3, cfg.target);
+  TEST_ASSERT_EQUAL_UINT32(60, cfg.intervalMin);
+  TEST_ASSERT_TRUE(cfg.parameters.empty());
 }
 
 // Migration: old blobs (pre-7eca586f) had flat colors[]/px at the role level,
@@ -358,6 +415,10 @@ int main(int, char**) {
   RUN_TEST(test_sum_px_clamped_to_255);
   RUN_TEST(test_homemode_enabled_migration);
   RUN_TEST(test_round_trip_preserves_fields);
+  RUN_TEST(test_expressions_within_caps_load_whole);
+  RUN_TEST(test_over_cap_stored_expressions_truncate_on_load);
+  RUN_TEST(test_stored_out_of_range_target_kept);
+  RUN_TEST(test_parse_expression_upsert_defaults_enabled);
   RUN_TEST(test_old_format_base_colors_migrated);
   RUN_TEST(test_old_format_shade_colors_migrated);
   RUN_TEST(test_old_format_no_colors_uses_class_default);

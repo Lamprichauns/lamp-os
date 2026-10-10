@@ -1,5 +1,8 @@
 #include "config/config_codec.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 #include "util/color.hpp"
 #include "util/str.hpp"
 
@@ -66,9 +69,48 @@ static void writeSegments(JsonObject node,
   }
 }
 
-void fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
+bool parseExpression(JsonObject node, ExpressionConfig& out, bool enabledDefault) {
+  bool withinCaps = true;
+  out.type = std::string(node["type"] | "");
+  out.enabled = node["enabled"] | enabledDefault;
+  out.intervalMin = node["intervalMin"] | 60;
+  out.intervalMax = node["intervalMax"] | 900;
+  out.target = node["target"] | 3;
+  // disabledDuringWispOverride is a pure type-property, not config-driven.
+  // Payloads carrying the key are tolerated; the skip-list drops it.
+  for (JsonPair kv : node) {
+    const char* key = kv.key().c_str();
+    if (!strcmp(key, "type") || !strcmp(key, "enabled") ||
+        !strcmp(key, "intervalMin") || !strcmp(key, "intervalMax") ||
+        !strcmp(key, "target") || !strcmp(key, "colors") ||
+        !strcmp(key, "disabledDuringWispOverride")) {
+      continue;
+    }
+    JsonVariant value = kv.value();
+    if (!value.is<uint32_t>() && !value.is<int>()) continue;
+    if (out.parameters.size() >= kMaxExpressionParams) {
+      withinCaps = false;
+      continue;
+    }
+    out.setParameter(key, value.is<uint32_t>()
+                              ? value.as<uint32_t>()
+                              : static_cast<uint32_t>(value.as<int>()));
+  }
+  JsonArray colors = node["colors"];
+  const size_t keep = std::min(colors.size(), kMaxExpressionColors);
+  if (colors.size() > keep) withinCaps = false;
+  out.colors.reserve(keep);
+  for (JsonVariant color : colors) {
+    if (out.colors.size() == keep) break;
+    out.colors.push_back(hexStringToColor(color));
+  }
+  return withinCaps;
+}
+
+bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
               ShadeSettings& shade, ExpressionSettings& expressions,
               HomeModeSettings& homeMode) {
+  bool withinCaps = true;
   JsonObject lampNode = root["lamp"];
   // lampType is firmware-owned (see Config::setLampType).
   // Inbound settings_blob writes intentionally do not update it; the app
@@ -125,45 +167,16 @@ void fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
   JsonArray expressionsNode = root["expressions"];
   if (expressionsNode) {
     expressions.expressions.clear();
+    expressions.expressions.reserve(
+        std::min(expressionsNode.size(), kMaxExpressions));
     for (JsonObject exprNode : expressionsNode) {
+      if (expressions.expressions.size() == kMaxExpressions) {
+        withinCaps = false;
+        break;
+      }
       ExpressionConfig expr;
-      expr.type = std::string(exprNode["type"] | "");
-      expr.enabled = exprNode["enabled"] | false;
-      expr.intervalMin = exprNode["intervalMin"] | 60;
-      expr.intervalMax = exprNode["intervalMax"] | 900;
-      expr.target = exprNode["target"] | 3;
-      // disabledDuringWispOverride is a pure type-property, not loaded from
-      // NVS. Old blobs carrying the key are tolerated; the skip-list below
-      // drops it from the generic parameter loop.
-      // Load generic parameters
-      for (JsonPair kv : exprNode) {
-        const char* key = kv.key().c_str();
-        std::string keyStr(key);
-
-        // Common fields already handled above.
-        if (keyStr == "type" || keyStr == "enabled" || keyStr == "intervalMin" ||
-            keyStr == "intervalMax" || keyStr == "target" || keyStr == "colors" ||
-            keyStr == "disabledDuringWispOverride") {
-          continue;
-        }
-
-        // Store the parameter value
-        JsonVariant value = kv.value();
-        if (value.is<uint32_t>()) {
-          expr.setParameter(keyStr, value.as<uint32_t>());
-        } else if (value.is<int>()) {
-          expr.setParameter(keyStr, static_cast<uint32_t>(value.as<int>()));
-        }
-      }
-
-      JsonArray exprColors = exprNode["colors"];
-      if (exprColors.size()) {
-        for (JsonVariant color : exprColors) {
-          expr.colors.push_back(hexStringToColor(color));
-        }
-      }
-
-      expressions.expressions.push_back(expr);
+      if (!parseExpression(exprNode, expr, false)) withinCaps = false;
+      expressions.expressions.push_back(std::move(expr));
     }
   }
 
@@ -188,6 +201,7 @@ void fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
       homeMode.disabledExpressionTypes = {"glitchy"};
     }
   }
+  return withinCaps;
 }
 
 void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,

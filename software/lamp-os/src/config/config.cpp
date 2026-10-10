@@ -81,8 +81,10 @@ Config::Config(ConfigStore* inStore) {
     return;  // use class defaults
   }
 
-  config_codec::fromJson(doc.as<JsonObject>(), lamp, base, shade, expressions,
-                         homeMode);
+  if (!config_codec::fromJson(doc.as<JsonObject>(), lamp, base, shade,
+                              expressions, homeMode)) {
+    Serial.println("[cfg] stored expressions over caps; truncated on load");
+  }
   namedKeyPresent_ = doc["lamp"]["named"].is<bool>();
 
   // Per-peer dispositions live in a separate NVS key.

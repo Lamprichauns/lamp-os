@@ -52,6 +52,7 @@
 #include "behaviors/social.hpp"
 #include "behaviors/social_echo.hpp"
 #include "config/config.hpp"
+#include "config/config_codec.hpp"
 #include "config/config_types.hpp"
 #include "config/nvs_config_store.hpp"
 #include "core/compositor.hpp"
@@ -364,32 +365,16 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (doc.isNull()) return;
   const char* op = doc["op"].as<const char*>();
   if (op && strcmp(op, "upsert") == 0 && doc["entry"].is<JsonObject>()) {
-    JsonObject entry = doc["entry"].as<JsonObject>();
     lamp::ExpressionConfig cfg;
-    cfg.type = std::string(entry["type"] | "");
-    cfg.enabled = entry["enabled"] | true;
-    cfg.intervalMin = entry["intervalMin"] | 60;
-    cfg.intervalMax = entry["intervalMax"] | 900;
-    cfg.target = entry["target"] | 3;
-    for (JsonPair kv : entry) {
-      std::string key(kv.key().c_str());
-      // `disabledDuringWispOverride` is tolerated from older app payloads
-      // but ignored: it's a pure type-property on the Expression subclass,
-      // not config-driven.
-      if (key == "type" || key == "enabled" ||
-          key == "disabledDuringWispOverride" ||
-          key == "intervalMin" || key == "intervalMax" ||
-          key == "target" || key == "colors") continue;
-      JsonVariant v = kv.value();
-      if (v.is<uint32_t>()) cfg.setParameter(key, v.as<uint32_t>());
-      else if (v.is<int>()) cfg.setParameter(key, static_cast<uint32_t>(v.as<int>()));
+    if (!lamp::config_codec::parseExpression(doc["entry"].as<JsonObject>(), cfg, true)) {
+      Serial.printf("[expr] upsert type=%s over caps; extra colours/params dropped\n",
+                    cfg.type.c_str());
     }
-    // Store the JsonArray in a local so iteration doesn't reference a
-    // temporary destroyed at the end of the full expression (ArduinoJson
-    // 7.4.x tightened lifetime semantics on chained calls).
-    JsonArray colorsArr = entry["colors"].as<JsonArray>();
-    for (JsonVariant cv : colorsArr) {
-      cfg.colors.push_back(lamp::hexStringToColor(cv));
+    if (cfg.target < lamp::config_codec::kExpressionTargetMin ||
+        cfg.target > lamp::config_codec::kExpressionTargetMax) {
+      Serial.printf("[expr] upsert type=%s target=%u rejected\n", cfg.type.c_str(),
+                    (unsigned)cfg.target);
+      return;
     }
     if (!cfg.type.empty()) {
       ::expressionManager.upsertExpression(cfg, &::compositor);
@@ -406,7 +391,12 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
             break;
           }
         }
-        if (!found) exprs.push_back(cfg);
+        if (!found && exprs.size() < lamp::config_codec::kMaxExpressions) {
+          exprs.push_back(cfg);
+        } else if (!found) {
+          Serial.printf("[expr] config full; upsert type=%s not saved\n",
+                        cfg.type.c_str());
+        }
       }
     }
   } else if (op && strcmp(op, "remove") == 0) {
