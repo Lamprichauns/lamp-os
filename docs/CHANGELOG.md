@@ -27,7 +27,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   resting at home; only glitch was kept out. Now, while home mode is on with
   social switched off, your lamp ignores every effect other lamps send it and
   doesn't greet them, whichever kind of lamp it is, and anything a nearby lamp
-  had already started fades out gently when home mode comes on. Your own
+  had already started fades out gently when home mode comes on. It also stops
+  dimming itself for a crowd, easing back to its full home brightness over
+  about a second. Your own
   expressions, the app's Test button and your wisp keep working, and your lamp
   still passes messages along so the lamps around it keep talking.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run

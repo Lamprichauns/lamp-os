@@ -146,8 +146,15 @@ socialDisabled, source)` in `core/home_mode_gate.hpp`, read through
 The lamp's own sources stay `TransientSource::Local` and always pass: the app's
 Test button and its remote op over BLE. The
 wisp's paint, overrides and brightness are the owner's controller, not a peer,
-and pass too. Crowd-dim still applies. `disabledExpressionTypes` keeps blocking
-its types from every source.
+and pass too. `disabledExpressionTypes` keeps blocking its types from every
+source.
+
+Crowd-dim lifts too: `crowdDimTarget` (`core/crowd_dim_fade.hpp`) aims the
+factor at 1.0 while the gate is on, and `CrowdDimFade` ramps there over
+1 s (`kCrowdDimHomeFadeMs`, `core/lamp_brightness.cpp`) when home mode switches
+it off or back on, against the 80 ms ramp an ordinary deadband commit takes.
+`Lamp::tick` reapplies brightness while `crowdDimFading()` reports the ramp
+still moving.
 
 ## Brightness path and the power governor
 
