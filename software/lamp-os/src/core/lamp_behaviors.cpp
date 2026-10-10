@@ -204,7 +204,7 @@ void initBehaviors(lamp::Features features, lamp::Lamp& self) {
   });
   // BrightnessOverride routes its change-driven callback into the
   // existing applyEffectiveBrightness path so master-brightness fades
-  // share the same NeoPixel setBrightness entry point.
+  // share the same setAllStripsBrightness entry point.
   lamp::overrides.brightness.setOnChangeCallback([]() { applyEffectiveBrightness(); });
 
   lamp::personalityEngine.begin(&config);

@@ -133,10 +133,8 @@ void setAllStripsBrightness(uint8_t scaledLevel) {
   s_requestedScaled = scaledLevel;
   const uint8_t applied =
       std::min(scaledLevel, s_powerGovernor.ceiling(millis()));
-  const uint8_t shadeApplied = scale8(applied, s_shadeFactor);
-  const uint8_t baseApplied  = scale8(applied, s_baseFactor);
-  for (const auto& seg : shade.segments) if (seg.driver) seg.driver->setBrightness(shadeApplied);
-  for (const auto& seg : base.segments)  if (seg.driver) seg.driver->setBrightness(baseApplied);
+  shade.level = scale8(applied, s_shadeFactor);
+  base.level  = scale8(applied, s_baseFactor);
 }
 
 void applyEffectiveBrightness() {
