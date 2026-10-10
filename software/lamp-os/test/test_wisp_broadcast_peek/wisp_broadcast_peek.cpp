@@ -10,6 +10,7 @@
 
 using lamp::peekWispBroadcast;
 using lamp::wispBroadcastTag;
+using lamp::inboundControlOpKind;
 using lamp::WispBroadcast;
 
 namespace {
@@ -59,11 +60,24 @@ void test_tag_takes_only_wisp_status_and_config() {
   TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, (int)wispBroadcastTag(nullptr));
 }
 
+// The inbound drain routes a wisp broadcast whose "char" is not first, and
+// drops every lamp-setting op and anything unparseable.
+void test_inbound_payload_routed_by_parsed_tag() {
+  auto kind = [](const char* s) { return (int)inboundControlOpKind(s, std::strlen(s)); };
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::Status, kind(R"({"source":"off","char":"wispStatus"})"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::Config, kind(R"({"px":30,"char":"wispConfig"})"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, kind(R"({"char":"brightness","value":5})"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, kind(R"({"char":"expressionOp","op":"upsert"})"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, kind(R"({"char":"wispStatus")"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, kind(R"({"value":5})"));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_status_and_config_classified);
   RUN_TEST(test_other_ops_pass_through);
   RUN_TEST(test_short_payload_is_none);
   RUN_TEST(test_tag_takes_only_wisp_status_and_config);
+  RUN_TEST(test_inbound_payload_routed_by_parsed_tag);
   return UNITY_END();
 }

@@ -24,7 +24,7 @@
 #include "config/config.hpp"
 #include "core/pending_slot_aggregate.hpp"
 #include "core/wisp_broadcast_peek.hpp"
-#include "util/bd_addr.hpp"
+#include "core/remote_op_target.hpp"
 
 // Forward-declared so the knockout op can post into the slot aggregate
 // without dragging ble_control.cpp's header into this TU.
@@ -90,15 +90,9 @@ void applyRemoteOp(const char* payloadJson, size_t len) {
   if (deserializeJson(doc, payloadJson, len) != DeserializationError::Ok) return;
 
   const char* target = doc["targetMac"].as<const char*>();
-  bool forUs = false;
-  if (target && strcmp(target, "broadcast") == 0) {
-    forUs = true;
-  } else if (uint8_t targetMac[6]; target && lamp::parseBdAddr(target, targetMac)) {
-    uint8_t myMac[6];
-    meshLink.getMyMac(myMac);
-    forUs = memcmp(targetMac, myMac, 6) == 0;
-  }
-  if (!forUs) {
+  uint8_t myMac[6];
+  meshLink.getMyMac(myMac);
+  if (!lamp::remoteOpTargetsLamp(target, myMac)) {
     Serial.printf("[remoteOp] ignored: targetMac=%s is not this lamp\n", target ? target : "(none)");
     return;
   }
@@ -106,10 +100,8 @@ void applyRemoteOp(const char* payloadJson, size_t len) {
 }
 
 void applyInboundControlOp(const char* payloadJson, size_t len, const uint8_t srcMac[6]) {
-  JsonDocument doc;
-  if (deserializeJson(doc, payloadJson, len) != DeserializationError::Ok) return;
   // srcMac is the wisp's MAC, preserved through gossip relay.
-  switch (lamp::wispBroadcastTag(doc["char"].as<const char*>())) {
+  switch (lamp::inboundControlOpKind(payloadJson, len)) {
     case lamp::WispBroadcast::Status:
       lamp::pendingSlots.wispStatus.post(pendingMux, payloadJson, len, srcMac);
       return;

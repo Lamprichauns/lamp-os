@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include <ArduinoJson.h>
+
 namespace lamp {
 
 enum class WispBroadcast { None, Status, Config };
@@ -32,6 +34,14 @@ inline WispBroadcast wispBroadcastTag(const char* tag) {
   if (std::strcmp(tag, "wispStatus") == 0) return WispBroadcast::Status;
   if (std::strcmp(tag, "wispConfig") == 0) return WispBroadcast::Config;
   return WispBroadcast::None;
+}
+
+// Classify a whole inbound CONTROL_OP payload by its parsed "char" tag; a
+// payload that does not parse is None.
+inline WispBroadcast inboundControlOpKind(const char* json, size_t len) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json, len) != DeserializationError::Ok) return WispBroadcast::None;
+  return wispBroadcastTag(doc["char"].as<const char*>());
 }
 
 }  // namespace lamp
