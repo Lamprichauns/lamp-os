@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "components/firmware/inter_session_quiet_hold.hpp"
 #include "components/firmware/ota_offer.hpp"  // -I src on native
 
+using lamp::InterSessionQuietHold;
 using lamp::MeshPeer;
 using lamp::OtaOfferBusy;
 using lamp::OtaOfferThrottle;
@@ -94,6 +96,95 @@ void test_busy_tick_does_not_spend_the_interval() {
   TEST_ASSERT_TRUE(t.due({}, 5000 + OtaOfferThrottle::kIntervalMs + 1));
 }
 
+void test_hold_is_inheritable_only_after_a_done_session() {
+  InterSessionQuietHold hold;
+  TEST_ASSERT_FALSE(hold.inheritable());
+  hold.sessionEnteredQuiet();
+  TEST_ASSERT_FALSE(hold.inheritable());
+  hold.sessionEnded(1000, /*done=*/true);
+  TEST_ASSERT_TRUE(hold.inheritable());
+  hold.offerArmed();
+  TEST_ASSERT_FALSE(hold.inheritable());
+  hold.sessionEnded(2000, /*done=*/false);
+  TEST_ASSERT_FALSE(hold.inheritable());
+  TEST_ASSERT_TRUE(hold.dueToExit(2000 + InterSessionQuietHold::kHoldMs));
+}
+
+void test_session_without_quiet_arms_no_hold() {
+  InterSessionQuietHold hold;
+  hold.sessionEnded(1000, /*done=*/true);
+  TEST_ASSERT_FALSE(hold.inheritable());
+  TEST_ASSERT_FALSE(hold.dueToExit(1000 + InterSessionQuietHold::kHoldMs));
+}
+
+// Runs tickOtaOffers' gate against FirmwareDistributor's hold bookkeeping with
+// a crowd of stale peers that never ACCEPT: every offer times out.
+struct WaveSim {
+  static constexpr uint32_t kAcceptTimeoutMs = 15000;  // FirmwareDistributor's
+
+  InterSessionQuietHold hold;
+  OtaOfferThrottle throttle;
+  int quietHolders = 0;
+  bool offerSent = false;
+  uint32_t offerAtMs = 0;
+  uint32_t lastSessionEndMs = 0;
+  uint32_t lastSessionEndAtQuietEndMs = 0;
+  uint32_t quietEndMs = 0;
+  int sessionsInsideHold = 0;
+
+  void firstSessionEnds(uint32_t nowMs, bool done) {
+    quietHolders = 1;
+    hold.sessionEnteredQuiet();
+    hold.sessionEnded(nowMs, done);
+    lastSessionEndMs = nowMs;
+  }
+
+  void step(uint32_t nowMs) {
+    if (offerSent && nowMs - offerAtMs > kAcceptTimeoutMs) {
+      offerSent = false;
+      if (hold.held) sessionsInsideHold++;
+      hold.sessionEnded(nowMs, /*done=*/false);
+      lastSessionEndMs = nowMs;
+    }
+    if (!offerSent && hold.dueToExit(nowMs)) {
+      quietHolders--;
+      hold.release();
+      quietEndMs = nowMs;
+      lastSessionEndAtQuietEndMs = lastSessionEndMs;
+    }
+    const OtaOfferBusy busy =
+        offerBusy(true, offerSent, false, false, quietHolders, hold.inheritable());
+    if (throttle.due(busy, nowMs)) {
+      offerSent = true;
+      offerAtMs = nowMs;
+      hold.offerArmed();
+    }
+  }
+
+  void run(uint32_t fromMs, uint32_t toMs) {
+    for (uint32_t t = fromMs; t <= toMs; t += 100) step(t);
+  }
+};
+
+void test_failed_offers_inside_a_hold_let_quiet_end() {
+  WaveSim sim;
+  sim.firstSessionEnds(1000, /*done=*/true);
+  sim.run(1100, 300000);
+  TEST_ASSERT_EQUAL_INT(1, sim.sessionsInsideHold);
+  TEST_ASSERT_NOT_EQUAL(0, sim.quietEndMs);
+  TEST_ASSERT_EQUAL_INT(0, sim.quietHolders);
+  const uint32_t gap = sim.quietEndMs - sim.lastSessionEndAtQuietEndMs;
+  TEST_ASSERT_UINT32_WITHIN(100, InterSessionQuietHold::kHoldMs + 50, gap);
+}
+
+void test_failed_session_hold_takes_no_offer() {
+  WaveSim sim;
+  sim.firstSessionEnds(1000, /*done=*/false);
+  sim.run(1100, 60000);
+  TEST_ASSERT_EQUAL_INT(0, sim.sessionsInsideHold);
+  TEST_ASSERT_UINT32_WITHIN(100, 1000 + InterSessionQuietHold::kHoldMs + 50, sim.quietEndMs);
+}
+
 MeshPeer peer(uint32_t version, bool hasMac = true) {
   MeshPeer p;
   p.firmwareVersion = version;
@@ -131,6 +222,10 @@ int main(int argc, char** argv) {
   RUN_TEST(test_distributor_idle_hold_lets_the_scan_run);
   RUN_TEST(test_other_quiet_still_blocks_during_the_hold);
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
+  RUN_TEST(test_hold_is_inheritable_only_after_a_done_session);
+  RUN_TEST(test_session_without_quiet_arms_no_hold);
+  RUN_TEST(test_failed_offers_inside_a_hold_let_quiet_end);
+  RUN_TEST(test_failed_session_hold_takes_no_offer);
   RUN_TEST(test_newer_peer_holds_offers);
   RUN_TEST(test_same_or_older_peers_allow_offers);
   RUN_TEST(test_peer_without_mac_or_version_is_ignored);

@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "components/firmware/inter_session_quiet_hold.hpp"
 #include "components/network/protocol/fw_ota.hpp"  // FW_CHUNK_SIZE_BASELINE/_MAX
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
@@ -128,9 +129,9 @@ class FirmwareDistributor {
   // isn't rejected before the reaping tick runs.
   bool isInProgress() const;
 
-  // True while Idle with the inter-session quiet hold pending its exit: the one
-  // quiet this distributor holds that a new offer is meant to inherit. Loop task.
-  bool holdingIdleQuiet() const { return quietHeld_ && quietHoldUntilMs_ != 0; }
+  // True while Idle inside an inter-session quiet hold a new offer may inherit
+  // (InterSessionQuietHold::inheritable). Loop task.
+  bool holdingIdleQuiet() const { return quietHold_.inheritable(); }
 
   // Snapshot the active OTA target's MAC into out[6]. True while mid-flow. Used
   // by the OTA indicator to look up the receiver's base color from LampRoster.
@@ -342,13 +343,9 @@ class FirmwareDistributor {
 
   PeerPenalty penalties_[kPenaltyRingSize] = {};
 
-  // Inter-session quiet hold. During a fleet OTA wave several below-version
-  // peers queue; without the latch each session's enterQuiet/exitQuiet leaves a
-  // gap where the compositor flickers normal animation between indicators. Hold
-  // quiet until kInterSessionQuietHoldMs of idle passes, and remember the last
-  // peer so the indicator paints a held full bar through the gap.
-  static constexpr uint32_t kInterSessionQuietHoldMs = 10000;
-  bool     quietHeld_                   = false;
+  // The last peer is remembered so the indicator paints a held full bar
+  // through the hold.
+  InterSessionQuietHold quietHold_;
   // Set once the streaming task has entered quiet + torn down the radio for the
   // active session; reset in resetSession(). Radio teardown is deferred off the
   // recv task (enterQuiet's BLE-host/webserver shutdown isn't recv-task-safe) and
@@ -356,7 +353,6 @@ class FirmwareDistributor {
   // streaming task's first Streaming step. Guards against re-tearing on a
   // Finalizing→Streaming REQ bounce.
   bool     sessionQuietArmed_          = false;
-  uint32_t quietHoldUntilMs_            = 0;
   uint8_t  lastSessionPeerMac_[6]       = {0};
   uint16_t lastSessionTotalChunks_      = 0;
   bool     lastSessionValid_            = false;

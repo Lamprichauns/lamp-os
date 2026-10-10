@@ -9,7 +9,7 @@ namespace lamp {
 
 // Anything that holds the offer scan back: the compositor's startup phase, an
 // OTA moving in either direction for either image, or OTA quiet mode held by
-// anything but the firmware distributor's own inter-session hold.
+// anything but the firmware distributor's own inheritable inter-session hold.
 struct OtaOfferBusy {
   bool startingUp = false;
   bool firmwareSending = false;
@@ -23,8 +23,8 @@ struct OtaOfferBusy {
 };
 
 // quietHolders is ota_quiet_mode::holders(). quietIsOwnIdleHold is the
-// distributor's holdingIdleQuiet(): that hold exists so the next offer arms
-// inside it and inherits its quiet, so it alone never blocks the scan.
+// distributor's holdingIdleQuiet(): that hold exists so the next firmware offer
+// arms inside it and inherits its quiet, so it alone never blocks the scan.
 inline OtaOfferBusy offerBusy(bool startupComplete, bool firmwareSending,
                               bool firmwareReceiving, bool fsBusy, int quietHolders,
                               bool quietIsOwnIdleHold) {

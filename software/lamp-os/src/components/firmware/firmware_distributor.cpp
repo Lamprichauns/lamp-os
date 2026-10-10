@@ -325,7 +325,7 @@ bool FirmwareDistributor::streamingTaskStep(uint32_t nowMs) {
   offerRetriesLocal  = offerRetryCount_;
   nextChunkLocal     = nextChunkIdx_;
   totalChunksLocal   = totalChunks_;
-  quietHeldLocal     = quietHeld_;
+  quietHeldLocal     = quietHold_.held;
   sessionQuietArmedLocal = sessionQuietArmed_;
   portEXIT_CRITICAL(&stateMux_);
 
@@ -354,7 +354,7 @@ bool FirmwareDistributor::streamingTaskStep(uint32_t nowMs) {
     // Deferred radio teardown + quiet entry, once per session, before chunk 0.
     // Safe task context (unlike the recv task that sets Streaming) and the radio
     // is down for the chunk flood. An inherited hold (quietHeldLocal) already
-    // tore it down. quietHeld_ is state-disjoint here: the loop-task Idle reap
+    // tore it down. quietHold_ is state-disjoint here: the loop-task Idle reap
     // only clears it in State::Idle, which can't run while this session streams.
     if (!sessionQuietArmedLocal) {
       if (!quietHeldLocal) {
@@ -362,8 +362,7 @@ bool FirmwareDistributor::streamingTaskStep(uint32_t nowMs) {
                                            /*visible=*/fsHooks_ == nullptr);
       }
       portENTER_CRITICAL(&stateMux_);
-      quietHeld_         = true;
-      quietHoldUntilMs_  = 0;
+      quietHold_.sessionEnteredQuiet();
       sessionQuietArmed_ = true;
       portEXIT_CRITICAL(&stateMux_);
 #ifdef LAMP_DEBUG
@@ -566,13 +565,12 @@ void FirmwareDistributor::tick(uint32_t nowMs) {
 
   switch (s) {
     case State::Idle: {
-      // quietHoldUntilMs_ == 0 is the "no exit pending" sentinel; without the
+      // exitAtMs == 0 is the "no exit pending" sentinel; without the
       // != 0 guard a tick during a live session would exitQuiet early and
       // flicker the strip between the indicator and the base color.
-      if (quietHeld_ && quietHoldUntilMs_ != 0 && nowMs >= quietHoldUntilMs_) {
+      if (quietHold_.dueToExit(nowMs)) {
         ::lamp::ota_quiet_mode::exitQuiet();
-        quietHeld_         = false;
-        quietHoldUntilMs_  = 0;
+        quietHold_.release();
         lastSessionValid_  = false;
       }
       break;
@@ -692,13 +690,10 @@ void FirmwareDistributor::tick(uint32_t nowMs) {
       stateEnteredMs_ = nowMs;
 #endif
       // Defer exitQuiet to keep the indicator up through the gap to the next
-      // session, but only when quiet is actually held: a session that failed
-      // before its first Streaming step never entered quiet. The Idle case
-      // expires the hold if nothing arms within kInterSessionQuietHoldMs; a new
-      // emitOffer inside the window inherits the held quiet and clears the exit.
-      if (quietHeld_) {
-        quietHoldUntilMs_ = nowMs + kInterSessionQuietHoldMs;
-      }
+      // session. The Idle case expires the hold if nothing arms within
+      // InterSessionQuietHold::kHoldMs; a new emitOffer inside the window
+      // inherits the held quiet and clears the exit.
+      quietHold_.sessionEnded(nowMs, s == State::Done);
       break;
 
     case State::Disabled:
@@ -983,9 +978,9 @@ void FirmwareDistributor::emitOffer(const uint8_t targetMac[6],
   // Streaming step (see streamingTaskStep): enterQuiet's BLE-host + webserver
   // shutdown isn't safe on the recv task where ACCEPT lands, and keeping adv/scan
   // live through OfferSent lets the first ACCEPT arrive before the radio drops.
-  // An inherited hold (quietHeld_) means the radio is already down; just cancel
+  // An inherited hold (quietHold_.held) means the radio is already down; just cancel
   // its pending exit.
-  quietHoldUntilMs_ = 0;
+  quietHold_.offerArmed();
   lastSessionValid_ = false;  // new session takes over the indicator
 
   if (!sendOfferFrame(targetMac, nowMs, /*isRetry=*/false)) {
@@ -1003,11 +998,8 @@ void FirmwareDistributor::emitOffer(const uint8_t targetMac[6],
     // inherited hold from a prior session): a bare exitQuiet would decrement a
     // concurrent receiver session's refcount and knock the strip out of quiet
     // mid-receive.
-    if (quietHeld_) {
-      ::lamp::ota_quiet_mode::exitQuiet();
-      quietHeld_ = false;
-    }
-    quietHoldUntilMs_ = 0;
+    if (quietHold_.held) ::lamp::ota_quiet_mode::exitQuiet();
+    quietHold_.release();
     return;
   }
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
