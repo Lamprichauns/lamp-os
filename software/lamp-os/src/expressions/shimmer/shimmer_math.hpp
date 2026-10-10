@@ -116,7 +116,7 @@ inline uint32_t nextGustAt(uint32_t nowMs, const FireStyle& s, Rng& rng) {
 
 inline constexpr float kFlutterStepFrac = 0.5f;
 // Wall time a single draw may catch up on. A longer gap (a stall) drops the
-// excess so the walk resumes rather than replaying seconds of steps at once.
+// excess, so the walk resumes from where it stood.
 inline constexpr uint32_t kFlutterMaxCatchUpMs = 250;
 
 // A bounded random-walk in [-amp, +amp] stepped on wall time. from/to are the
@@ -130,8 +130,7 @@ struct Flutter {
 
 // Advance the walk by deltaMs and return the value to show. One step every
 // stepMs nudges by up to +/- kFlutterStepFrac*amp and clamps, so the motion
-// depends only on elapsed time, never on how many draws covered it. amp 0
-// yields 0 and draws no rng.
+// depends only on elapsed time. amp 0 yields 0 and draws no rng.
 template <class Rng>
 inline float advanceFlutter(Flutter& f, float amp, uint32_t stepMs,
                             uint32_t deltaMs, Rng& rng) {
