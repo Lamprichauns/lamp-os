@@ -543,6 +543,48 @@ void test_fireflies_two_lamps_land_on_one_beat() {
                            firefliesBlinkMs(0, t, kFirefliesBlinks, db));
 }
 
+// Known vectors: d_1..d_120 for seed 42 on two MACs, one starting late and one
+// early. A bench lamp's `[moment] ff k= d=` lines come from this arithmetic.
+const int32_t kSeed42Mac1[kFirefliesBlinks] = {
+    132, 132, 132, 132, 132, 132, 132, 132, 132, 124, 117, 110,
+    103, 97, 91, 86, 81, 76, 71, 67, 63, 59, 55, 52,
+    49, 46, 43, 40, 38, 36, 34, 32, 30, 28, 26, 24,
+    23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12,
+    11, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const int32_t kSeed42Mac2[kFirefliesBlinks] = {
+    -182, -182, -182, -182, -182, -182, -182, -182, -182, -171, -161, -151,
+    -142, -133, -125, -118, -111, -104, -98, -92, -86, -81, -76, -71,
+    -67, -63, -59, -55, -52, -49, -46, -43, -40, -38, -36, -34,
+    -32, -30, -28, -26, -24, -23, -22, -21, -20, -19, -18, -17,
+    -16, -15, -14, -13, -12, -11, -10, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+void test_fireflies_known_vectors() {
+  TEST_ASSERT_EQUAL_UINT32(0, momentHash(0));
+  TEST_ASSERT_EQUAL_UINT32(1364076727u, momentHash(1));
+  TEST_ASSERT_EQUAL_UINT32(233162409u, momentHash(0xDEADBEEFu));
+  TEST_ASSERT_EQUAL_UINT32(1042, firefliesPeriodMs(42));
+  const int32_t* expected[] = {kSeed42Mac1, kSeed42Mac2};
+  for (uint8_t n = 1; n <= 2; ++n) {
+    uint8_t mac[6];
+    macOf(n, mac);
+    int32_t d = firefliesFirstOffset(42, mac);
+    for (uint16_t k = 1; k <= kFirefliesBlinks; ++k) {
+      TEST_ASSERT_EQUAL_INT32(expected[n - 1][k - 1], d);
+      d = firefliesNextOffset(d, k);
+    }
+  }
+}
+
 void test_fireflies_envelope_endpoints() {
   TEST_ASSERT_EQUAL_UINT8(10, firefliesOpacity(1));
   TEST_ASSERT_EQUAL_UINT8(25, firefliesOpacity(6));
@@ -1408,6 +1450,137 @@ void test_heartbeat_starts_at_minus_sixty_five() {
   }
 }
 
+namespace {
+
+std::vector<Color> heartbeatColours(Color peerColour, std::vector<Color> shade) {
+  Rig r;
+  r.host.shade = shade;
+  r.host.like(30, kDispositionSmitten);
+  NearbyCopy loved = peerOf(30, -50, 0);
+  loved.baseColor = peerColour;
+  r.host.peers.push_back(loved);
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.run(0, 10, 10);
+  if (r.host.renders.empty()) TEST_FAIL_MESSAGE("no beat rendered");
+  return r.host.renders.front().inv.colors;
+}
+
+}  // namespace
+
+void test_a_black_peer_colour_falls_back_to_the_shade() {
+  const std::vector<Color> c = heartbeatColours(Color(0, 0, 0, 0), {Color(0, 160, 0, 0)});
+  TEST_ASSERT_EQUAL_UINT32(1, c.size());
+  TEST_ASSERT_TRUE(c[0] == Color(0, 160, 0, 0));
+}
+
+void test_a_white_only_peer_colour_is_kept() {
+  const std::vector<Color> c = heartbeatColours(Color(0, 0, 0, 200), {Color(0, 160, 0, 0)});
+  TEST_ASSERT_EQUAL_UINT32(1, c.size());
+  TEST_ASSERT_TRUE(c[0] == Color(0, 0, 0, 200));
+}
+
+void test_with_no_lit_colour_a_moment_renders_white() {
+  const std::vector<Color> c = heartbeatColours(Color(3, 2, 1, 0), {Color(0, 0, 0, 0)});
+  TEST_ASSERT_EQUAL_UINT32(1, c.size());
+  TEST_ASSERT_TRUE(c[0] == Expression::kSafeFallbackColor);
+}
+
+void test_a_dark_whisper_origin_falls_back_to_the_shade() {
+  Rig hop(2);
+  hop.host.shade = {Color(0, 0, 170, 0)};
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 5;
+  f.hop = 1;
+  macOf(1, f.visited[0]);
+  std::memcpy(f.to, hop.self, 6);
+  f.hasColor = true;
+  f.color = Color(0, 0, 0, 0);
+  uint8_t sender[6];
+  macOf(1, sender);
+  hop.frame(sender, encode(f), 0);
+  hop.run(0, 4000, 10);
+  TEST_ASSERT_EQUAL_UINT32(1, hop.host.rendersOf("pulse"));
+  TEST_ASSERT_TRUE(hop.host.renders[0].inv.colors[0] == Color(0, 0, 170, 0));
+}
+
+void test_whitening_checks_every_base_stop() {
+  Rig r;
+  r.host.base = {Color(255, 0, 0, 0), Color(0, 250, 5, 0)};
+  r.host.shade = {Color(0, 255, 0, 0)};
+  r.director.force(MomentKind::Whisper, 3, 0);
+  TEST_ASSERT_TRUE(r.host.renders.back().inv.colors[0] == bloomWhiten(Color(0, 255, 0, 0), 102));
+}
+
+void test_a_near_white_base_keeps_the_colour() {
+  Rig r;
+  r.host.base = {Color(250, 250, 250, 250)};
+  r.host.shade = {Color(255, 255, 255, 230)};
+  r.director.force(MomentKind::Whisper, 3, 0);
+  TEST_ASSERT_TRUE(r.host.renders.back().inv.colors[0] == Color(255, 255, 255, 230));
+}
+
+void test_a_suppressor_cancels_a_pending_resend() {
+  Rig r;
+  r.host.like(30, kDispositionFond);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.director.force(MomentKind::Whisper, 3, 0);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT32(1, r.host.sent.size());
+  r.run(0, 100, 10);
+  r.host.suppress = "ota";
+  r.run(110, 1500, 10);
+  TEST_ASSERT_EQUAL_UINT32(1, r.host.sent.size());
+}
+
+void test_a_non_object_mo_is_swallowed() {
+  Rig r;
+  ExpressionObserverRegistry registry;
+  MirrorSpy spy;
+  registry.registerObserver(&spy);
+  uint8_t src[6];
+  macOf(9, src);
+  const std::string odd = "{\"type\":\"pulse\",\"target\":1,\"mo\":5}";
+  deliverEvent(reinterpret_cast<const uint8_t*>(odd.data()), odd.size(), src, 1000, r.director,
+               registry);
+  TEST_ASSERT_EQUAL_INT(0, spy.calls);
+  TEST_ASSERT_FALSE(r.director.active());
+}
+
+void test_a_stamp_older_than_the_signed_horizon_is_stale() {
+  const uint32_t now = 0x90000000u;
+  NearbyCopy p = peerOf(1, -40, now - 25u * 24 * 3600 * 1000);
+  TEST_ASSERT_FALSE(isFresh(p, now));
+  p.lastSeenBleMs = now + 5;
+  TEST_ASSERT_TRUE(isFresh(p, now));
+  p.lastSeenBleMs = now - kMomentFreshMs;
+  TEST_ASSERT_TRUE(isFresh(p, now));
+  p.lastSeenBleMs = now - kMomentFreshMs - 1;
+  TEST_ASSERT_FALSE(isFresh(p, now));
+}
+
+// With no new BLE sighting a changed RSSI never reaches the beat.
+void test_the_beat_holds_without_a_new_ble_sighting() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -64, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.host.peers[0].lastRssi = -46;
+  for (uint32_t t = 0; t <= 8000; t += 10) {
+    r.host.peers[0].lastSeenNearMs = t;
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
+  std::vector<uint32_t> lubs;
+  for (const Render& rd : r.host.renders) {
+    if (rd.inv.parameters.get("durationMax", 0) == 160) lubs.push_back(rd.atMs);
+  }
+  TEST_ASSERT_TRUE(lubs.size() >= 4);
+  for (size_t i = 1; i < lubs.size(); ++i) {
+    TEST_ASSERT_UINT32_WITHIN(10, heartbeatPeriodMs(-64.0f), lubs[i] - lubs[i - 1]);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_wait_lies_in_the_range_times_mode);
@@ -1428,6 +1601,7 @@ int main(int, char**) {
   RUN_TEST(test_fireflies_period_and_first_offset_ranges);
   RUN_TEST(test_fireflies_offset_shrinks_and_reaches_zero_by_84);
   RUN_TEST(test_fireflies_two_lamps_land_on_one_beat);
+  RUN_TEST(test_fireflies_known_vectors);
   RUN_TEST(test_fireflies_envelope_endpoints);
   RUN_TEST(test_fireflies_timeline_is_deterministic);
   RUN_TEST(test_fireflies_late_joiner_recovers_t0_from_age);
@@ -1478,5 +1652,15 @@ int main(int, char**) {
   RUN_TEST(test_heartbeat_settles_when_the_peer_fades);
   RUN_TEST(test_heartbeat_ignores_presence_without_a_ble_sighting);
   RUN_TEST(test_heartbeat_starts_at_minus_sixty_five);
+  RUN_TEST(test_a_black_peer_colour_falls_back_to_the_shade);
+  RUN_TEST(test_a_white_only_peer_colour_is_kept);
+  RUN_TEST(test_with_no_lit_colour_a_moment_renders_white);
+  RUN_TEST(test_a_dark_whisper_origin_falls_back_to_the_shade);
+  RUN_TEST(test_whitening_checks_every_base_stop);
+  RUN_TEST(test_a_near_white_base_keeps_the_colour);
+  RUN_TEST(test_a_suppressor_cancels_a_pending_resend);
+  RUN_TEST(test_a_non_object_mo_is_swallowed);
+  RUN_TEST(test_a_stamp_older_than_the_signed_horizon_is_stale);
+  RUN_TEST(test_the_beat_holds_without_a_new_ble_sighting);
   return UNITY_END();
 }

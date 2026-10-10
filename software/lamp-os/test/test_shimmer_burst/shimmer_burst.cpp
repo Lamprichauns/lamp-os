@@ -173,6 +173,67 @@ void test_a_disabled_configured_flicker_never_bursts() {
   TEST_ASSERT_FALSE(e.isAnimationComplete());
 }
 
+// Runs one burst and records each frame's lit count until the instance
+// completes; `lit` marks every cell that ever painted.
+std::vector<size_t> runBurst(ShimmerExpression& e, Surfaces& s, uint32_t startMs,
+                             std::vector<bool>* lit = nullptr) {
+  set_mock_millis(startMs);
+  TEST_ASSERT_TRUE(e.trigger());
+  std::vector<size_t> counts;
+  for (uint32_t now = startMs; !e.isAnimationComplete(); now += kFrameMs) {
+    counts.push_back(frame(e, s, now));
+    if (lit) {
+      for (uint8_t i = 0; i < kPixels; ++i) {
+        if (!(s.shade.buffer[i] == kAnchor)) (*lit)[i] = true;
+      }
+    }
+    TEST_ASSERT_TRUE(now - startMs < 4 * kBurstMs);
+  }
+  return counts;
+}
+
+void test_a_burst_lights_exactly_count_stars() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  const std::vector<size_t> counts = runBurst(e, s, 1000);
+  size_t peak = 0;
+  for (size_t c : counts) peak = c > peak ? c : peak;
+  TEST_ASSERT_EQUAL_UINT32(kStars, peak);
+}
+
+// Every star has fallen back under the paint threshold before the burst
+// completes, so completion removes nothing still lit.
+void test_a_burst_falls_dark_before_it_completes() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  const std::vector<size_t> counts = runBurst(e, s, 1000);
+  TEST_ASSERT_TRUE(counts.size() > 4);
+  TEST_ASSERT_EQUAL_UINT32(0, counts[counts.size() - 2]);
+  TEST_ASSERT_EQUAL_UINT32(0, counts.back());
+}
+
+// Over many triggers the stars spread across the zone: each half of it holds
+// about its share, so selection favours no end.
+void test_stars_spread_over_the_whole_zone() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  uint32_t front = 0, back = 0;
+  uint32_t start = 1000;
+  for (int burst = 0; burst < 300; ++burst) {
+    std::vector<bool> lit(kPixels, false);
+    runBurst(e, s, start, &lit);
+    start += 4 * kBurstMs;
+    for (uint8_t i = 0; i < kPixels; ++i) {
+      if (lit[i]) (i < kPixels / 2 ? front : back) += 1;
+    }
+  }
+  const float share = static_cast<float>(back) / static_cast<float>(front + back);
+  TEST_ASSERT_TRUE_MESSAGE(share > 0.42f && share < 0.58f, "stars cluster at one end");
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_a_transient_burst_completes_for_the_gc);
@@ -182,5 +243,8 @@ int main(int, char**) {
   RUN_TEST(test_an_untinted_burst_paints_the_colour_under_it);
   RUN_TEST(test_a_configured_flicker_ignores_a_tint);
   RUN_TEST(test_a_disabled_configured_flicker_never_bursts);
+  RUN_TEST(test_a_burst_lights_exactly_count_stars);
+  RUN_TEST(test_a_burst_falls_dark_before_it_completes);
+  RUN_TEST(test_stars_spread_over_the_whole_zone);
   return UNITY_END();
 }
