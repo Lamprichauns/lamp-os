@@ -567,6 +567,9 @@ void Lamp::drainCommand() {
     // is the slot's only consumer and runs only on Core 1.
     static lamp::PendingCommand cmd;
     if (lamp::pendingSlots.command.drain(pendingMux, cmd)) {
+      // Refused here too so a delayed cascade is never booked to fire after
+      // home mode ends.
+      if (expressionManager.ignoresPeers()) return;
       JsonDocument doc;
       if (deserializeJson(doc, cmd.payload, cmd.payloadLen) != DeserializationError::Ok) return;
       lamp::ExpressionInvocation inv;

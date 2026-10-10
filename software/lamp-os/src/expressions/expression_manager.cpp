@@ -523,6 +523,10 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
   return triggered;
 }
 
+bool ExpressionManager::ignoresPeers() const {
+  return compositor_ && compositor_->blocksRemote(TransientSource::Remote);
+}
+
 // Evict a one-shot cascade even when isAnimationComplete() never fires; a
 // stuck completion signal would otherwise latch it on the compositor forever.
 static constexpr uint32_t kTransientMaxLifetimeMs = 180000;

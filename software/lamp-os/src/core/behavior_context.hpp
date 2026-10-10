@@ -116,17 +116,18 @@ struct BehaviorContext {
   bool discardsPeers() const;
 
   // Framework arrival pass, once per loop: consumes arrivals while
-  // discardsPeers(), then runs the onArrival notifier (silenced while
-  // discarding, held while only ignoring).
+  // discardsPeers(), then runs the onArrival notifier (ArrivalPass::Silence
+  // while discarding, Hold during the app's preview, Fire otherwise).
   void tickArrivals(uint32_t nowMs, uint32_t nearWindowMs);
 
   // Per-peer greeting waveform for `peerLampId` (colon-hex mac).
   GreetingTuning greetingFor(const std::string& peerLampId) const;
   // Stored disposition tier for `peerLampId` (3 = neutral default).
   uint8_t dispositionOf(const std::string& peerLampId) const;
-  // Current near-crowd grouped by disposition.
+  // Current near-crowd grouped by disposition; empty while ignoresPeers().
   CrowdComposition crowd() const;
-  // Smoothed weighted-crowd value before the per-mode floor/curve.
+  // Smoothed weighted-crowd value before the per-mode floor/curve; 0 while
+  // ignoresPeers().
   float crowdWeight() const;
 
   // Physical author facade (per-tick, from input behaviors). setSolidColor is

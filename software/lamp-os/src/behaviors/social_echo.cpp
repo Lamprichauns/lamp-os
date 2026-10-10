@@ -12,6 +12,7 @@ namespace lamp {
 
 void SocialEchoObserver::onPeerExpression(const uint8_t sourceMac[6],
                                           const ExpressionInvocation& inv) {
+  if (manager_.ignoresPeers()) return;
   if (mesh_.isOtaInProgress()) return;
   if (manager_.isAnyTestActive()) return;
 

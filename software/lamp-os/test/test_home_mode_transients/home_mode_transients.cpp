@@ -19,6 +19,8 @@
 #include "core/frame_buffer.cpp"
 #include "util/color.cpp"
 #include "expressions/bloom/bloom_expression.cpp"
+#include "behaviors/social_echo.cpp"
+#include "config/disposition_store.cpp"
 
 namespace lamp {
 OverrideAggregate overrides;
@@ -49,6 +51,8 @@ bool MeshLink::sendCommand(const uint8_t*, const uint8_t*, size_t) { return true
 bool MeshLink::sendEvent(const uint8_t*, size_t) { return true; }
 bool MeshLink::isOtaInProgress() const { return false; }
 void MeshLink::getMyMac(uint8_t* mac) const { std::memset(mac, 0, 6); }
+// Every peer is Smitten, so an Extrovert lamp mirrors three events in four.
+uint8_t Config::getDisposition(const uint8_t*) const { return 5; }
 }  // namespace lamp
 
 using namespace lamp;
@@ -184,6 +188,56 @@ void test_preview_blocks_peers_without_retiring() {
   TEST_ASSERT_FALSE(static_cast<Probe*>(s_registered[0])->retired());
 }
 
+// Ten announces from a Smitten peer book at least one mirror on an Extrovert
+// lamp outside home mode.
+static size_t mirrorsBookedThenFired(Rig& r, bool homeDuringAnnounce, bool preview) {
+  Config config;
+  config.lamp.socialMode = SocialMode::Extrovert;
+  MeshLink mesh;
+  SocialEchoObserver echo(config, r.manager, mesh);
+  ExpressionInvocation inv;
+  inv.type = "probe";
+  inv.target = TARGET_SHADE;
+
+  r.compositor.homeMode = homeDuringAnnounce;
+  r.compositor.homePreview = preview;
+  for (int i = 0; i < 10; ++i) echo.onPeerExpression(kPeerMac, inv);
+  r.compositor.homeMode = false;
+  r.compositor.homePreview = false;
+  set_mock_millis(10000 + kMirrorDelayFloorMs + kMirrorJitterMs + 1);
+  echo.tick(millis());
+  return s_registered.size();
+}
+
+void test_echo_books_outside_home_mode() {
+  Rig r;
+  TEST_ASSERT_EQUAL_size_t(1, mirrorsBookedThenFired(r, false, false));
+}
+
+// Nothing booked at home or during the app's preview fires after it ends.
+void test_echo_books_nothing_at_home_or_in_preview() {
+  {
+    Rig r;
+    TEST_ASSERT_EQUAL_size_t(0, mirrorsBookedThenFired(r, true, false));
+  }
+  set_mock_millis(10000);
+  {
+    Rig r;
+    TEST_ASSERT_EQUAL_size_t(0, mirrorsBookedThenFired(r, true, true));
+  }
+}
+
+void test_manager_ignores_peers_in_home_and_preview() {
+  Rig r;
+  TEST_ASSERT_FALSE(r.manager.ignoresPeers());
+  r.compositor.homeMode = true;
+  TEST_ASSERT_TRUE(r.manager.ignoresPeers());
+  r.compositor.homePreview = true;
+  TEST_ASSERT_TRUE(r.manager.ignoresPeers());
+  r.compositor.setHomeModePolicy(/*socialDisabled=*/false, {"glitchy"});
+  TEST_ASSERT_FALSE(r.manager.ignoresPeers());
+}
+
 // Bloom paints its swell through the same contribution scale, so a retired
 // bloom fades with the rest.
 void test_retired_bloom_paints_nothing() {
@@ -216,5 +270,8 @@ int main(int, char**) {
   RUN_TEST(test_running_peer_transient_untouched_outside_home_mode);
   RUN_TEST(test_retired_bloom_paints_nothing);
   RUN_TEST(test_preview_blocks_peers_without_retiring);
+  RUN_TEST(test_echo_books_outside_home_mode);
+  RUN_TEST(test_echo_books_nothing_at_home_or_in_preview);
+  RUN_TEST(test_manager_ignores_peers_in_home_and_preview);
   return UNITY_END();
 }

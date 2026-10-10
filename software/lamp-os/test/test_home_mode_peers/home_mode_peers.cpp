@@ -20,13 +20,17 @@ lamp::ArrivalNotifier arrivalNotifier;
 lamp::Config config;
 
 namespace lamp {
-// BehaviorContext's social reads link against these; the arrival tests never
-// call them. The compositor is used for its inline home-mode gate; the policy
+// BehaviorContext's social reads link against these; the crowd stubs report a
+// non-empty room. The compositor is used for its inline home-mode gate; the policy
 // setter stores what compositor.cpp's does, without its render dependencies.
 PersonalityEngine personalityEngine;
 GreetingTuning PersonalityEngine::greetingFor(const std::string&) const { return {}; }
-CrowdComposition PersonalityEngine::crowdComposition() const { return {}; }
-float PersonalityEngine::smoothedCrowdWeight() const { return 0.0f; }
+CrowdComposition PersonalityEngine::crowdComposition() const {
+  CrowdComposition c;
+  c.fond = 2;
+  return c;
+}
+float PersonalityEngine::smoothedCrowdWeight() const { return 1.5f; }
 uint8_t Config::getDisposition(const std::string&) const { return 3; }
 Compositor::Compositor() {}
 void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string> disabledIds) {
@@ -184,6 +188,49 @@ void test_nearby_reads_empty_in_home_social_off() {
   TEST_ASSERT_EQUAL_INT(1, seen);
 }
 
+// The crowd reads report an empty room while home mode ignores peers.
+void test_crowd_reads_empty_in_home_social_off() {
+  Rig r;
+  TEST_ASSERT_EQUAL_UINT8(2, r.ctx.crowd().fond);
+  TEST_ASSERT_EQUAL_FLOAT(1.5f, r.ctx.crowdWeight());
+
+  r.compositor.homeMode = true;
+  TEST_ASSERT_EQUAL_UINT8(0, r.ctx.crowd().fond);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, r.ctx.crowdWeight());
+}
+
+// A peer that leaves and returns within a preview fires once the preview ends,
+// as it would have without one.
+void test_preview_rearms_a_peer_that_left_and_returned() {
+  Rig r;
+  arrivalNotifier = ArrivalNotifier();
+  int fires = 0;
+  r.ctx.onArrival([&](const PeerView&) { ++fires; });
+  const uint32_t nearWindow = 20000;
+
+  r.seedNear("jacko", "AA:BB:CC:DD:EE:F0");
+  r.ctx.tickArrivals(100010, nearWindow);
+  TEST_ASSERT_EQUAL_INT(1, fires);
+
+  r.compositor.homeMode = true;
+  r.compositor.homePreview = true;
+  const uint32_t departed = 100000 + nearWindow + 5000;
+  set_mock_millis(departed);
+  r.ctx.tickArrivals(departed, nearWindow);
+  const uint32_t back = departed + 2000;
+  set_mock_millis(back);
+  r.seedNear("jacko", "AA:BB:CC:DD:EE:F0");
+  r.ctx.tickArrivals(back, nearWindow);
+  TEST_ASSERT_EQUAL_INT(1, fires);
+
+  r.compositor.homeMode = false;
+  r.compositor.homePreview = false;
+  const uint32_t after = back + 1000;
+  set_mock_millis(after);
+  r.ctx.tickArrivals(after, nearWindow);
+  TEST_ASSERT_EQUAL_INT(2, fires);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_pull_arrival_ignored_in_home_social_off);
@@ -194,5 +241,7 @@ int main(int, char**) {
   RUN_TEST(test_framework_pass_consumes_arrivals_for_social_behavior);
   RUN_TEST(test_preview_holds_arrivals_without_consuming);
   RUN_TEST(test_nearby_reads_empty_in_home_social_off);
+  RUN_TEST(test_crowd_reads_empty_in_home_social_off);
+  RUN_TEST(test_preview_rearms_a_peer_that_left_and_returned);
   return UNITY_END();
 }

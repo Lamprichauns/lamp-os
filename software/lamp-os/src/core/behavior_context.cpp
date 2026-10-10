@@ -59,10 +59,12 @@ uint8_t BehaviorContext::dispositionOf(const std::string& peerLampId) const {
 }
 
 CrowdComposition BehaviorContext::crowd() const {
+  if (ignoresPeers()) return {};
   return personalityEngine.crowdComposition();
 }
 
 float BehaviorContext::crowdWeight() const {
+  if (ignoresPeers()) return 0.0f;
   return personalityEngine.smoothedCrowdWeight();
 }
 

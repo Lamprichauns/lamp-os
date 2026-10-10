@@ -318,6 +318,10 @@ class ExpressionManager {
    * call every loop tick. Call AFTER compositor.tick() so the final
    * frame of the animation gets drawn before removal.
    */
+  // True while home mode ignores other lamps (Compositor::blocksRemote): a
+  // peer's invocation is neither started nor booked for later.
+  bool ignoresPeers() const;
+
   void gcTransients();
 
   // Loop drain: sends the next batch of a cascade fan-out when due, and stops

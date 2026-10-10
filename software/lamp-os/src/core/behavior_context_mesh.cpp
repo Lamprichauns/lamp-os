@@ -21,9 +21,10 @@ void BehaviorContext::tickArrivals(uint32_t nowMs, uint32_t nearWindowMs) {
          ++i) {
       lampRoster->acknowledge(arrival.mac);
     }
-    arrivalNotifier.tick(nowMs, *lampRoster, nearWindowMs, /*silenced=*/true);
-  } else if (!ignoresPeers()) {
-    arrivalNotifier.tick(nowMs, *lampRoster, nearWindowMs);
+    arrivalNotifier.tick(nowMs, *lampRoster, nearWindowMs, ArrivalPass::Silence);
+  } else {
+    arrivalNotifier.tick(nowMs, *lampRoster, nearWindowMs,
+                         ignoresPeers() ? ArrivalPass::Hold : ArrivalPass::Fire);
   }
 }
 
