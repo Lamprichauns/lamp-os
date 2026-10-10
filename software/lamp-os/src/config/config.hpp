@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -109,9 +108,10 @@ class Config {
    * fade-out-and-reboot. The runtime state has already been applied by
    * the caller; this just writes the canonical JSON to NVS.
    *
-   * Returns true iff the store wrote > 0 bytes. Never throws: when the heap
-   * cannot spare the serialization it returns false, logs, and schedules a
-   * retry that maybeRetryPersist() runs; in-memory state is unchanged.
+   * Returns true when every key landed. Never throws: when the heap cannot
+   * spare the save or NVS refuses a write, it returns false, logs, and backs
+   * off (5 s doubling to 60 s); maybeRetryPersist() runs the retry. In-memory
+   * state is unchanged.
    *
    * `via`: short tag like "commit" / "settings_blob" / "expressionOp"
    * included in the log to disambiguate which path triggered the write.
@@ -119,23 +119,18 @@ class Config {
    */
   bool persistConfig(const char* via);
 
-  // The whole config as NUL-terminated JSON in one exactly-sized buffer, `len`
-  // its byte count; null (logged) when the heap cannot spare it. The bytes
-  // persistConfig writes, for a caller that inspects them first.
-  std::unique_ptr<char[]> serializeConfig(size_t& len, const char* via);
-  // Writes serializeConfig's output to the "cfg" key; true iff > 0 bytes
-  // landed. A success clears any retry persistConfig scheduled.
-  bool writeSerializedConfig(const char* json, const char* via);
-  // Core 1 loop drain: re-runs a persistConfig the heap deferred, at most once
-  // per kPersistRetryMs.
+  // False while a failed save is backing off; a caller with its own retry
+  // loop (the commit drain) waits on it instead of spinning.
+  bool persistDue(uint32_t nowMs) const;
+  // Core 1 loop drain: re-runs a failed persistConfig once its backoff ends.
   void maybeRetryPersist(uint32_t nowMs);
-  static constexpr uint32_t kPersistRetryMs = 5000;
+  static constexpr uint32_t kPersistRetryBaseMs = 5000;
+  static constexpr uint32_t kPersistRetryMaxMs = 60000;
 
-  // Writes a caller-supplied whole-config JSON string straight to the NVS
-  // "cfg" blob (the webapp's whole-document PUT path; the constructor
-  // re-parses it on the next boot). Keeps the namespace/key contract here
-  // rather than letting callers open Preferences("lamp") themselves.
-  // Returns true iff the store wrote > 0 bytes.
+  // Saves a caller-supplied whole-config JSON document (the webapp's
+  // whole-document PUT path) in the stored shape, for the next boot to load.
+  // Keeps the namespace/key contract here rather than letting callers open
+  // NVS themselves. Returns true when every key landed.
   bool persistRawJson(const char* json);
 
   // Wipe persisted state (factory reset). Returns true on success. The caller
@@ -267,7 +262,7 @@ class Config {
 
  private:
   DispositionStore dispositions_{kDispositionFlushIdleMs};
-  DispositionDebouncer persistRetry_{kPersistRetryMs};
+  RetryBackoff persistRetry_{kPersistRetryBaseMs, kPersistRetryMaxMs};
 
   // All dirty=true initially so the first cached() call computes and
   // populates the string. After that, mutations on Core 1 must call

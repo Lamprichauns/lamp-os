@@ -7,7 +7,6 @@
 #include <array>
 
 #include "util/bd_addr.hpp"
-#include "util/heap_guard.hpp"
 
 namespace lamp {
 
@@ -58,6 +57,24 @@ bool parseEntries(const char* json, size_t len, std::vector<Entry>& out) {
   out.erase(last, out.end());
   return true;
 }
+// Binary form: a format byte, then [mac:6][value:1] per entry, in key order.
+bool parseBlob(const uint8_t* data, size_t len, std::vector<Entry>& out) {
+  if (data[0] != DispositionStore::kBlobFormat) return false;
+  if ((len - 1) % DispositionStore::kBlobEntryLen != 0) return false;
+  const size_t count = (len - 1) / DispositionStore::kBlobEntryLen;
+  if (count > DispositionStore::kMax) return false;
+  out.clear();
+  out.reserve(DispositionStore::kMax);
+  for (size_t i = 0; i < count; ++i) {
+    const uint8_t* e = data + 1 + i * DispositionStore::kBlobEntryLen;
+    MacKey mac;
+    std::copy(e, e + 6, mac.begin());
+    out.emplace_back(mac, std::clamp<uint8_t>(e[6], 1, 5));
+  }
+  std::sort(out.begin(), out.end(),
+            [](const Entry& a, const Entry& b) { return a.first < b.first; });
+  return true;
+}
 }  // namespace
 
 DispositionStore::DispositionStore(uint32_t flushIdleMs)
@@ -67,10 +84,15 @@ DispositionStore::DispositionStore(uint32_t flushIdleMs)
 
 void DispositionStore::load() {
   if (!store_) return;
-  std::string json = store_->read("dispositions", "{}");
-
+  std::array<uint8_t, kMaxBlobLen> blob;
+  const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
   std::vector<Entry> next;
-  if (!parseEntries(json.c_str(), json.size(), next)) return;
+  if (n > 0) {
+    if (!parseBlob(blob.data(), n, next)) return;
+  } else {
+    std::string json = store_->read(kLegacyJsonKey, "{}");
+    if (!parseEntries(json.c_str(), json.size(), next)) return;
+  }
   xSemaphoreTake(mutex_, portMAX_DELAY);
   entries_ = std::move(next);
   xSemaphoreGive(mutex_);
@@ -155,31 +177,40 @@ bool DispositionStore::setFromJson(const char* json, size_t len,
 
 bool DispositionStore::persist_() {
   if (!store_) return false;
-  auto buf = allocateSpare(kMaxJsonLen);
-  if (!buf) {
-    Serial.println("[nvs] dispositions flush deferred: low heap");
-    return false;
+  // At most 701 bytes, so the stack holds it and a flush touches no heap.
+  std::array<uint8_t, kMaxBlobLen> blob;
+  blob[0] = kBlobFormat;
+  size_t len = 1;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  for (const auto& e : entries_) {
+    std::copy(e.first.begin(), e.first.end(), blob.data() + len);
+    blob[len + 6] = e.second;
+    len += kBlobEntryLen;
   }
-  writeJson_(buf.get());
-  // A 0-byte write means NVS is full or corrupt; leave the dirty flag set so
-  // the next flush retries.
-  return store_->write("dispositions", buf.get()) > 0;
+  xSemaphoreGive(mutex_);
+  if (store_->writeBlob(kBlobKey, blob.data(), len) == 0) return false;
+  store_->erase(kLegacyJsonKey);
+  return true;
+}
+
+void DispositionStore::flushIfDue_(uint32_t nowMs) {
+  if (!retry_.due(nowMs)) return;
+  if (persist_()) {
+    debouncer_.clear();
+    retry_.succeed();
+  } else {
+    retry_.fail(nowMs);
+    Serial.printf("[nvs] dispositions flush failed; retry in %lus\n",
+                  (unsigned long)(retry_.waitMs() / 1000));
+  }
 }
 
 void DispositionStore::maybeFlush(uint32_t nowMs) {
-  if (!debouncer_.shouldFlush(nowMs)) return;
-  if (persist_()) {
-    debouncer_.clear();
-  } else {
-    debouncer_.markDirty(nowMs);
-  }
+  if (debouncer_.shouldFlush(nowMs)) flushIfDue_(nowMs);
 }
 
-void DispositionStore::flushNow() {
-  if (!debouncer_.dirty()) return;
-  if (persist_()) {
-    debouncer_.clear();
-  }
+void DispositionStore::flushNow(uint32_t nowMs) {
+  if (debouncer_.dirty()) flushIfDue_(nowMs);
 }
 
 }  // namespace lamp

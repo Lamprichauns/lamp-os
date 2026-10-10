@@ -72,6 +72,7 @@ bool parseInvocation(JsonObjectConst doc, ExpressionInvocation& out) {
   if (!params.isNull()) {
     for (JsonPairConst kv : params) {
       if (out.parameters.size() == kMaxExpressionParams) break;
+      if (expressionParamKeyIndex(kv.key().c_str()) < 0) continue;
       JsonVariantConst v = kv.value();
       // bool first; ArduinoJson types `true`/`false` as bool, distinct
       // from int. Coerce so callers can send the JSON-natural form too.

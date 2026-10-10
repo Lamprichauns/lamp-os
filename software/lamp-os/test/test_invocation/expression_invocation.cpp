@@ -206,7 +206,8 @@ void test_parse_caps_colors_and_params() {
   for (int i = 0; i < 20; ++i) json += "ff234212";
   json += "\",\"parameters\":{";
   for (int i = 0; i < 30; ++i) {
-    json += (i ? ",\"k" : "\"k") + std::to_string(i) + "\":1";
+    json += std::string(i ? ",\"" : "\"") +
+            lamp::kExpressionParamKeys[i % lamp::kExpressionParamKeyCount] + "\":1";
   }
   json += "}}";
   JsonDocument doc;

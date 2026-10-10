@@ -16,6 +16,7 @@
 // Native tests don't build src/, so compile the real implementations in.
 #include "../../src/util/color.cpp"
 #include "../../src/config/config_codec.cpp"
+#include "../../src/util/heap_guard.cpp"
 
 using namespace lamp;
 

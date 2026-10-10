@@ -2,6 +2,10 @@
 
 #include <ArduinoJson.h>
 
+#include <cstddef>
+#include <cstdint>
+
+#include "config_store.hpp"
 #include "config_types.hpp"
 
 // JSON codec for the persisted "cfg" blob. Pure functions over the config
@@ -30,6 +34,42 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
 void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
             const ShadeSettings& shade, const ExpressionSettings& expressions,
             const HomeModeSettings& homeMode);
+
+// Serialize everything but the expressions and the knockout levels (the "cfg"
+// key's stored shape).
+void toStoredJson(JsonObject root, const LampSettings& lamp,
+                  const BaseSettings& base, const ShadeSettings& shade,
+                  const HomeModeSettings& homeMode);
+
+// One expression as a compact record: a format byte, flags, target, the type
+// id, the interval pair, RGBW colours, then (param key index, value) pairs.
+// Longest at the caps is kMaxExpressionRecordLen. Parameters whose key has no
+// index are skipped.
+constexpr size_t kMaxExpressionRecordLen =
+    4 + kMaxExpressionTypeLen + 8 + 1 + 4 * kMaxExpressionColors + 1 +
+    5 * kMaxExpressionParams;
+size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out);
+bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
+
+enum class SaveResult : uint8_t { Ok, LowHeap, WriteFailed };
+
+// Writes the model across NVS keys: each expression as its own record ("x0",
+// "x1", ...), the count in "xn", stale records erased, the knockout levels in
+// "ko", then the rest as the "cfg" JSON. No single value outgrows an NVS page, and an unchanged record is
+// not rewritten (NVS skips identical writes). Stops at the first failed
+// write; the caller keeps its dirty state and retries.
+SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
+                      const BaseSettings& base, const ShadeSettings& shade,
+                      const ExpressionSettings& expressions,
+                      const HomeModeSettings& homeMode);
+
+// Overlays what saveConfig keeps outside the "cfg" JSON: the knockout levels
+// ("ko", one byte per pixel) onto `base`, and the expressions from their
+// records when "xn" is present. Returns false, leaving the expressions as the
+// "cfg" JSON loaded them, for a store written before records existed; the
+// next save migrates it. Call after fromJson, which sizes the knockout.
+bool loadRecords(ConfigStore& store, BaseSettings& base,
+                 ExpressionSettings& expressions);
 
 // True when `json` is a whole config document safe to persist: it parses and
 // carries a `lamp` object. persistRawJson gates on this so a truncated or

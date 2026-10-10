@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <string>
 #include <variant>
@@ -187,14 +188,48 @@ inline bool resolveNamed(bool namedKeyPresent, bool loadedNamed,
   return variantDefault.empty() || name != variantDefault;
 }
 
-// Caps on stored and incoming expressions (config entries, upserts, mesh invocations). Colours and the target
-// range match the app's editor; the entry and parameter counts sit above
-// anything a registered type writes, so they bound only malformed input.
+// Caps on stored and incoming expressions (config entries, upserts, mesh
+// invocations). Colours and the target range match the app's editor; 24
+// entries holds every type at every target (7 x 3) with room for a new type.
+// The stored config fits NVS at these caps; see docs/dev/embedded-heap.md.
 constexpr uint8_t kExpressionTargetMin = 1;
 constexpr uint8_t kExpressionTargetMax = 3;
 constexpr size_t kMaxExpressionColors = 8;
 constexpr size_t kMaxExpressionParams = 16;
-constexpr size_t kMaxExpressions = 32;
+constexpr size_t kMaxExpressions = 24;
+constexpr size_t kMaxExpressionTypeLen = 15;
+
+// Caps on the rest of the stored config, so its "cfg" JSON has a known
+// ceiling. Surface colours sit above the app's 6 stops; segments above the
+// most any variant defines (3); SSIDs are 32 bytes by 802.11.
+constexpr size_t kMaxSurfaceColors = 8;
+constexpr size_t kMaxSegments = 4;
+constexpr size_t kMaxSegmentNameLen = 16;
+constexpr size_t kMaxPasswordLen = 64;
+constexpr size_t kMaxSsidLen = 32;
+constexpr size_t kMaxDisabledExpressionTypes = 8;
+
+// Every parameter key an expression reads. Stored configs carry a key as its
+// index here, so the table is append-only: never reorder or remove an entry.
+// A key not listed has no reader and is dropped at parse.
+inline constexpr const char* kExpressionParamKeys[] = {
+    "breathSpeed",  "cascadeEnabled",   "cascadeStaggerMs", "count",
+    "durationMax",  "durationMin",      "easing",           "fadeDuration",
+    "fillMode",     "fire",             "fullStrip",        "loop",
+    "opacity",      "posMax",           "posMin",           "pulseSpeed",
+    "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
+    "spotSpeed",
+};
+constexpr size_t kExpressionParamKeyCount =
+    sizeof(kExpressionParamKeys) / sizeof(kExpressionParamKeys[0]);
+
+// Index of `key` in kExpressionParamKeys, or -1 when it has no reader.
+inline int expressionParamKeyIndex(const char* key) {
+  for (size_t i = 0; i < kExpressionParamKeyCount; ++i) {
+    if (std::strcmp(kExpressionParamKeys[i], key) == 0) return static_cast<int>(i);
+  }
+  return -1;
+}
 
 /**
  * Configuration for a single expression with generic parameter system

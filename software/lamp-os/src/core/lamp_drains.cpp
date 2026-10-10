@@ -38,17 +38,7 @@ namespace {
 // Local state for drainCommit only.
 bool      commitDirty = false;
 uint32_t  lastCommitSignalMs = 0;
-uint32_t  lastPersistedHash = 0;  // FNV-1a of last successfully persisted serialized JSON
 constexpr uint32_t kCommitFlushIdleMs = 2500;
-
-uint32_t fnv1aHash(const char* s, size_t len) {
-  uint32_t h = 2166136261u;
-  for (size_t i = 0; i < len; ++i) {
-    h ^= static_cast<uint8_t>(s[i]);
-    h *= 16777619u;
-  }
-  return h;
-}
 
 }  // namespace
 
@@ -182,7 +172,7 @@ void Lamp::drainExpressionOp() {
   }
 }
 
-// Debounced 2500 ms; hash-dedup skips redundant NVS writes.
+// Debounced 2500 ms; NVS skips rewriting unchanged keys.
 // Force-flush path on BLE disconnect. Runs after live-preview drains.
 void Lamp::drainCommit() {
   lamp::Config& config = ::config;
@@ -207,24 +197,12 @@ void Lamp::drainCommit() {
       Serial.println("[loop] commit drain: OTA in progress, deferred");
 #endif
     } else {
-      size_t len = 0;
-      auto serialized = config.serializeConfig(len, "commit");
-      const uint32_t hash = serialized ? fnv1aHash(serialized.get(), len) : 0;
-      if (!serialized) {
-        // Low heap: re-arm the debounce so the retry waits one window.
-        lastCommitSignalMs = millis();
-      } else if (hash == lastPersistedHash) {
-#ifdef LAMP_DEBUG
-        Serial.println("[loop] commit drain: hash-dedup skip");
-#endif
-        commitDirty = false;
-      } else if (config.writeSerializedConfig(serialized.get(), "commit")) {
-        lastPersistedHash = hash;
+      // A failed save backs off inside Config; commitDirty stays set until a
+      // retry lands, and an unchanged config is a no-op write in NVS.
+      if (config.persistDue(millis()) && config.persistConfig("commit")) {
         config.invalidateAllSections();
         lamp::refreshDefaultScene();
         commitDirty = false;
-      } else {
-        lastCommitSignalMs = millis();
       }
     }
   }

@@ -85,58 +85,39 @@ Config::Config(ConfigStore* inStore) {
                               expressions, homeMode)) {
     Serial.println("[cfg] stored expressions over caps; truncated on load");
   }
+  config_codec::loadRecords(*store_, base, expressions);
   namedKeyPresent_ = doc["lamp"]["named"].is<bool>();
 
   // Per-peer dispositions live in a separate NVS key.
   dispositions_.load();
 };
 
-std::unique_ptr<char[]> Config::serializeConfig(size_t& len, const char* via) {
-  len = 0;
-  std::unique_ptr<char[]> json;
-  // Gate the document build too: it allocates as it grows, and on a heap this
-  // tight a half-built document is the allocation that tips it over.
-  if (heapCanSpare(kHeapHeadroom)) {
-    JsonDocument doc = asJsonDocument();
-    json = serializeGuarded(doc, len);
-  }
-  if (!json) {
-    Serial.printf("[nvs] config save via=%s deferred: low heap (largest=%u)\n", via,
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-  }
-  return json;
-}
-
-bool Config::writeSerializedConfig(const char* json, const char* via) {
-  // A store write returns 0 bytes when NVS is full or the partition is corrupt.
-  size_t written = store_->write("cfg", json);
-#ifdef LAMP_DEBUG
-  if (written == 0) {
-    Serial.println("[nvs] persistConfig wrote 0 bytes");
-  } else {
-    Serial.printf("[nvs] persistConfig via=%s wrote %u bytes\n",
-                  via, (unsigned)written);
-  }
-#else
-  (void)via;
-#endif
-  if (written > 0) persistRetry_.clear();
-  return written > 0;
-}
-
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
-  size_t len = 0;
-  auto json = serializeConfig(len, via);
-  if (!json) {
-    persistRetry_.markDirty(millis());
-    return false;
+  const uint32_t now = millis();
+  const config_codec::SaveResult result =
+      heapCanSpare(kHeapHeadroom)
+          ? config_codec::saveConfig(*store_, lamp, base, shade, expressions, homeMode)
+          : config_codec::SaveResult::LowHeap;
+  if (result == config_codec::SaveResult::Ok) {
+    persistRetry_.succeed();
+#ifdef LAMP_DEBUG
+    Serial.printf("[nvs] config saved via=%s\n", via);
+#endif
+    return true;
   }
-  return writeSerializedConfig(json.get(), via);
+  persistRetry_.fail(now);
+  Serial.printf("[nvs] config save via=%s failed (%s, largest=%u); retry in %lus\n",
+                via, result == config_codec::SaveResult::LowHeap ? "low heap" : "write",
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+                (unsigned long)(persistRetry_.waitMs() / 1000));
+  return false;
 }
 
+bool Config::persistDue(uint32_t nowMs) const { return persistRetry_.due(nowMs); }
+
 void Config::maybeRetryPersist(uint32_t nowMs) {
-  if (persistRetry_.shouldFlush(nowMs)) persistConfig("retry");
+  if (persistRetry_.pending() && persistRetry_.due(nowMs)) persistConfig("retry");
 }
 
 bool Config::persistRawJson(const char* json) {
@@ -147,7 +128,20 @@ bool Config::persistRawJson(const char* json) {
 #endif
     return false;
   }
-  return store_->write("cfg", json) > 0;
+  // Parse into a scratch model and save it in the stored shape; the caller
+  // reboots to load it, the same as a raw write re-parsed on the next boot.
+  JsonDocument doc;
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
+  LampSettings rawLamp;
+  BaseSettings rawBase;
+  ShadeSettings rawShade;
+  ExpressionSettings rawExpressions;
+  HomeModeSettings rawHome;
+  config_codec::fromJson(doc.as<JsonObject>(), rawLamp, rawBase, rawShade,
+                         rawExpressions, rawHome);
+  return config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade,
+                                  rawExpressions, rawHome) ==
+         config_codec::SaveResult::Ok;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }
@@ -215,7 +209,7 @@ void Config::maybeFlushDispositions(uint32_t nowMs) {
   dispositions_.maybeFlush(nowMs);
 }
 
-void Config::flushDispositionsNow() { dispositions_.flushNow(); }
+void Config::flushDispositionsNow() { dispositions_.flushNow(millis()); }
 
 JsonDocument Config::asJsonDocument() {
   JsonDocument doc;

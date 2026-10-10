@@ -1,9 +1,11 @@
 #include "config/config_codec.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 #include "util/color.hpp"
+#include "util/heap_guard.hpp"
 #include "util/str.hpp"
 
 namespace lamp {
@@ -25,7 +27,10 @@ static void parseSegments(JsonObject node, std::vector<SegmentSettings>& segs,
     SegmentSettings seg;
     seg.name = roleName;
     seg.px = node["px"] | 0;
-    for (JsonVariant c : flat) seg.colors.push_back(hexStringToColor(c));
+    for (JsonVariant c : flat) {
+      if (seg.colors.size() == kMaxSurfaceColors) break;
+      seg.colors.push_back(hexStringToColor(c));
+    }
     if (seg.colors.empty()) seg.colors.push_back(fallback);
     segs.clear();
     segs.push_back(std::move(seg));
@@ -33,10 +38,13 @@ static void parseSegments(JsonObject node, std::vector<SegmentSettings>& segs,
   }
   segs.clear();
   for (JsonObject segNode : arr) {
+    if (segs.size() == kMaxSegments) break;
     SegmentSettings seg;
     seg.name = std::string(segNode["name"] | "");
+    truncateUtf8(seg.name, kMaxSegmentNameLen);
     seg.px = segNode["px"] | 0;
     for (JsonVariant c : segNode["colors"].as<JsonArray>()) {
+      if (seg.colors.size() == kMaxSurfaceColors) break;
       seg.colors.push_back(hexStringToColor(c));
     }
     if (seg.colors.empty()) seg.colors.push_back(fallback);
@@ -72,6 +80,10 @@ static void writeSegments(JsonObject node,
 bool parseExpression(JsonObject node, ExpressionConfig& out, bool enabledDefault) {
   bool withinCaps = true;
   out.type = std::string(node["type"] | "");
+  if (out.type.size() > kMaxExpressionTypeLen) {
+    out.type.resize(kMaxExpressionTypeLen);
+    withinCaps = false;
+  }
   out.enabled = node["enabled"] | enabledDefault;
   out.intervalMin = node["intervalMin"] | 60;
   out.intervalMax = node["intervalMax"] | 900;
@@ -88,6 +100,7 @@ bool parseExpression(JsonObject node, ExpressionConfig& out, bool enabledDefault
     }
     JsonVariant value = kv.value();
     if (!value.is<uint32_t>() && !value.is<int>()) continue;
+    if (expressionParamKeyIndex(key) < 0) continue;
     if (out.parameters.size() >= kMaxExpressionParams) {
       withinCaps = false;
       continue;
@@ -194,9 +207,13 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
     homeMode.socialDisabled = homeModeNode["socialDisabled"] | true;
     if (homeModeNode["disabledExpressionTypes"].is<JsonArray>()) {
       homeMode.disabledExpressionTypes.clear();
-      for (JsonVariant v : homeModeNode["disabledExpressionTypes"].as<JsonArray>())
-        if (const char* s = v.as<const char*>())
+      for (JsonVariant v : homeModeNode["disabledExpressionTypes"].as<JsonArray>()) {
+        if (homeMode.disabledExpressionTypes.size() == kMaxDisabledExpressionTypes) break;
+        if (const char* s = v.as<const char*>()) {
           homeMode.disabledExpressionTypes.push_back(s);
+          truncateUtf8(homeMode.disabledExpressionTypes.back(), kMaxExpressionTypeLen);
+        }
+      }
     } else {
       homeMode.disabledExpressionTypes = {"glitchy"};
     }
@@ -207,6 +224,31 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
 void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
             const ShadeSettings& shade, const ExpressionSettings& expressions,
             const HomeModeSettings& homeMode) {
+  toStoredJson(root, lamp, base, shade, homeMode);
+  // Positional uint8 array, same shape as asBaseJson.
+  JsonArray knockoutNode = root["base"]["knockout"].to<JsonArray>();
+  for (uint8_t level : base.knockoutPixels) knockoutNode.add(level);
+  JsonArray expressionsNode = root["expressions"].to<JsonArray>();
+  for (const auto& expr : expressions.expressions) {
+    JsonObject exprNode = expressionsNode.add<JsonObject>();
+    exprNode["type"] = expr.type;
+    exprNode["enabled"] = expr.enabled;
+    exprNode["intervalMin"] = expr.intervalMin;
+    exprNode["intervalMax"] = expr.intervalMax;
+    exprNode["target"] = expr.target;
+    for (const auto& param : expr.parameters) {
+      exprNode[param.first] = param.second;
+    }
+    JsonArray colorsNode = exprNode["colors"].to<JsonArray>();
+    for (const auto& color : expr.colors) {
+      colorsNode.add(colorToHexString(color));
+    }
+  }
+}
+
+void toStoredJson(JsonObject root, const LampSettings& lamp,
+                  const BaseSettings& base, const ShadeSettings& shade,
+                  const HomeModeSettings& homeMode) {
   JsonObject lampNode = root["lamp"].to<JsonObject>();
   lampNode["name"] = lamp.name;
   lampNode["brightness"] = lamp.brightness;
@@ -224,40 +266,11 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
   if (!base.byteOrder.empty()) baseNode["byteOrder"] = base.byteOrder;
   baseNode["colorsEditable"] = base.colorsEditable;
   writeSegments(baseNode, base.segments);
-  // Positional uint8 array, same shape as asBaseJson. Keeps the on-disk
-  // NVS format consistent with the BLE per-section read.
-  JsonArray baseKnockoutNode = baseNode["knockout"].to<JsonArray>();
-  for (int i = 0; i < base.knockoutPixels.size(); i++) {
-    baseKnockoutNode.add((int)base.knockoutPixels[i]);
-  }
 
   JsonObject shadeNode = root["shade"].to<JsonObject>();
   if (!shade.byteOrder.empty()) shadeNode["byteOrder"] = shade.byteOrder;
   shadeNode["colorsEditable"] = shade.colorsEditable;
   writeSegments(shadeNode, shade.segments);
-
-  // Serialize expressions
-  JsonArray expressionsNode = root["expressions"].to<JsonArray>();
-  for (const auto& expr : expressions.expressions) {
-    JsonObject exprNode = expressionsNode.add<JsonObject>();
-    exprNode["type"] = expr.type;
-    exprNode["enabled"] = expr.enabled;
-    exprNode["intervalMin"] = expr.intervalMin;
-    exprNode["intervalMax"] = expr.intervalMax;
-    exprNode["target"] = expr.target;
-    // disabledDuringWispOverride is a pure type-property, not persisted.
-    // Serialize generic parameters
-    for (const auto& param : expr.parameters) {
-      const std::string& key = param.first;
-      const uint32_t& value = param.second;
-      exprNode[key] = value;
-    }
-
-    JsonArray colorsNode = exprNode["colors"].to<JsonArray>();
-    for (const auto& color : expr.colors) {
-      colorsNode.add(colorToHexString(color));
-    }
-  }
 
   JsonObject homeModeNode = root["homeMode"].to<JsonObject>();
   homeModeNode["ssid"] = homeMode.ssid;
@@ -267,6 +280,159 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
   homeModeNode["socialDisabled"] = homeMode.socialDisabled;
   JsonArray disArr = homeModeNode["disabledExpressionTypes"].to<JsonArray>();
   for (const auto& s : homeMode.disabledExpressionTypes) disArr.add(s);
+}
+
+namespace {
+
+constexpr uint8_t kRecordFormat = 1;
+constexpr uint8_t kRecordEnabled = 0x01;
+constexpr const char* kCountKey = "xn";
+constexpr const char* kKnockoutKey = "ko";
+
+void putU32(uint8_t*& p, uint32_t v) {
+  for (int i = 0; i < 4; ++i) *p++ = static_cast<uint8_t>(v >> (8 * i));
+}
+
+uint32_t getU32(const uint8_t*& p) {
+  uint32_t v = 0;
+  for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(*p++) << (8 * i);
+  return v;
+}
+
+void recordKey(size_t i, char (&key)[4]) {
+  std::snprintf(key, sizeof(key), "x%u", static_cast<unsigned>(i));
+}
+
+uint8_t readCount(ConfigStore& store) {
+  uint8_t n = 0;
+  return store.readBlob(kCountKey, &n, 1) == 1 ? n : 0;
+}
+
+}  // namespace
+
+size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out) {
+  uint8_t* p = out;
+  *p++ = kRecordFormat;
+  *p++ = expr.enabled ? kRecordEnabled : 0;
+  *p++ = expr.target;
+  const size_t typeLen = std::min(expr.type.size(), kMaxExpressionTypeLen);
+  *p++ = static_cast<uint8_t>(typeLen);
+  std::memcpy(p, expr.type.data(), typeLen);
+  p += typeLen;
+  putU32(p, expr.intervalMin);
+  putU32(p, expr.intervalMax);
+  const size_t colors = std::min(expr.colors.size(), kMaxExpressionColors);
+  *p++ = static_cast<uint8_t>(colors);
+  for (size_t i = 0; i < colors; ++i) {
+    const Color& c = expr.colors[i];
+    *p++ = c.r;
+    *p++ = c.g;
+    *p++ = c.b;
+    *p++ = c.w;
+  }
+  uint8_t* paramCount = p++;
+  *paramCount = 0;
+  for (const auto& kv : expr.parameters) {
+    if (*paramCount == kMaxExpressionParams) break;
+    const int idx = expressionParamKeyIndex(kv.first.c_str());
+    if (idx < 0) continue;
+    *p++ = static_cast<uint8_t>(idx);
+    putU32(p, kv.second);
+    ++*paramCount;
+  }
+  return static_cast<size_t>(p - out);
+}
+
+bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out) {
+  const uint8_t* p = data;
+  const uint8_t* end = data + len;
+  auto have = [&](size_t n) { return static_cast<size_t>(end - p) >= n; };
+  if (!have(4) || p[0] != kRecordFormat) return false;
+  out.enabled = (p[1] & kRecordEnabled) != 0;
+  out.target = p[2];
+  const size_t typeLen = p[3];
+  p += 4;
+  if (typeLen > kMaxExpressionTypeLen || !have(typeLen + 8 + 1)) return false;
+  out.type.assign(reinterpret_cast<const char*>(p), typeLen);
+  p += typeLen;
+  out.intervalMin = getU32(p);
+  out.intervalMax = getU32(p);
+  const size_t colors = *p++;
+  if (colors > kMaxExpressionColors || !have(4 * colors + 1)) return false;
+  out.colors.clear();
+  out.colors.reserve(colors);
+  for (size_t i = 0; i < colors; ++i, p += 4) {
+    out.colors.push_back(Color(p[0], p[1], p[2], p[3]));
+  }
+  const size_t params = *p++;
+  if (params > kMaxExpressionParams || !have(5 * params)) return false;
+  out.parameters.clear();
+  for (size_t i = 0; i < params; ++i) {
+    const uint8_t idx = *p++;
+    const uint32_t value = getU32(p);
+    // An index past this build's table came from a newer one; skip it.
+    if (idx < kExpressionParamKeyCount) {
+      out.parameters[kExpressionParamKeys[idx]] = value;
+    }
+  }
+  return true;
+}
+
+SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
+                      const BaseSettings& base, const ShadeSettings& shade,
+                      const ExpressionSettings& expressions,
+                      const HomeModeSettings& homeMode) {
+  const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
+  const uint8_t previous = readCount(store);
+  uint8_t record[kMaxExpressionRecordLen];
+  char key[4];
+  for (size_t i = 0; i < count; ++i) {
+    const size_t len = encodeExpression(expressions.expressions[i], record);
+    recordKey(i, key);
+    if (store.writeBlob(key, record, len) == 0) return SaveResult::WriteFailed;
+  }
+  const uint8_t n = static_cast<uint8_t>(count);
+  if (store.writeBlob(kCountKey, &n, 1) == 0) return SaveResult::WriteFailed;
+  if (!base.knockoutPixels.empty() &&
+      store.writeBlob(kKnockoutKey, base.knockoutPixels.data(),
+                      base.knockoutPixels.size()) == 0) {
+    return SaveResult::WriteFailed;
+  }
+  for (size_t i = count; i < previous && i < kMaxExpressions; ++i) {
+    recordKey(i, key);
+    store.erase(key);
+  }
+
+  JsonDocument doc;
+  toStoredJson(doc.to<JsonObject>(), lamp, base, shade, homeMode);
+  size_t len = 0;
+  auto json = serializeGuarded(doc, len);
+  if (!json) return SaveResult::LowHeap;
+  return store.write("cfg", json.get()) > 0 ? SaveResult::Ok
+                                             : SaveResult::WriteFailed;
+}
+
+bool loadRecords(ConfigStore& store, BaseSettings& base,
+                 ExpressionSettings& expressions) {
+  uint8_t knockout[255];
+  const size_t knockoutLen = store.readBlob(kKnockoutKey, knockout, sizeof(knockout));
+  for (size_t i = 0; i < knockoutLen && i < base.knockoutPixels.size(); ++i) {
+    base.knockoutPixels[i] = knockout[i];
+  }
+  uint8_t n = 0;
+  if (store.readBlob(kCountKey, &n, 1) != 1) return false;
+  expressions.expressions.clear();
+  expressions.expressions.reserve(std::min<size_t>(n, kMaxExpressions));
+  uint8_t record[kMaxExpressionRecordLen];
+  char key[4];
+  for (size_t i = 0; i < n && i < kMaxExpressions; ++i) {
+    recordKey(i, key);
+    const size_t len = store.readBlob(key, record, sizeof(record));
+    ExpressionConfig expr;
+    if (len == 0 || !decodeExpression(record, len, expr)) continue;
+    expressions.expressions.push_back(std::move(expr));
+  }
+  return true;
 }
 
 bool configBlobPersistable(const char* json) {

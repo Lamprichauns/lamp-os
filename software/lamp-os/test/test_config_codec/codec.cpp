@@ -15,6 +15,7 @@
 // color dependency) into this TU, same pattern as test_firmware_signature.
 #include "../../src/util/color.cpp"
 #include "../../src/config/config_codec.cpp"
+#include "../../src/util/heap_guard.cpp"
 
 using namespace lamp;
 
@@ -40,7 +41,10 @@ bool parseInto(const char* json, Model& m) {
 std::string expressionEntry(const char* type, int target, int colors, int params) {
   std::string e = std::string("{\"type\":\"") + type +
                   "\",\"enabled\":true,\"target\":" + std::to_string(target);
-  for (int i = 0; i < params; ++i) e += ",\"p" + std::to_string(i) + "\":" + std::to_string(i);
+  for (int i = 0; i < params; ++i) {
+    e += std::string(",\"") + kExpressionParamKeys[i % kExpressionParamKeyCount] +
+         "\":" + std::to_string(i);
+  }
   e += ",\"colors\":[";
   for (int i = 0; i < colors; ++i) e += std::string(i ? "," : "") + "\"#ff000000\"";
   return e + "]}";
@@ -233,6 +237,16 @@ void test_over_cap_stored_expressions_truncate_on_load() {
                          m.expressions.expressions[0].parameters.size());
 }
 
+// A key no expression reads is dropped at parse, so it never costs RAM or NVS.
+void test_unknown_param_keys_dropped() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"type\":\"pulse\",\"size\":3,\"bogusKey\":9}");
+  ExpressionConfig cfg;
+  TEST_ASSERT_TRUE(config_codec::parseExpression(doc.as<JsonObject>(), cfg, true));
+  TEST_ASSERT_EQUAL_UINT(1, cfg.parameters.size());
+  TEST_ASSERT_EQUAL_UINT32(3, cfg.getParameter("size", 0));
+}
+
 // A stored entry with an out-of-range target keeps its target: remove matches
 // it exactly, so the user can still delete it.
 void test_stored_out_of_range_target_kept() {
@@ -418,6 +432,7 @@ int main(int, char**) {
   RUN_TEST(test_expressions_within_caps_load_whole);
   RUN_TEST(test_over_cap_stored_expressions_truncate_on_load);
   RUN_TEST(test_stored_out_of_range_target_kept);
+  RUN_TEST(test_unknown_param_keys_dropped);
   RUN_TEST(test_parse_expression_upsert_defaults_enabled);
   RUN_TEST(test_old_format_base_colors_migrated);
   RUN_TEST(test_old_format_shade_colors_migrated);
