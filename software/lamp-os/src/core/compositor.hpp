@@ -38,7 +38,6 @@ class Compositor {
   bool homeSocialDisabled_ = true;
   std::vector<std::string> homeDisabledExprIds_ = {"glitchy"};
 
-
   // true once a quiet-mode frame has painted; the next false->true edge on
   // ota_quiet_mode::isQuiet() signals ota_indicator::paint() to (re)init its
   // base-surface settle.
