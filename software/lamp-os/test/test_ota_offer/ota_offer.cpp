@@ -9,6 +9,7 @@
 using lamp::MeshPeer;
 using lamp::OtaOfferBusy;
 using lamp::OtaOfferThrottle;
+using lamp::offerBusy;
 using lamp::peerRunsNewerFirmware;
 
 void setUp(void) {}
@@ -54,6 +55,18 @@ void test_startup_phase_holds_offers() {
   TEST_ASSERT_TRUE(t.due({}, 5001));
 }
 
+void test_offer_busy_holds_until_startup_completes() {
+  TEST_ASSERT_TRUE(offerBusy(/*startupComplete=*/false, false, false, false, false).any());
+  TEST_ASSERT_FALSE(offerBusy(/*startupComplete=*/true, false, false, false, false).any());
+}
+
+void test_offer_busy_maps_each_source() {
+  TEST_ASSERT_TRUE(offerBusy(true, true, false, false, false).firmwareSending);
+  TEST_ASSERT_TRUE(offerBusy(true, false, true, false, false).firmwareReceiving);
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, true, false).fsBusy);
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, true).quiet);
+}
+
 void test_busy_tick_does_not_spend_the_interval() {
   OtaOfferThrottle t;
   TEST_ASSERT_TRUE(t.due({}, 5000));
@@ -94,6 +107,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_interval_survives_millis_wrap);
   RUN_TEST(test_each_busy_source_blocks_the_scan);
   RUN_TEST(test_startup_phase_holds_offers);
+  RUN_TEST(test_offer_busy_holds_until_startup_completes);
+  RUN_TEST(test_offer_busy_maps_each_source);
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
   RUN_TEST(test_newer_peer_holds_offers);
   RUN_TEST(test_same_or_older_peers_allow_offers);

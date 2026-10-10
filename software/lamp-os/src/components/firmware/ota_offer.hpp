@@ -21,6 +21,17 @@ struct OtaOfferBusy {
   }
 };
 
+inline OtaOfferBusy offerBusy(bool startupComplete, bool firmwareSending,
+                              bool firmwareReceiving, bool fsBusy, bool quiet) {
+  OtaOfferBusy busy;
+  busy.startingUp = !startupComplete;
+  busy.firmwareSending = firmwareSending;
+  busy.firmwareReceiving = firmwareReceiving;
+  busy.fsBusy = fsBusy;
+  busy.quiet = quiet;
+  return busy;
+}
+
 // Paces the offer scan. A busy lamp never scans and does not spend the interval.
 class OtaOfferThrottle {
  public:

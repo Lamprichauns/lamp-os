@@ -24,12 +24,10 @@ OtaOfferThrottle s_throttle;
 // Only ESP-NOW peers are walked, since firmwareVersion arrives on the ESP-NOW
 // HELLO and a BLE-only sighting carries none.
 void tickOtaOffers(uint32_t nowMs, bool startupComplete) {
-  OtaOfferBusy busy;
-  busy.startingUp = !startupComplete;
-  busy.firmwareSending = firmwareDistributor.isInProgress();
-  busy.firmwareReceiving = ::firmwareReceiver.isInProgress();
-  busy.fsBusy = fs_ota::fsPathBusy();
-  busy.quiet = ota_quiet_mode::isQuiet();
+  const OtaOfferBusy busy =
+      offerBusy(startupComplete, firmwareDistributor.isInProgress(),
+                ::firmwareReceiver.isInProgress(), fs_ota::fsPathBusy(),
+                ota_quiet_mode::isQuiet());
   if (!s_throttle.due(busy, nowMs)) return;
 
   const std::vector<MeshPeer>& peers = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
