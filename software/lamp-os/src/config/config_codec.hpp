@@ -86,15 +86,16 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 // untouched, as TooLarge does.
 enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge, Invalid, NoHeap };
 
-// Ceiling of the stored config JSON without expressions or knockout, at the
-// caps with every escapable string fully escaped (measured by
-// test_config_records); saveConfig writes it into a buffer this long.
-constexpr size_t kMaxStoredCfgJsonLen = 2176;
+// The save buffer's length: it holds a whole config up to kMaxWholeCfgLen
+// and a split save's rest at the caps with every escapable string fully
+// escaped (1746 bytes, measured by test_config_records).
+constexpr size_t kMaxStoredCfgJsonLen = 1792;
 // The largest whole config saved as the one "cfg" string. A string must fit
 // in a single NVS page; at this size NVS can always place it with every
 // other key at its cap (docs/dev/embedded-heap.md, pinned by
 // test_config_records).
 constexpr size_t kMaxWholeCfgLen = 1759;
+static_assert(kMaxWholeCfgLen <= kMaxStoredCfgJsonLen, "the save buffer holds a whole config");
 
 // Saves the model. A whole config up to kMaxWholeCfgLen is one "cfg"
 // string carrying the expressions and knockout too, the form any firmware

@@ -707,6 +707,16 @@ size_t splitKeyEntries(const Model& m) {
          blobEntries(savedString(m, Part::Rest).size());
 }
 
+// The save buffer holds a split save's rest at every escaped worst case.
+void test_save_buffer_holds_the_worst_rest() {
+  for (char fill : {'z', '"', '\\'}) {
+    const size_t len = savedString(worstCaseModel(fill), Part::Rest).size();
+    printf("[budget] rest '%c': %zu of %zu bytes\n", fill, len,
+           config_codec::kMaxStoredCfgJsonLen);
+    TEST_ASSERT_TRUE(len <= config_codec::kMaxStoredCfgJsonLen);
+  }
+}
+
 // The whole cfg string at kMaxWholeCfgLen with everything else at its cap:
 // rewritten over its old copy, or placed after a staged "cfgb" copy of the
 // same size once the old string and the split keys are erased.
@@ -1001,6 +1011,7 @@ int main(int, char**) {
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
   RUN_TEST(test_page_model_confines_a_string_to_one_page);
+  RUN_TEST(test_save_buffer_holds_the_worst_rest);
   RUN_TEST(test_whole_cfg_string_is_always_placed);
   RUN_TEST(test_lamp_cfg_string_is_always_placed);
   RUN_TEST(test_small_blobs_are_always_placed);
