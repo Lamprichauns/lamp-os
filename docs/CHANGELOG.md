@@ -42,6 +42,11 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   on its first start. Your existing settings carry over on update. If the
   lamp's storage reports itself unusable at startup it is cleared so the
   lamp still comes up and can be set up again from the app.
+- **Settings the lamp can't keep are refused up front.** A control password
+  longer than 64 characters is refused, from the app and from the web page,
+  instead of being stored in a form you could never type back. An expression
+  type the lamp doesn't have is refused instead of being saved and never
+  showing.
 - **Going back to an older firmware.** A lamp with a typical setup keeps its
   expressions if it is flashed back to an older release. One with a very
   large setup (more than fits a single settings record, roughly four or more

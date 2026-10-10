@@ -113,8 +113,8 @@ Two properties make it lethal:
    the expression records and knockout are written from stack buffers, and the
    "cfg" JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact
    JSON straight into a fixed buffer, byte-identical to ArduinoJson) into a
-   2 KB buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above the 1.85 KB
-   worst case). The dispositions flush writes its blob from the stack. A
+   2176-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above the
+   2106-byte worst case with every free-text field fully escaped). The dispositions flush writes its blob from the stack. A
    failed save (a full NVS, or a cfg JSON that outgrew its buffer) backs off 5 s
    doubling to 60 s (`util/retry_backoff.hpp`) for both, and the commit drain
    waits on the same backoff, so no failure path retries at loop rate. Old
@@ -135,7 +135,7 @@ config stopped saving, inside what the app allows.
 
 `config_codec::saveConfig` writes one of two shapes, chosen per save:
 
-- **Whole**, when everything fits the 2 KB save buffer: one `cfg` JSON that
+- **Whole**, when everything fits the 2176-byte save buffer: one `cfg` JSON that
   carries the expressions and the knockout levels too. Every firmware reads
   this form, so a lamp flashed back to an older release keeps its
   expressions. A typical setup (up to about four expressions with full colour
@@ -145,24 +145,40 @@ config stopped saving, inside what the app allows.
 
 | Key | Content | Worst case | Entries |
 |---|---|---|---|
-| `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 141 B | 21 x 7 = 147 |
+| `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 121 B | 21 x 6 = 126 |
 | `xn` | expression count | 1 B | 3 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfg` | the rest as JSON (`writeStoredJson`) | about 1.85 KB | 59 |
+| `cfg` | the rest as JSON (`writeStoredJson`) | 2106 B fully escaped | 67 |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
 | `lampType` | variant id | under 16 B | 2 |
 
-Outside it: PHY calibration (a 1904-byte blob plus two small keys, 66 entries),
-the WiFi driver's namespace (at most 64; the lamp keeps WiFi config in RAM and
-erases that namespace at boot, so in practice it is empty), the crash record
-(4) and four namespace entries. The rewrite copy of the largest item adds 59.
-Total 442 of 504 at the caps, and 421 for the standard variant's real worst
-case (its six types at every target). A whole save needs 296, and the moment
-a split config turns whole (the new `cfg` lands before the records go) peaks
-at 456. All four are measured by `test_config_records`. A record carries each
-parameter key as its index in `kExpressionParamKeys`, so that table is
-append-only, pinned by `test_builtin_descriptors`, and kept in byte-wise key
-order (`test_param_wire_compat`); the JSON forms carry key names. A key no
+Outside it, 166 entries (`systemEntries` in `test_config_records`):
+
+- 5 namespace entries: `lamp`, `crash`, `phy`, `nvs.net80211`, `nimble_bond`.
+- PHY calibration: a 1904-byte blob (62), a 6-byte blob (3), a u32 (1): 66.
+- The WiFi driver's namespace: empty. The lamp keeps WiFi config in RAM and
+  erases that namespace at boot.
+- The crash record: one blob under 64 bytes, 4.
+- NimBLE's bond store (`ble_store_nvs.c`, `nimble_bond`; bonding and
+  host-based privacy are on, so legacy bonds may be present): with
+  `MAX_BONDS` 3, `MAX_CCCDS` 8 and `MAX_CSFCS` 1 (the connection count),
+  `our_sec_N` and `peer_sec_N` blobs of `ble_store_value_sec` (88 bytes on
+  the ESP32, 5 entries each) for 3 bonds is 30; `p_dev_rec_N` blobs of
+  `ble_hs_dev_records` (44 bytes, 4 each) for 4 is 16; `cccd_sec_N` (16
+  bytes, 3 each) for 8 is 24; `csfc_sec_N` (8 bytes) 3; `local_irk_N` and
+  `rpa_rec_N` (under 32 bytes, 3 each) for 3 each is 18. Total 91.
+
+The rewrite copy of the largest item adds 67. Total 465 of 504 with every
+free-text field quote- or backslash-filled, 449 with plain text, and 431 for
+the standard variant's real worst case (its six types at every target). A
+whole save needs 332, and the moment a split config turns whole (the new
+`cfg` lands before the records go) peaks at 471. All are measured by
+`test_config_records`, each with at least 32 entries spare. An expression
+record holds at most 12 parameters (`kMaxExpressionParams`; every type carries
+at most 11, guarded by `test_builtin_descriptors`) and carries each key as its
+index in `kExpressionParamKeys`, so that table is append-only, pinned by
+`test_builtin_descriptors`, and kept in byte-wise key order
+(`test_param_wire_compat`); the JSON forms carry key names. A key no
 expression reads is dropped at parse.
 
 The caps that bound `cfg`: 8 colours per surface segment (the app offers 6),
@@ -185,25 +201,38 @@ skips every later BLE start, OTA radio pause and resume included.
 
 A partition that initializes but is full gets space back on the first boot:
 the WiFi driver's namespace is erased, and the legacy dispositions JSON (about
-2.2 KB) is rewritten as the 701-byte blob, blob first, then erased.
+2.2 KB) is rewritten as the 701-byte blob, blob first, then erased. A legacy
+JSON that does not parse, or parses to nothing while the blob holds entries,
+is erased without replacing the blob.
 
 Saves go through the `nvs_*` API, never `Preferences`: Preferences logs a
 failed write through a formatting path that faulted on a starved heap. Every
 save runs on the loop task: a web save is handed from the AsyncTCP task to
-`webapp::tick`, which saves and returns the result.
+`webapp::tick` under a sequence number, and the handler takes only the result
+for its own number. A handler that waits 3 s withdraws its body if the loop
+has not taken it (500, nothing saved); if the loop has it, the handler
+answers 202 and the save lands on its own. A landed web save arms the reboot
+that loads it, drops any pending retry, and makes `persistConfig` decline
+until that reboot, so the running config cannot overwrite it.
 
 A reset at any point of a save leaves a whole config. A whole save writes
-`cfg`, then erases `xn`, the records and `ko`. A split save builds its `cfg`
-JSON first (TooLarge writes nothing), then writes the records, `ko`, the count
-`xn`, erases records past the count, and writes `cfg` last. On load the `cfg`
+`cfg` (always with an `expressions` array, empty included, so deleting every
+expression and losing power before the erase cannot bring them back), then
+erases every record slot `x0`..`x31`, then `xn` and `ko`. A split save builds
+its `cfg` JSON first (TooLarge writes nothing), then writes the records,
+`ko`, the count `xn`, erases every record slot past the count, and writes
+`cfg` last. Sweeping every slot means a save cut short before its count
+lands leaves no record that a later save does not erase. On load the `cfg`
 JSON wins wherever it carries the expressions or the knockout itself, so a
 whole save cut short, or a config an older firmware rewrote after a
 downgrade, loads as written. The dispositions JSON key wins over the blob the
 same way. An edit rewrites one record and NVS skips the unchanged ones; a
 remove shifts later records down a slot, so a reset mid-shift can leave one
 record in two slots, and the load keeps the first of any repeated (type,
-target). Nothing reorders entries, so removes, edits and appends are the
-whole set of cases. A record that fails to read drops only itself, logged as
+target). The app's edits are removes, edits and appends. A web save sends the
+whole document and can reorder the list: saved whole that is one write and
+reset-safe, but saved split a reset mid-save can leave an entry that moved in
+two slots and drop the one it displaced. A record that fails to read drops only itself, logged as
 `[cfg] expression record xN unreadable`. `test_config_records` resets the
 store at every write of a remove, an add-and-edit, a first migration and a
 switch between the two shapes. The boot log's
@@ -265,7 +294,7 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   (type, target). Only an entry with no Config entry behind it (a relayed op,
   an invocation) keeps its own copy.
 - **Peer-supplied expression data.** An invocation keeps at most 8 colours and
-  16 parameter keys; an expression upsert (app, or a relayed `expressionOp`)
+  12 parameter keys; an expression upsert (app, or a relayed `expressionOp`)
   is rejected outside targets 1-3 and held to the same colour and parameter
   caps, and the stored list to 21 entries (`config/config_types.hpp`). An
   upsert of a type the variant does not register is rejected. A stored
@@ -285,8 +314,13 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   (`components/network/transport/tx_credit.hpp`) bounds the frames handed to
   the driver and not yet reported by its send callback to 6: every submit
   takes a credit, the callback returns it, a refused submit returns it at
-  once, and a count no credit has moved for 2 s is presumed lost and resets.
-  A send past the bound fails before it reaches the driver.
+  once, and when credits are out and no completion has come back for 2 s
+  they are presumed lost and the count resets. Timestamps compare by signed
+  delta and never move backwards, since the WiFi task can stamp a completion
+  just after the loop read `millis()`. A send past the bound fails before it
+  reaches the driver. A reset logs `[espnow.tx] no send callback` on every
+  build (at most every 10 s), and the running count shows as `txstalls` in
+  `heap.get` and the `[heap]` trend line.
 - **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
   app's Test) reaches every mesh peer, closest first. `CascadeScheduler`
   (`expressions/cascade_scheduler.hpp`) holds up to two fan-outs (peers and one
