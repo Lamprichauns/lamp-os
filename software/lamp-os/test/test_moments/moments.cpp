@@ -353,6 +353,26 @@ void test_initiates_after_eligibility_and_backoff() {
   TEST_ASSERT_EQUAL_UINT32(2, r.host.sent.size());
 }
 
+void test_suppressors_block_initiation() {
+  const char* reasons[] = {"ota", "wisp", "preview", "home"};
+  for (const char* why : reasons) {
+    Rig r(1, 9, 0);
+    readyForFireflies(r);
+    r.host.like(30, kDispositionSmitten);
+    r.host.peers.push_back(peerOf(30, -50, 0));
+    const uint32_t t = 100 * kMin;
+    r.host.suppress = why;
+    for (uint32_t now = t; now <= t + 100000; now += 100) {
+      for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = now;
+      r.host.nowMs = now;
+      r.director.tick(now);
+    }
+    TEST_ASSERT_FALSE_MESSAGE(r.director.active(), why);
+    TEST_ASSERT_TRUE_MESSAGE(r.host.sent.empty(), why);
+    TEST_ASSERT_TRUE_MESSAGE(r.host.renders.empty(), why);
+  }
+}
+
 // --- 3. herd ----------------------------------------------------------------
 
 namespace {
@@ -679,6 +699,7 @@ void test_malformed_whisper_frames_are_dropped() {
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":0,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"\"}}",
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":9,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001\"}}",
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":2,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001240AC4102002\"}}",
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC41020ZZ\"}}",
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC41020\",\"v\":\"240AC4102001\"}}",
       "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":2001,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\"}}",
@@ -1049,6 +1070,7 @@ int main(int, char**) {
   RUN_TEST(test_cooldown_blocks_initiation_but_not_joining);
   RUN_TEST(test_cooldown_does_not_block_accepting_a_whisper);
   RUN_TEST(test_initiates_after_eligibility_and_backoff);
+  RUN_TEST(test_suppressors_block_initiation);
   RUN_TEST(test_herd_starts_one_fireflies_in_a_room_of_fifty);
   RUN_TEST(test_fireflies_period_and_first_offset_ranges);
   RUN_TEST(test_fireflies_offset_shrinks_and_reaches_zero_by_84);

@@ -165,7 +165,6 @@ void MomentDirector::participate(MomentKind kind, uint32_t nowMs) {
 
 void MomentDirector::hearCrowd(MomentKind kind, uint32_t nowMs) {
   KindState& s = state(kind);
-  s.backoffArmed = false;
   const uint32_t cooldown = momentPacing(kind).crowdCooldownMs;
   if (cooldown == 0) return;
   const uint32_t until = nowMs + cooldown;
