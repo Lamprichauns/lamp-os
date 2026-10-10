@@ -393,6 +393,22 @@ save had it or as saved.
   `test_saves_after_an_out_of_memory_write_land_and_survive_the_boot` covers
   a record, the knockout blob and the rest.
 
+Accepted risks, each needing a reset or an allocation failure at a narrow
+moment, and none stalling saves:
+
+- A reset between a held key's throwaway and its value drops that key at
+  boot. For a rest key that is every setting outside the lamp section and the
+  expressions: they load as defaults, the load reports the store unreadable,
+  and the first-boot save is held off so the defaults are not written over it.
+- For a record, the knockout blob or `cfgl` the same reset drops that record
+  (logged at load), the knockout levels, or the lamp section staged there.
+- A record, `ko` or `disp` rewrite whose IDF cleanup takes the old copy (a
+  failed rewrite, above) leaves that value missing until the save's retry
+  writes it back from RAM; a reset before then loses it.
+- `PagedNvs`'s boot checks an index against the chunks in its own range only,
+  where IDF counts every chunk of the version and compares their summed size,
+  so the page model may keep a blob the device would drop.
+
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
 slots, and the load keeps the first of any repeated (type, target). The app's
@@ -494,7 +510,10 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   they are presumed lost and the count resets. IDF documents no promise of
   one callback per accepted send (`esp_now.h`; the driver is closed), so a
   credit lost while other frames keep completing stays out until the link
-  goes quiet for 2 s. Timestamps compare by signed delta and never move
+  goes quiet for 2 s. A reset can be wrong: frames whose callbacks are only
+  late may still sit in the driver, so after one the driver can hold up to
+  2 x 6 frames until the next moment none is out. Timestamps compare by
+  signed delta and never move
   backwards, since the WiFi task can stamp a callback just after the loop
   read `millis()`. A send past the bound fails before it reaches the driver
   and is counted. A reset logs `[espnow.tx] no tx callback, credits reset`
