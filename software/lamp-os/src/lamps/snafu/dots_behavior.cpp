@@ -114,6 +114,7 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
                                 const std::vector<Color>& shadeStops,
                                 uint32_t durationFrames) {
   if (baseStops.empty() && shadeStops.empty()) return;
+  if (context_ && context_->ignoresPeers()) return;
   borrowBase_     = baseStops;
   borrowShade_    = shadeStops;
   borrowActive_   = true;
@@ -131,6 +132,26 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
 
 void DotsBehavior::control() {
   if (!fb || fb->buffer.empty()) return;
+  if (borrowActive_ && context_ && context_->ignoresPeers()) {
+    // Drift from the scene on show back to the own palette.
+    std::vector<Color> shown = cur_.empty() ? buildScene() : cur_;
+    if (borrowElapsed_ * 2 > borrowDuration_ && ownMelt_.size() == shown.size()) {
+      const uint32_t half = borrowDuration_ / 2;
+      for (size_t j = 0; j < shown.size(); ++j) {
+        shown[j] = fade(shown[j], ownMelt_[j], borrowDuration_ - half, borrowElapsed_ - half);
+      }
+    }
+    borrowActive_ = false;
+    borrowBase_.clear();
+    borrowShade_.clear();
+    sinceShuffle_ = 0;
+    prev_ = std::move(shown);
+    cur_  = buildScene();
+    frame = 0;
+    sceneChange_ = true;
+    frames = kBorrowSceneFrames;
+    return;
+  }
   if (borrowActive_) {
     if (++borrowElapsed_ >= borrowDuration_) {
       borrowActive_ = false;

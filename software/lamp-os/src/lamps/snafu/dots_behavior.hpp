@@ -28,7 +28,8 @@ class DotsBehavior : public AnimatedBehavior {
   void control() override;
 
   // Wears the peer palette for durationFrames, then auto-reverts. No-op if
-  // both stop-lists are empty.
+  // both stop-lists are empty or while home mode ignores peers, and an active
+  // borrow drifts back to the own palette once it starts ignoring them.
   void borrowColors(const std::vector<Color>& baseStops,
                     const std::vector<Color>& shadeStops,
                     uint32_t durationFrames);
