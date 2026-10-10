@@ -20,10 +20,8 @@ void BehaviorContext::forEachArrival(
           [](const RosterEntry&) { return true; }, arrival)) {
     return;
   }
-  // An ignored arrival is consumed, so leaving home does not greet a room
-  // that was there all along.
   if (ignoresPeers()) {
-    lampRoster->acknowledge(arrival.mac);
+    if (discardsPeers()) lampRoster->acknowledge(arrival.mac);
     return;
   }
   PeerView v = PeerView::from(arrival);
@@ -34,9 +32,13 @@ bool BehaviorContext::ignoresPeers() const {
   return compositor && compositor->blocksRemote(TransientSource::Remote);
 }
 
+bool BehaviorContext::discardsPeers() const {
+  return compositor && compositor->discardsRemote(TransientSource::Remote);
+}
+
 void BehaviorContext::forEachNearby(
     const std::function<bool(const PeerView&)>& cb) {
-  if (!lampRoster) return;
+  if (!lampRoster || ignoresPeers()) return;
   // Snapshot before invoking `cb`: a callback re-entering getMesh/getAll
   // fills a distinct buffer, so this snapshot stays valid across the walk.
   const std::vector<NearbyCopy>& near =

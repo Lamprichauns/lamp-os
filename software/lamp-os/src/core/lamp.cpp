@@ -1148,7 +1148,7 @@ void lamp::Lamp::tick() {
   }
 
   socialEchoObserver.tick(millis());
-  arrivalNotifier.tick(millis(), lamp::lampRoster, LAMP_PRUNE_TIME_MS);
+  compositor.behaviorContext().tickArrivals(millis(), LAMP_PRUNE_TIME_MS);
 
   tickBootRecovery();
 

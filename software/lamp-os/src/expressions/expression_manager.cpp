@@ -531,7 +531,7 @@ void ExpressionManager::gcTransients() {
   if (transientExpressions_.empty()) return;
   const uint32_t nowMs = millis();
   for (auto it = transientExpressions_.begin(); it != transientExpressions_.end();) {
-    if (it->expression && compositor_ && compositor_->blocksRemote(it->source)) {
+    if (it->expression && compositor_ && compositor_->discardsRemote(it->source)) {
       it->expression->retire();
     }
     const bool complete = it->expression && (it->expression->isAnimationComplete() ||

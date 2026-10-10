@@ -89,6 +89,8 @@ class Compositor {
   bool behaviorsComputed = false;
   unsigned long lastDrawTimeMs = 0;
   bool homeMode = false;
+  // Home mode is forced on by the app's Home Mode page, not by the lamp being home.
+  bool homePreview = false;
 
   Compositor();
 
@@ -147,6 +149,13 @@ class Compositor {
   // homeModeBlocksRemote over this compositor's live home state and policy.
   bool blocksRemote(TransientSource source) const {
     return homeModeBlocksRemote(homeMode, homeSocialDisabled_, source);
+  }
+
+  // True while blocksRemote(source) and outside the app's Home Mode preview:
+  // only then is a blocked arrival consumed or a running peer transient
+  // retired, so previewing home mode changes nothing that outlasts it.
+  bool discardsRemote(TransientSource source) const {
+    return blocksRemote(source) && !homePreview;
   }
 
   /**

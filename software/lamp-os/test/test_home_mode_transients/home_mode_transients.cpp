@@ -170,6 +170,20 @@ void test_running_peer_transient_untouched_outside_home_mode() {
   TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
 }
 
+// The app's Home Mode preview blocks new peer invocations but retires nothing.
+void test_preview_blocks_peers_without_retiring() {
+  Rig r;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  r.compositor.homeMode = true;
+  r.compositor.homePreview = true;
+  TEST_ASSERT_FALSE(r.invoke(TransientSource::Remote));
+  r.manager.gcTransients();
+  set_mock_millis(10000 + Expression::kRetireFadeMs * 2);
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+  TEST_ASSERT_FALSE(static_cast<Probe*>(s_registered[0])->retired());
+}
+
 // Bloom paints its swell through the same contribution scale, so a retired
 // bloom fades with the rest.
 void test_retired_bloom_paints_nothing() {
@@ -201,5 +215,6 @@ int main(int, char**) {
   RUN_TEST(test_running_peer_transient_fades_out_on_home_entry);
   RUN_TEST(test_running_peer_transient_untouched_outside_home_mode);
   RUN_TEST(test_retired_bloom_paints_nothing);
+  RUN_TEST(test_preview_blocks_peers_without_retiring);
   return UNITY_END();
 }

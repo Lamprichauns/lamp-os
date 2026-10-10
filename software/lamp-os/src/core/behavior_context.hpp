@@ -93,7 +93,8 @@ struct BehaviorContext {
   // Behaviors must null-check (same field policy as lampRoster/greeting).
   MeshLink* meshLink = nullptr;
 
-  // Hand the strongest-RSSI ungreeted near arrival to `cb`. `cb` returns true
+  // Hand the strongest-RSSI ungreeted near arrival to `cb`. Hands none while
+  // ignoresPeers(), and consumes it while discardsPeers(). `cb` returns true
   // when it delivered a greeting; the roster acknowledges that peer. A false
   // return leaves the peer retriable next call (the un-acked arrival is the
   // retry token). No auto-ack on visitation. maxAgeMs bounds how recent a near
@@ -103,13 +104,21 @@ struct BehaviorContext {
                       const std::function<bool(const PeerView&)>& cb);
 
   // Visit currently-near peers, strongest-RSSI first. `cb` returns true to
-  // stop early. Read-only; never acks.
+  // stop early. Read-only; never acks. Visits none while ignoresPeers().
   void forEachNearby(const std::function<bool(const PeerView&)>& cb);
 
-  // True while home mode ignores other lamps (homeModeBlocksRemote). An
-  // arrival seen meanwhile is consumed without reaching forEachArrival's or
-  // onArrival's callback.
+  // True while home mode ignores other lamps (homeModeBlocksRemote): the room
+  // reads as empty and no arrival reaches a callback.
   bool ignoresPeers() const;
+  // ignoresPeers() outside the app's Home Mode preview. Arrivals seen
+  // meanwhile are consumed for every greeting, so leaving home does not greet
+  // peers that were near all along.
+  bool discardsPeers() const;
+
+  // Framework arrival pass, once per loop: consumes arrivals while
+  // discardsPeers(), then runs the onArrival notifier (silenced while
+  // discarding, held while only ignoring).
+  void tickArrivals(uint32_t nowMs, uint32_t nearWindowMs);
 
   // Per-peer greeting waveform for `peerLampId` (colon-hex mac).
   GreetingTuning greetingFor(const std::string& peerLampId) const;

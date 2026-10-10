@@ -36,8 +36,10 @@ class ArrivalNotifier {
   // Near-set diff. `nearWindowMs` is the departure hysteresis: a fired peer
   // re-arms once its last near sighting falls outside it, distinct from the
   // short kArrivalMaxAgeMs that bounds a fresh arrival. No-op when no observer
-  // is registered.
-  void tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs);
+  // is registered. `silenced` marks every near peer fired without calling an
+  // observer, so a peer near throughout never fires once silencing ends.
+  void tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs,
+            bool silenced = false);
 
   size_t observerCount() const { return observerCount_; }
   size_t firedCount() const;

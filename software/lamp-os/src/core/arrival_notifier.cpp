@@ -38,7 +38,8 @@ void ArrivalNotifier::fire(const PeerView& v) {
   for (size_t i = 0; i < observerCount_; ++i) observers_[i](v);
 }
 
-void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs) {
+void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs,
+                           bool silenced) {
   if (observerCount_ == 0) return;
 
   bool present[kMaxFired] = {};
@@ -54,7 +55,7 @@ void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWind
       present[idx] = true;  // still near: keep the fired mark, no re-fire
       continue;
     }
-    if ((nowMs - e.lastSeenNearMs) > kArrivalMaxAgeMs) continue;  // not fresh
+    if (!silenced && (nowMs - e.lastSeenNearMs) > kArrivalMaxAgeMs) continue;  // not fresh
 
     int slot = -1;
     for (size_t i = 0; i < kMaxFired; ++i) {
@@ -64,7 +65,7 @@ void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWind
     std::memcpy(fired_[slot], e.mac, 6);
     firedUsed_[slot] = true;
     present[slot] = true;
-    fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
+    if (!silenced) fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
                         e.lastRssi, e.variant));
   }
 
