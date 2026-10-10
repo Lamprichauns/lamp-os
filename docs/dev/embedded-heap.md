@@ -486,7 +486,7 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Moments.** A Moment allocates only its transients, one at a time: a
-  `flicker` burst (about 8 bytes a cell plus the Expression) for 140 to 700 ms,
+  `flicker` burst (about 8 bytes a cell plus the Expression) for 700 ms,
   or a `pulse` for about 6 s, admitted as a peer's like any cascade. A
   Fireflies churns about 120 same-size pairs over 2.6 min, under 1 Hz. The
   director's own state is fixed-size members, with no per-peer storage, and

@@ -75,7 +75,7 @@ so the app, `exprcat` and `test_builtin_descriptors` are unchanged:
 
 **Colours.** Whisper's origin
 colour rides the frame as `c`, so a hop far from the origin still has it. Any
-colour within 48 (`colorDistance`) of this lamp's first base colour is whitened
+colour within 48 (`colorDistance`) of any of this lamp's base colours is whitened
 40% with `bloomWhiten`, so it still shows.
 
 ## Mesh
