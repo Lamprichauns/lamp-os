@@ -20,6 +20,7 @@
 #include "../../src/core/peer_view.cpp"
 
 static bool g_ignore = false;
+static float g_wisp = 0.0f;
 
 lamp::Config config;
 lamp::ExpressionManager expressionManager;
@@ -33,6 +34,12 @@ GreetingTuning PersonalityEngine::greetingFor(const std::string&) const {
   return t;
 }
 bool Compositor::wispActive() const { return false; }
+// The dots read only the shade's wisp presence off the compositor; this one
+// holds it at g_wisp.
+Compositor::Compositor() {
+  context_.compositor = this;
+  wispShadePresence_ = EasedScalar(kDefaultEaseRate, g_wisp);
+}
 bool BehaviorContext::ignoresPeers() const { return g_ignore; }
 void BehaviorContext::forEachArrival(uint32_t, const std::function<bool(const PeerView&)>&) {}
 void ExpressionManager::sendInvocationTo(const uint8_t*, const ExpressionInvocation&) {}
@@ -91,16 +98,28 @@ int largestStep(const std::vector<Color>& a, const std::vector<Color>& b) {
 struct Continuity {
   int atHomeEntry = 0;
   int duringBorrow = 0;
+  int duringDrift = 0;  // the drift-back and the ambient re-scatter after it
 };
 
-Continuity homeEntryStep(uint32_t passes) {
+// With `wisp` > 0 the wisp holds that share of the shade: the buffer holds the
+// wisp's paint before each draw, as compositeWisp() leaves it.
+Continuity homeEntryStep(uint32_t passes, float wisp = 0.0f) {
   ShadeSettings cfg;
   cfg.segments = {{"a", 16, {Color(0x80, 0, 0, 0), Color(0, 0, 0x80, 0), Color(0x40, 0x40, 0, 0)}}};
   FrameBuffer fb;
   fb.begin({}, std::vector<StripSegment>{{&neo0, "a", 0, 16}});
+  g_wisp = wisp;
+  Compositor compositor;
   BehaviorContext ctx;
+  ctx.compositor = &compositor;
   DotsBehavior dots(&fb, cfg);
   dots.setBehaviorContext(&ctx);
+  const Color wispPaint(0x10, 0x10, 0x60, 0x20);
+  auto paintWisp = [&]() {
+    if (wisp > 0.0f) fb.buffer.assign(fb.buffer.size(), wispPaint);
+  };
+  dots.control();  // the lamp has been running before the greeting
+  paintWisp();
   dots.draw();
   dots.borrowColors({Color(0, 0x80, 0, 0), Color(0, 0, 0, 0x80), Color(0x20, 0, 0x60, 0)},
                     {Color(0, 0x60, 0x20, 0), Color(0x60, 0, 0x20, 0), Color(0, 0, 0, 0x40)},
@@ -109,6 +128,7 @@ Continuity homeEntryStep(uint32_t passes) {
   std::vector<Color> last;
   for (uint32_t i = 0; i < passes; ++i) {
     dots.control();
+    paintWisp();
     dots.draw();
     if (!last.empty() && i + 200 >= passes) {
       c.duringBorrow = std::max(c.duringBorrow, largestStep(last, fb.buffer));
@@ -117,8 +137,19 @@ Continuity homeEntryStep(uint32_t passes) {
   }
   g_ignore = true;
   dots.control();
+  paintWisp();
   dots.draw();
   c.atHomeEntry = largestStep(last, fb.buffer);
+  // Through the drift and into the next ambient re-scatter after it.
+  for (uint32_t i = 0;
+       i < DotsBehavior::kBorrowSceneFrames + DotsBehavior::kAmbientHoldFrames + 60; ++i) {
+    last = fb.buffer;
+    dots.control();
+    paintWisp();
+    dots.draw();
+    c.duringDrift = std::max(c.duringDrift, largestStep(last, fb.buffer));
+  }
+  g_wisp = 0.0f;
   return c;
 }
 
@@ -220,6 +251,7 @@ void test_drift_back_is_continuous_mid_crossfade() {
   const Continuity c = homeEntryStep(680);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
 }
 
 // Past the borrow's midpoint (pass 1000) the dots melt toward the own
@@ -228,6 +260,16 @@ void test_drift_back_is_continuous_mid_melt() {
   const Continuity c = homeEntryStep(1300);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
+}
+
+// With the wisp holding half the shade the melt paints above the wisp mix;
+// the drift-back keeps it there, easing out, so entry is still continuous.
+void test_drift_back_is_continuous_mid_melt_under_wisp() {
+  const Continuity c = homeEntryStep(1300, 0.5f);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
 }
 
 int main(int, char**) {
@@ -237,6 +279,7 @@ int main(int, char**) {
   RUN_TEST(test_active_borrow_drifts_home_when_ignoring_starts);
   RUN_TEST(test_drift_back_is_continuous_mid_crossfade);
   RUN_TEST(test_drift_back_is_continuous_mid_melt);
+  RUN_TEST(test_drift_back_is_continuous_mid_melt_under_wisp);
   RUN_TEST(test_greeting_takes_colour_info_outside_home_mode);
   RUN_TEST(test_greeting_takes_no_colour_info_while_ignoring_peers);
   return UNITY_END();

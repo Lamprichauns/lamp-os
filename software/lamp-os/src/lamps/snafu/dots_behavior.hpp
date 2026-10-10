@@ -57,6 +57,10 @@ class DotsBehavior : public AnimatedBehavior {
   // Own-palette equivalent of cur_ during borrow, melt target for draw()'s
   // second-half crossfade. Rebuilt only alongside cur_, never per frame.
   std::vector<Color> ownMelt_;
+  // A melt cut off by home mode: its span and position at that moment, eased
+  // out over the drift-back crossfade. Span 0 when none was under way.
+  uint32_t driftMeltSpan_ = 0;
+  uint32_t driftMeltPos_ = 0;
 
   // Full-buffer scene: each segment's slice filled from its own palette,
   // arranged by perm_.
