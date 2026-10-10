@@ -69,7 +69,7 @@ class ShimmerExpression : public Expression {
   std::vector<Cell> cells_;
   float windOffset_ = 0.0f;
   float windTarget_ = 0.0f;
-  float flutter_ = 0.0f;
+  Flutter flutter_;
   uint32_t nextGustMs_ = 0;
   uint32_t lastUpdateMs_ = 0;
 };

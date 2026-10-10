@@ -43,7 +43,7 @@ void ShimmerExpression::onTrigger() {
   lastUpdateMs_ = 0;
   windOffset_ = 0.0f;
   windTarget_ = 0.0f;
-  flutter_ = 0.0f;
+  flutter_ = Flutter{};
   nextGustMs_ = 0;
 
   cells_.clear();
@@ -66,8 +66,9 @@ void ShimmerExpression::advanceWind(uint32_t nowMs, uint32_t deltaMs) {
     windTarget_ = rollWindTarget(style_, rng);
     nextGustMs_ = nextGustAt(nowMs, style_, rng);
   }
-  windOffset_ = approachHeat(windOffset_, windTarget_, deltaMs,
-                             style_.stepMs * kWindStepFactor);
+  windOffset_ = approachHeat(
+      windOffset_, windTarget_,
+      approachFactor(deltaMs, style_.stepMs * kWindStepFactor));
 }
 
 void ShimmerExpression::control() {
@@ -83,9 +84,11 @@ void ShimmerExpression::draw() {
                      fb->pixelCount > 0 && !cells_.empty();
 
   advanceWind(nowMs, deltaMs);
-  flutter_ = advanceFlutter(flutter_, style_.flutterAmp, rng);
+  const float flutter = advanceFlutter(flutter_, style_.flutterAmp,
+                                       style_.flutterStepMs, deltaMs, rng);
+  const float heatFactor = approachFactor(deltaMs, style_.stepMs);
   for (Cell& c : cells_) {
-    c.heat = approachHeat(c.heat, c.target, deltaMs, style_.stepMs);
+    c.heat = approachHeat(c.heat, c.target, heatFactor);
     if (std::abs(c.target - c.heat) < 0.02f) {
       c.target = rollHeatTarget(style_, rng);
     }
@@ -93,7 +96,7 @@ void ShimmerExpression::draw() {
 
   if (paint) {
     const float wispWeight = wispDimScale();
-    const float flutterScale = 1.0f + flutter_;
+    const float flutterScale = 1.0f + flutter;
     // cells_ is sized on trigger, zone_ on configure; bound the index so a
     // future in-place reconfigure that grows the zone can't read past cells_.
     const int end = std::min({static_cast<int>(zone_.posMax) + 1,

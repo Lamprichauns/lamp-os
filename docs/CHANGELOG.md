@@ -25,6 +25,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   base.
 
 ### Fixed
+- **Shimmer's Candle and Campfire are calmer.** Candle is now a slow sway
+  with a soft flicker now and then instead of a fast buzz, and Campfire keeps
+  its gusts and flaring embers without looking hectic. Neither speeds up on a
+  lamp that runs faster.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run out
   of memory and restart, with or without the app open: saving settings or
   social dispositions on a crowded lamp could crash it outright, and a crowd's
