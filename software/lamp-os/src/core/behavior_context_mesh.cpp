@@ -6,7 +6,9 @@
 namespace lamp {
 
 void BehaviorContext::onArrival(std::function<void(const PeerView&)> cb) {
-  arrivalNotifier.onArrival(std::move(cb));
+  arrivalNotifier.onArrival([this, cb = std::move(cb)](const PeerView& peer) {
+    if (!ignoresPeers()) cb(peer);
+  });
 }
 
 }  // namespace lamp

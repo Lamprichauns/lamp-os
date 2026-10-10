@@ -106,6 +106,11 @@ struct BehaviorContext {
   // stop early. Read-only; never acks.
   void forEachNearby(const std::function<bool(const PeerView&)>& cb);
 
+  // True while home mode ignores other lamps (homeModeBlocksRemote). An
+  // arrival seen meanwhile is consumed without reaching forEachArrival's or
+  // onArrival's callback.
+  bool ignoresPeers() const;
+
   // Per-peer greeting waveform for `peerLampId` (colon-hex mac).
   GreetingTuning greetingFor(const std::string& peerLampId) const;
   // Stored disposition tier for `peerLampId` (3 = neutral default).

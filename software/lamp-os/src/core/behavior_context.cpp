@@ -4,6 +4,7 @@
 
 #include "components/network/mesh/lamp_roster.hpp"
 #include "config/config.hpp"
+#include "core/compositor.hpp"
 #include "core/personality_engine.hpp"
 
 extern lamp::Config config;
@@ -19,8 +20,18 @@ void BehaviorContext::forEachArrival(
           [](const RosterEntry&) { return true; }, arrival)) {
     return;
   }
+  // An ignored arrival is consumed, so leaving home does not greet a room
+  // that was there all along.
+  if (ignoresPeers()) {
+    lampRoster->acknowledge(arrival.mac);
+    return;
+  }
   PeerView v = PeerView::from(arrival);
   if (cb(v)) lampRoster->acknowledge(arrival.mac);
+}
+
+bool BehaviorContext::ignoresPeers() const {
+  return compositor && compositor->blocksRemote(TransientSource::Remote);
 }
 
 void BehaviorContext::forEachNearby(
