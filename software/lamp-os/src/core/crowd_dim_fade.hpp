@@ -35,19 +35,26 @@ class CrowdDim {
   // so the caller applies the landed value.
   bool fading(uint32_t nowMs) {
     if (!ramping_) return false;
-    if (nowMs - startMs_ >= fadeMs_) ramping_ = false;
+    if (elapsedMs(nowMs) >= fadeMs_) ramping_ = false;
     return true;
   }
 
  private:
   // Pins the finished ramp so a clock wrap cannot reopen it.
   void settle(uint32_t nowMs) {
-    if (applied_ != target_ && nowMs - startMs_ >= fadeMs_) applied_ = target_;
+    if (applied_ != target_ && elapsedMs(nowMs) >= fadeMs_) applied_ = target_;
+  }
+
+  // A caller may pass a timestamp taken before the ramp started (the loop's
+  // `now` against a ramp begun inside the brightness tick); that reads as 0.
+  uint32_t elapsedMs(uint32_t nowMs) const {
+    const int32_t elapsed = static_cast<int32_t>(nowMs - startMs_);
+    return elapsed < 0 ? 0 : static_cast<uint32_t>(elapsed);
   }
 
   float value(uint32_t nowMs) const {
     if (applied_ == target_) return target_;
-    const uint32_t elapsed = nowMs - startMs_;
+    const uint32_t elapsed = elapsedMs(nowMs);
     if (elapsed >= fadeMs_) return target_;
     return applied_ + (target_ - applied_) * (static_cast<float>(elapsed) / fadeMs_);
   }

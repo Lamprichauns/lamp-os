@@ -84,6 +84,17 @@ void test_settled_ramp_survives_millis_wrap() {
   TEST_ASSERT_FALSE(d.fading(wrapped));
 }
 
+// A pass timed just before the ramp began (the loop's `now` against a ramp
+// started inside the brightness tick) reads as the ramp's start, not its end.
+void test_timestamp_before_ramp_start_reads_as_start() {
+  CrowdDim d = dimmed();
+  d.fading(kCrowdDimFadeMs);
+  d.at(0.5f, true, 1000);
+  TEST_ASSERT_TRUE(d.fading(990));
+  TEST_ASSERT_TRUE(d.fading(1500));
+  TEST_ASSERT_EQUAL_FLOAT(0.5f, d.at(0.5f, true, 990));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_ordinary_commit_ramps_over_80ms);
@@ -92,5 +103,6 @@ int main(int, char**) {
   RUN_TEST(test_retarget_mid_ramp_glides_from_current_value);
   RUN_TEST(test_fading_covers_the_landing_pass);
   RUN_TEST(test_settled_ramp_survives_millis_wrap);
+  RUN_TEST(test_timestamp_before_ramp_start_reads_as_start);
   return UNITY_END();
 }

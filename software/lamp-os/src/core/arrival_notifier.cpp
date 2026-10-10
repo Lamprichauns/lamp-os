@@ -71,8 +71,10 @@ void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWind
     std::memcpy(fired_[slot], e.mac, 6);
     firedUsed_[slot] = true;
     present[slot] = true;
-    if (pass == ArrivalPass::Fire) fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
-                        e.lastRssi, e.variant));
+    if (pass == ArrivalPass::Fire) {
+      fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
+                          e.lastRssi, e.variant));
+    }
   }
 
   for (size_t i = 0; i < kMaxFired; ++i) {
