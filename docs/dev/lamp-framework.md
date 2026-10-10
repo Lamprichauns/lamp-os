@@ -156,7 +156,8 @@ another lamp settings over `MSG_CONTROL_OP`, which carries only wisp traffic
   all along, on every variant.
 - Crowd-dim lifts: `CrowdDim` (`core/crowd_dim_fade.hpp`) aims the factor at
   1.0 and ramps there over 1 s (`kCrowdDimHomeFadeMs`) when the gate switches
-  on or off, against the 80 ms an ordinary deadband commit takes.
+  on or off, against the 80 ms an ordinary deadband commit takes; a commit
+  while that ramp still runs keeps its remaining time.
   `Lamp::tick` reapplies brightness on every pass of a ramp and the one after
   it ends (`crowdDimFading()`), held off while the slider's own micro-fade runs
   and in OTA quiet mode; the landing pass waits out either hold.
@@ -172,11 +173,17 @@ What the preview stops while it shows stays stopped: a `SocialBehavior`
 greeting it cuts off is cancelled and a snafu palette borrow ends, as at home.
 The app's own greet button still plays during the preview: `SocialBehavior`
 marks a `triggerGreeting` greeting (`playsAppGreeting()`) and
-`homeModeSkipsSocial` lets the compositor run it until it ends. Peer transients
+`homeModeSkipsSocial` lets the compositor run it until it ends. When it ends,
+`SocialBehavior::control` picks and acknowledges no peer while `ignoresPeers()`,
+and neither greeting takes peer colour info meanwhile, so the app's greeting in
+the preview shows the peer's base colour without its palette, on standard and
+snafu alike. Peer transients
 already running are not faded during a preview.
 `homeModeState` (`core/home_mode_logic.hpp`) decides home mode and the preview
 from one read of the BLE client state: with the app connected, only its Home
-Mode page turns home mode on, and that is the preview.
+Mode page turns home mode on, and that is the preview. `reapplyHomeModeState`
+keeps that snapshot, and `calculateEffectiveHomeMode` (brightness, compositor
+boot) returns it, so the brightness and the gate always agree.
 
 The lamp's own sources stay `TransientSource::Local` and always pass: the app's
 Test button and its remote op over BLE (`CHAR_REMOTE_OP`, applied only on the
@@ -187,9 +194,11 @@ mode turns on is not faded: the compositor calls `cancelGreeting()` on a
 skipped `SocialBehavior` (STOPPED, frame 0, the app's greeting state told it
 ended), so it does not resume when home mode ends, and snafu's and the Lioness
 greetings finish their one pass. Snafu then borrows no peer palette: its dots
-refuse a borrow while `ignoresPeers()`, drift an active one back to the own
-palette from the scene on show (mid-crossfade and mid-melt included), and the
-greeting takes no peer colour info meanwhile. A retiring glitch gives its
+refuse a borrow while `ignoresPeers()` and drift an active one back to the own
+palette from the scene on show: a re-scatter crossfade under way is resolved
+into the starting scene, and a melt under way stays an overlay above the wisp
+mix, as `draw()` paints it, easing out over the drift; the greeting takes no
+peer colour info meanwhile. A retiring glitch gives its
 background back to the live scene as it fades (`Expression::retireScale`).
 
 ## Brightness path and the power governor
