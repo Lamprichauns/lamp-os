@@ -10,6 +10,7 @@
 #include "expression.hpp"
 #include "expression_invocation.hpp"
 #include "expressions/cascade_scheduler.hpp"
+#include "expressions/transient_admission.hpp"
 #include "expression_registry.hpp"
 #include "expressions/glitchy/glitchy_expression.hpp"
 #include "expressions/shifty/shifty_expression.hpp"
@@ -86,15 +87,15 @@ class ExpressionManager {
     uint8_t srcMac[6];
     std::unique_ptr<Expression> expression;
     uint32_t createdMs = 0;
+    TransientSource source = TransientSource::Remote;
   };
   std::vector<TransientExpression> transientExpressions_;
-  // In-flight transients; a cascade past it is dropped. Reserved at begin().
-  // Two target-both cascades: a shifty pair alone is about 1.8 KB of heap.
-  static constexpr size_t kMaxTransients = 4;
-  // Heap one transient may take; an invocation starts only when the largest
-  // free block holds this for each of its targets plus kHeapHeadroom, so a
-  // transient that starts can finish allocating.
+  // In-flight transients and their split between sources: admitTransient
+  // (transient_admission.hpp). Reserved at begin().
+  static constexpr size_t kMaxTransients = TransientSlots::kMax;
   static constexpr size_t kTransientHeapBytes = 2048;
+  // A dropped transient logs on every build, at most this often.
+  static constexpr uint32_t kTransientDropLogMs = 5000;
   // The cascade fan-out draining a batch per pass (tickCascade).
   CascadeScheduler cascade_;
 
@@ -273,10 +274,12 @@ class ExpressionManager {
    * break makes flood propagation safe. `broadcast` is a separate axis: true
    * only for a local origination (the app Test button) that must fan a wave
    * out, false for every receive/forward path so received cascades stay
-   * terminal.
+   * terminal. `source` decides which transient slots it may use: a peer's
+   * (Remote, the default) never takes the ones held for the lamp's own.
    */
   bool triggerInvocation(const ExpressionInvocation& inv,
-                         const uint8_t srcMac[6], bool broadcast = false);
+                         const uint8_t srcMac[6], bool broadcast = false,
+                         TransientSource source = TransientSource::Remote);
 
   /**
    * Broadcast an invocation to the crowd WITHOUT firing it locally.

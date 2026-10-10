@@ -387,24 +387,9 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
     // the runtime animator. A mirrored entry's parameters live only in config.
     bool configBacked = false;
     if (mutateConfig) {
-      auto& exprs = ::config.expressions.expressions;
-      auto it = std::find_if(exprs.begin(), exprs.end(), [&](const lamp::ExpressionConfig& e) {
-        return e.type == cfg.type && e.target == cfg.target;
-      });
-      if (it != exprs.end()) {
-        *it = cfg;
-        configBacked = true;
-      } else if (exprs.size() < lamp::kMaxExpressions) {
-        // Grow four entries at a time: doubling would reach 32 slots (4.5 KB,
-        // most empty) for a list capped at kMaxExpressions.
-        if (exprs.size() == exprs.capacity()) {
-          exprs.reserve(std::min(lamp::kMaxExpressions, exprs.capacity() + 4));
-        }
-        exprs.push_back(cfg);
-        configBacked = true;
-      } else {
-        Serial.printf("[expr] config full; upsert type=%s not saved\n",
-                      cfg.type.c_str());
+      configBacked = lamp::config_codec::mirrorUpsert(::config.expressions, cfg);
+      if (!configBacked) {
+        Serial.printf("[expr] config full; upsert type=%s not saved\n", cfg.type.c_str());
       }
     }
     ::expressionManager.upsertExpression(cfg, &::compositor, configBacked);

@@ -384,7 +384,8 @@ void ExpressionManager::onExpressionFired(Expression* e) {
 }
 
 bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
-                                          const uint8_t srcMac[6], bool broadcast) {
+                                          const uint8_t srcMac[6], bool broadcast,
+                                          TransientSource source) {
   if (!shadeBuffer || !baseBuffer) return false;
 
   ExpressionTarget invTarget = static_cast<ExpressionTarget>(inv.target);
@@ -435,12 +436,20 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   // A crowd of distinct senders would otherwise stack one transient pair per
   // sender, each a heap Expression plus its buffers.
-  if (transientExpressions_.size() + targetCount > kMaxTransients ||
-      !heapCanSpare(kTransientHeapBytes * targetCount)) {
-#ifdef LAMP_DEBUG
-    Serial.printf("[expr] transient drop %s (%u in flight)\n", inv.type.c_str(),
-                  (unsigned)transientExpressions_.size());
-#endif
+  size_t liveRemote = 0;
+  for (const auto& t : transientExpressions_) {
+    if (t.source == TransientSource::Remote) ++liveRemote;
+  }
+  if (!admitTransient(transientExpressions_.size(), liveRemote, targetCount, source,
+                      heapCanSpare(kTransientHeapBytes * targetCount))) {
+    static uint32_t s_lastDropLogMs = 0;
+    const uint32_t now = millis();
+    if (s_lastDropLogMs == 0 || now - s_lastDropLogMs >= kTransientDropLogMs) {
+      s_lastDropLogMs = now;
+      Serial.printf("[expr] transient drop %s (%s, %u in flight)\n", inv.type.c_str(),
+                    source == TransientSource::Local ? "local" : "remote",
+                    (unsigned)transientExpressions_.size());
+    }
     return false;
   }
 
@@ -490,6 +499,7 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
     std::memcpy(t.srcMac, srcMac, 6);
     t.expression = std::move(expr);
     t.createdMs = millis();
+    t.source = source;
     transientExpressions_.push_back(std::move(t));
     triggered = true;
 #ifdef LAMP_DEBUG

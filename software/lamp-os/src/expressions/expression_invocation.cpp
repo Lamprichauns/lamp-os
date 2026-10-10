@@ -22,11 +22,6 @@ uint32_t clampDelayMs(uint32_t v) {
 
 void serializeInvocation(const ExpressionInvocation& inv, std::string& out) {
   JsonDocument doc;
-  invocationToJson(inv, doc);
-  serializeJson(doc, out);
-}
-
-void invocationToJson(const ExpressionInvocation& inv, JsonDocument& doc) {
   doc["type"] = inv.type;
   doc["target"] = inv.target;
   doc["delayMs"] = inv.delayMs;
@@ -39,6 +34,7 @@ void invocationToJson(const ExpressionInvocation& inv, JsonDocument& doc) {
   for (const auto& kv : inv.parameters) {
     paramsObj[kv.first] = kv.second;
   }
+  serializeJson(doc, out);
 }
 
 bool parseInvocation(JsonObjectConst doc, ExpressionInvocation& out) {

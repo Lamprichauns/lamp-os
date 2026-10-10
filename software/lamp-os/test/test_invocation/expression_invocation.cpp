@@ -176,27 +176,6 @@ void test_parse_drops_non_hex_colors() {
   assertColorsDropped("{\"type\":\"glitchy\",\"colors\":\"ff234212zz234212\"}");
 }
 
-// The cascade fan-out reuses one document, rewriting delayMs per peer; each
-// payload must match a fresh serialization at that delay.
-void test_reused_document_matches_fresh_serialization() {
-  lamp::ExpressionInvocation inv;
-  inv.type = "pulse";
-  inv.target = 2;
-  inv.colors = {lamp::Color(1, 2, 3, 4)};
-  inv.parameters.set("size", 7);
-  JsonDocument doc;
-  lamp::invocationToJson(inv, doc);
-  std::string reused;
-  for (uint32_t d : {0u, 250u, 1000u}) {
-    doc["delayMs"] = d;
-    serializeJson(doc, reused);
-    inv.delayMs = d;
-    std::string fresh;
-    lamp::serializeInvocation(inv, fresh);
-    TEST_ASSERT_EQUAL_STRING(fresh.c_str(), reused.c_str());
-  }
-}
-
 // --- peer input caps ---
 
 // A peer's invocation is held to the expression caps, so a frame packed with
@@ -267,7 +246,6 @@ int main() {
   RUN_TEST(test_parse_drops_odd_length_colors);
   RUN_TEST(test_parse_drops_non_hex_colors);
   RUN_TEST(test_parse_caps_colors_and_params);
-  RUN_TEST(test_reused_document_matches_fresh_serialization);
   RUN_TEST(test_zoned_glitchy_8_colors_fits_command_payload);
   return UNITY_END();
 }

@@ -81,7 +81,8 @@ void BehaviorContext::forEachArrival(uint32_t,
   if (cb(viewOf(g_arrivals.front()))) g_arrivals.erase(g_arrivals.begin());
 }
 bool ExpressionManager::triggerInvocation(const ExpressionInvocation&,
-                                          const uint8_t*, bool) { return false; }
+                                          const uint8_t*, bool,
+                                          TransientSource) { return false; }
 bool MeshLink::sendColorQuery(const uint8_t*) { return true; }
 }  // namespace lamp
 

@@ -136,7 +136,8 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
                       inv.colors.size(), inv.type.c_str(),
                       static_cast<int>(target));
 #endif
-        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true);
+        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true,
+                                            lamp::TransientSource::Local);
         expressionManager.markTestActive(type.c_str(), target);
       } else {
         // No colors payload → trigger an already-configured expression by name.
