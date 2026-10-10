@@ -9,8 +9,8 @@ namespace lamp {
 // ends lets the next offer arm inside the hold and inherit its quiet, so the
 // indicator stays up instead of flickering back to normal between sessions.
 // Access is serialized by state: the loop task writes it in Idle, OfferSent and
-// the Done/Failed reap, the streaming task in Streaming, each under the
-// distributor's state mux.
+// the Done/Failed reap, the streaming task in Streaming (under the
+// distributor's state mux).
 struct InterSessionQuietHold {
   static constexpr uint32_t kHoldMs = 10000;
 
