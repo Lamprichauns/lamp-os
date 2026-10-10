@@ -13,6 +13,10 @@ constexpr ExpressionDescriptor kPulseDescriptor =
     withMake(kPulseDescriptorData, &makeExpr<PulseExpression>);
 }  // namespace
 
+bool PulseExpression::shouldAffectBuffer() {
+  return shouldAffectBuffer(fb) || (above_ && shouldAffectBuffer(above_));
+}
+
 PulseExpression::PulseExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {
 }
@@ -23,13 +27,18 @@ void PulseExpression::configureFromParameters(const ExpressionParams& parameters
   lowerEnd_ = zone_.posMax;
   if (above_ && above_->pixelCount > 0) {
     const Zone upper = resolveZone(parameters, above_->pixelCount);
-    aboveMax_ = upper.posMax;
+    aboveMin_ = upper.posMin;
     zone_.posMax = static_cast<uint16_t>(lowerEnd_ + upper.size());
   }
 
   uint32_t pulseSpeed = getParam(parameters, "pulseSpeed");
   const uint16_t span = zone_.size() > 0 ? zone_.size() : window;
-  pulseSpeedMs = std::max<uint32_t>(100, (pulseSpeed * kMsPerSecond) / span);
+  // The speed floor is per surface: a joined strip crosses at the floor in the
+  // time its longer surface takes alone.
+  const uint16_t lowerSpan = static_cast<uint16_t>(lowerEnd_ + 1 - zone_.posMin);
+  const uint32_t floorSpan = std::max<uint32_t>(lowerSpan, span - lowerSpan);
+  pulseSpeedMs = std::max<uint32_t>(kPulseFloorMsPerPx * floorSpan / span,
+                                    (pulseSpeed * kMsPerSecond) / span);
 
   const uint16_t sizePercent = pulseSizePercentFromStep(getParam(parameters, "size", 4));
   pulseWidth = pulseWidthFromPercent(sizePercent, span);
@@ -192,13 +201,14 @@ void PulseExpression::draw() {
   const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
   const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
   for (int pos = zone_.posMin; pos <= zone_.posMax; pos++) {
-    const bool upper = pos > lowerEnd_;
+    const int at = pos;
+    const bool upper = at > lowerEnd_;
     if (!(upper ? upperLive : lowerLive)) continue;
     uint32_t blendFactor = calculateBlendFactor(pos);
     if (blendFactor == 0) continue;  // Skip pixels with no blend
-    Color& px = !above_ ? fb->buffer[pos]
-                : upper  ? above_->buffer[aboveMax_ - (pos - lowerEnd_ - 1)]
-                         : fb->buffer[zone_.posMin + lowerEnd_ - pos];
+    Color& px = !above_ ? fb->buffer[at]
+                : upper  ? above_->buffer[aboveMin_ + (at - lowerEnd_ - 1)]
+                         : fb->buffer[zone_.posMin + lowerEnd_ - at];
     const Color painted =
         (blendFactor >= 100)
             ? pulseColor

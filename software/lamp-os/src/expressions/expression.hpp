@@ -50,18 +50,19 @@ class Expression : public AnimatedBehavior {
 
   /**
    * Check if this expression should affect current buffer, or `surface`.
+   * trigger() gates on the no-argument form.
    */
-  bool shouldAffectBuffer() { return shouldAffectBuffer(fb); }
+  virtual bool shouldAffectBuffer() { return shouldAffectBuffer(fb); }
   bool shouldAffectBuffer(FrameBuffer* surface);
 
   /**
    * Per-pixel contribution scale in [0,1] for a yielding expression drawing
-   * on this fb's surface (or `surface`): opacityPct_/100 capped further by the compositor's
-   * wisp presence `w`, lerping toward wispDimFloor() as w rises. Opacity 100
-   * with no wisp present (or a type that doesn't yield) returns 1.0. Reads
-   * the same `w` that composites the wisp, so on release the expression
-   * returns to its opacity cap in lockstep with the wisp fade. Per-surface:
-   * base presence for a base fb, shade presence for a shade fb.
+   * on this fb's surface (or `surface`): opacityPct_/100 capped further by
+   * the compositor's wisp presence `w`, lerping toward wispDimFloor() as w
+   * rises. Opacity 100 with no wisp present (or a type that doesn't yield)
+   * returns 1.0. Reads the same `w` that composites the wisp, so on release
+   * the expression returns to its opacity cap in lockstep with the wisp fade.
+   * Per-surface: base presence for a base fb, shade presence for a shade fb.
    */
   float wispDimScale() { return wispDimScale(fb); }
   float wispDimScale(FrameBuffer* surface);

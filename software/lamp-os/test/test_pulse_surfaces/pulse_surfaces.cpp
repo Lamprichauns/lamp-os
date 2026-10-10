@@ -31,9 +31,8 @@ constexpr uint32_t kFrameMs = 16;
 const Color kBackground{0, 0, 0, 0};
 const Color kPulse{200, 40, 10, 0};
 
-// The standard lamp: standard_lamp.hpp declares the base strip reversed and
-// the shade not. Physically the base is wired from its bottom and the shade
-// from its top.
+// The standard lamp: base logical 0 is its top, shade logical 0 its bottom.
+// standard_lamp.hpp declares the base strip reversed and the shade not.
 struct Rig {
   Adafruit_NeoPixel shadeStrip;
   Adafruit_NeoPixel baseStrip;
@@ -129,8 +128,41 @@ int peakPosition(Rig& rig) {
     }
   };
   scan(rig.base, rig.baseStrip, [](int p) { return p; });
-  scan(rig.shade, rig.shadeStrip, [](int p) { return kBasePx + kShadePx - 1 - p; });
+  scan(rig.shade, rig.shadeStrip, [](int p) { return kBasePx + p; });
   return best;
+}
+
+// Time for the peak to travel from the pixel after height `from` to height
+// `to`. The first pixel peaks while the wave is still entering off the strip.
+uint32_t crossingMs(Rig& rig, PulseExpression& p, int from, int to) {
+  const int second = from + (to > from ? 1 : -1);
+  uint32_t startMs = 0;
+  uint32_t topMs = 0;
+  run(rig, p, 20000, [&](uint32_t now) {
+    const int peak = peakPosition(rig);
+    if (peak == second && startMs == 0) startMs = now;
+    if (peak == to && topMs == 0) topMs = now;
+  });
+  TEST_ASSERT_TRUE(startMs > 0 && topMs > startMs);
+  return topMs - startMs;
+}
+
+// Distinct peak heights in the order the wave visits them.
+std::vector<int> peakTrail(Rig& rig, PulseExpression& p) {
+  std::vector<int> trail;
+  run(rig, p, 20000, [&](uint32_t) {
+    const int peak = peakPosition(rig);
+    if (peak >= 0 && (trail.empty() || trail.back() != peak)) trail.push_back(peak);
+  });
+  return trail;
+}
+
+void assertSweep(const std::vector<int>& trail, int from, int to) {
+  TEST_ASSERT_FALSE(trail.empty());
+  TEST_ASSERT_EQUAL_INT(from, trail.front());
+  TEST_ASSERT_EQUAL_INT(to, trail.back());
+  const int step = to > from ? 1 : -1;
+  for (size_t i = 1; i < trail.size(); ++i) TEST_ASSERT_EQUAL_INT(step, trail[i] - trail[i - 1]);
 }
 
 bool anyLit(const std::vector<Color>& buf, int from, int to) {
@@ -149,8 +181,7 @@ void ExpressionManager::onExpressionFired(Expression*) { ++g_fired; }
 void setUp() {}
 void tearDown() {}
 
-// Golden hashes recorded from the per-surface Pulse before TARGET_BOTH joined
-// the surfaces. A single-surface pulse must render byte-identically.
+// Golden hashes pin single-surface output byte for byte.
 void test_shade_only_unchanged() {
   Rig rig;
   PulseExpression p(&rig.shade);
@@ -293,9 +324,9 @@ void test_both_maps_each_surface_zone() {
     const bool shadeNow = anyLit(rig.shade.buffer, 5, 20);
     if (baseLit && !shadeLit && !shadeNow) baseLitBeforeShade = true;
     if (shadeNow) shadeLit = true;
-    // The base zone tops out at logical 5; the shade zone starts at logical 20.
+    // The base zone tops out at logical 5; the shade zone starts at logical 5.
     uint8_t baseTop = rig.base.buffer[5].r;
-    uint8_t shadeBottom = rig.shade.buffer[20].r;
+    uint8_t shadeBottom = rig.shade.buffer[5].r;
     const bool peakInBase = baseTop >= shadeBottom;
     if (baseTop > 0 || shadeBottom > 0) {
       if (lastWasBase && !peakInBase) ++crossings;
@@ -313,20 +344,6 @@ void test_both_maps_each_surface_zone() {
 // still entering off the strip.
 void test_both_speed_spans_whole_strip() {
   const ExpressionParams params{{"pulseSpeed", 10}, {"size", 1}};
-  // A single shade pulse runs its logical order, which on the standard shade
-  // is top down; `from` and `to` are heights in travel order.
-  auto crossingMs = [](Rig& rig, PulseExpression& p, int from, int to) {
-    const int second = from + (to > from ? 1 : -1);
-    uint32_t startMs = 0;
-    uint32_t topMs = 0;
-    run(rig, p, 20000, [&](uint32_t now) {
-      const int peak = peakPosition(rig);
-      if (peak == second && startMs == 0) startMs = now;
-      if (peak == to && topMs == 0) topMs = now;
-    });
-    TEST_ASSERT_TRUE(startMs > 0 && topMs > startMs);
-    return topMs - startMs;
-  };
   // Per-pixel step is pulseSpeed over the strip's pixel count, in whole ms.
   auto expectMs = [](uint32_t pixels) { return (10000u / pixels) * (pixels - 2); };
 
@@ -337,7 +354,7 @@ void test_both_speed_spans_whole_strip() {
   Rig single;
   PulseExpression shade(&single.shade);
   build(single, shade, TARGET_SHADE, params);
-  const uint32_t shadeMs = crossingMs(single, shade, kBasePx + kShadePx - 1, kBasePx);
+  const uint32_t shadeMs = crossingMs(single, shade, kBasePx, kBasePx + kShadePx - 1);
 
   TEST_ASSERT_UINT32_WITHIN(2 * kFrameMs, expectMs(kBasePx + kShadePx), bothMs);
   TEST_ASSERT_UINT32_WITHIN(2 * kFrameMs, expectMs(kShadePx), shadeMs);
@@ -358,6 +375,54 @@ void test_both_editing_one_surface_pauses_only_that_half() {
   TEST_ASSERT_TRUE(baseLit);
 }
 
+// At the default setting the floor sets the pace: the joined pulse climbs the
+// whole lamp in about the time the longer surface took alone.
+void test_both_default_speed_matches_one_surface() {
+  const ExpressionParams params{{"pulseSpeed", 3}, {"size", 1}};
+  Rig both;
+  auto joined = buildBoth(both, params);
+  const uint32_t bothMs = crossingMs(both, *joined, 0, kBasePx + kShadePx - 1);
+  Rig single;
+  PulseExpression shade(&single.shade);
+  build(single, shade, TARGET_SHADE, params);
+  const uint32_t shadeMs = crossingMs(single, shade, kBasePx, kBasePx + kShadePx - 1);
+  TEST_ASSERT_UINT32_WITHIN(250, shadeMs, bothMs);
+}
+
+// With the base editor open a joined pulse still fires and plays on the shade.
+void test_both_fires_with_base_editor_open() {
+  Rig rig;
+  auto p = buildBoth(rig, {{"pulseSpeed", 6}});
+  overrides.base.setOperatorEditing(true);
+  bool shadeLit = false;
+  run(rig, *p, 20000, [&](uint32_t) {
+    TEST_ASSERT_FALSE(anyLit(rig.base.buffer, 0, kBasePx - 1));
+    if (anyLit(rig.shade.buffer, 0, kShadePx - 1)) shadeLit = true;
+  });
+  overrides.base.setOperatorEditing(false);
+  TEST_ASSERT_TRUE(shadeLit);
+}
+
+void test_both_editors_open_refuses_trigger() {
+  Rig rig;
+  auto p = buildBoth(rig, {});
+  overrides.base.setOperatorEditing(true);
+  overrides.shade.setOperatorEditing(true);
+  const bool fired = p->trigger();
+  overrides.base.setOperatorEditing(false);
+  overrides.shade.setOperatorEditing(false);
+  TEST_ASSERT_FALSE(fired);
+}
+
+void test_plan_base_without_pixels_plans_per_surface() {
+  Rig rig;
+  rig.base.pixelCount = 0;
+  const SurfacePlan plan =
+      surfacePlan(&PulseExpression::classDescriptor(), TARGET_BOTH, &rig.shade, &rig.base);
+  TEST_ASSERT_EQUAL_UINT8(2, plan.count);
+  TEST_ASSERT_NULL(plan.above);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_shade_only_unchanged);
@@ -371,5 +436,9 @@ int main(int, char**) {
   RUN_TEST(test_both_maps_each_surface_zone);
   RUN_TEST(test_both_speed_spans_whole_strip);
   RUN_TEST(test_both_editing_one_surface_pauses_only_that_half);
+  RUN_TEST(test_both_default_speed_matches_one_surface);
+  RUN_TEST(test_both_fires_with_base_editor_open);
+  RUN_TEST(test_both_editors_open_refuses_trigger);
+  RUN_TEST(test_plan_base_without_pixels_plans_per_surface);
   return UNITY_END();
 }

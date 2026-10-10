@@ -10,8 +10,8 @@ namespace lamp {
 
 // The instances one (type, target) builds: one per surface, shade first, or a
 // single base-bound instance joining the shade `above` it when the type spans
-// surfaces. `count` is 0 for an unknown target. A null descriptor plans per
-// surface.
+// surfaces and the base has pixels. `count` is 0 for an unknown target. A null
+// descriptor plans per surface.
 struct SurfacePlan {
   FrameBuffer* buffers[2] = {};
   uint8_t count = 0;
@@ -29,7 +29,7 @@ inline SurfacePlan surfacePlan(const ExpressionDescriptor* d, ExpressionTarget t
       plan.buffers[plan.count++] = base;
       break;
     case TARGET_BOTH:
-      if (d && d->spansSurfaces) {
+      if (d && d->spansSurfaces && base && base->pixelCount > 0) {
         plan.buffers[plan.count++] = base;
         plan.above = shade;
       } else {
