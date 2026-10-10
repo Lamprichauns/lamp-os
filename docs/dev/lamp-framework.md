@@ -170,6 +170,10 @@ leaves and returns during the preview fires afterwards as usual. Nothing is
 booked for later either, so no peer effect lands once the app leaves the page.
 What the preview stops while it shows stays stopped: a `SocialBehavior`
 greeting it cuts off is cancelled and a snafu palette borrow ends, as at home.
+The app's own greet button still plays during the preview: `SocialBehavior`
+marks a `triggerGreeting` greeting (`playsAppGreeting()`) and
+`homeModeSkipsSocial` lets the compositor run it until it ends. Peer transients
+already running are not faded during a preview.
 `homeModeState` (`core/home_mode_logic.hpp`) decides home mode and the preview
 from one read of the BLE client state: with the app connected, only its Home
 Mode page turns home mode on, and that is the preview.
@@ -184,7 +188,9 @@ skipped `SocialBehavior` (STOPPED, frame 0, the app's greeting state told it
 ended), so it does not resume when home mode ends, and snafu's and the Lioness
 greetings finish their one pass. Snafu then borrows no peer palette: its dots
 refuse a borrow while `ignoresPeers()`, drift an active one back to the own
-palette, and the greeting takes no peer colour info meanwhile.
+palette from the scene on show (mid-crossfade and mid-melt included), and the
+greeting takes no peer colour info meanwhile. A retiring glitch gives its
+background back to the live scene as it fades (`Expression::retireScale`).
 
 ## Brightness path and the power governor
 

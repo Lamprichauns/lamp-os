@@ -32,9 +32,12 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   already sent fade out gently when home mode comes on, and when you leave
   home your lamp doesn't greet the lamps that were there all along. It also
   stops dimming itself for a crowd, easing back to its full home brightness
-  over about a second. Previewing home mode from the app shows all this
-  without changing anything afterwards. Your own expressions, the app's Test
-  button and your wisp keep working, and your lamp still passes messages
+  over about a second. Previewing home mode from the app shows what home mode
+  looks like without using up arrivals, so the lamps around it are greeted as
+  usual once you leave the page; a greeting or borrowed palette the preview
+  cuts off stays ended, and the app's greet button still plays a greeting
+  during the preview. Your own expressions, the app's Test button and your
+  wisp keep working, and your lamp still passes messages
   along so the lamps around it keep talking.
 - **A staff lamp blooms for every friend in a big crowd.** With more than 16
   lamps nearby, friends past the sixteenth used to arrive without a bloom.
