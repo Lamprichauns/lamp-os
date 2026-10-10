@@ -241,11 +241,18 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
 - **The BLE scan.** The scan callback hands the roster the six address bytes,
   so a lamp advertisement builds no 17-char string on the host task.
 - **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
-  app's Test) reaches the 8 closest peers (`kMaxCascadeTargets`). Each queued
-  ESP-NOW frame holds a WiFi TX buffer until it airs; fanning out to a crowd
-  of 50 in one pass ran the driver out of memory (`esp_now_send` 0x3067) and
-  took the heap's minimum to about 1 KB. It builds the invocation document
-  once and reuses one string for every peer.
+  app's Test) reaches every mesh peer, closest first, but queues at most 8
+  frames at a time. Each queued ESP-NOW frame holds a WiFi TX buffer until it
+  airs; fanning out to a crowd of 50 in one pass ran the driver out of memory
+  (`esp_now_send` 0x3067) and took the heap's minimum to about 1 KB.
+  `CascadeScheduler` (`expressions/cascade_scheduler.hpp`) holds the peers
+  and the one serialized invocation in fixed storage (about 1.1 KB of .bss:
+  50 MACs and a 768-byte payload, above the 536-byte worst case) and the loop
+  sends the next batch of 8 every 50 ms. Each frame's `delayMs` is rewritten
+  in place to keep the peer's intended fire time, (i + 1) x stagger capped at
+  1 s from the original fire, less the time the drain has taken, never below
+  zero. A new cascade replaces any remainder of one still draining, and an
+  OTA start stops the drain.
 - **Reads nobody asked for.** The section caches warm, and the state notify
   builds its payload, only while a BLE client holds the link; with no client
   the caches are freed every tick and rebuild on the next read. The

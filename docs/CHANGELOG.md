@@ -28,7 +28,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   traffic piled up memory on its own. A save that can't find room now waits
   and tries again a few seconds later instead of crashing, your stored
   settings are untouched, and the lamp caps how much a crowd can make it hold
-  at once. Expressions keep at most 8 colours each, and a stored setup beyond
+  at once. A cascade still reaches every lamp around, sent in quick waves
+  instead of all at once, each lamp firing on the same beat as before. Expressions keep at most 8 colours each, and a stored setup beyond
   the app's limits is trimmed back to them when the lamp updates.
 - **Big setups keep saving.** A lamp with many expressions could run out of
   room to store its settings and quietly stop saving changes, and a full
