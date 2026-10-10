@@ -1132,7 +1132,9 @@ void lamp::Lamp::tick() {
     const bool userFading = !lamp::overrides.brightness.isActive() &&
                             lamp::brightnessFadeSeeded() &&
                             lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
-    if (lamp::crowdDimFading(now) && !userFading && !lamp::ota_quiet_mode::isQuiet()) {
+    // crowdDimFading() consumes the landing pass, so it is asked only when
+    // the reapply can run.
+    if (!userFading && !lamp::ota_quiet_mode::isQuiet() && lamp::crowdDimFading(now)) {
       lamp::applyEffectiveBrightness();
     }
   }

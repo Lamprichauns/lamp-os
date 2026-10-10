@@ -11,4 +11,10 @@ inline bool effectiveHomeModeFromConfig(bool enabled, bool networkBound,
   return !ssidEmpty && ssidVisible;
 }
 
+// True when home mode is on only because the app is connected and showing the
+// Home Mode page: with a client connected, home mode is on for nothing else.
+constexpr bool homeModePreview(bool clientConnected, bool homeActive) {
+  return clientConnected && homeActive;
+}
+
 }  // namespace lamp

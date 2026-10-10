@@ -180,6 +180,7 @@ void reapplyHomeModeState() {
   compositor.setHomeModePolicy(config.homeMode.socialDisabled,
                                config.homeMode.disabledExpressionTypes);
   compositor.setHomeMode(calculateEffectiveHomeMode());
-  compositor.homePreview = ble_control::isClientConnected() && compositor.homeMode;
+  compositor.homePreview =
+      lamp::homeModePreview(ble_control::isClientConnected(), compositor.homeMode);
   lamp::applyEffectiveBrightness();
 }
