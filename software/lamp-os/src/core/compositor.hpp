@@ -144,6 +144,11 @@ class Compositor {
    */
   bool homeModeSkipsType(const std::string& type) const;
 
+  // homeModeBlocksRemote over this compositor's live home state and policy.
+  bool blocksRemote(TransientSource source) const {
+    return homeModeBlocksRemote(homeMode, homeSocialDisabled_, source);
+  }
+
   /**
    * Mark the expression band bounds [start, end) within the
    * behavior list, keeping the band contiguous as behaviors are

@@ -391,6 +391,8 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
                                           TransientSource source) {
   if (!shadeBuffer || !baseBuffer) return false;
 
+  if (compositor_ && compositor_->blocksRemote(source)) return false;
+
   ExpressionTarget invTarget = static_cast<ExpressionTarget>(inv.target);
 
   // Coalesce: if a transient with the same (sender, type) is still
@@ -529,7 +531,11 @@ void ExpressionManager::gcTransients() {
   if (transientExpressions_.empty()) return;
   const uint32_t nowMs = millis();
   for (auto it = transientExpressions_.begin(); it != transientExpressions_.end();) {
-    const bool complete = it->expression && it->expression->isAnimationComplete();
+    if (it->expression && compositor_ && compositor_->blocksRemote(it->source)) {
+      it->expression->retire();
+    }
+    const bool complete = it->expression && (it->expression->isAnimationComplete() ||
+                                             it->expression->retired());
     const bool expired = nowMs - it->createdMs >= kTransientMaxLifetimeMs;
     if (complete || expired) {
       if (expired && !complete) {

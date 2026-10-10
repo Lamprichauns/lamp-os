@@ -1,0 +1,205 @@
+// Native pin for the transient side of home mode's social-off, against the
+// shipped ExpressionManager: while home mode is active with social off, a
+// peer's invocation (cascade, delayed cascade, event mirror) never starts,
+// the lamp's own invocation still does, and a peer transient already running
+// fades out and is reaped. The compositor and mesh are link stubs; the home
+// gate the manager consults is the compositor's real inline blocksRemote.
+
+#include <unity.h>
+
+#include "core/animated_behavior.cpp"
+#include "expressions/expression.cpp"
+#include "expressions/expression_manager.cpp"
+#include "expressions/cascade_scheduler.cpp"
+#include "expressions/expression_invocation.cpp"
+#include "expressions/expression_registry.cpp"
+#include "util/heap_guard.cpp"
+#include "components/network/mesh/lamp_roster.cpp"
+#include "core/peer_view.cpp"
+#include "core/frame_buffer.cpp"
+#include "util/color.cpp"
+#include "expressions/bloom/bloom_expression.cpp"
+
+namespace lamp {
+OverrideAggregate overrides;
+TxCredit EspNowLink::s_txCredit;
+
+std::vector<AnimatedBehavior*> s_registered;
+
+// Registers into the shared context exactly as compositor.cpp's does, without
+// its render dependencies; the home-mode setters store what compositor.cpp's do.
+Compositor::Compositor() { context_.compositor = this; }
+void Compositor::addBehavior(AnimatedBehavior* b) {
+  b->setBehaviorContext(&context_);
+  s_registered.push_back(b);
+}
+void Compositor::removeBehavior(AnimatedBehavior* b) {
+  s_registered.erase(std::remove(s_registered.begin(), s_registered.end(), b),
+                     s_registered.end());
+}
+void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string> disabledIds) {
+  homeSocialDisabled_ = socialDisabled;
+  homeDisabledExprIds_ = std::move(disabledIds);
+}
+bool Compositor::homeModeSkipsType(const std::string& type) const {
+  return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
+}
+
+bool MeshLink::sendCommand(const uint8_t*, const uint8_t*, size_t) { return true; }
+bool MeshLink::sendEvent(const uint8_t*, size_t) { return true; }
+bool MeshLink::isOtaInProgress() const { return false; }
+void MeshLink::getMyMac(uint8_t* mac) const { std::memset(mac, 0, 6); }
+}  // namespace lamp
+
+using namespace lamp;
+
+namespace {
+
+// Paints nothing; plays one long cycle so a transient stays in flight.
+class Probe : public Expression {
+ public:
+  explicit Probe(FrameBuffer* fb) : Expression(fb, 600) {}
+  const ExpressionDescriptor& descriptor() const override;
+  void configureFromParameters(const ExpressionParams&) override {}
+  void draw() override { nextFrame(); }
+
+ protected:
+  void onTrigger() override {}
+};
+
+constexpr ExpressionDescriptor kProbe{.id = "probe", .name = "Probe", .make = &makeExpr<Probe>};
+const ExpressionDescriptor& Probe::descriptor() const { return kProbe; }
+
+const uint8_t kPeerMac[6] = {1, 2, 3, 4, 5, 6};
+const uint8_t kLocalMac[6] = {};
+
+struct Rig {
+  FrameBuffer shade;
+  FrameBuffer base;
+  Compositor compositor;
+  ExpressionManager manager;
+  Rig() {
+    shade.pixelCount = 4;
+    shade.buffer.assign(4, Color());
+    base.pixelCount = 4;
+    base.buffer.assign(4, Color());
+    s_registered.clear();
+    manager.registry().add(kProbe);
+    manager.begin(&shade, &base);
+    manager.setCompositor(&compositor);
+  }
+  bool invoke(TransientSource source) {
+    ExpressionInvocation inv;
+    inv.type = "probe";
+    inv.target = TARGET_SHADE;
+    const uint8_t* mac = source == TransientSource::Local ? kLocalMac : kPeerMac;
+    return manager.triggerInvocation(inv, mac, /*broadcast=*/false, source);
+  }
+};
+
+}  // namespace
+
+void setUp() { set_mock_millis(10000); }
+void tearDown() {}
+
+// Default policy is social off, so home mode alone blocks peers.
+void test_peer_invocation_blocked_in_home_social_off() {
+  Rig r;
+  r.compositor.homeMode = true;
+  TEST_ASSERT_FALSE(r.invoke(TransientSource::Remote));
+  TEST_ASSERT_EQUAL_size_t(0, s_registered.size());
+}
+
+void test_peer_invocation_runs_outside_home_mode() {
+  Rig r;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+}
+
+void test_peer_invocation_runs_in_home_with_social_on() {
+  Rig r;
+  r.compositor.homeMode = true;
+  r.compositor.setHomeModePolicy(/*socialDisabled=*/false, {"glitchy"});
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+}
+
+void test_local_invocation_runs_in_home_social_off() {
+  Rig r;
+  r.compositor.homeMode = true;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Local));
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+}
+
+// The type list still drops a listed type from any source in home mode.
+void test_type_list_still_blocks_local() {
+  Rig r;
+  r.compositor.homeMode = true;
+  r.compositor.setHomeModePolicy(/*socialDisabled=*/false, {"probe"});
+  TEST_ASSERT_FALSE(r.invoke(TransientSource::Local));
+}
+
+// A peer transient running when home mode turns on fades out, then is reaped;
+// the lamp's own keeps running.
+void test_running_peer_transient_fades_out_on_home_entry() {
+  Rig r;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Local));
+  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());
+  auto* peer = static_cast<Probe*>(s_registered[0]);
+
+  r.compositor.homeMode = true;
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());  // fading, not cut
+
+  set_mock_millis(10000 + Expression::kRetireFadeMs / 2);
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());
+  TEST_ASSERT_FALSE(peer->retired());
+
+  set_mock_millis(10000 + Expression::kRetireFadeMs);
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+  TEST_ASSERT_TRUE(s_registered[0] != peer);
+}
+
+void test_running_peer_transient_untouched_outside_home_mode() {
+  Rig r;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  set_mock_millis(10000 + Expression::kRetireFadeMs * 5);
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+}
+
+// Bloom paints its swell through the same contribution scale, so a retired
+// bloom fades with the rest.
+void test_retired_bloom_paints_nothing() {
+  Rig r;
+  BloomExpression bloom(&r.shade);
+  bloom.configure({}, 60, 900, TARGET_SHADE);
+  r.compositor.addBehavior(&bloom);
+  TEST_ASSERT_TRUE(bloom.trigger());
+  bloom.frame = kBloomFrames / 2;
+
+  bloom.draw();
+  TEST_ASSERT_TRUE(r.shade.buffer[0].w > 0);
+
+  r.shade.buffer.assign(4, Color());
+  bloom.frame = kBloomFrames / 2;
+  bloom.retire();
+  set_mock_millis(10000 + Expression::kRetireFadeMs);
+  bloom.draw();
+  TEST_ASSERT_TRUE(r.shade.buffer[0] == Color());
+}
+
+int main(int, char**) {
+  UNITY_BEGIN();
+  RUN_TEST(test_peer_invocation_blocked_in_home_social_off);
+  RUN_TEST(test_peer_invocation_runs_outside_home_mode);
+  RUN_TEST(test_peer_invocation_runs_in_home_with_social_on);
+  RUN_TEST(test_local_invocation_runs_in_home_social_off);
+  RUN_TEST(test_type_list_still_blocks_local);
+  RUN_TEST(test_running_peer_transient_fades_out_on_home_entry);
+  RUN_TEST(test_running_peer_transient_untouched_outside_home_mode);
+  RUN_TEST(test_retired_bloom_paints_nothing);
+  return UNITY_END();
+}

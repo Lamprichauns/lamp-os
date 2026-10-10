@@ -68,6 +68,21 @@ void test_received_cascade_home_on_disabled_type_dropped() {
   TEST_ASSERT_TRUE(receivedCascadeDropped(true, "glitchy", {"glitchy"}));
 }
 
+// Peer pushes are ignored only when home mode is active AND social is off.
+void test_remote_blocked_only_home_and_social_off() {
+  TEST_ASSERT_TRUE(homeModeBlocksRemote(true, true, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, false, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, true, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, false, TransientSource::Remote));
+}
+
+void test_local_never_blocked() {
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, true, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, false, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, true, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, false, TransientSource::Local));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_null_id_not_skipped);
@@ -80,5 +95,7 @@ int main(int, char**) {
   RUN_TEST(test_received_cascade_home_off_never_dropped);
   RUN_TEST(test_received_cascade_home_on_enabled_type_kept);
   RUN_TEST(test_received_cascade_home_on_disabled_type_dropped);
+  RUN_TEST(test_remote_blocked_only_home_and_social_off);
+  RUN_TEST(test_local_never_blocked);
   return UNITY_END();
 }
