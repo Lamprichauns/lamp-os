@@ -20,10 +20,17 @@ inline bool webappShouldRestoreBle(uint32_t now, uint32_t deadlineMs,
   return bleDown && static_cast<int32_t>(now - deadlineMs) >= 0;
 }
 
+// The longest an armed reboot waits on OTA quiet mode; a transfer holding it
+// longer is stuck, and the reboot goes ahead.
+constexpr uint32_t kRebootOtaWaitMaxMs = 10u * 60u * 1000u;
+
 // An armed reboot (0 = none) is due once its time passes, whether or not the
-// AP is still up, and waits while an OTA holds quiet mode.
+// AP is still up, and waits while an OTA holds quiet mode, up to
+// kRebootOtaWaitMaxMs past its time.
 inline bool webappRebootDue(uint32_t now, uint32_t rebootAtMs, bool otaQuiet) {
-  return rebootAtMs != 0 && static_cast<int32_t>(now - rebootAtMs) >= 0 && !otaQuiet;
+  if (rebootAtMs == 0) return false;
+  const int32_t late = static_cast<int32_t>(now - rebootAtMs);
+  return late >= 0 && (!otaQuiet || late >= static_cast<int32_t>(kRebootOtaWaitMaxMs));
 }
 
 }  // namespace webapp

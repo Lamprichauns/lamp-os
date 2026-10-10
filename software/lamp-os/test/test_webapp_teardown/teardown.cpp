@@ -54,6 +54,16 @@ void test_armed_reboot_waits_for_ota_only() {
   TEST_ASSERT_TRUE(webapp::webappRebootDue(0x00000010u, 0xFFFFFFF0u, false));
 }
 
+// A stuck OTA holds the reboot only kRebootOtaWaitMaxMs past its time.
+void test_armed_reboot_waits_out_ota_up_to_the_ceiling() {
+  const uint32_t at = 1000;
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs - 1, at, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs, at, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(0x00000010u + webapp::kRebootOtaWaitMaxMs,
+                                           0x00000010u, true));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs, 0, true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_never_expire_always_false);
@@ -61,5 +71,6 @@ int main(int, char**) {
   RUN_TEST(test_wrap_safe_finite);
   RUN_TEST(test_restore_ble_reboots_once_idle_regardless_of_station);
   RUN_TEST(test_armed_reboot_waits_for_ota_only);
+  RUN_TEST(test_armed_reboot_waits_out_ota_up_to_the_ceiling);
   return UNITY_END();
 }

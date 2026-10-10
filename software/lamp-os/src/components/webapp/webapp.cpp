@@ -512,9 +512,13 @@ void tick() {
   const uint32_t now = millis();
   // An armed reboot fires even after the AP went down (an OTA's
   // shutdownForOta): a landed web save freezes config saves until it. It
-  // waits out an OTA in progress, whose own reboot loads the save too; a
-  // failed OTA leaves quiet mode and this reboot follows.
-  if (webappRebootDue(now, s_rebootAtMs, lamp::ota_quiet_mode::isQuiet())) {
+  // waits while OTA quiet mode is held. A received update's own reboot loads
+  // the save too; a failed one, or a distribution to other lamps (which never
+  // reboots this one), leaves quiet mode and this reboot follows. Past
+  // kRebootOtaWaitMaxMs the OTA is taken as stuck and the reboot goes ahead.
+  const bool otaQuiet = lamp::ota_quiet_mode::isQuiet();
+  if (webappRebootDue(now, s_rebootAtMs, otaQuiet)) {
+    if (otaQuiet) Serial.println("[webapp] reboot after 10 min OTA wait");
     rebootNow();  // save path; restart frees the server, never delete s_server
     return;
   }
