@@ -370,8 +370,8 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
       Serial.printf("[expr] upsert type=%s over caps; extra colours/params dropped\n",
                     cfg.type.c_str());
     }
-    if (cfg.target < lamp::config_codec::kExpressionTargetMin ||
-        cfg.target > lamp::config_codec::kExpressionTargetMax) {
+    if (cfg.target < lamp::kExpressionTargetMin ||
+        cfg.target > lamp::kExpressionTargetMax) {
       Serial.printf("[expr] upsert type=%s target=%u rejected\n", cfg.type.c_str(),
                     (unsigned)cfg.target);
       return;
@@ -391,7 +391,7 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
             break;
           }
         }
-        if (!found && exprs.size() < lamp::config_codec::kMaxExpressions) {
+        if (!found && exprs.size() < lamp::kMaxExpressions) {
           exprs.push_back(cfg);
         } else if (!found) {
           Serial.printf("[expr] config full; upsert type=%s not saved\n",

@@ -187,6 +187,15 @@ inline bool resolveNamed(bool namedKeyPresent, bool loadedNamed,
   return variantDefault.empty() || name != variantDefault;
 }
 
+// Caps on stored and incoming expressions (config entries, upserts, mesh invocations). Colours and the target
+// range match the app's editor; the entry and parameter counts sit above
+// anything a registered type writes, so they bound only malformed input.
+constexpr uint8_t kExpressionTargetMin = 1;
+constexpr uint8_t kExpressionTargetMax = 3;
+constexpr size_t kMaxExpressionColors = 8;
+constexpr size_t kMaxExpressionParams = 16;
+constexpr size_t kMaxExpressions = 32;
+
 /**
  * Configuration for a single expression with generic parameter system
  */

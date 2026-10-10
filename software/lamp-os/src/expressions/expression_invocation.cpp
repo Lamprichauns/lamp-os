@@ -1,5 +1,7 @@
 #include "expression_invocation.hpp"
 
+#include "config/config_types.hpp"
+
 #ifdef LAMP_DEBUG
 #include <Arduino.h>
 #endif
@@ -56,7 +58,7 @@ bool parseInvocation(JsonObjectConst doc, ExpressionInvocation& out) {
 
   out.colors.clear();
   const char* hex = doc["colors"].as<const char*>();
-  if (hex && !packedHexToColors(hex, out.colors)) {
+  if (hex && !packedHexToColors(hex, out.colors, kMaxExpressionColors)) {
 #ifdef LAMP_DEBUG
     Serial.printf("[invocation] dropping bad colors '%s'\n", hex);
 #endif
@@ -66,6 +68,7 @@ bool parseInvocation(JsonObjectConst doc, ExpressionInvocation& out) {
   JsonObjectConst params = doc["parameters"].as<JsonObjectConst>();
   if (!params.isNull()) {
     for (JsonPairConst kv : params) {
+      if (out.parameters.size() == kMaxExpressionParams) break;
       JsonVariantConst v = kv.value();
       // bool first; ArduinoJson types `true`/`false` as bool, distinct
       // from int. Coerce so callers can send the JSON-natural form too.

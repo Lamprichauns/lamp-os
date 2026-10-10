@@ -220,16 +220,16 @@ void test_expressions_within_caps_load_whole() {
 // it forever.
 void test_over_cap_stored_expressions_truncate_on_load() {
   std::string json = "{\"lamp\":{},\"expressions\":[";
-  for (size_t i = 0; i < config_codec::kMaxExpressions + 5; ++i) {
+  for (size_t i = 0; i < kMaxExpressions + 5; ++i) {
     json += (i ? "," : "") + expressionEntry("pulse", 1, 60, 40);
   }
   json += "]}";
   Model m;
   TEST_ASSERT_FALSE(parseInto(json.c_str(), m));
-  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressions, m.expressions.expressions.size());
-  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressionColors,
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressions, m.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressionColors,
                          m.expressions.expressions[0].colors.size());
-  TEST_ASSERT_EQUAL_UINT(config_codec::kMaxExpressionParams,
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressionParams,
                          m.expressions.expressions[0].parameters.size());
 }
 

@@ -11,15 +11,6 @@
 namespace lamp {
 namespace config_codec {
 
-// Caps on stored and incoming expression entries. Colours and the target
-// range match the app's editor; the entry and parameter counts sit above
-// anything a registered type writes, so they bound only malformed input.
-constexpr uint8_t kExpressionTargetMin = 1;
-constexpr uint8_t kExpressionTargetMax = 3;
-constexpr size_t kMaxExpressionColors = 8;
-constexpr size_t kMaxExpressionParams = 16;
-constexpr size_t kMaxExpressions = 32;
-
 // Parse one expression entry (a stored "expressions" element or an upsert
 // op's "entry"), dropping colours and parameters past the caps. The target is
 // copied as given. Returns false when a cap dropped something.

@@ -176,6 +176,26 @@ void test_parse_drops_non_hex_colors() {
   assertColorsDropped("{\"type\":\"glitchy\",\"colors\":\"ff234212zz234212\"}");
 }
 
+// --- peer input caps ---
+
+// A peer's invocation is held to the expression caps, so a frame packed with
+// colours or parameter keys cannot grow a transient past what the app writes.
+void test_parse_caps_colors_and_params() {
+  std::string json = "{\"type\":\"glitchy\",\"colors\":\"";
+  for (int i = 0; i < 20; ++i) json += "ff234212";
+  json += "\",\"parameters\":{";
+  for (int i = 0; i < 30; ++i) {
+    json += (i ? ",\"k" : "\"k") + std::to_string(i) + "\":1";
+  }
+  json += "}}";
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, json) == DeserializationError::Ok);
+  lamp::ExpressionInvocation out;
+  TEST_ASSERT_TRUE(lamp::parseInvocation(doc.as<JsonObjectConst>(), out));
+  TEST_ASSERT_EQUAL_UINT(lamp::kMaxExpressionColors, out.colors.size());
+  TEST_ASSERT_EQUAL_UINT(lamp::kMaxExpressionParams, out.parameters.size());
+}
+
 // --- worst-case payload budget ---
 
 // The 8-color zoned glitchy config that overflowed the command cap under the
@@ -224,6 +244,7 @@ int main() {
   RUN_TEST(test_parse_drops_truncated_colors);
   RUN_TEST(test_parse_drops_odd_length_colors);
   RUN_TEST(test_parse_drops_non_hex_colors);
+  RUN_TEST(test_parse_caps_colors_and_params);
   RUN_TEST(test_zoned_glitchy_8_colors_fits_command_payload);
   return UNITY_END();
 }
