@@ -26,7 +26,8 @@ any nearby peer running an older version. No central scheduler.
 - **Event-driven targeting** (not scan-based): `SocialBehavior` already iterates
   nearby peers each tick; when the distributor is `Idle` and a peer's version <
   ours, it calls `considerPeerForOta(peerMac, peerVersion, ...)` — throttled to
-  `kOtaScanIntervalMs` (500 ms) and gated by a **receive-first policy**: a lamp
+  `kOtaScanIntervalMs` (500 ms; superseded: the scan now lives in `tickOtaOffers`
+  and runs once a second, see the currency note below) and gated by a **receive-first policy**: a lamp
   skips all outbound offers while it is itself receiving, or while any reachable
   peer advertises a *higher* version (let the newest image flow inward first).
   Single peer per session; the fleet propagates by gossip (whoever-is-higher
@@ -134,6 +135,7 @@ and (with upfront-erase) reliable at speed without the erase-stall failure class
 > `scripts/sign_fs.py`, state carried in `HELLO_TLV_FS_STATE`) now rides the same
 > targeting path and chunk transport described here. Targeting has since moved
 > out of `SocialBehavior` into the framework loop (`tickOtaOffers`,
-> `components/firmware/ota_offer.cpp`), throttled to 1 s, so every variant offers
-> in every mode. This ADR covers the firmware-image case; the FS-image path is
+> `components/firmware/ota_offer.cpp`), throttled to 1 s
+> (`OtaOfferThrottle::kIntervalMs`) and held until the compositor's startup
+> phase ends, so every variant offers in every mode. This ADR covers the firmware-image case; the FS-image path is
 > the same shape applied to the SPIFFS partition.
