@@ -1433,9 +1433,9 @@ void test_saves_after_an_out_of_memory_write_land_and_survive_the_boot() {
   }
 }
 
-// A key's write that ran out of heap is marked; its next write goes through
-// one throwaway version, and once that lands the key writes plainly again.
-void test_a_key_is_written_past_its_orphan_once() {
+// A key's write that ran out of heap is held until boot: every later write
+// of it is a throwaway version, then the value.
+void test_a_key_is_written_past_its_orphan_until_boot() {
   OrphanKeys orphans;
   std::vector<size_t> lengths;
   BlobWrite next = BlobWrite::OutOfMemory;
@@ -1450,19 +1450,17 @@ void test_a_key_is_written_past_its_orphan_once() {
   TEST_ASSERT_TRUE(orphans.holds("x3"));
   TEST_ASSERT_TRUE(writeBlobPastOrphan(orphans, "x3", value, 3, write));
   TEST_ASSERT_TRUE(writeBlobPastOrphan(orphans, "x3", value, 3, write));
-  const std::vector<size_t> expected = {3, 0, 3, 3};
+  TEST_ASSERT_TRUE(writeBlobPastOrphan(orphans, "x2", value, 3, write));
+  const std::vector<size_t> expected = {3, 0, 3, 0, 3, 3};
   TEST_ASSERT_TRUE(lengths == expected);
 }
 
-// The orphan list names keys exactly, forgets a key once rewritten, and past
-// kMax keys holds every key.
+// The orphan list names keys exactly, and past kMax keys holds every key.
 void test_the_orphan_list_holds_its_keys() {
   OrphanKeys keys;
   keys.add("cfgc");
   TEST_ASSERT_TRUE(keys.holds("cfgc"));
   TEST_ASSERT_FALSE(keys.holds("cfgb"));
-  keys.remove("cfgc");
-  TEST_ASSERT_FALSE(keys.holds("cfgc"));
   for (size_t i = 0; i <= OrphanKeys::kMax; ++i) keys.add(("x" + std::to_string(i)).c_str());
   TEST_ASSERT_TRUE(keys.holds("anything"));
 }
@@ -1594,7 +1592,7 @@ int main(int, char**) {
   RUN_TEST(test_saves_after_an_out_of_memory_write_land_and_survive_the_boot);
   RUN_TEST(test_a_split_store_missing_its_rest_is_reported);
   RUN_TEST(test_the_orphan_list_holds_its_keys);
-  RUN_TEST(test_a_key_is_written_past_its_orphan_once);
+  RUN_TEST(test_a_key_is_written_past_its_orphan_until_boot);
   RUN_TEST(test_every_cut_short_store_survives_the_next_save);
   RUN_TEST(test_a_stale_lamp_blob_under_a_staged_whole_is_replaced);
   RUN_TEST(test_a_store_with_both_rest_keys_loads_and_saves_on);

@@ -293,6 +293,17 @@ class PagedNvs : public ConfigStore {
     return true;
   }
 
+  void killFirstChunk(const std::string& key, uint8_t chunk) {
+    for (auto& page : pages_) {
+      for (auto& item : page.items) {
+        if (item.live && item.key == key && item.kind == Kind::BlobData && item.chunk == chunk) {
+          kill(page, item);
+          return;
+        }
+      }
+    }
+  }
+
   // Page::readVariableLengthItemData on a chunk that fails its CRC erases it.
   bool killCorruptChunk(const std::string& key) {
     for (auto& page : pages_) {
@@ -369,6 +380,9 @@ class PagedNvs : public ConfigStore {
     std::string existing;
     if (old && blobValue(key, existing) && existing == data) return true;
     const uint8_t start = old && old->chunk == 0 ? 128 : 0;
+    const bool hadIndex = old != nullptr;
+    const uint8_t oldStart = old ? old->chunk : 0;
+    const uint8_t oldCount = old ? old->chunkCount : 0;
     if (data.size() > (kPages - 1) * kChunkMax) return fail();
 
     std::vector<size_t> usedPages;  // the page of each chunk recorded
@@ -432,13 +446,18 @@ class PagedNvs : public ConfigStore {
       }
       return fail();
     }
-    // The previous version goes whole (eraseMultiPageBlob on its offset):
-    // every chunk outside the new version's range, which also takes orphans
-    // of the old range; orphans in the new range stay, as on the device.
-    eraseWhere(key, [&](const Item& item) {
-      if (item.kind == Kind::BlobIndex) return item.chunk != start;
-      if (item.kind == Kind::BlobData) return item.chunk < start || item.chunk >= start + 128;
-      return true;
+    // The previous version goes as eraseMultiPageBlob with its offset named
+    // erases it: its index, then for each position its index counts, the
+    // first chunk found there, so an orphan at a counted position may go in
+    // the chunk's place. A value of another type under the key goes too.
+    if (hadIndex) {
+      eraseWhere(key, [&](const Item& item) {
+        return item.kind == Kind::BlobIndex && item.chunk == oldStart;
+      });
+      for (uint8_t c = oldStart; c < oldStart + oldCount; ++c) killFirstChunk(key, c);
+    }
+    eraseWhere(key, [](const Item& item) {
+      return item.kind == Kind::String || item.kind == Kind::Primitive;
     });
     return true;
   }

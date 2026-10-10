@@ -8,13 +8,10 @@ namespace lamp {
 // What one NVS blob write did, as a store's writer reports it.
 enum class BlobWrite : unsigned char { Ok, OutOfMemory, Failed };
 
-// Keys whose last blob write ran out of heap. IDF's writeMultiPageBlob leaves
-// the chunk it had just written when its 12-byte bookkeeping allocation
-// fails, named by no index, in the version the write was going to; the next
-// write of that key goes to the same version, puts a second chunk at that
-// position, and IDF drops the whole blob when it next reads it or at boot. A
-// boot with nothing written there since erases the orphan instead. Holds
-// kMax keys; past that it holds every key until the boot, which errs safe.
+// The keys whose blob write ran out of heap since boot: such a write can
+// leave an orphan chunk that a later write of the key would double
+// (docs/dev/embedded-heap.md). Holds kMax keys, then every key, until the
+// next boot, which forgets them.
 class OrphanKeys {
  public:
   static constexpr size_t kMax = 8;
@@ -37,15 +34,6 @@ class OrphanKeys {
     keys_[count_][kKeyLen] = '\0';
     ++count_;
   }
-  void remove(const char* key) {
-    for (size_t i = 0; i < count_; ++i) {
-      if (std::strncmp(keys_[i], key, kKeyLen) == 0) {
-        std::memcpy(keys_[i], keys_[count_ - 1], kKeyLen + 1);
-        --count_;
-        return;
-      }
-    }
-  }
 
  private:
   char keys_[kMax][kKeyLen + 1] = {};
@@ -53,14 +41,12 @@ class OrphanKeys {
   bool overflowed_ = false;
 };
 
-// Writes a blob through `write(key, data, len)`, a store's own NVS write.
-// For a key that holds an orphan, an empty throwaway version goes first: it
-// takes the orphan's version (and its doubled position), so the real value
-// lands in the other version, and erasing the throwaway leaves the orphan
-// named by no index for the next boot to erase. A reset between the two
-// drops the key at boot, as any orphaned version would. True when the value
-// landed. NvsConfigStore and the native suite's PagedNvs both write through
-// this.
+// Writes a blob through `write(key, data, len)`, a store's own NVS write, so
+// that a key `orphans` holds never has its value land beside its orphan: each
+// write of it is an empty throwaway version, then the value. A write that
+// runs out of heap adds its key. True when the value landed. Every store's
+// blob writes go through this (NvsConfigStore, and PagedNvs in the native
+// suite).
 template <class Write>
 bool writeBlobPastOrphan(OrphanKeys& orphans, const char* key, const void* data, size_t len,
                          Write&& write) {
@@ -69,13 +55,8 @@ bool writeBlobPastOrphan(OrphanKeys& orphans, const char* key, const void* data,
     if (write(key, &kEmpty, 0) != BlobWrite::Ok) return false;
   }
   const BlobWrite result = write(key, data, len);
-  if (result == BlobWrite::OutOfMemory) {
-    orphans.add(key);
-    return false;
-  }
-  if (result != BlobWrite::Ok) return false;
-  orphans.remove(key);
-  return true;
+  if (result == BlobWrite::OutOfMemory) orphans.add(key);
+  return result == BlobWrite::Ok;
 }
 
 }  // namespace lamp
