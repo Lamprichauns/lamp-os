@@ -31,15 +31,17 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   at once, always keeping room for its own Test and greeting effects. A
   cascade still reaches every lamp around, sent in waves rather than all at
   once, so in a crowd of 50 the farthest lamps can fire up to about a second
-  after their usual moment. Expressions keep at most 8 colours each,
+  after their usual moment, nearly two seconds when two cascades go off
+  together, and later still on a busy mesh. Expressions keep at most 8
+  colours each,
   and a stored setup beyond the app's limits is trimmed back to them when the
   lamp updates.
 - **Big setups keep saving.** A lamp with many expressions could run out of
   room to store its settings and quietly stop saving changes, and a full
   store could leave a lamp unable to start Bluetooth until it was reflashed.
-  Settings are now stored compactly so every expression the app allows fits
-  with room to spare, and a lamp whose storage is already full frees space
-  on its first start. Your existing settings carry over on update. If the
+  Settings are now stored compactly and in pieces the storage can always
+  place, so every expression the app allows fits with room to spare, and a
+  lamp whose storage is already full frees space on its first start. Your existing settings carry over on update. If the
   lamp's storage reports itself unusable at startup it is cleared so the
   lamp still comes up and can be set up again from the app.
 - **Settings the lamp can't keep are refused up front.** A control password
@@ -47,13 +49,16 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   refused from the app and from the web page, instead of being stored in a
   form that could never work. An expression type the lamp doesn't have is
   refused instead of being saved and never showing.
-- **Going back to an older firmware.** A lamp with a typical setup keeps its
-  expressions if it is flashed back to an older release. One with a very
-  large setup (more than fits a single settings record, roughly four or more
-  expressions with full colour lists) loses its expressions on the older
-  release, and its social dispositions are reset there either way; settings
-  changed on the older release are the ones kept when the lamp is updated
-  again.
+- **Going back to an older firmware.** A lamp with a small setup (about two
+  expressions with full colour lists, more with fewer colours) keeps all its
+  settings if it is flashed back to an older release. A larger setup keeps
+  only its name, password, brightness and setup state there: its segments,
+  colours, knockout, shade, home mode and expressions come up as defaults,
+  and the older release may not manage to save changes. Social dispositions
+  read as empty on the older release either way, and come back when the lamp
+  is updated again unless the older release saved new ones. Updating again
+  restores the larger setup intact unless the older release saved settings
+  of its own, which are then the ones kept.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at
