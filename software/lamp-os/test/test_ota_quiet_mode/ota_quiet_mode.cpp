@@ -10,6 +10,7 @@
 
 using lamp::ota_quiet_mode::enterQuiet;
 using lamp::ota_quiet_mode::exitQuiet;
+using lamp::ota_quiet_mode::holders;
 using lamp::ota_quiet_mode::isQuiet;
 using lamp::ota_quiet_mode::visibleOtaActive;
 
@@ -83,6 +84,17 @@ void test_fs_then_fw_no_stale_silent(void) {
 // Refcount >1 of the SAME type (e.g. receiver + distributor both FS): the
 // second entrant is a no-op beyond the count, so visibility must stay
 // latched at the first entrant's value until the last matching exit.
+void test_holders_counts_unmatched_entries(void) {
+  TEST_ASSERT_EQUAL_INT(0, holders());
+  enterQuiet(/*tearDownRadio=*/true, /*visible=*/true);
+  enterQuiet(/*tearDownRadio=*/true, /*visible=*/false);
+  TEST_ASSERT_EQUAL_INT(2, holders());
+  exitQuiet();
+  TEST_ASSERT_EQUAL_INT(1, holders());
+  exitQuiet();
+  TEST_ASSERT_EQUAL_INT(0, holders());
+}
+
 void test_second_entrant_same_type_keeps_visible_until_last_exit(void) {
   enterQuiet(/*tearDownRadio=*/true, /*visible=*/false);
   enterQuiet(/*tearDownRadio=*/true, /*visible=*/false);
@@ -101,6 +113,7 @@ int main(int argc, char** argv) {
   UNITY_BEGIN();
 
   RUN_TEST(test_fw_session_reports_visible);
+  RUN_TEST(test_holders_counts_unmatched_entries);
   RUN_TEST(test_fs_session_reports_silent);
   RUN_TEST(test_teardown_radio_does_not_affect_visible_bit);
   RUN_TEST(test_fw_then_fs_no_stale_visible);
