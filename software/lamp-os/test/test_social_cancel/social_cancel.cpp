@@ -16,6 +16,8 @@
 
 lamp::FirmwareReceiver firmwareReceiver;
 
+static bool g_ignore = false;
+
 namespace lamp {
 OverrideAggregate overrides;
 PersonalityEngine personalityEngine;
@@ -25,6 +27,7 @@ bool FirmwareDistributor::isInProgress() const { return false; }
 void FirmwareDistributor::considerPeerForOta(const uint8_t*, uint32_t, uint8_t, uint32_t,
                                              const char*, uint16_t, int8_t, bool) {}
 bool MeshLink::sendColorQuery(const uint8_t*) { return true; }
+bool BehaviorContext::ignoresPeers() const { return g_ignore; }
 }  // namespace lamp
 
 namespace fs_ota {
@@ -46,7 +49,7 @@ PeerView peer() {
 }
 }  // namespace
 
-void setUp() {}
+void setUp() { g_ignore = false; }
 void tearDown() {}
 
 void test_cancel_ends_greeting_and_tells_app_once() {
@@ -97,10 +100,38 @@ void test_app_greeting_is_marked_until_it_ends() {
   TEST_ASSERT_FALSE(social.playsAppGreeting());
 }
 
+// The app's greeting plays through the Home Mode preview; when it ends, the
+// next control() picks no peer while home mode still ignores them.
+static bool greetsPeerAfterAppGreeting(bool ignoring) {
+  lampRoster = LampRoster();
+  BehaviorContext ctx;
+  SocialBehavior social(nullptr, 1200);
+  social.setBehaviorContext(&ctx);
+  set_mock_millis(100000);
+  social.triggerGreeting(peer());
+
+  set_mock_millis(131000);
+  lampRoster.addOrUpdateFromBle("near", "AA:BB:CC:DD:EE:F0", Color(), Color(), -50);
+  social.animationState = STOPPED;  // the app greeting's pass ends
+  g_ignore = ignoring;
+  social.control();
+  return social.animationState != STOPPED;
+}
+
+void test_peer_greeted_after_app_greeting_outside_home_mode() {
+  TEST_ASSERT_TRUE(greetsPeerAfterAppGreeting(false));
+}
+
+void test_no_peer_picked_after_app_greeting_while_ignoring() {
+  TEST_ASSERT_FALSE(greetsPeerAfterAppGreeting(true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cancel_ends_greeting_and_tells_app_once);
   RUN_TEST(test_cancel_without_greeting_is_noop);
   RUN_TEST(test_app_greeting_is_marked_until_it_ends);
+  RUN_TEST(test_peer_greeted_after_app_greeting_outside_home_mode);
+  RUN_TEST(test_no_peer_picked_after_app_greeting_while_ignoring);
   return UNITY_END();
 }

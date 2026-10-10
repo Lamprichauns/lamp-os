@@ -283,6 +283,10 @@ void SocialBehavior::control() {
   // greeting animation finishes.
   if (animationState != STOPPED) return;
 
+  // An app greeting can run while home mode ignores peers (the preview); once
+  // it ends, no peer is picked or acknowledged.
+  if (context_ && context_->ignoresPeers()) return;
+
   if (lamp::overrides.shade.operatorEditing()) return;
 
   // Wraparound-safe time comparison (millis() rolls over at ~49 days).
