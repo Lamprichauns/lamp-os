@@ -5,7 +5,7 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
-## Unreleased
+## 1.2.8
 
 ### Added
 - **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
