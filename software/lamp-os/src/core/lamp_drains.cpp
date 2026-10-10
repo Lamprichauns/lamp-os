@@ -345,7 +345,6 @@ void Lamp::drainWifiOp() {
   }
 }
 
-// JSON parse and dispatch via the cascade router.
 void Lamp::drainInboundOp() {
   if (lamp::pendingSlots.inboundOp.valid) {
     char buf[lamp::kPendingJsonOp + 1];
@@ -354,11 +353,10 @@ void Lamp::drainInboundOp() {
 #ifdef LAMP_DEBUG
     Serial.printf("[loop] drain inboundOp len=%u\n", (unsigned)len);
 #endif
-    applyRemoteOpRouted(buf, len, srcMac, RemoteOpTransport::EspNow);
+    applyInboundControlOp(buf, len, srcMac);
   }
 }
 
-// BLE has no network source MAC; selfMac lets app-driven triggers coalesce.
 void Lamp::drainRemoteOp() {
   if (lamp::pendingSlots.remoteOp.valid) {
     char buf[lamp::kPendingJsonOp + 1];
@@ -366,9 +364,7 @@ void Lamp::drainRemoteOp() {
 #ifdef LAMP_DEBUG
     Serial.printf("[loop] drain remoteOp len=%u\n", (unsigned)len);
 #endif
-    uint8_t selfMac[6];
-    meshLink.getMyMac(selfMac);
-    applyRemoteOpRouted(buf, len, selfMac, RemoteOpTransport::BLE);
+    applyRemoteOp(buf, len);
   }
 }
 
@@ -512,8 +508,7 @@ void Lamp::drainWispOp() {
     uint16_t len = lamp::pendingSlots.wispOp.drain(pendingMux, buf);
     if (len > 0) {
       // No OTA gate here: wispOps are low-rate config; they reach the wisp
-      // even during OTA. applyRemoteOpRouted() still quiesces (gossip-relay,
-      // much higher volume).
+      // even during OTA.
       uint8_t mac[6];
       if (lamp::lampRoster.copyDisplayWispMac(mac, millis())) {
 #ifdef LAMP_DEBUG

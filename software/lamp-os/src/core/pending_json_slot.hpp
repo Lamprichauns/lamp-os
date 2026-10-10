@@ -88,10 +88,9 @@ struct PendingJsonSlot {
 };
 
 // Variant carrying a 6-byte source MAC alongside the JSON payload. Used
-// for the CONTROL_OP ingest path (ESP-NOW receiver memcpys the sender's
-// MAC alongside the payload so the loop's applyRemoteOpLocal() can
-// coalesce same-sender cascades). The BLE-only slots don't need this;
-// they pass the lamp's own MAC at the drain site.
+// for the CONTROL_OP ingest path: the ESP-NOW receiver memcpys the sender's
+// MAC alongside the payload so the wisp's status and config are cached
+// against the wisp that sent them. The BLE-only slots don't need this.
 template <size_t N>
 struct PendingJsonSlotWithMac {
   bool valid = false;

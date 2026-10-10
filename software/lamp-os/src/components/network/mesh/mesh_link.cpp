@@ -60,7 +60,6 @@ void MeshLink::tick() {
   auto send = [this](const uint8_t* frame, size_t len) {
     link_.broadcast(frame, len);
   };
-  controlOpResend_.service(now, send);
   controlOpUnicastResend_.service(now, [this](const uint8_t* frame, size_t len) {
     link_.send(&frame[lamp_protocol::HEADER_SIZE], frame, len);
   });
@@ -113,23 +112,6 @@ void MeshLink::getMyMac(uint8_t out[6]) const {
 
 void MeshLink::setControlOpHandler(ControlOpHandler h) {
   controlOpHandler_ = std::move(h);
-}
-
-bool MeshLink::sendControlOp(const uint8_t targetMac[6],
-                                 const uint8_t* payload, size_t payloadLen) {
-  if (payloadLen > lamp_protocol::CONTROL_MAX_PAYLOAD) return false;
-  uint8_t buf[lamp_protocol::CONTROL_MAX_SIZE];
-  // sourceMac is this lamp so peers and the originator can dedup re-broadcasts.
-  const size_t n = lamp_protocol::buildControlOp(buf, sizeof(buf), controlOpSeq_++,
-                                                 targetMac, myMac_,
-                                                 payload, payloadLen);
-  if (!n) return false;
-  // Record in the dedup ring so the inbound re-broadcast (from a peer)
-  // doesn't loop back as an apply-locally.
-  controlOpDedup_.record(myMac_, lamp_protocol::MSG_CONTROL_OP, controlOpSeq_ - 1);
-  const bool ok = link_.broadcast(buf, n);
-  controlOpResend_.enqueue(buf, n, millis(), kResends, kResendGapMs);
-  return ok;
 }
 
 bool MeshLink::sendControlOpUnicast(const uint8_t targetMac[6],

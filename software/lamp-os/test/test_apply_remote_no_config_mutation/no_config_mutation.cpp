@@ -14,7 +14,7 @@
 //     mocks bypass the real code path entirely. Native env can't link
 //     lamp.cpp (NimBLE/FastLED deps); the real regression guard
 //     for that case is the bench test (#12 in the plan).
-//   - A bug where applyRemoteOpLocal accidentally calls ToConfig instead
+//   - A bug where applyLampOp accidentally calls ToConfig instead
 //     of ToRender. That's a static-analysis or integration-test concern.
 
 #include <unity.h>

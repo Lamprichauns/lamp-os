@@ -4,10 +4,12 @@
 #include <unity.h>
 
 #include <cstring>
+#include <initializer_list>
 
 #include "core/wisp_broadcast_peek.hpp"
 
 using lamp::peekWispBroadcast;
+using lamp::wispBroadcastTag;
 using lamp::WispBroadcast;
 
 namespace {
@@ -46,10 +48,22 @@ void test_short_payload_is_none() {
                         (int)peekWispBroadcast(nullptr, 0));
 }
 
+// The inbound drain takes only the wisp's status and config from the mesh.
+void test_tag_takes_only_wisp_status_and_config() {
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::Status, (int)wispBroadcastTag("wispStatus"));
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::Config, (int)wispBroadcastTag("wispConfig"));
+  for (const char* tag : {"brightness", "shadeColors", "baseColors", "knockout",
+                          "expressionOp", "wifiOp", "wispOp", "wispStatusX", ""}) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE((int)WispBroadcast::None, (int)wispBroadcastTag(tag), tag);
+  }
+  TEST_ASSERT_EQUAL_INT((int)WispBroadcast::None, (int)wispBroadcastTag(nullptr));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_status_and_config_classified);
   RUN_TEST(test_other_ops_pass_through);
   RUN_TEST(test_short_payload_is_none);
+  RUN_TEST(test_tag_takes_only_wisp_status_and_config);
   return UNITY_END();
 }

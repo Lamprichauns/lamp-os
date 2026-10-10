@@ -74,7 +74,7 @@ class FirmwareDistributor;
 // and dispatches MSG_CONTROL_OP via the registered handler.
 //
 // Recv runs on the Wi-Fi task; the DedupRing instances guard themselves
-// with portMUX internally so the Arduino loop task can call sendControlOp
+// with portMUX internally so the Arduino loop task can call the send methods
 // concurrently without racing the recv path.
 class MeshLink {
  public:
@@ -93,11 +93,6 @@ class MeshLink {
   // broadcast. Called on the WiFi recv task; handler must be fast and
   // non-blocking (typically posts to a pending slot).
   void setControlOpHandler(ControlOpHandler h);
-
-  // Broadcast a CONTROL_OP frame onto the grid. Used by the BLE
-  // CHAR_REMOTE_OP drain to forward a write to a far lamp.
-  bool sendControlOp(const uint8_t targetMac[6], const uint8_t* payload,
-                     size_t payloadLen);
 
   // Unicast a CONTROL_OP to `targetMac` (the in-range display wisp). Arms a
   // spaced unicast resend: the wisp's bursty RX-scan can drop every MAC-ARQ
@@ -231,7 +226,6 @@ class MeshLink {
   static constexpr size_t kCommandResendMax =
       lamp_protocol::COMMAND_FIXED_SIZE + kCommandResendPayloadMax +
       lamp_protocol::COMMAND_TAG_SIZE;
-  ResendRing<lamp_protocol::CONTROL_MAX_SIZE, 1> controlOpResend_;
   ResendRing<lamp_protocol::CONTROL_MAX_SIZE, 1> controlOpUnicastResend_;
   ResendRing<kCommandResendMax, 10> commandResend_;
   ResendRing<lamp_protocol::COLOR_QUERY_SIZE, 1> colorQueryResend_;

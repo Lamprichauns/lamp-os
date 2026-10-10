@@ -3,7 +3,7 @@
 // Context: audit finding #7 (Stability finding #3) flagged the
 // DedupRing instances inside MeshLink (helloDedup_, controlOpDedup_)
 // as mutated from BOTH the WiFi recv task (Core 0) and the Arduino loop
-// task (Core 1, via sendControlOp's record()). Without a mutex, two
+// task (Core 1, via sendControlOpUnicast's record()). Without a mutex, two
 // concurrent record() calls can corrupt the ring or cause memcmp to run
 // against a half-written mac[].
 //

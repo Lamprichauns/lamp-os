@@ -121,9 +121,9 @@ volatile bool pendingFlushDispositionsRequested = false;
 PendingKnockoutUpdate pendingKnockout;
 
 // Pending triggerExpression invocations whose delayMs > 0, drained from the
-// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi-task
-// CONTROL_OP handler just posts JSON into lamp::pendingSlots.inboundOp, and
-// the drain that parses it into this queue runs on the loop task), so no mutex.
+// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi task
+// just posts a MSG_COMMAND into lamp::pendingSlots.command, and the drain that
+// parses it into this queue runs on the loop task), so no mutex.
 struct DelayedInvocation {
   lamp::ExpressionInvocation inv;
   uint32_t fireAtMs;
@@ -358,9 +358,9 @@ namespace lamp {
 // Internal helper for the apply_expressions.hpp split. mutateConfig=true is
 // the user-source path (BLE expressionOp drain): drives expressionManager
 // AND mirrors into config.expressions so persistConfig() captures it.
-// mutateConfig=false is the remote-source path (applyRemoteOpLocal for a
-// cascade-relayed CONTROL_OP): drives expressionManager only so the
-// cascade's transient state never becomes persistable.
+// mutateConfig=false is the remote-op path (applyLampOp for a CHAR_REMOTE_OP
+// write): drives expressionManager only so the preview never becomes
+// persistable.
 void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (doc.isNull()) return;
   const char* op = doc["op"].as<const char*>();
@@ -617,7 +617,7 @@ void lamp::Lamp::setup() {
   }
   // Seed the file-scope brightness cap from the variant's HwConfig narrowed by
   // the user ceiling so free functions (applyEffectiveBrightness,
-  // applyRemoteOpLocal) use the correct ceiling without importing a variant header.
+  // applyLampOp) use the correct ceiling without importing a variant header.
   recomputeEffectiveCeiling();
 
   // `config` as an unqualified name inside a Lamp member function resolves to
