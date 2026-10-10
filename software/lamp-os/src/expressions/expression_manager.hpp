@@ -9,6 +9,7 @@
 #include "core/frame_buffer.hpp"
 #include "expression.hpp"
 #include "expression_invocation.hpp"
+#include "expressions/cascade_scheduler.hpp"
 #include "expression_registry.hpp"
 #include "expressions/glitchy/glitchy_expression.hpp"
 #include "expressions/shifty/shifty_expression.hpp"
@@ -94,9 +95,8 @@ class ExpressionManager {
   // free block holds this for each of its targets plus kHeapHeadroom, so a
   // transient that starts can finish allocating.
   static constexpr size_t kTransientHeapBytes = 2048;
-  // Peers one cascade fans out to, closest first: the frames it queues at
-  // once.
-  static constexpr size_t kMaxCascadeTargets = 8;
+  // The cascade fan-out draining a batch per pass (tickCascade).
+  CascadeScheduler cascade_;
 
   // Non-owning pointers to ExpressionEntry::expression instances that the
   // app's Test button fired via dispatchLampAction("test_expression").
@@ -316,6 +316,10 @@ class ExpressionManager {
    * frame of the animation gets drawn before removal.
    */
   void gcTransients();
+
+  // Loop drain: sends the next batch of a cascade fan-out when due, and stops
+  // the drain when an OTA starts.
+  void tickCascade(uint32_t nowMs);
 
   std::vector<Color> getExpressionColors(const std::string& type) const;
 

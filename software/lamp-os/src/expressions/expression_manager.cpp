@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "expressions/param_utils.hpp"
+#include "expressions/cascade_scheduler.hpp"
 #include "util/heap_guard.hpp"
 
 #include "components/network/protocol/lamp_protocol.hpp"
@@ -120,6 +121,9 @@ void ExpressionManager::setCompositor(Compositor* compositor) {
   }
 }
 
+static_assert(CascadeScheduler::kMaxPeers == LampRoster::kCapacity,
+              "a cascade holds every peer the roster can");
+
 void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                                      const uint8_t* excludeMac) {
   if (!meshLink_ || !entry.expression) return;
@@ -175,10 +179,6 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
               return a.lastRssi > b.lastRssi;
             });
 
-  // Every queued ESP-NOW frame holds a WiFi TX buffer from the heap until it
-  // airs; fanning out to a whole crowd in one pass queued 50 at once and ran
-  // the driver out of memory. The closest peers carry the wave.
-  if (targets.size() > kMaxCascadeTargets) targets.resize(kMaxCascadeTargets);
   if (targets.empty()) {
 #ifdef LAMP_DEBUG
     Serial.printf("[cascade] skip no-peers type=%s\n", entry.type.c_str());
@@ -192,43 +192,45 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
     return;
   }
 
-  // One document and one string serve every peer; only delayMs differs, and
-  // serializeJson keeps the string's capacity between peers.
-  JsonDocument doc;
-  invocationToJson(inv, doc);
+  // Every queued ESP-NOW frame holds a WiFi TX buffer until it airs, so the
+  // fan-out drains a batch at a time from fixed storage (tickCascade); a
+  // crowd of 50 in one pass ran the driver out of memory. This replaces any
+  // cascade still draining.
   std::string json;
-  size_t sent = 0;
-  size_t dropped = 0;
-  size_t overLen = 0;
-  for (size_t i = 0; i < targets.size(); ++i) {
-    const uint32_t d = static_cast<uint32_t>(i + 1) * staggerMs;
-    doc["delayMs"] = d > kMaxDelayMs ? kMaxDelayMs : d;
-    serializeJson(doc, json);
-    if (json.size() > lamp_protocol::COMMAND_MAX_PAYLOAD) {
-      ++dropped;
-      overLen = json.size();
-      continue;
-    }
-    meshLink_->sendCommand(targets[i].mac,
-                           reinterpret_cast<const uint8_t*>(json.data()),
-                           json.size());
-    ++sent;
+  serializeInvocation(inv, json);
+  if (cascade_.active()) {
+    Serial.printf("[cascade] type=%s replaces a drain with %u peers left\n",
+                  entry.type.c_str(), (unsigned)cascade_.pending());
   }
-  // Unconditional: an over-cap invocation silently fails to cascade on
-  // deployed lamps; this is the only signal.
-  if (dropped > 0) {
-    Serial.printf("[cascade] ERR payload %uB over %uB cap, dropped %u/%u sends type=%s\n",
-                  (unsigned)overLen,
-                  (unsigned)lamp_protocol::COMMAND_MAX_PAYLOAD,
-                  (unsigned)dropped, (unsigned)targets.size(),
+  if (!cascade_.begin(json.data(), json.size(), staggerMs, nowMs)) {
+    // Unconditional: an over-cap invocation silently fails to cascade on
+    // deployed lamps; this is the only signal.
+    Serial.printf("[cascade] ERR payload %uB over %uB cap, dropped type=%s\n",
+                  (unsigned)json.size(), (unsigned)CascadeScheduler::kMaxPayloadLen,
                   entry.type.c_str());
+    return;
   }
+  for (const MeshPeer& peer : targets) cascade_.addPeer(peer.mac);
 #ifdef LAMP_DEBUG
-  if (sent > 0) {
-    Serial.printf("[cascade] sent type=%s peers=%u\n",
-                  entry.type.c_str(), (unsigned)sent);
-  }
+  Serial.printf("[cascade] start type=%s peers=%u\n", entry.type.c_str(),
+                (unsigned)cascade_.pending());
 #endif
+  tickCascade(nowMs);
+}
+
+void ExpressionManager::tickCascade(uint32_t nowMs) {
+  if (!cascade_.active() || !meshLink_) return;
+  if (meshLink_->isOtaInProgress()) {
+#ifdef LAMP_DEBUG
+    Serial.printf("[cascade] drain stopped for OTA, %u peers left\n",
+                  (unsigned)cascade_.pending());
+#endif
+    cascade_.cancel();
+    return;
+  }
+  cascade_.tick(nowMs, [this](const uint8_t* mac, const char* payload, size_t len) {
+    meshLink_->sendCommand(mac, reinterpret_cast<const uint8_t*>(payload), len);
+  });
 }
 
 void ExpressionManager::emitEvent(const ExpressionEntry& entry) {

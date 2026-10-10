@@ -1241,6 +1241,7 @@ void lamp::Lamp::tick() {
   // a remote cascade arrived) whose animations have finished. AFTER tick so
   // the final frame of the animation is drawn before removal.
   expressionManager.gcTransients();
+  expressionManager.tickCascade(millis());
 
   // Reap the active-test set (entries fired via dispatchLampAction
   // "test_expression"). When the last one transitions to STOPPED, flip
