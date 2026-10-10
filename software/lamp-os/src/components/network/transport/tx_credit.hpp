@@ -10,9 +10,9 @@ namespace lamp {
 // airs; past the driver's queue a send fails with ESP_ERR_ESPNOW_NO_MEM, and
 // a burst of those preceded the TX path wedging with its buffers held. A
 // send takes a credit before esp_now_send and the send callback returns it.
-// If no credit moves for kStallMs while every credit is out, the count is
-// presumed lost (a callback that never fires) and resets. Lock-free: the
-// loop and WiFi tasks both send, the WiFi task completes.
+// If credits are out and none has come back for kStallMs, the outstanding
+// ones are presumed lost (callbacks that never fire) and the count resets.
+// Lock-free: the loop and WiFi tasks both send, the WiFi task completes.
 class TxCredit {
  public:
   static constexpr uint16_t kMaxInFlight = 6;
@@ -21,16 +21,19 @@ class TxCredit {
   // True, with a credit taken, when a frame may be submitted.
   bool tryAcquire(uint32_t nowMs) {
     uint16_t cur = inFlight_.load(std::memory_order_relaxed);
+    if (cur > 0 && elapsedSince(lastProgressMs_.load(std::memory_order_relaxed), nowMs) >=
+                       static_cast<int32_t>(kStallMs)) {
+      stalls_.fetch_add(1, std::memory_order_relaxed);
+      inFlight_.store(0, std::memory_order_relaxed);
+      cur = 0;
+    }
     while (true) {
-      if (cur >= kMaxInFlight) {
-        if (nowMs - lastMoveMs_.load(std::memory_order_relaxed) < kStallMs) return false;
-        stalls_.fetch_add(1, std::memory_order_relaxed);
-        inFlight_.store(0, std::memory_order_relaxed);
-        cur = 0;
-      }
+      if (cur >= kMaxInFlight) return false;
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
-        lastMoveMs_.store(nowMs, std::memory_order_relaxed);
+        // The stall clock starts with the first frame out, not at the last
+        // completion, which may be long past.
+        if (cur == 0) advance(nowMs, true);
         return true;
       }
     }
@@ -39,14 +42,26 @@ class TxCredit {
   void cancel() { release(); }
   // The send callback: one frame left the queue.
   void complete(uint32_t nowMs) {
-    lastMoveMs_.store(nowMs, std::memory_order_relaxed);
+    advance(nowMs, false);
     release();
   }
 
   uint16_t inFlight() const { return inFlight_.load(std::memory_order_relaxed); }
+  // Times the count was presumed lost and reset.
   uint32_t stalls() const { return stalls_.load(std::memory_order_relaxed); }
 
  private:
+  static int32_t elapsedSince(uint32_t thenMs, uint32_t nowMs) {
+    return static_cast<int32_t>(nowMs - thenMs);
+  }
+  // The loop and WiFi tasks read millis() at different moments, so a store
+  // never moves the clock backwards; `force` restarts it.
+  void advance(uint32_t nowMs, bool force) {
+    uint32_t cur = lastProgressMs_.load(std::memory_order_relaxed);
+    while ((force || elapsedSince(cur, nowMs) > 0) &&
+           !lastProgressMs_.compare_exchange_weak(cur, nowMs, std::memory_order_relaxed)) {
+    }
+  }
   void release() {
     uint16_t cur = inFlight_.load(std::memory_order_relaxed);
     while (cur > 0 && !inFlight_.compare_exchange_weak(
@@ -54,7 +69,7 @@ class TxCredit {
     }
   }
   std::atomic<uint16_t> inFlight_{0};
-  std::atomic<uint32_t> lastMoveMs_{0};
+  std::atomic<uint32_t> lastProgressMs_{0};
   std::atomic<uint32_t> stalls_{0};
 };
 

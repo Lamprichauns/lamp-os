@@ -435,6 +435,53 @@ void test_cfg_json_over_the_buffer_fails_cleanly() {
   TEST_ASSERT_EQUAL_STRING(before.c_str(), store.read("cfg", "").c_str());
 }
 
+bool anyRecordLeft(InMemoryConfigStore& store) {
+  for (int i = 0; i < 32; ++i) {
+    if (store.has(("x" + std::to_string(i)).c_str())) return true;
+  }
+  return false;
+}
+
+// A whole save reset at any write, then a later whole save, leaves no record
+// behind: the records go before the count, and every slot is swept.
+void test_no_record_is_orphaned_by_a_reset() {
+  Model big;
+  padToSplit(big);
+  big.expressions.expressions.push_back(tagged("pulse", 1, 1));
+  Model small;
+  small.expressions.expressions = {tagged("shifty", 2, 2)};
+  for (size_t crashAt = 0; crashAt < 40; ++crashAt) {
+    InMemoryConfigStore store;
+    save(store, big);
+    store.writesBeforeCrash = crashAt;
+    save(store, small);
+    store.writesBeforeCrash = SIZE_MAX;
+    TEST_ASSERT_TRUE(save(store, small) == SaveResult::Ok);
+    TEST_ASSERT_FALSE(anyRecordLeft(store));
+    TEST_ASSERT_FALSE(store.has("xn"));
+  }
+}
+
+// A split save cut short before its count leaves records past the old
+// count; the next split save sweeps them.
+void test_split_save_sweeps_records_past_its_count() {
+  InMemoryConfigStore store;
+  Model m;
+  padToSplit(m);
+  save(store, m);
+  Model grown = m;
+  for (int i = 0; i < 4; ++i) grown.expressions.expressions.push_back(tagged("spotty", 1 + i % 3, i));
+  store.writesBeforeCrash = 6;  // records x0..x5 land, the count does not
+  save(store, grown);
+  store.writesBeforeCrash = SIZE_MAX;
+  TEST_ASSERT_TRUE(store.has("x5"));
+  Model shrunk = m;
+  shrunk.expressions.expressions.pop_back();
+  TEST_ASSERT_TRUE(save(store, shrunk) == SaveResult::Ok);
+  TEST_ASSERT_FALSE(store.has("x3") || store.has("x4") || store.has("x5"));
+}
+
+// An unreadable record drops only itself.
 void test_unreadable_record_drops_only_itself() {
   InMemoryConfigStore store;
   Model m;
@@ -578,6 +625,8 @@ int main(int, char**) {
   RUN_TEST(test_split_then_whole_erases_split_keys);
   RUN_TEST(test_config_saved_by_older_firmware_wins_over_stale_records);
   RUN_TEST(test_too_large_writes_nothing);
+  RUN_TEST(test_no_record_is_orphaned_by_a_reset);
+  RUN_TEST(test_split_save_sweeps_records_past_its_count);
   RUN_TEST(test_over_long_fields_cannot_fail_every_save);
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);

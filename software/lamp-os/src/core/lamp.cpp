@@ -38,6 +38,7 @@
 #include "components/network/mesh/lamp_roster.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
+#include "components/network/transport/espnow_link.hpp"
 #if LAMP_WEBAPP_ENABLED
 #include "components/webapp/webapp.hpp"
 #endif
@@ -1002,6 +1003,8 @@ void lamp::Lamp::tick() {
     if (static_cast<int32_t>(nowMs - s_nextHeapLogMs) >= 0) {
       s_nextHeapLogMs = nowMs + 30000;
       lamp::logHeap("trend");
+      Serial.printf("[heap] txstalls=%lu\n",
+                    (unsigned long)lamp::EspNowLink::s_txCredit.stalls());
     }
   }
 #endif

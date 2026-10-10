@@ -444,6 +444,8 @@ constexpr uint8_t kRecordFormat = 1;
 constexpr uint8_t kRecordEnabled = 0x01;
 constexpr const char* kCountKey = "xn";
 constexpr const char* kKnockoutKey = "ko";
+// Record keys any build has written ("x0".."x31"); the cap has been lower.
+constexpr size_t kRecordKeySlots = 32;
 
 void putU32(uint8_t*& p, uint32_t v) {
   for (int i = 0; i < 4; ++i) *p++ = static_cast<uint8_t>(v >> (8 * i));
@@ -459,10 +461,6 @@ void recordKey(size_t i, char (&key)[5]) {
   std::snprintf(key, sizeof(key), "x%u", static_cast<unsigned>(i));
 }
 
-uint8_t readCount(ConfigStore& store) {
-  uint8_t n = 0;
-  return store.readBlob(kCountKey, &n, 1) == 1 ? n : 0;
-}
 
 }  // namespace
 
@@ -539,7 +537,6 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const ExpressionSettings& expressions,
                       const HomeModeSettings& homeMode, char* cfgBuffer,
                       size_t cfgBufferLen) {
-  const uint8_t previous = readCount(store);
   char key[5];
 
   // Whole: everything in the one "cfg" JSON, the form every firmware reads,
@@ -552,11 +549,15 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
     whole.finish();
     if (whole.ok()) {
       if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
-      store.erase(kCountKey);
-      for (size_t i = 0; i < previous; ++i) {
+      // Every record slot any build wrote, whatever the count says: a split
+      // save cut short before its count landed leaves records the count
+      // never named. Records go before the count, so no reset can leave a
+      // record no later save reaches.
+      for (size_t i = 0; i < kRecordKeySlots; ++i) {
         recordKey(i, key);
         store.erase(key);
       }
+      store.erase(kCountKey);
       store.erase(kKnockoutKey);
       return SaveResult::Ok;
     }
@@ -583,7 +584,8 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
   }
   const uint8_t n = static_cast<uint8_t>(count);
   if (store.writeBlob(kCountKey, &n, 1) == 0) return SaveResult::WriteFailed;
-  for (size_t i = count; i < previous; ++i) {
+  // Every slot past the count, so a record left by a save cut short is gone.
+  for (size_t i = count; i < kRecordKeySlots; ++i) {
     recordKey(i, key);
     store.erase(key);
   }
