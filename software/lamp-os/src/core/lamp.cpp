@@ -1003,8 +1003,9 @@ void lamp::Lamp::tick() {
     if (static_cast<int32_t>(nowMs - s_nextHeapLogMs) >= 0) {
       s_nextHeapLogMs = nowMs + 30000;
       lamp::logHeap("trend");
-      Serial.printf("[heap] txstalls=%lu\n",
-                    (unsigned long)lamp::EspNowLink::s_txCredit.stalls());
+      Serial.printf("[heap] txstalls=%lu txrefused=%lu\n",
+                    (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                    (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     }
   }
 #endif

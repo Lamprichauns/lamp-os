@@ -5,6 +5,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 
+#include <atomic>
 #include <cstring>
 
 namespace lamp {
@@ -21,9 +22,13 @@ static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_
   err = submitWithCredit(EspNowLink::s_txCredit, now, ESP_ERR_ESPNOW_NO_MEM,
                          [&] { return esp_now_send(mac, data, len); });
   if (EspNowLink::s_txCredit.stalls() != stallsBefore) {
-    static uint32_t s_lastLogMs = 0;
-    if (s_lastLogMs == 0 || now - s_lastLogMs >= kStallLogMs) {
-      s_lastLogMs = now;
+    // The loop and WiFi tasks both submit; the exchange lets one log.
+    static std::atomic<bool> s_logged{false};
+    static std::atomic<uint32_t> s_lastLogMs{0};
+    uint32_t last = s_lastLogMs.load(std::memory_order_relaxed);
+    if ((!s_logged.load(std::memory_order_relaxed) || now - last >= kStallLogMs) &&
+        s_lastLogMs.compare_exchange_strong(last, now, std::memory_order_relaxed)) {
+      s_logged.store(true, std::memory_order_relaxed);
       // Short enough for Print's stack buffer: no malloc on a starved heap.
       Serial.printf("[espnow.tx] no tx callback, credits reset n=%lu\n",
                     (unsigned long)EspNowLink::s_txCredit.stalls());

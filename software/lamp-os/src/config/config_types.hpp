@@ -202,9 +202,9 @@ constexpr size_t kMaxExpressionParams = 12;
 constexpr size_t kMaxExpressions = 21;
 constexpr size_t kMaxExpressionTypeLen = 15;
 
-// Caps on the rest of the stored config, so its "cfg" JSON has a known
-// ceiling. Surface colours sit above the app's 6 stops; segments above the
-// most any variant defines (3); SSIDs are 32 bytes by 802.11.
+// Caps on the rest of the stored config, so its JSON has a known ceiling.
+// Surface colours sit above the app's 6 stops; segments above the most any
+// variant defines (3); SSIDs are 32 bytes by 802.11.
 constexpr size_t kMaxSurfaceColors = 8;
 constexpr size_t kMaxSegments = 4;
 constexpr size_t kMaxSegmentNameLen = 16;
@@ -237,7 +237,7 @@ inline constexpr const char* kExpressionParamKeys[] = {
     "fillMode",     "fire",             "fullStrip",        "loop",
     "opacity",      "posMax",           "posMin",           "pulseSpeed",
     "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
-    "spotSpeed",
+    "spotSpeed",    "travel",
 };
 constexpr size_t kExpressionParamKeyCount =
     sizeof(kExpressionParamKeys) / sizeof(kExpressionParamKeys[0]);

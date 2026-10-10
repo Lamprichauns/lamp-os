@@ -155,6 +155,7 @@ class ExpressionManager {
     size_t head = 0;
   };
   RecentCascade recentCascades_;
+  LocalCooldown localCooldown_;
 
   // Parallel dedup ring for MSG_EVENT announces. Same keying and eviction
   // policy as recentCascades_: a TARGET_BOTH expression's shade and base
@@ -183,14 +184,22 @@ class ExpressionManager {
   // recentEvents_ so a TARGET_BOTH auto-trigger produces exactly one event.
   void emitEvent(const ExpressionEntry& entry);
 
-  // Synthesize a cascade-enabled ExpressionEntry from an invocation, selecting
-  // the base/shade buffer by `inv.target`. Feeds maybeCascade + emitEvent.
-  ExpressionEntry entryFromInvocation(const ExpressionInvocation& inv);
+  // The cascade and the event for an expression of `shape`'s type, colours
+  // and target with `params`; maybeCascade and emitEvent run them for a
+  // configured entry. An unregistered type sends neither.
+  void cascade(const ExpressionInvocation& shape, const ExpressionParams& params,
+               const uint8_t* excludeMac = nullptr);
+  void announce(const ExpressionInvocation& shape, const ExpressionParams& params);
+  static ExpressionInvocation shapeOf(const ExpressionEntry& entry);
+  // An invocation's own wave: cascade and event with cascadeEnabled set,
+  // built from the invocation alone, with no Expression made for it.
+  void broadcastFrom(const ExpressionInvocation& inv, const uint8_t* excludeMac = nullptr);
 
   ExpressionRegistry registry_;
 
   // Build an Expression bound to `buffer` for `type` via the registry's
-  // descriptor. Folds descriptor defaults into `parameters` before
+  // descriptor, joining the shade `above` it when non-null (surfacePlan).
+  // Folds descriptor defaults into `parameters` before
   // configureFromParameters. Returns nullptr for a type absent from the
   // registry. Shared by addExpression + triggerInvocation.
   std::unique_ptr<Expression> makeExpression(
@@ -198,7 +207,8 @@ class ExpressionManager {
       const std::vector<Color>& colors,
       uint32_t intervalMin, uint32_t intervalMax,
       ExpressionTarget target,
-      const ExpressionParams& parameters);
+      const ExpressionParams& parameters,
+      FrameBuffer* above = nullptr);
 
  public:
   ExpressionRegistry& registry() { return registry_; }

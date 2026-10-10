@@ -481,7 +481,8 @@ onMounted(async () => {
     hasPassword.value = cfg.value.lamp.hasPassword === true
     locked.value = hasPassword.value
     apSecured.value = cfg.value.lamp.apSecured === true
-    // Both are GET-only; PUT persists the body verbatim, so strip them.
+    // Both are GET-only: the lamp saves a PUT through its config model, which
+    // ignores them, so the held doc drops them to stay what the editor edits.
     delete cfg.value.lamp.hasPassword
     delete cfg.value.lamp.apSecured
     loadedRealConfig.value = true

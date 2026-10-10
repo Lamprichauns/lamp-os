@@ -131,6 +131,20 @@ void test_cascades_queue_behind_the_drain() {
   TEST_ASSERT_EQUAL(25, sent.size());
 }
 
+// Two fan-outs queued, the first ending on a full batch: the second's first
+// batch still waits the gap, so its frames never overwrite the last batch's
+// pending resends.
+void test_the_gap_holds_between_fan_outs() {
+  CascadeScheduler s;
+  beginWith(s, sampleInvocation(), CascadeScheduler::kBatchSize, 0, 0);
+  beginWith(s, sampleInvocation(), 3, 0, 0);
+  std::vector<Sent> sent;
+  TEST_ASSERT_EQUAL(CascadeScheduler::kBatchSize, drain(s, 0, sent));
+  TEST_ASSERT_EQUAL(3, s.pending());
+  TEST_ASSERT_EQUAL(0, drain(s, CascadeScheduler::kBatchGapMs - 1, sent));
+  TEST_ASSERT_EQUAL(3, drain(s, CascadeScheduler::kBatchGapMs, sent));
+}
+
 // A frame the driver cannot take now is retried on a later pass, not lost.
 void test_refused_send_is_retried() {
   CascadeScheduler s;
@@ -215,6 +229,7 @@ int main(int, char**) {
   RUN_TEST(test_delay_keeps_the_intended_fire_time);
   RUN_TEST(test_every_peer_is_reached_in_bounded_batches);
   RUN_TEST(test_cascades_queue_behind_the_drain);
+  RUN_TEST(test_the_gap_holds_between_fan_outs);
   RUN_TEST(test_refused_send_is_retried);
   RUN_TEST(test_gated_tick_holds_frames_while_the_driver_is_full);
   RUN_TEST(test_cancel_stops_the_drain);

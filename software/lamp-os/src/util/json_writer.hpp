@@ -52,24 +52,25 @@ class JsonWriter {
   uint8_t hasItems_ = 0;  // bit d: the container at depth d already has a value
 };
 
-// Writes `write(JsonWriter&)` into `out` sized to `len` (its measured
-// length). False, with `out` cleared, when `out` cannot grow or the second
-// pass did not fill exactly `len` bytes (the document changed between the
-// passes), so a short or truncated result is never kept.
+// Writes `write(JsonWriter&)` into a fresh string of `len` bytes (its
+// measured length) and swaps it into `out`. False, with `out` unchanged, when
+// the string cannot be allocated or the second pass did not fill exactly
+// `len` bytes (the document changed between the passes), so a short or
+// truncated result is never kept and a reader keeps the last good copy.
 template <class Write>
 bool writeExactly(std::string& out, size_t len, Write&& write) {
+  std::string fresh;
   try {
-    out.resize(len);
+    fresh.resize(len);
   } catch (const std::bad_alloc&) {
-    out.clear();
     return false;
   }
-  JsonWriter w(out.data(), len + 1);
+  JsonWriter w(&fresh[0], len + 1);
   write(w);
   w.finish();
-  if (w.ok() && w.length() == len) return true;
-  out.clear();
-  return false;
+  if (!w.ok() || w.length() != len) return false;
+  out.swap(fresh);
+  return true;
 }
 
 }  // namespace lamp
