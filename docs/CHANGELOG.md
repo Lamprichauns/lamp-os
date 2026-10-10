@@ -5,6 +5,13 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Fixed
+- **Fades into the dark are smooth.** Breathing and every other fade toward
+  black no longer step down in visible jumps near the bottom; the lamp now
+  dithers between its dimmest levels so a slow fade keeps moving every frame.
+
 ## 1.2.8
 
 ### Added

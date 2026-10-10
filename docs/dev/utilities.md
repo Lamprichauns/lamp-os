@@ -85,8 +85,9 @@ the right one as `this->fb` (target-bound — don't capture `baseBuffer` /
 | `buffer` | `std::vector<Color>` | Your write target — index `[0, pixelCount)`, one entry per pixel |
 | `pixelCount` | `uint8_t` | Loop bound; never hardcode strip length |
 | `defaultColors` | `std::vector<Color>` | The user's configured palette — your "resting" colors |
-| `previousBuffer` / `previousBrightness` | `std::vector<Color>` / `uint8_t` | Last committed frame, for change detection (skip redraw when nothing moved) |
-| `flush()` | `void` | Push `buffer` to the NeoPixel driver — the framework calls this; authors rarely do |
+| `level` | `uint8_t` | Strip level the flush folds in with gamma; set through `setAllStripsBrightness`, never by hand |
+| `previousBuffer` / `previousLevel` | `std::vector<Color>` / `uint8_t` | Last committed frame, for change detection (skip redraw when nothing moved) |
+| `flush()` | `void` | Push `buffer` to the NeoPixel driver, gamma-corrected and temporally dithered — the framework calls this; authors rarely do |
 
 ---
 
