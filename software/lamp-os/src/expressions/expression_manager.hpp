@@ -80,6 +80,8 @@ class ExpressionManager {
     uint32_t createdMs = 0;
   };
   std::vector<TransientExpression> transientExpressions_;
+  // In-flight transients; a cascade past it is dropped. Reserved at begin().
+  static constexpr size_t kMaxTransients = 8;
 
   // Non-owning pointers to ExpressionEntry::expression instances that the
   // app's Test button fired via dispatchLampAction("test_expression").

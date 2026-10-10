@@ -17,7 +17,7 @@
 #include "components/network/protocol/event.hpp"
 
 // Native tests don't build src/; compile the real implementation into this TU.
-// The <mbedtls/md.h> it includes resolves to the HMAC shim in this test dir.
+// The <mbedtls/sha256.h> it includes resolves to the shim in this test dir.
 #include "../../src/components/network/protocol/command_auth.cpp"
 
 namespace lp = lamp_protocol;
@@ -154,6 +154,19 @@ void test_command_max_payload_fits() {
   TEST_ASSERT_TRUE(ca::verify(buf, framed - lp::COMMAND_TAG_SIZE, out.tag));
 }
 
+// RFC 4231 test case 1. A key shorter than the 64-byte block is zero-padded,
+// so the 20-byte key followed by 12 zeros yields the published HMAC-SHA256.
+void test_tag_matches_rfc4231_case1() {
+  uint8_t key[32] = {};
+  std::memset(key, 0x0b, 20);
+  ca::loadKeyForTest(key);
+  uint8_t buf[8 + ca::TAG_SIZE] = {'H', 'i', ' ', 'T', 'h', 'e', 'r', 'e'};
+  TEST_ASSERT_EQUAL(8 + ca::TAG_SIZE, ca::appendTag(buf, 8, sizeof(buf)));
+  const uint8_t expected[ca::TAG_SIZE] = {0xb0, 0x34, 0x4c, 0x61,
+                                          0xd8, 0xdb, 0x38, 0x53};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, buf + 8, ca::TAG_SIZE);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_event_roundtrip_tag_stripped);
@@ -164,5 +177,6 @@ int main() {
   RUN_TEST(test_keyless_verify_permissive);
   RUN_TEST(test_event_max_payload_fits);
   RUN_TEST(test_command_max_payload_fits);
+  RUN_TEST(test_tag_matches_rfc4231_case1);
   return UNITY_END();
 }

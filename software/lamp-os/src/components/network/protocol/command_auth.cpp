@@ -1,6 +1,6 @@
 #include "command_auth.hpp"
 
-#include <mbedtls/md.h>
+#include <mbedtls/sha256.h>
 
 #include <cstring>
 
@@ -39,12 +39,33 @@ void ensureInit() {
 #endif
 }
 
-// HMAC-SHA256(s_key, in[0..inLen)) -> out[32]. Returns false on any mbedTLS
-// error. Caller guarantees s_hasKey.
+constexpr uint8_t kInnerPad = 0x36;
+constexpr uint8_t kOuterPad = 0x5c;
+
+// SHA-256((s_key zero-padded to one block) ^ pad || msg).
+bool paddedDigest(uint8_t pad, const uint8_t* msg, size_t len, uint8_t out[32]) {
+  constexpr size_t kBlock = 64;
+  uint8_t block[kBlock];
+  for (size_t i = 0; i < kBlock; ++i) {
+    block[i] = static_cast<uint8_t>((i < kKeyLen ? s_key[i] : 0) ^ pad);
+  }
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  const bool ok = mbedtls_sha256_starts(&ctx, 0) == 0 &&
+                  mbedtls_sha256_update(&ctx, block, kBlock) == 0 &&
+                  mbedtls_sha256_update(&ctx, msg, len) == 0 &&
+                  mbedtls_sha256_finish(&ctx, out) == 0;
+  mbedtls_sha256_free(&ctx);
+  return ok;
+}
+
+// HMAC-SHA256(s_key, in[0..inLen)) -> out[32] per RFC 2104. Allocates
+// nothing: it runs on the WiFi task for every COMMAND and EVENT frame
+// overheard. Returns false on any mbedTLS error. Caller guarantees s_hasKey.
 bool hmac(const uint8_t* in, size_t inLen, uint8_t out[32]) {
-  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-  if (!info) return false;
-  return mbedtls_md_hmac(info, s_key, kKeyLen, in, inLen, out) == 0;
+  uint8_t inner[32];
+  return paddedDigest(kInnerPad, in, inLen, inner) &&
+         paddedDigest(kOuterPad, inner, sizeof(inner), out);
 }
 
 }  // namespace

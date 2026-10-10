@@ -17,6 +17,7 @@ namespace lamp {
 void ExpressionManager::begin(FrameBuffer* shade, FrameBuffer* base) {
   shadeBuffer = shade;
   baseBuffer = base;
+  transientExpressions_.reserve(kMaxTransients);
 
   // Publish the frame buffers into the shared BehaviorContext, replacing the
   // previous `expressionFrameBuffers` extern vector. If the compositor has
@@ -388,14 +389,26 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   // Determine target buffers, same convention as addExpression. TARGET_BOTH
   // fires on both halves of the lamp; specific target fires on one.
-  std::vector<FrameBuffer*> targetBuffers;
+  FrameBuffer* targetBuffers[2] = {};
+  size_t targetCount = 0;
   if (invTarget == TARGET_BOTH) {
-    targetBuffers = {shadeBuffer, baseBuffer};
+    targetBuffers[targetCount++] = shadeBuffer;
+    targetBuffers[targetCount++] = baseBuffer;
   } else if (invTarget == TARGET_SHADE) {
-    targetBuffers = {shadeBuffer};
+    targetBuffers[targetCount++] = shadeBuffer;
   } else if (invTarget == TARGET_BASE) {
-    targetBuffers = {baseBuffer};
+    targetBuffers[targetCount++] = baseBuffer;
   } else {
+    return false;
+  }
+
+  // A crowd of distinct senders would otherwise stack one transient pair per
+  // sender, each a heap Expression plus its buffers.
+  if (transientExpressions_.size() + targetCount > kMaxTransients) {
+#ifdef LAMP_DEBUG
+    Serial.printf("[expr] transient drop %s (%u in flight)\n", inv.type.c_str(),
+                  (unsigned)transientExpressions_.size());
+#endif
     return false;
   }
 
@@ -406,7 +419,8 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
   suppressCascade_ = true;
 
   bool triggered = false;
-  for (auto* buffer : targetBuffers) {
+  for (size_t b = 0; b < targetCount; ++b) {
+    FrameBuffer* buffer = targetBuffers[b];
     // Build a fresh one-shot Expression instance directly from the
     // invocation. NEVER consults this lamp's `expressions` (configured)
     // vector; the receiver's local config is intentionally irrelevant.

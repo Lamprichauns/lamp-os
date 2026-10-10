@@ -1188,12 +1188,16 @@ void tick() {
   }
 
   // Proactively rebuild dirty section caches on Core 1 so the BLE host
-  // task (Core 0) rarely serialises JSON inside a NimBLE callback.
-  s_config->lampSectionRebuildIfDirty();
-  s_config->baseSectionRebuildIfDirty();
-  s_config->shadeSectionRebuildIfDirty();
-  s_config->expressionsSectionRebuildIfDirty();
-  s_config->homeSectionRebuildIfDirty();
+  // task (Core 0) rarely serialises JSON inside a NimBLE callback. Only while
+  // a client holds the link: a mesh cascade dirties the expressions section
+  // with no reader, and a rebuild per cascade is pure heap churn.
+  if (s_clientConnected) {
+    s_config->lampSectionRebuildIfDirty();
+    s_config->baseSectionRebuildIfDirty();
+    s_config->shadeSectionRebuildIfDirty();
+    s_config->expressionsSectionRebuildIfDirty();
+    s_config->homeSectionRebuildIfDirty();
+  }
   maintainNearbyJson();
 }
 
