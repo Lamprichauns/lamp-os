@@ -16,10 +16,15 @@ struct OtaOfferBusy {
   bool firmwareReceiving = false;
   bool fsBusy = false;
   bool quiet = false;
+  bool firmwareIdleHold = false;
 
   bool any() const {
     return startingUp || firmwareSending || firmwareReceiving || fsBusy || quiet;
   }
+
+  // An FS session started inside the firmware hold would inherit its visible
+  // indicator and paint a progress bar for a silent update.
+  bool fsWalkAllowed() const { return !firmwareIdleHold; }
 };
 
 // quietHolders is ota_quiet_mode::holders(). quietIsOwnIdleHold is the
@@ -34,6 +39,7 @@ inline OtaOfferBusy offerBusy(bool startupComplete, bool firmwareSending,
   busy.firmwareReceiving = firmwareReceiving;
   busy.fsBusy = fsBusy;
   busy.quiet = quietHolders > (quietIsOwnIdleHold ? 1 : 0);
+  busy.firmwareIdleHold = quietIsOwnIdleHold;
   return busy;
 }
 

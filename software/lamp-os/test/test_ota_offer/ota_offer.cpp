@@ -96,6 +96,12 @@ void test_busy_tick_does_not_spend_the_interval() {
   TEST_ASSERT_TRUE(t.due({}, 5000 + OtaOfferThrottle::kIntervalMs + 1));
 }
 
+void test_fs_walk_skipped_during_firmware_hold() {
+  TEST_ASSERT_FALSE(offerBusy(true, false, false, false, 1, /*quietIsOwnIdleHold=*/true)
+                        .fsWalkAllowed());
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, 0, false).fsWalkAllowed());
+}
+
 void test_hold_is_inheritable_only_after_a_done_session() {
   InterSessionQuietHold hold;
   TEST_ASSERT_FALSE(hold.inheritable());
@@ -222,6 +228,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_distributor_idle_hold_lets_the_scan_run);
   RUN_TEST(test_other_quiet_still_blocks_during_the_hold);
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
+  RUN_TEST(test_fs_walk_skipped_during_firmware_hold);
   RUN_TEST(test_hold_is_inheritable_only_after_a_done_session);
   RUN_TEST(test_session_without_quiet_arms_no_hold);
   RUN_TEST(test_failed_offers_inside_a_hold_let_quiet_end);

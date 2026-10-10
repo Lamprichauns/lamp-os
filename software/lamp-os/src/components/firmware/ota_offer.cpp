@@ -52,6 +52,7 @@ void tickOtaOffers(uint32_t nowMs, bool startupComplete) {
                                            p.fwChannel, p.maxChunk, p.espnowRssi,
                                            peerBeingServed);
   }
+  if (!busy.fsWalkAllowed()) return;
   // fs_ota::considerPeer does its own staleness and busy gating.
   for (const auto& p : peers) {
     if (!p.hasMac) continue;
