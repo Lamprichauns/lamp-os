@@ -353,6 +353,21 @@ void test_initiates_after_eligibility_and_backoff() {
   TEST_ASSERT_EQUAL_UINT32(2, r.host.sent.size());
 }
 
+void test_a_lapse_disarms_the_backoff() {
+  Rig r(1, 9, 0);
+  readyForFireflies(r);
+  const uint32_t t = 100 * kMin;
+  uint32_t now = t;
+  for (; !r.director.backoffArmed(MomentKind::Fireflies); now += 1000) {
+    for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = now;
+    r.director.tick(now);
+    TEST_ASSERT_TRUE(now < t + 5000);
+  }
+  r.host.greeting = true;
+  r.director.tick(now + 1000);
+  TEST_ASSERT_FALSE(r.director.backoffArmed(MomentKind::Fireflies));
+}
+
 void test_suppressors_block_initiation() {
   const char* reasons[] = {"ota", "wisp", "preview", "home"};
   for (const char* why : reasons) {
@@ -1070,6 +1085,7 @@ int main(int, char**) {
   RUN_TEST(test_cooldown_blocks_initiation_but_not_joining);
   RUN_TEST(test_cooldown_does_not_block_accepting_a_whisper);
   RUN_TEST(test_initiates_after_eligibility_and_backoff);
+  RUN_TEST(test_a_lapse_disarms_the_backoff);
   RUN_TEST(test_suppressors_block_initiation);
   RUN_TEST(test_herd_starts_one_fireflies_in_a_room_of_fifty);
   RUN_TEST(test_fireflies_period_and_first_offset_ranges);

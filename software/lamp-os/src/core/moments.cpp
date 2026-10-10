@@ -160,7 +160,6 @@ void MomentDirector::participate(MomentKind kind, uint32_t nowMs) {
   s.nextEligibleMs = nowMs + momentWaitMs(kind, s.growth, host_->socialMode(), rng_);
   s.eligible = false;
   hearCrowd(kind, nowMs);
-  s.backoffArmed = false;
 }
 
 void MomentDirector::hearCrowd(MomentKind kind, uint32_t nowMs) {
