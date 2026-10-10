@@ -395,37 +395,48 @@ static void logSectionOom(const char* msg) {
 // grown on a fragmented heap silently stops appending and would cache a cut-off
 // JSON as valid). On failure keep the last-good cache, leave the dirty flag
 // set so it retries when heap recovers, and serve the stale (or empty) bytes.
-#define LAMP_DEFINE_SECTION_CACHED(NAME, BUILDER)                          \
-  void Config::NAME##SectionRebuildIfDirty() {                             \
-    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    if (NAME##SectionDirty_) {                                             \
-      size_t len = 0;                                                      \
-      std::unique_ptr<char[]> json;                                        \
-      if (heapCanSpare(kHeapHeadroom)) {                                   \
-        JsonDocument doc = BUILDER();                                      \
-        json = serializeGuarded(doc, len);                                 \
-      }                                                                    \
-      if (json && (NAME##SectionJson_.capacity() >= len ||                 \
-                   heapCanSpare(len)) &&                                   \
-          assignNoThrow(NAME##SectionJson_, json.get(), len)) {            \
-        NAME##SectionDirty_ = false;                                       \
-      } else {                                                             \
-        logSectionOom(#NAME);                                              \
-      }                                                                    \
-    }                                                                      \
-    xSemaphoreGive(cacheMutex());                                          \
-  }                                                                        \
-  void Config::NAME##SectionJsonCached(std::string& out) {                 \
-    NAME##SectionRebuildIfDirty();                                         \
-    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    if (!((out.capacity() >= NAME##SectionJson_.size() ||                  \
-           heapCanSpare(NAME##SectionJson_.size())) &&                     \
-          assignNoThrow(out, NAME##SectionJson_.data(),                    \
-                        NAME##SectionJson_.size()))) {                     \
-      out.clear();                                                         \
-      logSectionOom(#NAME);                                                \
-    }                                                                      \
-    xSemaphoreGive(cacheMutex());                                          \
+// Section caches are rebuilt and copied out under one hold of the cache
+// mutex, so a release on Core 1 (releaseSectionCaches) lands either before a
+// Core 0 read, which then rebuilds, or after it. A failed rebuild keeps the
+// last good copy and stays dirty.
+template <class Build>
+static void rebuildLocked(std::string& cache, bool& dirty, const char* name, Build build) {
+  if (!dirty) return;
+  size_t len = 0;
+  std::unique_ptr<char[]> json;
+  if (heapCanSpare(kHeapHeadroom)) {
+    JsonDocument doc = build();
+    json = serializeGuarded(doc, len);
+  }
+  if (json && (cache.capacity() >= len || heapCanSpare(len)) &&
+      assignNoThrow(cache, json.get(), len)) {
+    dirty = false;
+  } else {
+    logSectionOom(name);
+  }
+}
+
+static void copyOutLocked(const std::string& cache, std::string& out, const char* name) {
+  if (!((out.capacity() >= cache.size() || heapCanSpare(cache.size())) &&
+        assignNoThrow(out, cache.data(), cache.size()))) {
+    out.clear();
+    logSectionOom(name);
+  }
+}
+
+#define LAMP_DEFINE_SECTION_CACHED(NAME, BUILDER)                                     \
+  void Config::NAME##SectionRebuildIfDirty() {                                        \
+    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                                      \
+    rebuildLocked(NAME##SectionJson_, NAME##SectionDirty_, #NAME,                     \
+                  [this] { return BUILDER(); });                                      \
+    xSemaphoreGive(cacheMutex());                                                     \
+  }                                                                                   \
+  void Config::NAME##SectionJsonCached(std::string& out) {                            \
+    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                                      \
+    rebuildLocked(NAME##SectionJson_, NAME##SectionDirty_, #NAME,                     \
+                  [this] { return BUILDER(); });                                      \
+    copyOutLocked(NAME##SectionJson_, out, #NAME);                                    \
+    xSemaphoreGive(cacheMutex());                                                     \
   }
 
 LAMP_DEFINE_SECTION_CACHED(lamp, asLampJson)
@@ -433,8 +444,8 @@ LAMP_DEFINE_SECTION_CACHED(base, asBaseJson)
 LAMP_DEFINE_SECTION_CACHED(shade, asShadeJson)
 LAMP_DEFINE_SECTION_CACHED(home, asHomeModeJson)
 
-// The largest section (about 4 KB at the caps) is written straight into its
-// cache, measured first, so a rebuild takes one exactly-sized block and never
+// The largest section (about 4 KB at the caps) is written straight into a
+// string measured first, so a rebuild takes one exactly-sized block and never
 // a document's worth of small ones.
 static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) {
   w.beginArray();
@@ -442,32 +453,30 @@ static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) 
   w.endArray();
 }
 
+void Config::expressionsSectionRebuildLocked() {
+  if (!expressionsSectionDirty_) return;
+  JsonWriter measure(nullptr, 0);
+  writeExpressionsSection(measure, expressions);
+  const size_t len = measure.length();
+  if (heapCanSpare(len + 1) &&
+      writeExactly(expressionsSectionJson_, len,
+                   [this](JsonWriter& w) { writeExpressionsSection(w, expressions); })) {
+    expressionsSectionDirty_ = false;
+  } else {
+    logSectionOom("expressions");
+  }
+}
+
 void Config::expressionsSectionRebuildIfDirty() {
   xSemaphoreTake(cacheMutex(), portMAX_DELAY);
-  if (expressionsSectionDirty_) {
-    JsonWriter measure(nullptr, 0);
-    writeExpressionsSection(measure, expressions);
-    const size_t len = measure.length();
-    if ((expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) &&
-        writeExactly(expressionsSectionJson_, len,
-                     [this](JsonWriter& w) { writeExpressionsSection(w, expressions); })) {
-      expressionsSectionDirty_ = false;
-    } else {
-      logSectionOom("expressions");
-    }
-  }
+  expressionsSectionRebuildLocked();
   xSemaphoreGive(cacheMutex());
 }
 
 void Config::expressionsSectionJsonCached(std::string& out) {
-  expressionsSectionRebuildIfDirty();
   xSemaphoreTake(cacheMutex(), portMAX_DELAY);
-  if (!((out.capacity() >= expressionsSectionJson_.size() ||
-         heapCanSpare(expressionsSectionJson_.size())) &&
-        assignNoThrow(out, expressionsSectionJson_.data(), expressionsSectionJson_.size()))) {
-    out.clear();
-    logSectionOom("expressions");
-  }
+  expressionsSectionRebuildLocked();
+  copyOutLocked(expressionsSectionJson_, out, "expressions");
   xSemaphoreGive(cacheMutex());
 }
 

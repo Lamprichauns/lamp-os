@@ -131,7 +131,7 @@ void test_nested_arrays_and_empty_containers() {
 
 // The second pass must fill exactly what the first measured; anything else
 // (the document changed in between) leaves nothing behind.
-void test_write_exactly_keeps_only_an_exact_pass() {
+void test_write_exactly_keeps_only_an_exact_pass_and_the_last_good_otherwise() {
   std::string out = "stale";
   auto write = [](const char* text) {
     return [text](JsonWriter& w) {
@@ -143,9 +143,9 @@ void test_write_exactly_keeps_only_an_exact_pass() {
   TEST_ASSERT_TRUE(writeExactly(out, 7, write("abc")));
   TEST_ASSERT_EQUAL_STRING("[\"abc\"]", out.c_str());
   TEST_ASSERT_FALSE(writeExactly(out, 7, write("ab")));
-  TEST_ASSERT_TRUE(out.empty());
+  TEST_ASSERT_EQUAL_STRING("[\"abc\"]", out.c_str());
   TEST_ASSERT_FALSE(writeExactly(out, 7, write("abcd")));
-  TEST_ASSERT_TRUE(out.empty());
+  TEST_ASSERT_EQUAL_STRING("[\"abc\"]", out.c_str());
 }
 
 int main(int, char**) {
@@ -155,6 +155,6 @@ int main(int, char**) {
   RUN_TEST(test_expression_json_matches_arduinojson);
   RUN_TEST(test_short_buffer_reports_overflow);
   RUN_TEST(test_nested_arrays_and_empty_containers);
-  RUN_TEST(test_write_exactly_keeps_only_an_exact_pass);
+  RUN_TEST(test_write_exactly_keeps_only_an_exact_pass_and_the_last_good_otherwise);
   return UNITY_END();
 }

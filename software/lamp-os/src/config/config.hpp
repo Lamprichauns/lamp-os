@@ -299,5 +299,8 @@ class Config {
   bool shadeSectionDirty_ = true;
   bool expressionsSectionDirty_ = true;
   bool homeSectionDirty_ = true;
+
+  // Caller holds the cache mutex.
+  void expressionsSectionRebuildLocked();
 };
 }  // namespace lamp
