@@ -81,9 +81,6 @@ void test_fs_then_fw_no_stale_silent(void) {
   exitQuiet();
 }
 
-// Refcount >1 of the SAME type (e.g. receiver + distributor both FS): the
-// second entrant is a no-op beyond the count, so visibility must stay
-// latched at the first entrant's value until the last matching exit.
 void test_holders_counts_unmatched_entries(void) {
   TEST_ASSERT_EQUAL_INT(0, holders());
   enterQuiet(/*tearDownRadio=*/true, /*visible=*/true);
@@ -95,6 +92,9 @@ void test_holders_counts_unmatched_entries(void) {
   TEST_ASSERT_EQUAL_INT(0, holders());
 }
 
+// Refcount >1 of the SAME type (e.g. receiver + distributor both FS): the
+// second entrant is a no-op beyond the count, so visibility must stay
+// latched at the first entrant's value until the last matching exit.
 void test_second_entrant_same_type_keeps_visible_until_last_exit(void) {
   enterQuiet(/*tearDownRadio=*/true, /*visible=*/false);
   enterQuiet(/*tearDownRadio=*/true, /*visible=*/false);
