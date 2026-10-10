@@ -109,10 +109,13 @@ Two properties make it lethal:
    the document, refuses one that overflowed while it was built (it would save
    truncated), and serializes into one exactly-sized buffer. A refused save
    never aborts: it logs, keeps the dirty state and retries later.
-   `Config::persistConfig` gates the save on the headroom, writes the expression
-   records and knockout from stack buffers, and builds only the bounded "cfg"
-   JSON on the heap; the dispositions flush writes its blob from the stack and
-   touches no heap. A failed save, short heap or full NVS alike, backs off 5 s
+   A config save takes no heap at all, so it never waits on a large free block:
+   the expression records and knockout are written from stack buffers, and the
+   "cfg" JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact
+   JSON straight into a fixed buffer, byte-identical to ArduinoJson) into a
+   2 KB buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above the 1.85 KB
+   worst case). The dispositions flush writes its blob from the stack. A
+   failed save (a full NVS, or a cfg JSON that outgrew its buffer) backs off 5 s
    doubling to 60 s (`util/retry_backoff.hpp`) for both, and the commit drain
    waits on the same backoff, so no failure path retries at loop rate. Old
    stored formats load unchanged and move to the current keys on the first
@@ -211,8 +214,9 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
 - **Cascade transients.** Every accepted MSG_COMMAND or MSG_EVENT invocation can
   start a one-shot heap Expression per target, alive until its animation
   completes (up to 180 s). At most `ExpressionManager::kMaxTransients` (4) are in
-  flight, and one is skipped unless the largest free block holds 2 KB plus the
-  headroom; a cascade past either is dropped. The vector is reserved at
+  flight, and an invocation starts them only when the largest free block holds
+  2 KB per target plus the headroom, so a transient that starts can finish
+  allocating; a cascade past either is dropped. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Expression parameters live inline.** `ExpressionParams` holds one
@@ -236,10 +240,18 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   contexts and allocates nothing.
 - **The BLE scan.** The scan callback hands the roster the six address bytes,
   so a lamp advertisement builds no 17-char string on the host task.
-- **Cascade fan-out.** A locally fired cascading expression builds its
-  invocation document once and reuses one string across up to 50 peers.
+- **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
+  app's Test) reaches the 8 closest peers (`kMaxCascadeTargets`). Each queued
+  ESP-NOW frame holds a WiFi TX buffer until it airs; fanning out to a crowd
+  of 50 in one pass ran the driver out of memory (`esp_now_send` 0x3067) and
+  took the heap's minimum to about 1 KB. It builds the invocation document
+  once and reuses one string for every peer.
 - **Reads nobody asked for.** The section caches warm, and the state notify
-  builds its payload, only while a BLE client holds the link.
+  builds its payload, only while a BLE client holds the link; with no client
+  the caches are freed every tick and rebuild on the next read. The
+  expressions section (about 4 KB at the worst case) is measured, then written
+  by `JsonWriter` into one exactly-sized block; the smaller sections build
+  their document only with the headroom free.
 - **OTA sessions.** The receiver's chunk bitmap (up to 8 KB per OFFER) is
   allocated only when `heapCanSpare` allows it; otherwise the OFFER is declined
   busy and the sender retries.
