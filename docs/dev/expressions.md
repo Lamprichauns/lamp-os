@@ -241,12 +241,13 @@ they never cascade or announce, and take only the two peer transient slots.
 Fireflies and Heartbeat fire `flicker` bursts; Whisper fires a `pulse`.
 
 **The flicker burst.** `flicker` reads two keys outside its descriptor, so the
-app and `exprcat` never offer them: with both `count` and `durationMax` above
-0, a trigger lights exactly `count` cells (clamped to the zone) from the
+app and `exprcat` never offer them: on a transient (auto-trigger off) with both
+`count` and `durationMax` above 0, a trigger lights exactly `count` cells (clamped to the zone) from the
 style's spark band, they rise for the first half of `durationMax` (clamped 100
 to 2000 ms) and fall for the second, and the instance completes so the GC reaps
 it. Cells below `kBurstPaintHeat` (where Twinkle paints its anchor) are left
-untouched. Absent either key flicker runs continuously, unchanged. No key was
+untouched. Absent either key, or on a configured auto-triggering flicker, it
+runs continuously, unchanged. No key was
 added to `kExpressionParamKeys`. Math and tests: `shimmer_math.hpp`,
 `test_shimmer_math`.
 
@@ -264,7 +265,7 @@ All feel numbers (`kMirrorBasePct`, `kMirrorModeFactorX10`, cooldown, delay floo
 
 ## Testing
 
-Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` (each `test_<name>/` dir is its own suite; there is no single `test/native/` path). Run them with `npm run lamp:test`. Existing coverage:
+Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` (each `test_<name>/` dir is its own suite; there is no single `test/native/` path). Run them with `npm run lamp:test`. The native env builds every suite under ASan and UBSan with undefined behaviour fatal (`platformio.ini`), so an overrun fails its test instead of passing by luck, at about twice the plain run time. Existing coverage:
 
 - `test/test_personality_engine/personality_engine.cpp`, auto-trigger cadence, enable/disable
 - `test/test_transient_override/transient_override.cpp`, the ColorOverride state machine that drives per-surface wisp presence
@@ -275,6 +276,7 @@ Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` 
 - `test/test_glitchy_coverage/glitchy_coverage.cpp`, `glitchBlockPlan` scatter→grain-block math (solid sentinel, grain-1 at max, exact per-level density, monotonic sparsity, empty/undersized region)
 - `test/test_transient_lifetime/transient_lifetime.cpp`, transient GC backstop + never-started-transient rejection
 - `test/test_shimmer_math/shimmer_math.cpp`, flicker heat/warmth math and the burst (spark band, the anchor-neutral paint threshold, a spark lit mid-burst and dark at completion)
+- `test/test_shimmer_burst/shimmer_burst.cpp`, the real `ShimmerExpression` on stub frame buffers: a transient burst completes for the GC, only sparked cells paint, a configured flicker with the burst keys stays continuous
 - `test/test_moments/moments.cpp`, Moments: pacing, cooldown, the 50-lamp herd, the Fireflies timeline, Whisper hops, Heartbeat, the `mo` codec, render routing, the mirror bypass
 - `test/test_social_echo/social_echo.cpp`, expression-mirror rate grid, disp<4 early-out, introvert cooldown, replay scheduling window + fire, emitEvent continuous-gate
 

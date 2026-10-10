@@ -13,8 +13,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   lamps a lamp is fond of have stayed together for ten minutes, the room
   starts sparkling faintly with stars, scattered at first, then drawing into
   one shared beat for a couple of minutes. **Whisper**: a soft glow travels
-  across the lamp and is handed on to the friendliest lamp nearby, lamp to
-  lamp, up to eight hops. **Heartbeat**: a lamp beats gently when a lamp it
+  across the lamp and is handed on, lamp to lamp for up to eight hops, each
+  time to the closest lamp (strongest signal) it is fond of or smitten with
+  that hasn't had it yet. **Heartbeat**: a lamp beats gently when a lamp it
   is smitten with comes close, quickening as it nears and settling when it
   leaves. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
   more it takes part (back to normal after a restart), Extroverts start them

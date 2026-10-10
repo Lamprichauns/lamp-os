@@ -51,7 +51,9 @@ not otherwise read make a trigger one short burst, hidden from its descriptor
 so the app, `exprcat` and `test_builtin_descriptors` are unchanged:
 
 - `count` (stars) and `durationMax` (burst length, clamped 100 to 2000 ms),
-  both above 0. Absent either, flicker runs continuously as before.
+  both above 0, on a transient (an instance whose auto-trigger is off). Absent
+  either, or on a configured, auto-triggering flicker, it runs continuously as
+  before.
 - At trigger exactly `count` cells (clamped to the zone) take a spark target
   from the style's spark band; the rest stay at rest. Sparks rise for the first
   half of the burst and fall for the second (six step constants across it, so
@@ -63,7 +65,8 @@ so the app, `exprcat` and `test_builtin_descriptors` are unchanged:
   headroom to brighten into, so a burst on a white lamp reads weaker.
 - No key is added to `kExpressionParamKeys`, so `ExpressionParams` and stored
   configs are unchanged. Math and tests: `expressions/shimmer/shimmer_math.hpp`,
-  `test/test_shimmer_math/`.
+  `test/test_shimmer_math/`; the real expression driven to completion:
+  `test/test_shimmer_burst/`.
 
 A burst paints the colour under it, so Fireflies and Heartbeat borrow no
 palette. Whisper's pulse borrows up to 4 colours from the base's broadcast
@@ -85,7 +88,7 @@ top-level `mo` object:
 |---|---|
 | `k` | Kind: 1 Fireflies, 2 Whisper. Heartbeat sends nothing. Any other `k` is ignored whole, so later kinds stay additive. |
 | `s` | uint32 seed, also the Moment id. |
-| `a` | Age in ms since the Moment's reference instant at the sender, 0 to 2000. A receiver sets `t0 = arrival - a`. |
+| `a` | Age in ms since the sender's reference instant, 0 to 2000: the Fireflies `t0`, or the Whisper sender's glow. A receiver recovers that instant as `arrival - a`. |
 | `h` | Whisper: lamps visited so far, 1 to 8. |
 | `to` | Whisper: MAC of the next hop. |
 | `v` | Whisper: visited MACs, origin first; exactly `12*h` hex chars. |
@@ -103,7 +106,10 @@ expression mirror's fan-out, so the mirror never sees a Moment.
 
 **Older lamps** parse the frame as an invocation of type `moment`. A warm
 mirror may schedule a replay, which `makeExpression` refuses (no such type):
-no allocation, no render, no forward. A Whisper addressed to an older lamp
+no allocation, no render, no forward. The roll still spends that mirror's
+chance (and an Introvert's mirror cooldown) on a frame that shows nothing, so
+an older lamp near a Moment mirrors its peers' real expressions a little less
+often until it updates. A Whisper addressed to an older lamp
 dead-ends there. No variant registers the id `moment`
 (`test_builtin_descriptors`).
 
@@ -114,6 +120,8 @@ Fireflies start whose first copy never went out ends the Moment, and the
 initiator's growth still applies.
 
 **Airtime.** Fireflies 2 frames a Moment, Whisper 2 a hop (16 at most), Heartbeat none.
+
+**Older lamps' mirror** is the one cost they pay; see above.
 
 ## Pacing
 
@@ -143,10 +151,13 @@ All in RAM, reset on reboot, nothing in NVS. Per kind:
   then initiates. Hearing a frame of the kind meanwhile sets the cooldown, so
   the expiry refuses. If conditions lapse the backoff disarms and a later
   return rolls a new one. With N eligible lamps the first two expiries are
-  about 90/N s apart, 1.8 s at N = 50 against about 30 ms of propagation. The
-  50-lamp simulation in `test_moments` starts exactly one Fireflies in 981 of
-  1000 seeded runs and never more than two. Two that do start together split
-  the room: each hearer joins the first start it hears.
+  about 90/N s apart, 1.8 s at N = 50 against about 30 ms of propagation. A
+  Whisper origin announces its first hop the moment it starts, so its frame
+  is what cancels the others. The herd simulations in `test_moments` (every
+  lamp eligible at once, a fake bus with 30 ms latency, 1000 seeded runs each)
+  start exactly one Moment in: Fireflies, 50 lamps, 975; Whisper, 5 lamps,
+  993; 10 lamps, 990; 20 lamps, 971. None started more than two. Two that do
+  start together split the room: each hearer joins the first start it hears.
 
 Rough rates: a room sees a Fireflies every 45 to 60 min early in a session,
 slowing as ranges grow; a Whisper every 10 to 15 min per radio neighbourhood; a
@@ -155,9 +166,13 @@ Heartbeat at most every 20 to 60 min per lamp.
 ## Kinds
 
 Peers come from `PersonalityEngine::nearbyPeers()`, the near view crowd-dim
-samples (and the `inject_nearby` override). A peer is **fresh** when its BLE
-`lastSeenNearMs` is within 15 s **(T)**. **Liked** means Fond (4) or Smitten (5).
-Every scan is in place, with no copy and no sort.
+samples (and the `inject_nearby` override). A peer is **fresh** when a BLE
+advert from it was heard within 15 s **(T)**, read off the roster's
+`lastSeenBleMs` with a signed compare. Only a BLE sighting refreshes
+`lastRssi`; a direct ESP-NOW HELLO renews `lastSeenNearMs` (presence) while
+the RSSI stands still, so every RSSI threshold reads freshness off the BLE
+stamp. **Liked** means Fond (4) or Smitten (5). Every scan is in place, with no
+copy and no sort.
 
 ### Fireflies
 
@@ -203,14 +218,17 @@ frames. The owner chose it.
 
 **Initiate** when eligible, not cooling, unsuppressed, no greeting active, and
 a fresh peer is Smitten at -70 dBm or better or Fond at -62 dBm or better **(T)**.
-The origin glows, then hands on as below with `h=1`, `v=[self]`.
+The origin glows and, in the same instant, hands on as below with `h=1`,
+`v=[self]`, so every bystander hears the Whisper at its start.
 
 **Accept** a frame when `to` is this lamp, `1 <= h <= 8` and `len(v) == 12*h`,
 `(v[0], s)` is not in the dedup ring, the lamp is not in a Moment, nothing
 suppresses it, and its disposition toward the sender is Neutral or warmer. A
 Wary or Salty lamp drops it and the chain ends, visibly. The cooldown does not
-block an accept. On accept: glow now, count the participation, and 3 s later
-**(T)** (about mid-sweep, so the light reads as travelling on) hand on if `h < 8`.
+block an accept. On accept: count the participation and glow at
+`arrival - a + 3 s` **(T)**, one hand-off after the sender's glow (about
+mid-sweep, so the light reads as travelling on); hand on in the same instant if
+`h < 8`. The lamp is in the Moment from the accept to its glow.
 
 **Hand-on.** An in-place scan picks the peer that is fresh, liked by this
 lamp, at -80 dBm or better **(T)**, not self and not in `v`, strongest first,
@@ -232,12 +250,13 @@ heartbeat follows it.
 
 **Beat.** A lub, then a dub 260 ms after the lub's onset. The period
 `P = lerp(1500 ms at -75 dBm, 700 ms at -45 dBm)` **(T)**, clamped, over an EMA
-(alpha 0.2, sampled at 1 Hz) of the peer's RSSI, re-read at each beat, so the
-beat quickens as the peer comes closer. The lub's burst ends before the dub
+(alpha 0.2) of the peer's RSSI, re-read at each beat, so the beat quickens as
+the peer comes closer. The EMA samples at 1 Hz and only on a new BLE sighting,
+so a reading a HELLO keeps alive cannot hold the beat. The lub's burst ends before the dub
 fires, so the same-sender, same-type coalesce in `triggerInvocation` never
 drops the dub.
 
-**Settle** when the peer has not been fresh for 10 s, or its EMA has been
+**Settle** when the peer's last BLE sighting is 10 s old, or its EMA has been
 under -80 dBm for 10 s, or 180 s have passed **(T)**. Over 6 beats the period
 eases to 1600 ms and the opacity steps down to 10, then the Moment ends.
 
@@ -266,18 +285,20 @@ Heap is the transients only: a flicker burst (about 8 B a cell plus the
 Expression) for 140 to 700 ms, a pulse for about 6 s, one at a time. A
 Fireflies churns about 120 same-size alloc/free pairs over 2.6 min, under 1 Hz,
 off the hot path. Building an invocation allocates its type string and colour
-vector, at no more than a few per second.
+vector, at no more than a few per second. The roster's BLE stamp adds 4 bytes
+a peer (`RosterEntry` 112 B, `NearbyCopy` 64 B).
 
 ## Debug (LAMP_DEBUG builds)
 
 - `{"a":"moment","k":"fireflies|whisper|heartbeat","seed":N}` starts a kind
   now, past eligibility, conditions and the cooldown, never past a suppressor
   or a running Moment. `seed` 0 or absent rolls one.
-- `{"a":"moment_state"}` prints each kind's growth, wait, cooldown and backoff,
+- `{"a":"moment_state"}` (debug builds only, like every test action) prints each kind's growth, wait, cooldown and backoff,
   the liked count and stillness, and any running Moment.
 - `inject_nearby` takes `"mac"` per peer, so its disposition is stored under
-  that MAC; an injected peer reads as seen at injection and goes stale after
-  15 s, so re-send it to keep Whisper or Heartbeat candidates fresh.
+  that MAC; an injected peer reads as seen (and BLE-sighted) at injection and
+  goes stale after 15 s, so re-send it to keep Whisper or Heartbeat candidates
+  fresh.
 - `[moment]` lines carry kind, seed, role, hop and the reason for any skip;
   dev builds also log each Fireflies beat as `[moment] ff k=<beat> d=<ms>`.
 
