@@ -8,6 +8,7 @@
 
 #include <unity.h>
 
+#include "core/animated_behavior.cpp"
 #include "core/arrival_notifier.cpp"
 #include "core/behavior_context.cpp"
 #include "core/behavior_context_mesh.cpp"
@@ -231,6 +232,26 @@ void test_preview_rearms_a_peer_that_left_and_returned() {
   TEST_ASSERT_EQUAL_INT(2, fires);
 }
 
+// The compositor's per-behavior decision for a social behavior: cancelled
+// while home mode ignores peers, run while the app's own greeting plays.
+namespace {
+struct FakeSocial : AnimatedBehavior {
+  bool appGreeting = false;
+  bool isSocialBehavior() const override { return true; }
+  bool playsAppGreeting() const override { return appGreeting; }
+};
+}  // namespace
+
+void test_compositor_cancels_social_unless_app_greeting() {
+  Compositor compositor;
+  FakeSocial social;
+  TEST_ASSERT_TRUE(compositor.homeModeTickFor(&social) == HomeModeTick::Run);
+  compositor.homeMode = true;
+  TEST_ASSERT_TRUE(compositor.homeModeTickFor(&social) == HomeModeTick::Cancel);
+  social.appGreeting = true;
+  TEST_ASSERT_TRUE(compositor.homeModeTickFor(&social) == HomeModeTick::Run);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_pull_arrival_ignored_in_home_social_off);
@@ -243,5 +264,6 @@ int main(int, char**) {
   RUN_TEST(test_nearby_reads_empty_in_home_social_off);
   RUN_TEST(test_crowd_reads_empty_in_home_social_off);
   RUN_TEST(test_preview_rearms_a_peer_that_left_and_returned);
+  RUN_TEST(test_compositor_cancels_social_unless_app_greeting);
   return UNITY_END();
 }

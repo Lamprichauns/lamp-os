@@ -30,7 +30,7 @@ void BloomExpression::draw() {
   }
   if (!shouldAffectBuffer()) return;
 
-  const uint8_t s = static_cast<uint8_t>(bloomSwell(frame, frames) * wispDimScale());
+  const uint8_t s = static_cast<uint8_t>(bloomSwell(frame, frames) * retireScale());
   for (uint16_t i = 0; i < fb->pixelCount; ++i) {
     fb->buffer[i] = bloomWhiten(fb->buffer[i], s);
   }

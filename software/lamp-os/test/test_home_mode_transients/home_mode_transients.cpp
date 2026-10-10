@@ -298,8 +298,8 @@ void test_listed_type_untouched_outside_home_mode() {
   TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
 }
 
-// Bloom paints its swell through the same contribution scale, so a retired
-// bloom fades with the rest.
+// Bloom scales its swell by the retire fade alone, so a retired bloom fades
+// with the rest while the wisp leaves it at full strength.
 void test_retired_bloom_paints_nothing() {
   Rig r;
   BloomExpression bloom(&r.shade);

@@ -42,7 +42,7 @@ void SocialEchoObserver::onPeerExpression(const uint8_t sourceMac[6],
 }
 
 void SocialEchoObserver::tick(uint32_t nowMs) {
-  // A mirror booked before home mode began is dropped, not held for later.
+  // A mirror booked before home mode began is dropped.
   if (manager_.ignoresPeers()) {
     for (auto& p : pending_) p.used = false;
     return;

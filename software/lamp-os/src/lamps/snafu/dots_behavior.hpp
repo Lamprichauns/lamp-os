@@ -69,7 +69,7 @@ class DotsBehavior : public AnimatedBehavior {
   std::vector<Color> buildScene();
   std::vector<Color> buildSceneWith(bool useBorrow);
   bool anyMultiColor() const;
-  // Once the drift-back crossfade has ended (or a colour edit cut it short),
+  // Once the drift-back crossfade has ended or a colour edit cut it short,
   // returns the scene crossfade to its ambient length.
   void endDriftIfDone();
   bool colorsChanged();
