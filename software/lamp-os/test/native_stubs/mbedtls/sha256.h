@@ -1,18 +1,13 @@
-// Native-test stub for mbedtls/sha256.h.
-//
-// firmware_signature.cpp's streaming-verify path includes <mbedtls/sha256.h>
-// to use mbedtls_sha256_{init,starts,update,finish,free}. On-device, that
-// header comes from the IDF mbedtls component; on the host (PIO `native`
-// env), there's no mbedtls install — so the test rig adds this directory
-// to the include path (via the test_firmware_signature/-I flag implied
-// by PIO's per-test src layout) and ships a self-contained, public-
-// domain SHA-256 implementation that mirrors the subset of mbedtls's API
-// the production code actually uses.
+// Native-test stub for mbedtls/sha256.h, shared by every native test that
+// compiles code calling mbedtls_sha256_{init,starts,update,finish,free}
+// (firmware and FS signatures, the distributor, command_auth's HMAC). The
+// device build takes the header from the IDF mbedtls component; the native
+// env has no mbedtls, so test/native_stubs (on the native include path)
+// carries this self-contained SHA-256 behind the same API subset.
 //
 // The SHA-256 implementation is byte-for-byte equivalent to FIPS 180-4 §6.2,
 // derived from the public-domain "sha256.c" reference by Brad Conte:
 //   https://github.com/B-Con/crypto-algorithms/blob/master/sha256.c
-// vendored inline here so the host test binary has zero external deps.
 
 #pragma once
 
@@ -20,8 +15,7 @@
 #include <cstdint>
 #include <cstring>
 
-// mbedtls's API shape — these are the only entry points firmware_signature
-// uses from this header, so we don't need to mirror the rest.
+// mbedtls's API shape, limited to the entry points the firmware calls.
 typedef struct {
   uint8_t  data[64];
   uint32_t datalen;
