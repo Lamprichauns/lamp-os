@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <algorithm>
 #include <vector>
 
 #include "expressions/shimmer/shimmer_math.hpp"
@@ -256,6 +257,68 @@ void test_warmth_modulate_black_anchor_stays_black() {
   TEST_ASSERT_EQUAL_UINT8(0, hot.w);  // no fake-fire: shimmer of nothing is nothing
 }
 
+// --- burst ------------------------------------------------------------------
+
+void test_spark_target_lands_in_the_spark_band() {
+  const FireStyle twinkle = fireStyle(0);
+  LoRng lo;
+  HiRng hi;
+  TEST_ASSERT_EQUAL_FLOAT(twinkle.sparkLo, rollSparkTarget(twinkle, lo));
+  TEST_ASSERT_EQUAL_FLOAT(twinkle.sparkHi, rollSparkTarget(twinkle, hi));
+}
+
+// Twinkle at the burst paint threshold paints its anchor, so a spark crossing
+// it fades in and out of the surface with no step. A saturated channel has no
+// headroom to brighten into, so the anchors stay below full scale.
+void test_burst_threshold_paints_the_anchor() {
+  const FireStyle twinkle = fireStyle(0);
+  const Color anchors[] = {Color(200, 120, 40, 0), Color(40, 80, 220, 30),
+                           Color(180, 180, 180, 180)};
+  for (const Color& a : anchors) {
+    const Color p = shimmerPaint(a, kBurstPaintHeat, twinkle, 1.0f);
+    TEST_ASSERT_INT_WITHIN(a.r / 25 + 2, a.r, p.r);
+    TEST_ASSERT_INT_WITHIN(a.g / 25 + 2, a.g, p.g);
+    TEST_ASSERT_INT_WITHIN(a.b / 25 + 2, a.b, p.b);
+  }
+}
+
+// Steps a spark at the compositor's 16 ms cadence and returns its peak heat
+// and its heat at the frame the burst completes.
+static void runBurst(uint32_t burstMs, float target, float& peak, float& atEnd) {
+  float heat = 0.0f;
+  float t = target;
+  peak = 0.0f;
+  for (uint32_t ms = 16;; ms += 16) {
+    if (burstFalling(ms, burstMs)) t = 0.0f;
+    heat = approachHeat(heat, t, 16, burstStepMs(burstMs));
+    peak = std::max(peak, heat);
+    if (burstDone(ms, burstMs)) break;
+  }
+  atEnd = heat;
+}
+
+void test_burst_spark_rises_visible_and_ends_dark() {
+  const FireStyle twinkle = fireStyle(0);
+  for (uint32_t ms : {160u, 700u, 2000u}) {
+    float peak = 0.0f, atEnd = 1.0f;
+    runBurst(ms, twinkle.sparkLo, peak, atEnd);
+    TEST_ASSERT_TRUE_MESSAGE(peak > kBurstPaintHeat, "weakest spark never shows");
+    TEST_ASSERT_TRUE_MESSAGE(atEnd < kBurstPaintHeat, "spark still lit at completion");
+    runBurst(ms, twinkle.sparkHi, peak, atEnd);
+    TEST_ASSERT_TRUE_MESSAGE(atEnd < kBurstPaintHeat, "hottest spark lit at completion");
+  }
+}
+
+void test_burst_length_clamps() {
+  TEST_ASSERT_EQUAL_UINT32(kBurstMinMs, clampBurstMs(1));
+  TEST_ASSERT_EQUAL_UINT32(kBurstMaxMs, clampBurstMs(60000));
+  TEST_ASSERT_EQUAL_UINT32(700, clampBurstMs(700));
+  TEST_ASSERT_FALSE(burstFalling(349, 700));
+  TEST_ASSERT_TRUE(burstFalling(350, 700));
+  TEST_ASSERT_FALSE(burstDone(699, 700));
+  TEST_ASSERT_TRUE(burstDone(700, 700));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_fire_style_table_values);
@@ -278,5 +341,9 @@ int main(int, char**) {
   RUN_TEST(test_warmth_modulate_zero_swing_is_pure_brightness);
   RUN_TEST(test_warmth_modulate_cool_anchor_valid);
   RUN_TEST(test_warmth_modulate_black_anchor_stays_black);
+  RUN_TEST(test_spark_target_lands_in_the_spark_band);
+  RUN_TEST(test_burst_threshold_paints_the_anchor);
+  RUN_TEST(test_burst_spark_rises_visible_and_ends_dark);
+  RUN_TEST(test_burst_length_clamps);
   return UNITY_END();
 }

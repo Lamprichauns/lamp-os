@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "util/color.hpp"
+#include "util/fade.hpp"
 
 namespace lamp {
 
@@ -56,11 +57,16 @@ inline FireStyle fireStyle(uint32_t value) {
 }
 
 template <class Rng>
+inline float rollSparkTarget(const FireStyle& s, Rng& rng) {
+  const float t = rng.range(0, 1000) / 1000.0f;
+  return clampUnit(s.sparkLo + (s.sparkHi - s.sparkLo) * t);
+}
+
+template <class Rng>
 inline float rollHeatTarget(const FireStyle& s, Rng& rng) {
   if (s.sparkChance > 0.0f &&
       rng.range(0, 1000) / 1000.0f < s.sparkChance) {
-    const float t = rng.range(0, 1000) / 1000.0f;
-    return clampUnit(s.sparkLo + (s.sparkHi - s.sparkLo) * t);
+    return rollSparkTarget(s, rng);
   }
   const float lo = clampUnit(s.restLevel - s.amp);
   const float hi = clampUnit(s.restLevel + s.amp);
@@ -148,6 +154,45 @@ inline Color warmthModulate(Color anchor, float heat, float neutral,
     return v <= 0.0f ? 0 : (v >= 255.0f ? 255 : static_cast<uint8_t>(v + 0.5f));
   };
   return Color{clamp8(r), clamp8(g), clamp8(b), clamp8(wc)};
+}
+
+// The colour a cell at `heat` paints over `anchor`: the warmth ramp, scaled by
+// heat brightness and the frame's flutter, never below kShimmerFloorPct of it.
+inline Color shimmerPaint(Color anchor, float heat, const FireStyle& s,
+                          float flutterScale) {
+  const Color color = warmthModulate(anchor, heat, s.restLevel, s.warmthSwing, s.whiteHot);
+  const float bright = clampUnit(heatBrightness(heat, s.minBright) * flutterScale);
+  const uint32_t pct = static_cast<uint32_t>(bright * 100.0f);
+  const Color floorColor =
+      mixColorLinear(Color{}, color, computeLinearFactor(kShimmerFloorPct, 100u));
+  return (pct >= 100u) ? color
+                       : mixColorLinear(floorColor, color, computeLinearFactor(pct, 100u));
+}
+
+// A burst is a one-shot trigger: `count` cells spark at once, rise for the
+// first half of `burstMs`, fall for the second, and the instance completes at
+// burstMs. Six step constants span the burst so a spark reaches ~95% of its
+// target and falls back to ~5% of it.
+inline constexpr uint32_t kBurstStepsPerBurst = 6;
+inline constexpr uint32_t kBurstMinMs = 100;
+inline constexpr uint32_t kBurstMaxMs = 2000;
+
+// Heat at which a Twinkle cell paints its own anchor (brightness gain and floor
+// mix cancel) for any channel below full scale. A burst leaves cooler cells untouched, so sparks fade in and out
+// of the surface instead of dimming the cells around them.
+inline constexpr float kBurstPaintHeat = 0.37f;
+
+inline uint32_t clampBurstMs(uint32_t ms) {
+  return std::clamp(ms, kBurstMinMs, kBurstMaxMs);
+}
+inline uint32_t burstStepMs(uint32_t burstMs) {
+  return std::max<uint32_t>(1, burstMs / kBurstStepsPerBurst);
+}
+inline bool burstFalling(uint32_t elapsedMs, uint32_t burstMs) {
+  return elapsedMs >= burstMs / 2;
+}
+inline bool burstDone(uint32_t elapsedMs, uint32_t burstMs) {
+  return elapsedMs >= burstMs;
 }
 
 }  // namespace lamp
