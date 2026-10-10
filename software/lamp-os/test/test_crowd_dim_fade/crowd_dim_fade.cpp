@@ -108,6 +108,28 @@ void test_commit_during_home_ramp_keeps_its_remaining_time() {
   TEST_ASSERT_EQUAL_FLOAT(0.48f, d.at(0.48f, false, 11000));
 }
 
+// A second commit while the first still runs on the home ramp's time keeps
+// the remaining time too: 0.744 at 500 ms, then 500 ms more to 0.46.
+void test_chained_commits_keep_the_home_ramps_time() {
+  CrowdDim d;
+  d.at(0.5f, true, 0);
+  d.at(0.5f, false, 10000);
+  d.at(0.48f, false, 10300);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.744f, d.at(0.46f, false, 10500));
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.687f, d.at(0.46f, false, 10600));
+  TEST_ASSERT_EQUAL_FLOAT(0.46f, d.at(0.46f, false, 11000));
+}
+
+// A commit in the home ramp's last 80 ms still takes the ordinary 80.
+void test_commit_late_in_home_ramp_takes_at_least_80ms() {
+  CrowdDim d;
+  d.at(0.5f, true, 0);
+  d.at(0.5f, false, 10000);
+  d.at(0.48f, false, 10950);
+  TEST_ASSERT_TRUE(d.at(0.48f, false, 11000) > 0.481f);
+  TEST_ASSERT_EQUAL_FLOAT(0.48f, d.at(0.48f, false, 10950 + kCrowdDimFadeMs));
+}
+
 // Once the home ramp has landed, a commit takes the ordinary 80 ms.
 void test_commit_after_home_ramp_takes_80ms() {
   CrowdDim d;
@@ -129,5 +151,7 @@ int main(int, char**) {
   RUN_TEST(test_timestamp_before_ramp_start_reads_as_start);
   RUN_TEST(test_commit_during_home_ramp_keeps_its_remaining_time);
   RUN_TEST(test_commit_after_home_ramp_takes_80ms);
+  RUN_TEST(test_chained_commits_keep_the_home_ramps_time);
+  RUN_TEST(test_commit_late_in_home_ramp_takes_at_least_80ms);
   return UNITY_END();
 }
