@@ -53,7 +53,6 @@ void Compositor::removeBehavior(AnimatedBehavior* b) {
     if (*it == b) { g_added.erase(it); return; }
   }
 }
-bool Compositor::homeModeSkipsType(const std::string&) const { return false; }
 }  // namespace lamp
 
 namespace {
