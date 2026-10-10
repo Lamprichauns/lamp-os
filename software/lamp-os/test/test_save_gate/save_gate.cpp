@@ -54,10 +54,28 @@ void test_a_failed_web_document_save_writes_the_running_config_back() {
   TEST_ASSERT_TRUE(gate.due(6000));
 }
 
+// A settings reboot owed to a deferred save waits for the save and for a
+// firmware receive to end, and gives up after kDeferredRebootMaxMs.
+void test_a_deferred_settings_reboot_cannot_wait_forever() {
+  using lamp::DeferredReboot;
+  using lamp::deferredReboot;
+  using lamp::kDeferredRebootMaxMs;
+  TEST_ASSERT_TRUE(deferredReboot(false, false, 0, 10) == DeferredReboot::Reboot);
+  TEST_ASSERT_TRUE(deferredReboot(true, false, 0, 10) == DeferredReboot::Wait);
+  TEST_ASSERT_TRUE(deferredReboot(false, true, 0, 10) == DeferredReboot::Wait);
+  TEST_ASSERT_TRUE(deferredReboot(true, false, 0, kDeferredRebootMaxMs - 1) ==
+                   DeferredReboot::Wait);
+  TEST_ASSERT_TRUE(deferredReboot(true, false, 0, kDeferredRebootMaxMs) ==
+                   DeferredReboot::GiveUp);
+  TEST_ASSERT_TRUE(deferredReboot(true, true, 0xFFFFFF00u, kDeferredRebootMaxMs) ==
+                   DeferredReboot::GiveUp);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_a_failed_save_backs_off_until_one_lands);
   RUN_TEST(test_a_stored_web_document_holds_every_save);
   RUN_TEST(test_a_failed_web_document_save_writes_the_running_config_back);
+  RUN_TEST(test_a_deferred_settings_reboot_cannot_wait_forever);
   return UNITY_END();
 }

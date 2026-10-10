@@ -221,10 +221,12 @@ void test_split_then_whole_erases_split_keys() {
   padToSplit(m);
   TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
   TEST_ASSERT_TRUE(store.has("xn") && store.has("x3") && store.has("ko"));
+  TEST_ASSERT_TRUE(store.has("cfgb") || store.has("cfgc"));
   TEST_ASSERT_TRUE(store.read("cfg", "").find("expressions") == std::string::npos);
   m.expressions.expressions.resize(1);
   TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
   TEST_ASSERT_FALSE(store.has("xn") || store.has("x0") || store.has("ko"));
+  TEST_ASSERT_FALSE(store.has("cfgb") || store.has("cfgc") || store.has("cfgl"));
   Model back;
   load(store, back);
   TEST_ASSERT_EQUAL(1, back.expressions.expressions.size());
@@ -1389,49 +1391,80 @@ void test_failed_rest_rewrite_keeps_the_live_copy() {
   TEST_ASSERT_TRUE(allSections(back, edited));
 }
 
-// A rest write whose bookkeeping allocation fails leaves an orphan chunk. A
-// rewrite in the same version family would put a second chunk beside it, and
-// IDF then drops the whole blob at the next boot: the key is held until that
-// boot, which erases the orphan, and the config that loads meanwhile is the
-// one before.
-void test_an_out_of_memory_rest_write_is_held_until_boot() {
-  for (bool quarantine : {true, false}) {
-    PagedNvs nvs;
-    nvs.quarantine = quarantine;
-    Model m = worstCaseModel();
-    TEST_ASSERT_TRUE(save(nvs, m) == SaveResult::Ok);
-    load(nvs, m);
-    Model edited = m;
-    edited.base.segments[0].colors[0] = Color(7, 7, 7, 7);
-    nvs.outOfMemoryKey = nvs.has("cfgb") ? "cfgc" : "cfgb";
-    TEST_ASSERT_TRUE(save(nvs, edited) == SaveResult::WriteFailed);
-    const bool retried = save(nvs, edited) == SaveResult::Ok;
-    TEST_ASSERT_EQUAL(!quarantine, retried);
-    nvs.boot();
-    Model back;
-    load(nvs, back);
-    if (!quarantine) {
-      // What the hold prevents: the retried blob is dropped at boot.
-      TEST_ASSERT_FALSE(allSections(back, edited));
-      continue;
+// A blob write whose bookkeeping allocation fails leaves an orphan chunk in
+// the version it was writing. The saves after it all land in the same
+// session, whichever key it was (a record, the knockout blob, the rest), and
+// the boot after them loads the latest: each such key's next write goes
+// through a throwaway version first. Without that, the next write doubles
+// the orphan's position and the boot drops the blob.
+void test_saves_after_an_out_of_memory_write_land_and_survive_the_boot() {
+  auto edit = [](Model& m, int i) {
+    m.expressions.expressions[3].intervalMin = 100 + i;
+    m.base.knockoutPixels[0] = static_cast<uint8_t>(i);
+    m.base.segments[0].colors[0] = Color(i, i, i, i);
+  };
+  for (const char* key : {"x3", "ko", "rest"}) {
+    for (int later : {1, 2, 5}) {
+      for (bool pastOrphans : {true, false}) {
+        if (!pastOrphans && later != 1) continue;
+        PagedNvs nvs;
+        nvs.pastOrphans = pastOrphans;
+        Model latest = worstCaseModel();
+        TEST_ASSERT_TRUE(save(nvs, latest) == SaveResult::Ok);
+        load(nvs, latest);
+        nvs.outOfMemoryKey =
+            std::strcmp(key, "rest") != 0 ? key : (nvs.has("cfgb") ? "cfgc" : "cfgb");
+        edit(latest, 1);
+        TEST_ASSERT_TRUE(save(nvs, latest) == SaveResult::WriteFailed);
+        for (int i = 0; i < later; ++i) {
+          edit(latest, 2 + i);
+          TEST_ASSERT_TRUE_MESSAGE(save(nvs, latest) == SaveResult::Ok, key);
+        }
+        nvs.boot();
+        Model back;
+        load(nvs, back);
+        if (pastOrphans) {
+          TEST_ASSERT_TRUE_MESSAGE(allSections(back, latest), key);
+        } else {
+          TEST_ASSERT_FALSE_MESSAGE(allSections(back, latest), key);
+        }
+      }
     }
-    TEST_ASSERT_TRUE(allSections(back, m));
-    TEST_ASSERT_TRUE(save(nvs, edited) == SaveResult::Ok);
-    nvs.boot();
-    load(nvs, back);
-    TEST_ASSERT_TRUE(allSections(back, edited));
   }
 }
 
-// The hold names keys exactly; past kMax keys it holds every key.
-void test_the_write_quarantine_holds_its_keys() {
-  WriteQuarantine q;
-  TEST_ASSERT_TRUE(q.empty());
-  q.add("cfgc");
-  TEST_ASSERT_TRUE(q.holds("cfgc"));
-  TEST_ASSERT_FALSE(q.holds("cfgb"));
-  for (size_t i = 0; i < WriteQuarantine::kMax; ++i) q.add(("x" + std::to_string(i)).c_str());
-  TEST_ASSERT_TRUE(q.holds("anything"));
+// A key's write that ran out of heap is marked; its next write goes through
+// one throwaway version, and once that lands the key writes plainly again.
+void test_a_key_is_written_past_its_orphan_once() {
+  OrphanKeys orphans;
+  std::vector<size_t> lengths;
+  BlobWrite next = BlobWrite::OutOfMemory;
+  auto write = [&](const char*, const void*, size_t len) {
+    lengths.push_back(len);
+    const BlobWrite result = next;
+    next = BlobWrite::Ok;
+    return result;
+  };
+  const char value[3] = {1, 2, 3};
+  TEST_ASSERT_FALSE(writeBlobPastOrphan(orphans, "x3", value, 3, write));
+  TEST_ASSERT_TRUE(orphans.holds("x3"));
+  TEST_ASSERT_TRUE(writeBlobPastOrphan(orphans, "x3", value, 3, write));
+  TEST_ASSERT_TRUE(writeBlobPastOrphan(orphans, "x3", value, 3, write));
+  const std::vector<size_t> expected = {3, 0, 3, 3};
+  TEST_ASSERT_TRUE(lengths == expected);
+}
+
+// The orphan list names keys exactly, forgets a key once rewritten, and past
+// kMax keys holds every key.
+void test_the_orphan_list_holds_its_keys() {
+  OrphanKeys keys;
+  keys.add("cfgc");
+  TEST_ASSERT_TRUE(keys.holds("cfgc"));
+  TEST_ASSERT_FALSE(keys.holds("cfgb"));
+  keys.remove("cfgc");
+  TEST_ASSERT_FALSE(keys.holds("cfgc"));
+  for (size_t i = 0; i <= OrphanKeys::kMax; ++i) keys.add(("x" + std::to_string(i)).c_str());
+  TEST_ASSERT_TRUE(keys.holds("anything"));
 }
 
 // A split store whose rest blob is gone loads defaults for it, and says so,
@@ -1558,9 +1591,10 @@ int main(int, char**) {
   RUN_TEST(test_page_model_confines_a_string_to_one_page);
   RUN_TEST(test_page_model_failed_rewrite_takes_the_old_copy);
   RUN_TEST(test_failed_rest_rewrite_keeps_the_live_copy);
-  RUN_TEST(test_an_out_of_memory_rest_write_is_held_until_boot);
+  RUN_TEST(test_saves_after_an_out_of_memory_write_land_and_survive_the_boot);
   RUN_TEST(test_a_split_store_missing_its_rest_is_reported);
-  RUN_TEST(test_the_write_quarantine_holds_its_keys);
+  RUN_TEST(test_the_orphan_list_holds_its_keys);
+  RUN_TEST(test_a_key_is_written_past_its_orphan_once);
   RUN_TEST(test_every_cut_short_store_survives_the_next_save);
   RUN_TEST(test_a_stale_lamp_blob_under_a_staged_whole_is_replaced);
   RUN_TEST(test_a_store_with_both_rest_keys_loads_and_saves_on);
