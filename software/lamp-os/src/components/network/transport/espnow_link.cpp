@@ -30,7 +30,7 @@ static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_
         s_lastLogMs.compare_exchange_strong(last, now, std::memory_order_relaxed)) {
       s_logged.store(true, std::memory_order_relaxed);
       // Short enough for Print's stack buffer: no malloc on a starved heap.
-      Serial.printf("[espnow.tx] no tx callback, credits reset n=%lu\n",
+      Serial.printf("[espnow.tx] no tx callback, credits taken back n=%lu\n",
                     (unsigned long)EspNowLink::s_txCredit.stalls());
     }
   }
