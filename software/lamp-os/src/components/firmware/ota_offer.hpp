@@ -7,15 +7,18 @@
 
 namespace lamp {
 
-// Anything that holds the offer scan back: an OTA moving in either direction,
-// for either image, or OTA quiet mode.
+// Anything that holds the offer scan back: the compositor's startup phase, an
+// OTA moving in either direction for either image, or OTA quiet mode.
 struct OtaOfferBusy {
+  bool startingUp = false;
   bool firmwareSending = false;
   bool firmwareReceiving = false;
   bool fsBusy = false;
   bool quiet = false;
 
-  bool any() const { return firmwareSending || firmwareReceiving || fsBusy || quiet; }
+  bool any() const {
+    return startingUp || firmwareSending || firmwareReceiving || fsBusy || quiet;
+  }
 };
 
 // Paces the offer scan. A busy lamp never scans and does not spend the interval.
@@ -49,9 +52,10 @@ inline bool peerRunsNewerFirmware(const std::vector<MeshPeer>& peers, uint32_t o
   return false;
 }
 
-// Offers this lamp's firmware and filesystem image to stale peers. Runs every
-// loop on every variant, whatever the lamp's features, home mode or social
-// mode: offering an update is not a social behaviour.
-void tickOtaOffers(uint32_t nowMs);
+// Offers this lamp's firmware and filesystem image to stale peers once
+// startupComplete (the compositor's startup phase has ended). Runs every loop
+// on every variant, whatever the lamp's features, home mode or social mode:
+// offering an update is not a social behaviour.
+void tickOtaOffers(uint32_t nowMs, bool startupComplete);
 
 }  // namespace lamp

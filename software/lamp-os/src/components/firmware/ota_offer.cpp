@@ -23,8 +23,9 @@ OtaOfferThrottle s_throttle;
 //
 // Only ESP-NOW peers are walked, since firmwareVersion arrives on the ESP-NOW
 // HELLO and a BLE-only sighting carries none.
-void tickOtaOffers(uint32_t nowMs) {
+void tickOtaOffers(uint32_t nowMs, bool startupComplete) {
   OtaOfferBusy busy;
+  busy.startingUp = !startupComplete;
   busy.firmwareSending = firmwareDistributor.isInProgress();
   busy.firmwareReceiving = ::firmwareReceiver.isInProgress();
   busy.fsBusy = fs_ota::fsPathBusy();

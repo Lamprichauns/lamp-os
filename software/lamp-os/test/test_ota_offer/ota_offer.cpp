@@ -46,6 +46,14 @@ void test_each_busy_source_blocks_the_scan() {
   }
 }
 
+void test_startup_phase_holds_offers() {
+  OtaOfferThrottle t;
+  OtaOfferBusy startingUp;
+  startingUp.startingUp = true;
+  TEST_ASSERT_FALSE(t.due(startingUp, 5000));
+  TEST_ASSERT_TRUE(t.due({}, 5001));
+}
+
 void test_busy_tick_does_not_spend_the_interval() {
   OtaOfferThrottle t;
   TEST_ASSERT_TRUE(t.due({}, 5000));
@@ -85,6 +93,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_scans_once_per_interval);
   RUN_TEST(test_interval_survives_millis_wrap);
   RUN_TEST(test_each_busy_source_blocks_the_scan);
+  RUN_TEST(test_startup_phase_holds_offers);
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
   RUN_TEST(test_newer_peer_holds_offers);
   RUN_TEST(test_same_or_older_peers_allow_offers);

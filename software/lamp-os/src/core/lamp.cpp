@@ -1162,7 +1162,7 @@ void lamp::Lamp::tick() {
   firmwareReceiver.tick(millis());
   lamp::firmwareDistributor.tick(millis());
   fs_ota::tick(millis());
-  lamp::tickOtaOffers(millis());
+  lamp::tickOtaOffers(millis(), compositor.startupComplete);
   // Post-OTA self-health check. After 30 seconds of steady-state loop
   // iteration, if BLE is up and the loop has been iterating (trivially true
   // inside it), call mark_app_valid so the next OTA can succeed. If the lamp
