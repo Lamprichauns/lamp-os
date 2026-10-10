@@ -536,17 +536,12 @@ void lamp::Lamp::tickInputs(uint32_t nowMs) {
 // the compositor repaints from the behaviour stack on the next frame.
 static void pulseWholeLampTwice() {
   lamp::FrameBuffer* fbs[] = {&::shade, &::base};
-  uint8_t saved[2] = {0, 0};
-  for (size_t i = 0; i < 2; ++i) {
-    if (!fbs[i]->segments.empty()) {
-      saved[i] = fbs[i]->segments[0].driver->getBrightness();
-    }
-  }
+  const uint8_t saved[2] = {fbs[0]->level, fbs[1]->level};
   auto paint = [&](lamp::Color c, uint8_t brightness) {
     for (auto* fb : fbs) {
       if (fb->segments.empty()) continue;
       std::fill(fb->buffer.begin(), fb->buffer.end(), c);
-      for (auto& seg : fb->segments) seg.driver->setBrightness(brightness);
+      fb->level = brightness;
       fb->flush();
     }
   };
@@ -558,10 +553,7 @@ static void pulseWholeLampTwice() {
     paint(off, 200);
     delay(180);
   }
-  for (size_t i = 0; i < 2; ++i) {
-    if (fbs[i]->segments.empty()) continue;
-    for (auto& seg : fbs[i]->segments) seg.driver->setBrightness(saved[i]);
-  }
+  for (size_t i = 0; i < 2; ++i) fbs[i]->level = saved[i];
 }
 
 void lamp::Lamp::tickBootRecovery() {
@@ -764,7 +756,7 @@ void lamp::Lamp::setup() {
   ::recomputeDrawAnchors();
 
   // Cap every segment at maxBrightness before the first content flush, else a
-  // strip runs at the NeoPixel full-bright default. Runs after the governor's
+  // strip runs at the FrameBuffer full-level default. Runs after the governor's
   // begin() so the boot-hold ceiling reaches the drivers here.
   applyEffectiveBrightness();
 

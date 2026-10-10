@@ -22,7 +22,10 @@ class FrameBuffer {
  public:
   std::vector<Color> defaultColors;
   std::vector<Color> previousBuffer;
-  uint8_t previousBrightness = 0;
+  // Strip level 0..255 folded into flush() with gamma. Drivers stay at the
+  // NeoPixel default (no scaling); never call setBrightness on a driver.
+  uint8_t level = 255;
+  uint8_t previousLevel = 255;
   uint8_t pixelCount = 0;
   std::vector<Color> buffer;
   std::vector<StripSegment> segments;
@@ -35,7 +38,15 @@ class FrameBuffer {
 
   void begin(std::vector<Color> inDefaultColors, uint8_t inPixelCount, Adafruit_NeoPixel* inDriver);
 
+  // Temporally dithered push: a fractional channel keeps flush() sending every
+  // frame until every channel lands on a whole drive level. See
+  // docs/dev/lamp-framework.md.
   void flush();
+
+ private:
+  // Per pixel per channel (w, r, g, b) dither fraction, sized once in begin().
+  std::vector<uint8_t> ditherCarry_;
+  bool dithering_ = false;
 };
 
 }  // namespace lamp

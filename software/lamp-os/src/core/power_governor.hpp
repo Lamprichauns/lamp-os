@@ -11,8 +11,8 @@ namespace lamp {
 // channels is 3 or 4; W counts only on 4-channel strips.
 float fullDutyMa(const std::vector<Color>& buffer, uint8_t channels);
 
-// Demand at the requested (pre-clamp) driver level. (requested+1)/256 mirrors
-// the NeoPixel setPixelColor brightness scaler; idle strip draw rides on top.
+// Demand at the requested (pre-clamp) strip level. (requested+1)/256 bounds
+// FrameBuffer::flush's level/255 scale from above; idle strip draw rides on top.
 float demandMa(float fullDutySumMa, uint8_t requestedScaled,
                uint16_t totalPixelCount);
 

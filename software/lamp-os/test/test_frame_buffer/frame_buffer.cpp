@@ -128,32 +128,56 @@ void test_skipped_segment_leaves_previous_buffer_unadvanced() {
   TEST_ASSERT_TRUE(fb.previousBuffer == fb.buffer);
 }
 
-// A driver-brightness change alone (the governor's pre-flush setBrightness)
-// defeats the content dedup: every pixel is rewritten and shown at the new
-// level, so a clamped frame reaches the strip fully re-scaled.
-void test_brightness_change_forces_full_repush() {
+// A strip-level change alone (the governor's pre-flush clamp) defeats the
+// content dedup: every pixel is rewritten and shown at the new level.
+void test_level_change_forces_full_repush() {
   const Color red(0xFF, 0, 0, 0);
 
   FrameBuffer fb;
   fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 3}});
   fb.buffer = {red, red, red};
-  neo0.brightness = 255;
   fb.flush();
-  TEST_ASSERT_EQUAL_UINT8(255, fb.previousBrightness);
+  TEST_ASSERT_EQUAL_UINT8(255, fb.previousLevel);
 
-  // Same content, same brightness: dedup short-circuits.
+  // Same content, same level: dedup short-circuits.
   neo0.reset();
   fb.flush();
   TEST_ASSERT_EQUAL_UINT(0, neo0.pixelCalls.size());
   TEST_ASSERT_EQUAL_INT(0, neo0.showCount);
 
-  // Same content, clamped brightness: full repush then show.
-  neo0.brightness = 127;
+  // Same content, clamped level: full repush at the folded-in level.
+  fb.level = 127;
   neo0.reset();
   fb.flush();
   TEST_ASSERT_EQUAL_UINT(3, neo0.pixelCalls.size());
+  TEST_ASSERT_EQUAL_UINT32(127u << 16, neo0.pixelCalls[0].c);
   TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
-  TEST_ASSERT_EQUAL_UINT8(127, fb.previousBrightness);
+  TEST_ASSERT_EQUAL_UINT8(127, fb.previousLevel);
+}
+
+// A channel between drive levels keeps flushing every frame and averages to
+// its 8.8 target; once every channel is whole the dedup takes over again.
+void test_fractional_level_dithers_until_whole() {
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
+  fb.buffer = {Color(10, 0, 0, 0)};
+  uint32_t redSum = 0;
+  for (int f = 0; f < 256; f++) {
+    neo0.reset();
+    fb.flush();
+    TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
+    TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c & 0xFF00FFFFu);
+    redSum += (neo0.pixelCalls[0].c >> 16) & 0xFF;
+  }
+  TEST_ASSERT_EQUAL_UINT32(kGamma88[10], redSum);
+
+  fb.buffer = {Color(0, 0, 0, 0)};
+  neo0.reset();
+  fb.flush();
+  TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c);
+  neo0.reset();
+  fb.flush();
+  TEST_ASSERT_EQUAL_INT(0, neo0.showCount);
 }
 
 // reversed=true flips pixel order; reversed=false is byte-identical to before.
@@ -195,7 +219,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_new_api_and_adapter_flush_identically);
   RUN_TEST(test_multisegment_routes_pixels_to_correct_drivers);
   RUN_TEST(test_skipped_segment_leaves_previous_buffer_unadvanced);
-  RUN_TEST(test_brightness_change_forces_full_repush);
+  RUN_TEST(test_level_change_forces_full_repush);
+  RUN_TEST(test_fractional_level_dithers_until_whole);
   RUN_TEST(test_reversed_segment_flips_pixel_order);
   return UNITY_END();
 }
