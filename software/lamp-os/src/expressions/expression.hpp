@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <variant>
 #include <vector>
 
 #include "core/animated_behavior.hpp"
 #include "expressions/expression_schema.hpp"
+#include "config/config_types.hpp"
 #include "util/color.hpp"
 #include "util/easing.hpp"
 #include "util/fast_rng.hpp"
@@ -66,11 +66,11 @@ class Expression : public AnimatedBehavior {
 
   // Read the shared "opacity" param (clamped 10..100, default 100) into
   // opacityPct_. Call from each subclass configureFromParameters.
-  void configureOpacity(const std::map<std::string, uint32_t>& parameters);
+  void configureOpacity(const ExpressionParams& parameters);
 
   // Read the shared "easing" param (default defVal). Resolves Random to a
   // concrete curve immediately; trigger() re-rolls it on each fire.
-  void configureEasing(const std::map<std::string, uint32_t>& parameters, uint32_t defVal);
+  void configureEasing(const ExpressionParams& parameters, uint32_t defVal);
 
  public:
   using AnimatedBehavior::AnimatedBehavior;
@@ -97,7 +97,7 @@ class Expression : public AnimatedBehavior {
 
   // Apply expression-specific tuning params keyed as in descriptor().params.
   virtual void configureFromParameters(
-      const std::map<std::string, uint32_t>& parameters) = 0;
+      const ExpressionParams& parameters) = 0;
 
   void control() override;
 

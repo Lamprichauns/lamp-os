@@ -46,7 +46,7 @@ class BloomExpression : public Expression {
   using Expression::Expression;
   explicit BloomExpression(FrameBuffer* inBuffer, uint32_t inFrames = kBloomFrames);
 
-  void configureFromParameters(const std::map<std::string, uint32_t>&) override {}
+  void configureFromParameters(const ExpressionParams&) override {}
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
 

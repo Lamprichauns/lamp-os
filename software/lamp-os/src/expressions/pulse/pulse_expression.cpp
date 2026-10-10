@@ -17,7 +17,7 @@ PulseExpression::PulseExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {
 }
 
-void PulseExpression::configureFromParameters(const std::map<std::string, uint32_t>& parameters) {
+void PulseExpression::configureFromParameters(const ExpressionParams& parameters) {
   const uint16_t window = windowSize();
   zone_ = resolveZone(parameters, window);
 

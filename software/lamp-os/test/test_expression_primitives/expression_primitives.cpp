@@ -20,14 +20,15 @@ using lamp::randomPermutation;
 using lamp::Color;
 using lamp::buildZonePreviewBuffer;
 
-static std::map<std::string, uint32_t> empty() { return {}; }
+using lamp::ExpressionParams;
+static ExpressionParams empty() { return {}; }
 
 void test_getparam_absent_returns_fallback() {
   TEST_ASSERT_EQUAL_UINT32(7u, getParam(empty(), "nope", 7u));
 }
 void test_getparam_present_returns_value() {
-  std::map<std::string, uint32_t> p = {{"k", 4u}};
-  TEST_ASSERT_EQUAL_UINT32(4u, getParam(p, "k", 7u));
+  ExpressionParams p = {{"size", 4u}};
+  TEST_ASSERT_EQUAL_UINT32(4u, getParam(p, "size", 7u));
 }
 
 void test_zone_absent_spans_full_window() {
@@ -37,13 +38,13 @@ void test_zone_absent_spans_full_window() {
   TEST_ASSERT_EQUAL_UINT16(144, r.size());
 }
 void test_zone_clamps_to_window() {
-  std::map<std::string, uint32_t> p = {{"posMin", 5}, {"posMax", 9999}};
+  ExpressionParams p = {{"posMin", 5}, {"posMax", 9999}};
   Zone r = Zone::fromParameters(p, 144);
   TEST_ASSERT_EQUAL_UINT16(5, r.posMin);
   TEST_ASSERT_EQUAL_UINT16(143, r.posMax);
 }
 void test_zone_swaps_reversed() {
-  std::map<std::string, uint32_t> p = {{"posMin", 100}, {"posMax", 20}};
+  ExpressionParams p = {{"posMin", 100}, {"posMax", 20}};
   Zone r = Zone::fromParameters(p, 144);
   TEST_ASSERT_EQUAL_UINT16(20, r.posMin);
   TEST_ASSERT_EQUAL_UINT16(100, r.posMax);
@@ -80,12 +81,12 @@ void test_points_absent_returns_default() {
   TEST_ASSERT_EQUAL_UINT16(1, pts.count);
 }
 void test_points_clamps_to_window() {
-  std::map<std::string, uint32_t> p = {{"count", 9999}};
+  ExpressionParams p = {{"count", 9999}};
   Points pts = Points::fromParameters(p, 10, 1);
   TEST_ASSERT_EQUAL_UINT16(10, pts.count);
 }
 void test_points_floor_is_one() {
-  std::map<std::string, uint32_t> p = {{"count", 0}};
+  ExpressionParams p = {{"count", 0}};
   Points pts = Points::fromParameters(p, 10, 3);
   TEST_ASSERT_EQUAL_UINT16(1, pts.count);
 }
@@ -94,22 +95,22 @@ void test_parsesize_absent_returns_default() {
   TEST_ASSERT_EQUAL_UINT16(15, parseSize(empty(), 144, 15));
 }
 void test_parsesize_clamps_to_window() {
-  std::map<std::string, uint32_t> p = {{"size", 9999}};
+  ExpressionParams p = {{"size", 9999}};
   TEST_ASSERT_EQUAL_UINT16(144, parseSize(p, 144, 15));
 }
 void test_parsesize_floor_is_one() {
-  std::map<std::string, uint32_t> p = {{"size", 0}};
+  ExpressionParams p = {{"size", 0}};
   TEST_ASSERT_EQUAL_UINT16(1, parseSize(p, 144, 15));
 }
 
 void test_resolve_zone_fullstrip_ignores_region() {
-  std::map<std::string, uint32_t> p = {{"fullStrip", 1}, {"posMin", 5}, {"posMax", 20}};
+  ExpressionParams p = {{"fullStrip", 1}, {"posMin", 5}, {"posMax", 20}};
   Zone r = lamp::resolveZone(p, 144);
   TEST_ASSERT_EQUAL_UINT16(0, r.posMin);
   TEST_ASSERT_EQUAL_UINT16(143, r.posMax);
 }
 void test_resolve_zone_region_honors_bounds() {
-  std::map<std::string, uint32_t> p = {{"fullStrip", 0}, {"posMin", 5}, {"posMax", 20}};
+  ExpressionParams p = {{"fullStrip", 0}, {"posMin", 5}, {"posMax", 20}};
   Zone r = lamp::resolveZone(p, 144);
   TEST_ASSERT_EQUAL_UINT16(5, r.posMin);
   TEST_ASSERT_EQUAL_UINT16(20, r.posMax);

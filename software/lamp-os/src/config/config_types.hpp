@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <cstring>
-#include <map>
+#include <initializer_list>
+#include <utility>
 #include <string>
 #include <variant>
 #include <vector>
@@ -231,6 +233,91 @@ inline int expressionParamKeyIndex(const char* key) {
   return -1;
 }
 
+// An expression's parameters: one optional uint32 per kExpressionParamKeys
+// slot, so it holds every key without allocating, copies as a plain value,
+// and iterates in key-index order (byte-wise key order, the order the wire
+// JSON has always carried). A key with no index is never stored. Parse sites
+// cap how many keys arrive (kMaxExpressionParams); the container itself can
+// hold all of them, so registry defaults always fit on top.
+class ExpressionParams {
+ public:
+  struct Item {
+    const char* first;
+    uint32_t second;
+  };
+  class Iterator {
+   public:
+    Iterator(const ExpressionParams* p, size_t i) : p_(p), i_(i) { skip(); }
+    Item operator*() const { return {kExpressionParamKeys[i_], p_->values_[i_]}; }
+    Iterator& operator++() {
+      ++i_;
+      skip();
+      return *this;
+    }
+    bool operator!=(const Iterator& o) const { return i_ != o.i_; }
+
+   private:
+    void skip() {
+      while (i_ < kExpressionParamKeyCount && !(p_->present_ & (1u << i_))) ++i_;
+    }
+    const ExpressionParams* p_;
+    size_t i_;
+  };
+
+  ExpressionParams() = default;
+  ExpressionParams(std::initializer_list<std::pair<const char*, uint32_t>> items) {
+    for (const auto& kv : items) set(kv.first, kv.second);
+  }
+
+  Iterator begin() const { return Iterator(this, 0); }
+  Iterator end() const { return Iterator(this, kExpressionParamKeyCount); }
+  size_t size() const { return static_cast<size_t>(__builtin_popcount(present_)); }
+  bool empty() const { return present_ == 0; }
+  void clear() { present_ = 0; }
+
+  // Value for `key`, or `fallback` when absent or unknown.
+  uint32_t get(const char* key, uint32_t fallback) const {
+    const int i = expressionParamKeyIndex(key);
+    return i >= 0 && (present_ & (1u << i)) ? values_[i] : fallback;
+  }
+  bool contains(const char* key) const {
+    const int i = expressionParamKeyIndex(key);
+    return i >= 0 && (present_ & (1u << i));
+  }
+  // False, storing nothing, when `key` has no index.
+  bool set(const char* key, uint32_t value) {
+    const int i = expressionParamKeyIndex(key);
+    if (i < 0) return false;
+    setIndex(static_cast<size_t>(i), value);
+    return true;
+  }
+  // Sets `key` only when absent.
+  void setDefault(const char* key, uint32_t value) {
+    if (!contains(key)) set(key, value);
+  }
+  void setIndex(size_t index, uint32_t value) {
+    present_ |= 1u << index;
+    values_[index] = value;
+  }
+  void erase(const char* key) {
+    const int i = expressionParamKeyIndex(key);
+    if (i >= 0) present_ &= ~(1u << i);
+  }
+
+  bool operator==(const ExpressionParams& o) const {
+    if (present_ != o.present_) return false;
+    for (size_t i = 0; i < kExpressionParamKeyCount; ++i) {
+      if ((present_ & (1u << i)) && values_[i] != o.values_[i]) return false;
+    }
+    return true;
+  }
+
+ private:
+  static_assert(kExpressionParamKeyCount <= 32, "presence mask is one uint32");
+  uint32_t present_ = 0;
+  std::array<uint32_t, kExpressionParamKeyCount> values_{};
+};
+
 /**
  * Configuration for a single expression with generic parameter system
  */
@@ -243,21 +330,12 @@ class ExpressionConfig {
   uint32_t intervalMax = 900;      // Max interval in seconds
   uint8_t target = 3;              // TARGET_SHADE=1, TARGET_BASE=2, TARGET_BOTH=3
 
-  // Generic parameter storage for expression-specific values
-  std::map<std::string, uint32_t> parameters;
+  ExpressionParams parameters;
 
-  // Helper methods for parameter access
-  uint32_t getParameter(const std::string& name, uint32_t defaultValue) const {
-    auto it = parameters.find(name);
-    if (it != parameters.end()) {
-      return it->second;
-    }
-    return defaultValue;
+  uint32_t getParameter(const char* name, uint32_t defaultValue) const {
+    return parameters.get(name, defaultValue);
   }
-
-  void setParameter(const std::string& name, uint32_t value) {
-    parameters[name] = value;
-  }
+  void setParameter(const char* name, uint32_t value) { parameters.set(name, value); }
 };
 
 class ExpressionSettings {

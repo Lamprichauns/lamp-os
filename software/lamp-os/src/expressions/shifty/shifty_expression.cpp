@@ -24,7 +24,7 @@ const ExpressionDescriptor& ShiftyExpression::descriptor() const {
   return kShiftyDescriptor;
 }
 
-void ShiftyExpression::configureFromParameters(const std::map<std::string, uint32_t>& parameters) {
+void ShiftyExpression::configureFromParameters(const ExpressionParams& parameters) {
   uint32_t shiftDurationMin = getParam(parameters, "shiftDurationMin");
   uint32_t shiftDurationMax = getParam(parameters, "shiftDurationMax");
   uint32_t fadeDuration = getParam(parameters, "fadeDuration");

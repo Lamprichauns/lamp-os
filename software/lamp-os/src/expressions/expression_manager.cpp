@@ -45,7 +45,7 @@ std::unique_ptr<Expression> ExpressionManager::makeExpression(
     const std::vector<Color>& colors,
     uint32_t intervalMin, uint32_t intervalMax,
     ExpressionTarget target,
-    const std::map<std::string, uint32_t>& parameters) {
+    const ExpressionParams& parameters) {
   const ExpressionDescriptor* d = registry_.find(type.c_str());
   if (!d || !d->make) return nullptr;
 
@@ -57,7 +57,7 @@ std::unique_ptr<Expression> ExpressionManager::makeExpression(
   }
   expr->configure(colors, intervalMin, intervalMax, target);
 
-  std::map<std::string, uint32_t> effective = parameters;
+  ExpressionParams effective = parameters;
   registry_.applyDefaults(*d, effective,
                           (buffer && buffer->pixelCount > 0) ? buffer->pixelCount : 1);
   expr->configureFromParameters(effective);
@@ -83,7 +83,7 @@ void ExpressionManager::addExpression(const ExpressionConfig& config) {
                                    config.intervalMin, config.intervalMax,
                                    target, config.parameters)) {
       expr->autoTriggerEnabled = config.enabled;
-      expressions.push_back({std::move(expr), config.type, config});
+      expressions.push_back({std::move(expr), config.type, config.parameters});
     }
   }
 }
@@ -110,9 +110,9 @@ void ExpressionManager::setCompositor(Compositor* compositor) {
 void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                                      const uint8_t* excludeMac) {
   if (!meshLink_ || !entry.expression) return;
-  if (entry.config.getParameter(kParamCascadeEnabled, 0) == 0) {
+  if (entry.params.get(kParamCascadeEnabled, 0) == 0) {
 #ifdef LAMP_DEBUG
-    Serial.printf("[cascade] skip not-enabled type=%s\n", entry.config.type.c_str());
+    Serial.printf("[cascade] skip not-enabled type=%s\n", entry.type.c_str());
 #endif
     return;
   }
@@ -120,31 +120,31 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   // Continuous expressions retrigger at boot, settings upsert, and wisp
   // release; a stored cascadeEnabled=1 would fan out one-shots on each. The
   // app hides the cascade toggle for continuous types, so gate here to match.
-  const ExpressionDescriptor* d = registry_.find(entry.config.type.c_str());
-  if (d && effectiveContinuous(*d, entry.config.parameters)) {
+  const ExpressionDescriptor* d = registry_.find(entry.type.c_str());
+  if (d && effectiveContinuous(*d, entry.params)) {
 #ifdef LAMP_DEBUG
-    Serial.printf("[cascade] skip continuous type=%s\n", entry.config.type.c_str());
+    Serial.printf("[cascade] skip continuous type=%s\n", entry.type.c_str());
 #endif
     return;
   }
 
   const uint32_t intervalIdx = static_cast<uint32_t>(entry.expression->getTarget());
   const uint32_t nowMs = millis();
-  if (recentCascades_.seen(entry.config.type, intervalIdx, nowMs)) {
+  if (recentCascades_.seen(entry.type, intervalIdx, nowMs)) {
 #ifdef LAMP_DEBUG
-    Serial.printf("[cascade] skip dedup type=%s\n", entry.config.type.c_str());
+    Serial.printf("[cascade] skip dedup type=%s\n", entry.type.c_str());
 #endif
     return;
   }
-  recentCascades_.record(entry.config.type, intervalIdx, nowMs);
+  recentCascades_.record(entry.type, intervalIdx, nowMs);
 
-  const uint32_t staggerMs = entry.config.getParameter(kParamCascadeStaggerMs, 0);
+  const uint32_t staggerMs = entry.params.get(kParamCascadeStaggerMs, 0);
 
   ExpressionInvocation inv;
-  inv.type = entry.config.type;
+  inv.type = entry.type;
   inv.colors = entry.expression->getColors();
   inv.target = static_cast<uint8_t>(entry.expression->getTarget());
-  inv.parameters = parametersWithoutCascadeKeys(entry.config.parameters);
+  inv.parameters = parametersWithoutCascadeKeys(entry.params);
 
   std::vector<MeshPeer>& targets = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
   uint8_t myMac[6];
@@ -164,13 +164,13 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
 
   if (targets.empty()) {
 #ifdef LAMP_DEBUG
-    Serial.printf("[cascade] skip no-peers type=%s\n", entry.config.type.c_str());
+    Serial.printf("[cascade] skip no-peers type=%s\n", entry.type.c_str());
 #endif
     return;
   }
   if (meshLink_->isOtaInProgress()) {
 #ifdef LAMP_DEBUG
-    Serial.printf("[cascade] skip ota type=%s\n", entry.config.type.c_str());
+    Serial.printf("[cascade] skip ota type=%s\n", entry.type.c_str());
 #endif
     return;
   }
@@ -204,12 +204,12 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                   (unsigned)overLen,
                   (unsigned)lamp_protocol::COMMAND_MAX_PAYLOAD,
                   (unsigned)dropped, (unsigned)targets.size(),
-                  entry.config.type.c_str());
+                  entry.type.c_str());
   }
 #ifdef LAMP_DEBUG
   if (sent > 0) {
     Serial.printf("[cascade] sent type=%s peers=%u\n",
-                  entry.config.type.c_str(), (unsigned)sent);
+                  entry.type.c_str(), (unsigned)sent);
   }
 #endif
 }
@@ -220,19 +220,19 @@ void ExpressionManager::emitEvent(const ExpressionEntry& entry) {
 
   // Continuous expressions retrigger at boot, settings upsert, and wisp
   // release; announcing those would spuriously trigger peer mirrors.
-  const ExpressionDescriptor* d = registry_.find(entry.config.type.c_str());
-  if (d && effectiveContinuous(*d, entry.config.parameters)) return;
+  const ExpressionDescriptor* d = registry_.find(entry.type.c_str());
+  if (d && effectiveContinuous(*d, entry.params)) return;
 
   const uint32_t intervalIdx = static_cast<uint32_t>(entry.expression->getTarget());
   const uint32_t nowMs = millis();
-  if (recentEvents_.seen(entry.config.type, intervalIdx, nowMs)) return;
-  recentEvents_.record(entry.config.type, intervalIdx, nowMs);
+  if (recentEvents_.seen(entry.type, intervalIdx, nowMs)) return;
+  recentEvents_.record(entry.type, intervalIdx, nowMs);
 
   ExpressionInvocation inv;
-  inv.type = entry.config.type;
+  inv.type = entry.type;
   inv.colors = entry.expression->getColors();
   inv.target = static_cast<uint8_t>(entry.expression->getTarget());
-  inv.parameters = parametersWithoutCascadeKeys(entry.config.parameters);
+  inv.parameters = parametersWithoutCascadeKeys(entry.params);
 
   std::string json;
   serializeInvocation(inv, json);
@@ -308,15 +308,12 @@ ExpressionManager::entryFromInvocation(const ExpressionInvocation& inv) {
 
   ExpressionEntry entry;
   entry.type = inv.type;
-  entry.config.type = inv.type;
-  entry.config.colors = inv.colors;
-  entry.config.target = inv.target;
-  entry.config.parameters = inv.parameters;
-  entry.config.setParameter(kParamCascadeEnabled, 1);
+  entry.params = inv.parameters;
+  entry.params.set(kParamCascadeEnabled, 1);
+  const ExpressionConfig defaults;
   entry.expression = makeExpression(inv.type, buffer, inv.colors,
-                                    entry.config.intervalMin,
-                                    entry.config.intervalMax,
-                                    target, entry.config.parameters);
+                                    defaults.intervalMin, defaults.intervalMax,
+                                    target, entry.params);
   return entry;
 }
 

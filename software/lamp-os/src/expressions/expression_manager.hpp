@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -43,14 +42,16 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
  */
 class ExpressionManager {
  private:
-  // Store expression with its type for triggering. `config` is a snapshot
-  // of the ExpressionConfig that built this entry, kept so the manager can
-  // make cascade decisions without each Expression subclass having to
-  // expose its raw parameter map.
+  // An expression with its type for triggering, and the parameters that built
+  // it for cascade decisions. Config::expressions owns the stored
+  // configuration; an entry keeps only this inline, allocation-free copy of
+  // the parameters, since entries built from a relayed op or an invocation
+  // have no Config entry to point at, and Config's vector moves its elements
+  // on every add and remove.
   struct ExpressionEntry {
     std::unique_ptr<Expression> expression;
     std::string type;
-    ExpressionConfig config;
+    ExpressionParams params;
   };
   std::vector<ExpressionEntry> expressions;
   FrameBuffer* shadeBuffer = nullptr;
@@ -182,7 +183,7 @@ class ExpressionManager {
       const std::vector<Color>& colors,
       uint32_t intervalMin, uint32_t intervalMax,
       ExpressionTarget target,
-      const std::map<std::string, uint32_t>& parameters);
+      const ExpressionParams& parameters);
 
  public:
   ExpressionRegistry& registry() { return registry_; }

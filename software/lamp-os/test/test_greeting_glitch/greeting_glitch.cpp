@@ -13,6 +13,8 @@
 
 #include <unity.h>
 
+#include "config/config_types.hpp"
+
 #include <cstdint>
 #include <map>
 #include <string>
@@ -73,7 +75,7 @@ struct Invocation {
   std::string type;
   std::vector<Color> colors;
   uint8_t target;
-  std::map<std::string, uint32_t> parameters;
+  lamp::ExpressionParams parameters;
   uint32_t delayMs;
 };
 
@@ -98,8 +100,8 @@ void test_crowd_invocation_is_glitchy_in_stem_color() {
   TEST_ASSERT_EQUAL_UINT(1, inv.colors.size());
   TEST_ASSERT_TRUE(inv.colors[0] == stem);
   TEST_ASSERT_EQUAL_UINT8(kTargetShade, inv.target);
-  TEST_ASSERT_EQUAL_UINT32(kFastGlitchMs, inv.parameters["durationMin"]);
-  TEST_ASSERT_EQUAL_UINT32(kFastGlitchMs, inv.parameters["durationMax"]);
+  TEST_ASSERT_EQUAL_UINT32(kFastGlitchMs, inv.parameters.get("durationMin", 0));
+  TEST_ASSERT_EQUAL_UINT32(kFastGlitchMs, inv.parameters.get("durationMax", 0));
   // Broadcast, not directed: delay 0, no peer MAC on the payload.
   TEST_ASSERT_EQUAL_UINT32(0, inv.delayMs);
 }

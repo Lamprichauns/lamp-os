@@ -3,10 +3,10 @@
 #include <ArduinoJson.h>
 
 #include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
 
+#include "config/config_types.hpp"
 #include "util/color.hpp"
 
 namespace lamp {
@@ -23,7 +23,7 @@ struct ExpressionInvocation {
   std::string type;
   std::vector<Color> colors;
   uint8_t target = 3;  // 1=SHADE, 2=BASE, 3=BOTH
-  std::map<std::string, uint32_t> parameters;
+  ExpressionParams parameters;
   uint32_t delayMs = 0;
 };
 
@@ -51,8 +51,8 @@ uint32_t clampDelayMs(uint32_t v);
 // Used by ExpressionManager when serializing an invocation for the wire;
 // receivers should never see the cascade keys, both to keep the message
 // small and as defense-in-depth against accidental re-cascade.
-std::map<std::string, uint32_t> parametersWithoutCascadeKeys(
-    const std::map<std::string, uint32_t>& parameters);
+ExpressionParams parametersWithoutCascadeKeys(
+    const ExpressionParams& parameters);
 
 // Serialize `inv` to JSON for MSG_COMMAND and MSG_EVENT payloads. `out` is
 // set to the serialized string. Always succeeds. `colors` is packed hex

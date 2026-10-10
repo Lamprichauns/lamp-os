@@ -350,19 +350,7 @@ String Config::asExpressionsJson() {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& expr : expressions.expressions) {
-    JsonObject exprNode = arr.add<JsonObject>();
-    exprNode["type"] = expr.type;
-    exprNode["enabled"] = expr.enabled;
-    exprNode["intervalMin"] = expr.intervalMin;
-    exprNode["intervalMax"] = expr.intervalMax;
-    exprNode["target"] = expr.target;
-    for (const auto& param : expr.parameters) {
-      exprNode[param.first] = param.second;
-    }
-    JsonArray colorsNode = exprNode["colors"].to<JsonArray>();
-    for (const auto& color : expr.colors) {
-      colorsNode.add(colorToHexString(color));
-    }
+    config_codec::expressionToJson(arr.add<JsonObject>(), expr);
   }
   String out;
   serializeJson(doc, out);

@@ -129,8 +129,7 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
         inv.target = static_cast<uint8_t>(target);
         inv.colors = std::move(payloadColors);
         for (JsonPairConst kv : doc["parameters"].as<JsonObjectConst>()) {
-          inv.parameters[std::string(kv.key().c_str())] =
-              kv.value().as<uint32_t>();
+          inv.parameters.set(kv.key().c_str(), kv.value().as<uint32_t>());
         }
 #ifdef LAMP_DEBUG
         Serial.printf("[test] transient pulse colors=%zu type=%s target=%d\n",

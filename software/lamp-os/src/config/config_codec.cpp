@@ -230,20 +230,19 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
   for (uint8_t level : base.knockoutPixels) knockoutNode.add(level);
   JsonArray expressionsNode = root["expressions"].to<JsonArray>();
   for (const auto& expr : expressions.expressions) {
-    JsonObject exprNode = expressionsNode.add<JsonObject>();
-    exprNode["type"] = expr.type;
-    exprNode["enabled"] = expr.enabled;
-    exprNode["intervalMin"] = expr.intervalMin;
-    exprNode["intervalMax"] = expr.intervalMax;
-    exprNode["target"] = expr.target;
-    for (const auto& param : expr.parameters) {
-      exprNode[param.first] = param.second;
-    }
-    JsonArray colorsNode = exprNode["colors"].to<JsonArray>();
-    for (const auto& color : expr.colors) {
-      colorsNode.add(colorToHexString(color));
-    }
+    expressionToJson(expressionsNode.add<JsonObject>(), expr);
   }
+}
+
+void expressionToJson(JsonObject node, const ExpressionConfig& expr) {
+  node["type"] = expr.type;
+  node["enabled"] = expr.enabled;
+  node["intervalMin"] = expr.intervalMin;
+  node["intervalMax"] = expr.intervalMax;
+  node["target"] = expr.target;
+  for (const auto& param : expr.parameters) node[param.first] = param.second;
+  JsonArray colorsNode = node["colors"].to<JsonArray>();
+  for (const auto& color : expr.colors) colorsNode.add(colorToHexString(color));
 }
 
 void toStoredJson(JsonObject root, const LampSettings& lamp,
@@ -334,7 +333,7 @@ size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out) {
   *paramCount = 0;
   for (const auto& kv : expr.parameters) {
     if (*paramCount == kMaxExpressionParams) break;
-    const int idx = expressionParamKeyIndex(kv.first.c_str());
+    const int idx = expressionParamKeyIndex(kv.first);
     if (idx < 0) continue;
     *p++ = static_cast<uint8_t>(idx);
     putU32(p, kv.second);
@@ -372,7 +371,7 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out) {
     const uint32_t value = getU32(p);
     // An index past this build's table came from a newer one; skip it.
     if (idx < kExpressionParamKeyCount) {
-      out.parameters[kExpressionParamKeys[idx]] = value;
+      out.parameters.setIndex(idx, value);
     }
   }
   return true;

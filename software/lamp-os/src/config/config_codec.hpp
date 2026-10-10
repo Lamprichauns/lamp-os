@@ -35,6 +35,11 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
             const ShadeSettings& shade, const ExpressionSettings& expressions,
             const HomeModeSettings& homeMode);
 
+// One expression's JSON object, the shape the BLE expressions section and the
+// webapp document both carry: type, enabled, the interval pair, target, each
+// parameter as its own key in key order, then colours.
+void expressionToJson(JsonObject node, const ExpressionConfig& expr);
+
 // Serialize everything but the expressions and the knockout levels (the "cfg"
 // key's stored shape).
 void toStoredJson(JsonObject root, const LampSettings& lamp,

@@ -43,7 +43,7 @@ ExpressionConfig fullExpression(const char* type, uint8_t target) {
     e.colors.push_back(Color(static_cast<uint8_t>(i), 2, 3, 4));
   }
   for (size_t i = 0; i < kMaxExpressionParams; ++i) {
-    e.parameters[kExpressionParamKeys[i]] = 0xFFFFFFFFu;
+    e.parameters.set(kExpressionParamKeys[i], 0xFFFFFFFFu);
   }
   return e;
 }

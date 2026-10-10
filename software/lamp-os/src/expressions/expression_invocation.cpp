@@ -8,14 +8,11 @@
 
 namespace lamp {
 
-std::map<std::string, uint32_t> parametersWithoutCascadeKeys(
-    const std::map<std::string, uint32_t>& parameters) {
-  std::map<std::string, uint32_t> out;
-  for (const auto& kv : parameters) {
-    if (kv.first == kParamCascadeEnabled) continue;
-    if (kv.first == kParamCascadeStaggerMs) continue;
-    out.insert(kv);
-  }
+ExpressionParams parametersWithoutCascadeKeys(
+    const ExpressionParams& parameters) {
+  ExpressionParams out = parameters;
+  out.erase(kParamCascadeEnabled);
+  out.erase(kParamCascadeStaggerMs);
   return out;
 }
 
@@ -77,13 +74,11 @@ bool parseInvocation(JsonObjectConst doc, ExpressionInvocation& out) {
       // bool first; ArduinoJson types `true`/`false` as bool, distinct
       // from int. Coerce so callers can send the JSON-natural form too.
       if (v.is<bool>()) {
-        out.parameters[std::string(kv.key().c_str())] =
-            v.as<bool>() ? 1u : 0u;
+        out.parameters.set(kv.key().c_str(), v.as<bool>() ? 1u : 0u);
       } else if (v.is<uint32_t>()) {
-        out.parameters[std::string(kv.key().c_str())] = v.as<uint32_t>();
+        out.parameters.set(kv.key().c_str(), v.as<uint32_t>());
       } else if (v.is<int>()) {
-        out.parameters[std::string(kv.key().c_str())] =
-            static_cast<uint32_t>(v.as<int>());
+        out.parameters.set(kv.key().c_str(), static_cast<uint32_t>(v.as<int>()));
       }
     }
   }

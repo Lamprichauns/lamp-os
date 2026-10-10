@@ -130,7 +130,7 @@ class PulseExpression : public Expression {
    * Configure pulse-specific parameters from generic parameter map.
    * @param parameters Map containing expression-specific parameters
    */
-  void configureFromParameters(const std::map<std::string, uint32_t>& parameters) override;
+  void configureFromParameters(const ExpressionParams& parameters) override;
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
 

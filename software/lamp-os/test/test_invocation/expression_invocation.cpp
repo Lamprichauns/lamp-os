@@ -25,56 +25,56 @@ void tearDown(void) {}
 // --- cascade-key stripping ---
 
 void test_strip_removes_cascade_enabled() {
-  std::map<std::string, uint32_t> in = {
+  lamp::ExpressionParams in = {
       {"cascadeEnabled", 1}, {"pulseSpeed", 5}};
   auto out = lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(1, (int)out.size());
-  TEST_ASSERT_EQUAL(5, (int)out["pulseSpeed"]);
-  TEST_ASSERT_EQUAL(0, (int)out.count("cascadeEnabled"));
+  TEST_ASSERT_EQUAL(5, (int)out.get("pulseSpeed", 0));
+  TEST_ASSERT_EQUAL(0, (int)out.contains("cascadeEnabled"));
 }
 
 void test_strip_removes_cascade_stagger_ms() {
-  std::map<std::string, uint32_t> in = {
-      {"cascadeStaggerMs", 2000}, {"holdMs", 5000}};
+  lamp::ExpressionParams in = {
+      {"cascadeStaggerMs", 2000}, {"fadeDuration", 5000}};
   auto out = lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(1, (int)out.size());
-  TEST_ASSERT_EQUAL(5000, (int)out["holdMs"]);
-  TEST_ASSERT_EQUAL(0, (int)out.count("cascadeStaggerMs"));
+  TEST_ASSERT_EQUAL(5000, (int)out.get("fadeDuration", 0));
+  TEST_ASSERT_EQUAL(0, (int)out.contains("cascadeStaggerMs"));
 }
 
 void test_strip_removes_both_cascade_keys() {
-  std::map<std::string, uint32_t> in = {
+  lamp::ExpressionParams in = {
       {"cascadeEnabled", 1},
       {"cascadeStaggerMs", 1000},
       {"durationMin", 1},
       {"durationMax", 3}};
   auto out = lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(2, (int)out.size());
-  TEST_ASSERT_EQUAL(1, (int)out["durationMin"]);
-  TEST_ASSERT_EQUAL(3, (int)out["durationMax"]);
+  TEST_ASSERT_EQUAL(1, (int)out.get("durationMin", 0));
+  TEST_ASSERT_EQUAL(3, (int)out.get("durationMax", 0));
 }
 
 void test_strip_is_noop_when_no_cascade_keys() {
-  std::map<std::string, uint32_t> in = {
+  lamp::ExpressionParams in = {
       {"pulseSpeed", 5}, {"durationMin", 1}};
   auto out = lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(2, (int)out.size());
-  TEST_ASSERT_EQUAL(5, (int)out["pulseSpeed"]);
-  TEST_ASSERT_EQUAL(1, (int)out["durationMin"]);
+  TEST_ASSERT_EQUAL(5, (int)out.get("pulseSpeed", 0));
+  TEST_ASSERT_EQUAL(1, (int)out.get("durationMin", 0));
 }
 
 void test_strip_handles_empty_map() {
-  std::map<std::string, uint32_t> in;
+  lamp::ExpressionParams in;
   auto out = lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(0, (int)out.size());
 }
 
 void test_strip_does_not_mutate_input() {
-  std::map<std::string, uint32_t> in = {
+  lamp::ExpressionParams in = {
       {"cascadeEnabled", 1}, {"pulseSpeed", 5}};
   lamp::parametersWithoutCascadeKeys(in);
   TEST_ASSERT_EQUAL(2, (int)in.size());
-  TEST_ASSERT_EQUAL(1, (int)in["cascadeEnabled"]);
+  TEST_ASSERT_EQUAL(1, (int)in.get("cascadeEnabled", 0));
 }
 
 // --- delayMs clamp ---
@@ -183,7 +183,7 @@ void test_reused_document_matches_fresh_serialization() {
   inv.type = "pulse";
   inv.target = 2;
   inv.colors = {lamp::Color(1, 2, 3, 4)};
-  inv.parameters["size"] = 7;
+  inv.parameters.set("size", 7);
   JsonDocument doc;
   lamp::invocationToJson(inv, doc);
   std::string reused;
