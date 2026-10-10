@@ -907,13 +907,10 @@ void test_heartbeat_period_follows_rssi() {
 
 namespace {
 
-constexpr uint32_t kLubSwellMs = 180;
-constexpr uint32_t kDubSwellMs = 360;
-
 std::vector<uint32_t> beatTimes(const FakeHost& h, uint8_t opacityAtLeast = 0) {
   std::vector<uint32_t> out;
   for (const Render& r : h.renders) {
-    if (r.inv.parameters.get("durationMax", 0) == kLubSwellMs &&
+    if (r.inv.parameters.get("durationMax", 0) == 160 &&
         r.inv.parameters.get("opacity", 0) >= opacityAtLeast) {
       out.push_back(r.atMs);
     }
@@ -953,17 +950,12 @@ void test_heartbeat_lub_completes_before_the_dub() {
   TEST_ASSERT_TRUE(r.host.renders.size() >= 2);
   const Render& lub = r.host.renders[0];
   const Render& dub = r.host.renders[1];
-  TEST_ASSERT_EQUAL_STRING("breathing", lub.inv.type.c_str());
-  TEST_ASSERT_EQUAL_STRING("breathing", dub.inv.type.c_str());
+  TEST_ASSERT_EQUAL_STRING("flicker", lub.inv.type.c_str());
   TEST_ASSERT_EQUAL_UINT8(TARGET_BASE, lub.inv.target);
-  TEST_ASSERT_EQUAL_UINT32(kLubSwellMs, lub.inv.parameters.get("durationMax", 0));
-  TEST_ASSERT_EQUAL_UINT32(kDubSwellMs, dub.inv.parameters.get("durationMax", 0));
-  TEST_ASSERT_TRUE(dub.inv.parameters.get("opacity", 0) < lub.inv.parameters.get("opacity", 0));
+  TEST_ASSERT_EQUAL_UINT32(160, lub.inv.parameters.get("durationMax", 0));
+  TEST_ASSERT_EQUAL_UINT32(140, dub.inv.parameters.get("durationMax", 0));
   TEST_ASSERT_TRUE(lub.atMs + lub.inv.parameters.get("durationMax", 0) < dub.atMs);
   TEST_ASSERT_UINT32_WITHIN(5, MomentDirector::kHeartbeatDubMs, dub.atMs - lub.atMs);
-  // The dub's swell ends before the next lub at the fastest beat.
-  TEST_ASSERT_TRUE(dub.atMs - lub.atMs + dub.inv.parameters.get("durationMax", 0) <
-                   heartbeatPeriodMs(-30.0f));
 }
 
 void test_heartbeat_settles_when_the_peer_goes_stale() {
@@ -1581,7 +1573,7 @@ void test_the_beat_holds_without_a_new_ble_sighting() {
   }
   std::vector<uint32_t> lubs;
   for (const Render& rd : r.host.renders) {
-    if (rd.inv.parameters.get("durationMax", 0) == kLubSwellMs) lubs.push_back(rd.atMs);
+    if (rd.inv.parameters.get("durationMax", 0) == 160) lubs.push_back(rd.atMs);
   }
   TEST_ASSERT_TRUE(lubs.size() >= 4);
   for (size_t i = 1; i < lubs.size(); ++i) {

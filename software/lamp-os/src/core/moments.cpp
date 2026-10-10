@@ -19,14 +19,13 @@ namespace {
 constexpr const char* kTwinkle = "flicker";
 constexpr uint32_t kTwinkleStyle = 0;
 constexpr uint32_t kFirefliesBurstMs = 700;
-constexpr const char* kBreathing = "breathing";
-// One Breathing swell, rise and fall, per lub and per dub. The lub ends before
-// the dub's onset 260 ms on, so the same-type coalesce never drops the dub.
-constexpr uint32_t kHeartbeatLubMs = 180;
-constexpr uint32_t kHeartbeatDubSwellMs = 360;
+constexpr uint32_t kHeartbeatLubMs = 160;
+constexpr uint32_t kHeartbeatDubBurstMs = 140;
 constexpr uint8_t kHeartbeatLubOpacity = 60;
 constexpr uint8_t kHeartbeatDubOpacity = 35;
 constexpr uint8_t kHeartbeatSettledOpacity = 10;
+// Every cell of the base swells; the flicker burst clamps it to the surface.
+constexpr uint32_t kWholeSurface = 0xFFFF;
 
 constexpr uint32_t kWhisperPulseSpeed = 3;
 constexpr uint32_t kWhisperPulseSize = 6;
@@ -429,7 +428,7 @@ void MomentDirector::tickHeartbeat(uint32_t nowMs) {
     const uint8_t step = moment_.settleBeat > 0 ? moment_.settleBeat - 1 : 0;
     const uint8_t dub = static_cast<uint8_t>(
         lerpMs(kHeartbeatDubOpacity, kHeartbeatSettledOpacity, step, kHeartbeatSettleBeats));
-    renderBeat(kHeartbeatDubSwellMs, dub);
+    renderBeat(kHeartbeatDubBurstMs, dub);
     if (moment_.settleBeat > kHeartbeatSettleBeats) {
       endMoment("settled");
       return;
@@ -562,11 +561,13 @@ void MomentDirector::renderBlink() {
   render(inv);
 }
 
-void MomentDirector::renderBeat(uint32_t swellMs, uint8_t opacity) {
+void MomentDirector::renderBeat(uint32_t burstMs, uint8_t opacity) {
   ExpressionInvocation inv;
-  inv.type = kBreathing;
+  inv.type = kTwinkle;
   inv.target = TARGET_BASE;
-  inv.parameters.set("durationMax", swellMs);
+  inv.parameters.set("fire", kTwinkleStyle);
+  inv.parameters.set("count", kWholeSurface);
+  inv.parameters.set("durationMax", burstMs);
   inv.parameters.set("opacity", opacity);
   addTintOrShade(inv);
   render(inv);

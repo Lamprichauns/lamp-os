@@ -184,7 +184,7 @@ class MomentDirector {
   void addTintOrShade(ExpressionInvocation& inv);
   void renderBlink();
   void renderGlow();
-  void renderBeat(uint32_t swellMs, uint8_t opacity);
+  void renderBeat(uint32_t burstMs, uint8_t opacity);
   bool render(ExpressionInvocation& inv);
   void logf(const char* fmt, ...);
 
