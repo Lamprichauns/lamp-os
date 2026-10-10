@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <algorithm>
 
+#include "util/eased_scalar.hpp"
 #include "util/fade.hpp"
 
 namespace lamp {
@@ -111,12 +112,16 @@ void BreathingExpression::draw() {
     const uint16_t off = static_cast<uint16_t>(i - zone_.posMin);
     const float breath = (breathPhase < 0.5f) ? breathPhase * 2.0f : 2.0f - breathPhase * 2.0f;
     const float intensity = applyEasing(easing_, breath);
+    const uint32_t pIntensity = static_cast<uint32_t>(clamp01(intensity) * 100.0f);
     // Vignette over a region 2px wider with the offset shifted in by one, so
     // the darkest taper step lands off-screen and the outermost real pixel
     // reads the brighter second step.
-    const float weight = taperedWeight(
-        intensity, edgeTaper(off + 1, zoneSize + 2, kBreathTaperWidth, TaperCurve::Quadratic));
-    const Color painted = mixColorWeight(fb->buffer[i], targetColor, weight);
+    const uint32_t pct =
+        pIntensity * edgeTaper(off + 1, zoneSize + 2, kBreathTaperWidth, TaperCurve::Quadratic) / 100u;
+    const Color painted =
+        (pct >= 100u)
+            ? targetColor
+            : mixColorLinear(fb->buffer[i], targetColor, computeLinearFactor(pct, 100u));
     fb->buffer[i] = mixColorWeight(fb->buffer[i], painted, wispWeight);
   }
 

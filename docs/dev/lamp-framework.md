@@ -221,7 +221,7 @@ Every brightness writer funnels through `lamp::setAllStripsBrightness`:
 transient override → `calculateBrightnessLevel`), the slider micro-fade in
 `Lamp::tick`, and the `apply::brightness*` helpers (BLE slider, mesh cascade,
 settings_blob) all end there. The funnel latches the requested level and hands
-`min(requested, governor ceiling)` to every surface's `FrameBuffer::level`, so the governor caps
+`min(requested, governor ceiling)` to every strip driver, so the governor caps
 every path with one `min()` and never touches the computed baseline.
 
 The ceiling `calculateBrightnessLevel` scales against is not the raw variant
@@ -231,59 +231,21 @@ Saver setting, floored at 1, cached in `s_hwMaxBrightness`.
 `Lamp::recomputeEffectiveCeiling()` refreshes it at setup and on every
 settings-blob write, so a new ceiling applies without a reboot.
 
-The estimator (`core/power_governor.hpp`) prices the frame the strips are about
+The estimator (`core/power_governor.hpp`) prices the frame the drivers are about
 to show. `fullDutyMa` gamma-sums each surface's FrameBuffer at a per-channel
 full-duty draw (W counts only on 4-channel strips); `demandMa` scales that by
-`(level+1)/256`, an upper bound on the flush's `level/255`, at the requested
-(pre-clamp) level and adds a per-pixel idle draw. The compositor's `preFlushHook`
-(`governFrame`, `lamp.cpp`) runs it once per drawn frame, after behaviors draw
-and before any pixel write, so a clamp decision lands in `FrameBuffer::level`
-ahead of that frame's flush.
-
-### Output: gamma, level and temporal dither
-
-`FrameBuffer::flush` produces every byte the strips see. Per channel it looks
-up gamma 2.6 (the curve of `Adafruit_NeoPixel::gamma8`) in 8.8 fixed point
-(`kGamma88`, `util/dither.hpp`), scales by the surface's `level` (0..255, 255
-verbatim), and runs one temporal-dither step against a per-pixel, per-channel
-carry byte: the emitted bytes average to the 8.8 target, so the light a fade
-toward dark gives follows each content step instead of sitting on one gamma8
-code across several (codes 0-23 all round to 0, 24-35 to 1). Exact zero emits 0 and a whole target emits its
-byte, whatever the carry holds, so black never shimmers and full stays exact.
-The carries are sized once in `begin()` (four bytes a pixel) with staggered
-seeds, so a uniform fractional level does not pulse every pixel on the same
-frame.
-
-Only a changing pixel dithers. A per-pixel hold counter (one byte a pixel, also
-sized once in `begin()`, five bytes a pixel in all) counts flushes whose colour
-and `level` match the last fully shown frame (`previousBuffer`,
-`previousLevel`). After `FrameBuffer::kDitherHoldFrames` (60 flushes, about 1 s:
-960 ms at the compositor's 16 ms frame floor and longer when frames run slower)
-the pixel shows its nearest whole drive level (`roundedLevel`) and stops
-dithering, so a static scene at any brightness, dim and night levels included,
-settles whole and stops sparkling. A fade that moves its content byte at least
-once a second, such as a 60 s breath at 40% (17-18 frames a byte), keeps
-dithering through its descent. A byte held longer than that, such as the eased
-trough of a slow breath, settles mid-fade and can step by up to half a drive
-level when it does; a content byte below 24 at full strip level (more of them at
-a lower level) rounds to 0, so that pixel goes dark until the byte moves again,
-the same 0 it showed before dithering. A settled pixel's carries are reseeded,
-so when its colour or the level next moves it resumes staggered, within one step
-of the level it held. A skipped segment leaves `previousBuffer` behind, which
-only holds a pixel dithering longer.
-
-The level is folded in here, never through the NeoPixel `setBrightness`: the
-drivers stay at their unscaled default, since the driver scaler truncates after
-gamma and would undo the dither. The content dedup (unchanged `buffer` and
-`level`) skips the push only while the last frame was whole on every channel; a
-changing fractional channel keeps the flush sending at the compositor's rate,
-until the hold settles it.
+the NeoPixel `(level+1)/256` factor at the requested (pre-clamp) level and adds a
+per-pixel idle draw. The compositor's `preFlushHook` (`governFrame`, `lamp.cpp`)
+runs it once per drawn frame, after behaviors draw and before any pixel write, so
+a clamp decision reaches the drivers ahead of that frame's `setPixelColor` loop
+— `setBrightness` after `setPixelColor` destructively rescales the frame it was
+meant to protect.
 
 `PowerGovernor` compares demand against `HwConfig::supplyBudgetMa` minus a
 reserve that widens while the radio is hot (OTA in either direction, quiet mode,
 or a BLE client) or during the boot window and narrows when quiet. Any frame over
 budget snaps the ceiling to the level that fits inside the same frame
-(`senseFrame` returns true and `governFrame` re-mins the strip level before the
+(`senseFrame` returns true and `governFrame` re-mins the drivers before the
 flush). While clamped, per-frame re-solves only move the ceiling down; recovery
 goes through the release, paced inside `PowerGovernor::tick` (called from
 `Lamp::tick`, which also advances the boot ramp), which returns the governor to

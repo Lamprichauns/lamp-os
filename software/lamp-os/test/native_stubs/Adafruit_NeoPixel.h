@@ -25,6 +25,7 @@ class Adafruit_NeoPixel {
   }
 
   bool canShowResult = true;
+  uint8_t brightness = 0;
   std::vector<PixelCall> pixelCalls;
   int showCount = 0;
   int beginCount = 0;
@@ -35,6 +36,7 @@ class Adafruit_NeoPixel {
   void show() { ++showCount; }
   void setPixelColor(uint16_t n, uint32_t c) { pixelCalls.push_back({n, c}); }
   bool canShow() { return canShowResult; }
+  uint8_t getBrightness() const { return brightness; }
 
   void reset() {
     pixelCalls.clear();

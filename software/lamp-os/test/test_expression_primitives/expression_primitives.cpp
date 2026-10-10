@@ -8,7 +8,6 @@
 #include "expressions/spotty/spotty_math.hpp"
 #include "expressions/zone_preview.hpp"
 #include "util/color.hpp"
-#include "util/fade.hpp"
 
 using lamp::getParam;
 using lamp::Zone;
@@ -383,27 +382,6 @@ void test_random_permutation_single_is_identity() {
   TEST_ASSERT_EQUAL_UINT8(0, order[0]);
 }
 
-// A slow fade toward dark moves below one percent: weights a hundredth apart
-// land on different bytes where whole-percent steps held one.
-void test_tapered_weight_resolves_below_one_percent() {
-  TEST_ASSERT_EQUAL_FLOAT(0.0f, lamp::taperedWeight(-0.2f, 100));
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, lamp::taperedWeight(1.4f, 100));
-  TEST_ASSERT_EQUAL_FLOAT(0.25f, lamp::taperedWeight(0.5f, 50));
-
-  const Color black(0, 0, 0, 0);
-  const Color white(255, 255, 255, 255);
-  uint8_t last = 0;
-  int distinct = 0;
-  for (int k = 0; k <= 100; k++) {
-    const float level = 0.01f * static_cast<float>(k) / 100.0f;
-    const uint8_t r = lamp::mixColorWeight(black, white, lamp::taperedWeight(level, 100)).r;
-    TEST_ASSERT_TRUE(r >= last);
-    if (r != last) distinct++;
-    last = r;
-  }
-  TEST_ASSERT_EQUAL_INT(2, distinct);
-}
-
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_getparam_absent_returns_fallback);
@@ -448,6 +426,5 @@ int main(int, char**) {
   RUN_TEST(test_zone_preview_lights_span_rest_off);
   RUN_TEST(test_zone_preview_clamps_and_swaps);
   RUN_TEST(test_zone_preview_zero_pixels_empty);
-  RUN_TEST(test_tapered_weight_resolves_below_one_percent);
   return UNITY_END();
 }
