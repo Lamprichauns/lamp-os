@@ -737,11 +737,23 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
                      false);
 }
 
-bool configBlobPersistable(const char* json) {
-  if (json == nullptr) return false;
+SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
+                       size_t cfgBufferLen) {
+  if (json == nullptr) return SaveResult::Invalid;
+  const size_t len = std::strlen(json);
+  if (!heapCanSpare(kRawSaveHeapPerByte * len + kRawSaveModelBytes)) return SaveResult::NoHeap;
   JsonDocument doc;
-  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
-  return doc["lamp"].is<JsonObject>();
+  if (deserializeJson(doc, json, len) != DeserializationError::Ok ||
+      !doc["lamp"].is<JsonObject>()) {
+    return SaveResult::Invalid;
+  }
+  LampSettings lamp;
+  BaseSettings base;
+  ShadeSettings shade;
+  ExpressionSettings expressions;
+  HomeModeSettings homeMode;
+  fromJson(doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode);
+  return saveConfig(store, lamp, base, shade, expressions, homeMode, cfgBuffer, cfgBufferLen);
 }
 
 }  // namespace config_codec

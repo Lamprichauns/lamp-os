@@ -104,65 +104,53 @@ Config::Config(ConfigStore* inStore) {
 // included (webapp::tick drains it), runs there.
 static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
 
+static const char* saveFailure(config_codec::SaveResult result) {
+  switch (result) {
+    case config_codec::SaveResult::TooLarge: return "too large";
+    case config_codec::SaveResult::Invalid: return "invalid";
+    case config_codec::SaveResult::NoHeap: return "no heap";
+    default: return "write";
+  }
+}
+
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
-  if (savesFrozen_) {
+  if (saveGate_.frozen()) {
     Serial.printf("[nvs] save via=%s held for web-save reboot\n", via);
     return false;
   }
-  const uint32_t now = millis();
   const config_codec::SaveResult result = config_codec::saveConfig(
       *store_, lamp, base, shade, expressions, homeMode, s_cfgJson, sizeof(s_cfgJson));
   if (result == config_codec::SaveResult::Ok) {
-    persistRetry_.succeed();
+    saveGate_.saved();
 #ifdef LAMP_DEBUG
     Serial.printf("[nvs] config saved via=%s\n", via);
 #endif
     return true;
   }
-  persistRetry_.fail(now);
-  Serial.printf("[nvs] save via=%s failed (%s), retry %lus\n", via,
-                result == config_codec::SaveResult::TooLarge ? "too large" : "write",
-                (unsigned long)(persistRetry_.waitMs() / 1000));
+  saveGate_.failed(millis());
+  Serial.printf("[nvs] save via=%s failed (%s), retry %lus\n", via, saveFailure(result),
+                (unsigned long)(saveGate_.waitMs() / 1000));
   return false;
 }
 
-bool Config::persistDue(uint32_t nowMs) const { return persistRetry_.due(nowMs); }
+bool Config::persistDue(uint32_t nowMs) const { return saveGate_.due(nowMs); }
 
 void Config::maybeRetryPersist(uint32_t nowMs) {
-  if (persistRetry_.pending() && persistRetry_.due(nowMs)) persistConfig("retry");
+  if (saveGate_.pending() && saveGate_.due(nowMs)) persistConfig("retry");
 }
 
 bool Config::persistRawJson(const char* json) {
   if (!store_) return false;
-  if (!config_codec::configBlobPersistable(json)) {
-#ifdef LAMP_DEBUG
-    Serial.println("[nvs] persistRawJson rejected: blob did not validate; NVS left intact");
-#endif
-    return false;
+  const config_codec::SaveResult result =
+      config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson));
+  if (result == config_codec::SaveResult::Ok) {
+    saveGate_.rawSaved();
+    return true;
   }
-  // Parse into a scratch model and save it in the stored shape; the caller
-  // reboots to load it, the same as a raw write re-parsed on the next boot.
-  JsonDocument doc;
-  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
-  LampSettings rawLamp;
-  BaseSettings rawBase;
-  ShadeSettings rawShade;
-  ExpressionSettings rawExpressions;
-  HomeModeSettings rawHome;
-  config_codec::fromJson(doc.as<JsonObject>(), rawLamp, rawBase, rawShade,
-                         rawExpressions, rawHome);
-  if (config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade, rawExpressions,
-                               rawHome, s_cfgJson, sizeof(s_cfgJson)) !=
-      config_codec::SaveResult::Ok) {
-    return false;
-  }
-  // The stored config is now the web document, which the reboot loads; a
-  // pending retry or a later in-memory save would overwrite it with the
-  // running config first.
-  persistRetry_.succeed();
-  savesFrozen_ = true;
-  return true;
+  Serial.printf("[nvs] web save failed (%s)\n", saveFailure(result));
+  if (result == config_codec::SaveResult::WriteFailed) saveGate_.rawFailed(millis());
+  return false;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }

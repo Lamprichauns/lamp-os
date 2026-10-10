@@ -82,7 +82,9 @@ constexpr size_t kMaxExpressionRecordLen =
 size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out);
 bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 
-enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge };
+// Invalid and NoHeap come from saveRawJson only, and leave the store
+// untouched, as TooLarge does.
+enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge, Invalid, NoHeap };
 
 // Ceiling of the stored config JSON without expressions or knockout, at the
 // caps with every escapable string fully escaped (measured by
@@ -140,12 +142,19 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
                                ExpressionSettings& expressions,
                                HomeModeSettings& homeMode, bool& withinCaps);
 
-// True when `json` is a whole config document safe to persist: it parses and
-// carries a `lamp` object. persistRawJson gates on this so a truncated or
-// unparseable blob (Arduino String silently truncates on a fragmented-heap
-// OOM) can't overwrite a good stored config. A parse OOM returns non-Ok, so
-// it also rejects rather than persisting a partial write.
-bool configBlobPersistable(const char* json);
+// Heap a raw save may take beyond its document: the parse holds about twice
+// the document, the strings copied out of it once more, and the model at the
+// caps stays under kRawSaveModelBytes.
+constexpr size_t kRawSaveHeapPerByte = 3;
+constexpr size_t kRawSaveModelBytes = 8192;
+
+// Saves a whole config document (the webapp's whole-document PUT) through
+// fromJson and saveConfig, for the next boot to load. Invalid when it does
+// not parse or carries no `lamp` object, so a truncated body cannot replace a
+// good config; NoHeap when the heap cannot spare the parse and the model
+// (heapCanSpare), so no allocation on the way can throw.
+SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
+                       size_t cfgBufferLen);
 
 }  // namespace config_codec
 }  // namespace lamp
