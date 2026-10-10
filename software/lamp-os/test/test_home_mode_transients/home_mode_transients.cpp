@@ -225,6 +225,27 @@ void test_echo_books_nothing_at_home_or_in_preview() {
   }
 }
 
+// A mirror booked just before home mode begins is dropped, so it does not
+// fire once home mode ends.
+void test_echo_booked_before_home_is_dropped() {
+  Rig r;
+  Config config;
+  config.lamp.socialMode = SocialMode::Extrovert;
+  MeshLink mesh;
+  SocialEchoObserver echo(config, r.manager, mesh);
+  ExpressionInvocation inv;
+  inv.type = "probe";
+  inv.target = TARGET_SHADE;
+  for (int i = 0; i < 10; ++i) echo.onPeerExpression(kPeerMac, inv);
+
+  r.compositor.homeMode = true;
+  echo.tick(millis());
+  r.compositor.homeMode = false;
+  set_mock_millis(10000 + kMirrorDelayFloorMs + kMirrorJitterMs + 1);
+  echo.tick(millis());
+  TEST_ASSERT_EQUAL_size_t(0, s_registered.size());
+}
+
 void test_manager_ignores_peers_in_home_and_preview() {
   Rig r;
   TEST_ASSERT_FALSE(r.manager.ignoresPeers());
@@ -347,6 +368,7 @@ int main(int, char**) {
   RUN_TEST(test_echo_books_outside_home_mode);
   RUN_TEST(test_echo_books_nothing_at_home_or_in_preview);
   RUN_TEST(test_manager_ignores_peers_in_home_and_preview);
+  RUN_TEST(test_echo_booked_before_home_is_dropped);
   RUN_TEST(test_retiring_transient_does_not_coalesce);
   RUN_TEST(test_type_skipped_transient_reaped_at_home);
   RUN_TEST(test_type_skipped_transient_kept_in_preview);

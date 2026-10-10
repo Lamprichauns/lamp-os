@@ -1145,6 +1145,8 @@ void lamp::Lamp::tick() {
   // arrives after a long-delayMs one, the long one fires first when its
   // deadline hits. Best-effort by design; the cascade UX tolerates the
   // jitter and avoiding a priority queue keeps the drain trivial.
+  // A delayed cascade booked before home mode began is dropped, not held.
+  if (expressionManager.ignoresPeers()) pendingTriggers.clear();
   if (!pendingTriggers.empty()) {
     const uint32_t now = millis();
     for (auto it = pendingTriggers.begin(); it != pendingTriggers.end();) {
