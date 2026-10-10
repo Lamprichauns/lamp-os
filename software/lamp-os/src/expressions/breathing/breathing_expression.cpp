@@ -30,9 +30,6 @@ void BreathingExpression::configureFromParameters(const ExpressionParams& parame
   if (breathSpeed < 8) breathSpeed = 8;
   breathSpeedMs = breathSpeed * kMsPerSecond;
 
-  const uint32_t swellMs = getParam(parameters, "durationMax", 0);
-  swellMs_ = swellMs > 0 ? std::clamp(swellMs, kSwellMinMs, kSwellMaxMs) : 0;
-
   targetColor = firstColorOr(kSafeFallbackColor);
 
   const uint16_t window = windowSize();
@@ -51,9 +48,9 @@ void BreathingExpression::updateBreathPhase() {
 
   uint32_t deltaMs = currentMs - lastBreathUpdateMs;
 
-  // The cycle length is the total time, so increment is deltaMs / cycleMs
-  const uint32_t cycleMs = swelling() ? swellMs_ : breathSpeedMs;
-  float phaseIncrement = static_cast<float>(deltaMs) / static_cast<float>(cycleMs);
+  // Update phase based on breath speed
+  // breathSpeedMs is the total cycle time, so increment is deltaMs / breathSpeedMs
+  float phaseIncrement = static_cast<float>(deltaMs) / static_cast<float>(breathSpeedMs);
   breathPhase += phaseIncrement;
 
   // Wrap phase to stay in 0-1 range and advance color when cycle completes
@@ -62,10 +59,8 @@ void BreathingExpression::updateBreathPhase() {
 
     // A live instance runs continuously with frames=100000 and
     // animationState=PLAYING, never naturally reaching STOPPED. A transient
-    // preview stops after kPreviewCycles breaths, a swell after its one, so
-    // gcTransients() can reap it.
-    if (swelling() || previewCycleComplete()) {
-      if (swelling()) breathPhase = 0.0f;
+    // preview stops after kPreviewCycles breaths so gcTransients() can reap it.
+    if (previewCycleComplete()) {
       animationState = STOPPED;
       lastCompletedLoop = currentLoop + 1;
       lastBreathUpdateMs = currentMs;
