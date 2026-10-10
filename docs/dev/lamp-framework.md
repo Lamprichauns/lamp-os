@@ -231,7 +231,7 @@ Saver setting, floored at 1, cached in `s_hwMaxBrightness`.
 `Lamp::recomputeEffectiveCeiling()` refreshes it at setup and on every
 settings-blob write, so a new ceiling applies without a reboot.
 
-The estimator (`core/power_governor.hpp`) prices the frame the drivers are about
+The estimator (`core/power_governor.hpp`) prices the frame the strips are about
 to show. `fullDutyMa` gamma-sums each surface's FrameBuffer at a per-channel
 full-duty draw (W counts only on 4-channel strips); `demandMa` scales that by
 `(level+1)/256`, an upper bound on the flush's `level/255`, at the requested
@@ -254,17 +254,29 @@ The carries are sized once in `begin()` (four bytes a pixel) with staggered
 seeds, so a uniform fractional level does not pulse every pixel on the same
 frame.
 
+Only a changing pixel dithers. A per-pixel hold counter (one byte a pixel, also
+sized once in `begin()`, five bytes a pixel in all) counts flushes whose colour
+and `level` match the last fully shown frame (`previousBuffer`,
+`previousLevel`). After `FrameBuffer::kDitherHoldFrames` (12, about 200 ms at
+60 Hz) the pixel shows its nearest whole drive level (`roundedLevel`) and stops
+dithering, so a static scene at any brightness, dim and night levels included,
+settles whole and stops sparkling. A settled pixel's carries are reseeded, so
+when its colour or the level next moves it resumes staggered, within one step of
+the level it held. A skipped segment leaves `previousBuffer` behind, which only
+holds a pixel dithering longer.
+
 The level is folded in here, never through the NeoPixel `setBrightness`: the
 drivers stay at their unscaled default, since the driver scaler truncates after
 gamma and would undo the dither. The content dedup (unchanged `buffer` and
 `level`) skips the push only while the last frame was whole on every channel; a
-fractional channel keeps the flush sending at the compositor's rate.
+changing fractional channel keeps the flush sending at the compositor's rate,
+until the hold settles it.
 
 `PowerGovernor` compares demand against `HwConfig::supplyBudgetMa` minus a
 reserve that widens while the radio is hot (OTA in either direction, quiet mode,
 or a BLE client) or during the boot window and narrows when quiet. Any frame over
 budget snaps the ceiling to the level that fits inside the same frame
-(`senseFrame` returns true and `governFrame` re-mins the drivers before the
+(`senseFrame` returns true and `governFrame` re-mins the strip level before the
 flush). While clamped, per-frame re-solves only move the ceiling down; recovery
 goes through the release, paced inside `PowerGovernor::tick` (called from
 `Lamp::tick`, which also advances the boot ramp), which returns the governor to

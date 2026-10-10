@@ -757,7 +757,7 @@ void lamp::Lamp::setup() {
 
   // Cap every segment at maxBrightness before the first content flush, else a
   // strip runs at the FrameBuffer full-level default. Runs after the governor's
-  // begin() so the boot-hold ceiling reaches the drivers here.
+  // begin() so the boot-hold ceiling reaches the strip level here.
   applyEffectiveBrightness();
 
   initBehaviors(featuresEnabled(), *this);
@@ -906,7 +906,7 @@ void lamp::Lamp::setup() {
 // See each drain helper's body for the per-slot detail.
 
 // Compositor pre-flush hook, Core 1. Prices the frame both surfaces are
-// about to push; a clamp re-mins the drivers here so the over-budget frame
+// about to push; a clamp re-mins the strip level here so the over-budget frame
 // never reaches the strip.
 #ifdef LAMP_DEBUG
 // Single-frame max-channel jump that reads as a pop, not a fade. Too low spams

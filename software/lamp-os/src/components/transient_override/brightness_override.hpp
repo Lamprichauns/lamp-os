@@ -10,7 +10,8 @@
 // fadeDurationMs and only calls the registered onChange callback when
 // the integer-rounded value actually changes. This preserves the
 // existing event-driven brightness path (lamp.cpp's
-// applyEffectiveBrightness): no strip-level write lands every frame, only when the user-visible level moves.
+// applyEffectiveBrightness): no strip-level write lands every frame, only
+// when the user-visible level moves.
 //
 // Source ownership identical to ColorOverride: a restore from a
 // different sourceKind (and not Any) is a no-op.
