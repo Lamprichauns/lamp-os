@@ -22,6 +22,7 @@
 #include "components/apply/apply_shade_colors.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "config/config.hpp"
+#include "core/compositor.hpp"
 #include "core/pending_slot_aggregate.hpp"
 #include "expressions/expression_manager.hpp"
 #include "util/bd_addr.hpp"
@@ -59,11 +60,16 @@ static void postPendingWispConfigJson(const uint8_t srcMac[6],
 // rapid same-sender cascades). For BLE-initiated paths the caller passes
 // `myMac_` so app-driven triggers coalesce against each other.
 static void applyRemoteOpLocal(const char* payloadJson, size_t len,
-                               const uint8_t srcMac[6]) {
+                               const uint8_t srcMac[6], lamp::TransientSource source) {
   JsonDocument doc;
   if (deserializeJson(doc, payloadJson, len) != DeserializationError::Ok) return;
   const char* ch = doc["char"].as<const char*>();
   if (!ch || !*ch) return;
+
+  // The wisp's status and config are cached for the app, never drawn, so
+  // they pass while home mode ignores other lamps.
+  const bool cacheOnly = strcmp(ch, "wispStatus") == 0 || strcmp(ch, "wispConfig") == 0;
+  if (!cacheOnly && compositor.blocksRemote(source)) return;
 
   if (strcmp(ch, "brightness") == 0) {
     int level = doc["value"] | -1;
@@ -171,7 +177,7 @@ void applyRemoteOpRouted(const char* payloadJson, size_t len,
     // MeshLink::handleRecv (WiFi task) already gated on targetMac == myMac
     // || broadcast, and already rebroadcast once for grid relay. Nothing for
     // the router to decide; just dispatch locally on Core 1.
-    applyRemoteOpLocal(payloadJson, len, srcMac);
+    applyRemoteOpLocal(payloadJson, len, srcMac, lamp::TransientSource::Remote);
     return;
   }
 
@@ -205,7 +211,7 @@ void applyRemoteOpRouted(const char* payloadJson, size_t len,
     // applyRemoteOpLocal's srcMac is the *original* sender for the cascade
     // coalesce. For BLE-initiated ops the "sender" is this lamp's own app
     // session; `srcMac` was already populated with selfMac by the caller.
-    applyRemoteOpLocal(payload.data(), payload.size(), srcMac);
+    applyRemoteOpLocal(payload.data(), payload.size(), srcMac, lamp::TransientSource::Local);
   }
   if (!isSelf && !meshLink.isOtaInProgress()) {
     // Forward over ESP-NOW. broadcast => fan out to all peers; unicast =>
