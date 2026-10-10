@@ -141,7 +141,13 @@ another lamp settings over `MSG_CONTROL_OP`, which carries only wisp traffic
   invocation.
 - `ExpressionManager::gcTransients` retires a Remote transient already running
   when home mode turns on: `Expression::retire()` ramps its contribution scale
-  to 0 over `Expression::kRetireFadeMs` (1 s), then it is reaped.
+  to 0 over `Expression::kRetireFadeMs` (1 s), then it is reaped. A transient of
+  a home-disabled type, Local ones a peer caused included (the Lioness
+  greeting's glitch), is reaped at once, since the compositor skips it and it
+  would otherwise freeze and resume when home mode ends.
+- `homeModeTick` (`core/home_mode_gate.hpp`) is the compositor's per-behavior
+  decision: run, skip (an expression of a home-disabled type) or cancel (a
+  social behavior while social is off and no app greeting plays).
 - `BehaviorContext::forEachArrival` hands no arrival to a greeting (snafu's,
   the Lioness greeting), and `forEachNearby` visits no peer, so the room reads
   as empty: the Lions ambient scene shows no neighbour palettes and sends no
@@ -184,6 +190,8 @@ from one read of the BLE client state: with the app connected, only its Home
 Mode page turns home mode on, and that is the preview. `reapplyHomeModeState`
 keeps that snapshot, and `calculateEffectiveHomeMode` (brightness, compositor
 boot) returns it, so the brightness and the gate always agree.
+`initBehaviors` runs `reapplyHomeModeState` right after `compositor.begin`, so
+the policy comes from config from the first pass.
 
 The lamp's own sources stay `TransientSource::Local` and always pass: the app's
 Test button and its remote op over BLE (`CHAR_REMOTE_OP`, applied only on the
@@ -197,7 +205,8 @@ greetings finish their one pass. Snafu then borrows no peer palette: its dots
 refuse a borrow while `ignoresPeers()` and drift an active one back to the own
 palette from the scene on show: a re-scatter crossfade under way is resolved
 into the starting scene, and a melt under way stays an overlay above the wisp
-mix, as `draw()` paints it, easing out over the drift; the greeting takes no
+mix, as `draw()` paints it, easing out over the drift. Once the drift lands
+the ambient crossfade returns to its own length (`kSceneFrames`); the greeting takes no
 peer colour info meanwhile. A retiring glitch gives its
 background back to the live scene as it fades (`Expression::retireScale`).
 

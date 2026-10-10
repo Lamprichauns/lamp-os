@@ -75,7 +75,8 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   another lamp pushes onto it (cascades and mirrors) and reads the room as
   empty; peer effects already running fade out, crowd-dim eases back to full
   brightness over a second, and leaving home greets nobody who was near all
-  along. The app's Home Mode preview shows the same but consumes nothing.
+  along. The app's Home Mode preview blocks the same peer paths but consumes
+  no arrival and leaves peer effects already running to finish.
   Detail in [`lamp-framework.md`](lamp-framework.md#home-mode).
 - **OTA outranks personality.** Firmware propagation is gated separately
   from the visual greeting; a lamp distributes/receives OTA regardless of
