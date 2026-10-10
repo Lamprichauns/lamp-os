@@ -393,21 +393,28 @@ save had it or as saved.
   `test_saves_after_an_out_of_memory_write_land_and_survive_the_boot` covers
   a record, the knockout blob and the rest.
 
-Accepted risks, each needing a reset or an allocation failure at a narrow
-moment, and none stalling saves:
+Accepted risks. None stalls saves, and none touches the lamp section held in
+`cfg`:
 
 - A reset between a held key's throwaway and its value drops that key at
   boot. For a rest key that is every setting outside the lamp section and the
   expressions: they load as defaults, the load reports the store unreadable,
   and the first-boot save is held off so the defaults are not written over it.
-- For a record, the knockout blob or `cfgl` the same reset drops that record
-  (logged at load), the knockout levels, or the lamp section staged there.
+  For a record, the knockout blob or `cfgl` it drops that record (logged at
+  load), the knockout levels, or the lamp section staged there.
+- The throwaway is a zero-length `nvs_set_blob`. `PagedNvs` accepts one; that
+  IDF 5.5 does, and reads it back as an empty blob, wants a bench check.
 - A record, `ko` or `disp` rewrite whose IDF cleanup takes the old copy (a
   failed rewrite, above) leaves that value missing until the save's retry
-  writes it back from RAM; a reset before then loses it.
-- `PagedNvs`'s boot checks an index against the chunks in its own range only,
-  where IDF counts every chunk of the version and compares their summed size,
-  so the page model may keep a blob the device would drop.
+  writes it back from RAM; a reset before then loses it. Besides the two
+  allocations, the cleanup runs when NVS cannot place a chunk or the index
+  (`NOT_ENOUGH_SPACE`). The NVS budget above keeps that from happening at the
+  caps; it holds only while the system keys (bonds, PHY calibration) stay
+  inside the figures there.
+- Everything the native suite proves about NVS is proved against `PagedNvs`,
+  a model of IDF 5.5 (page placement, the 400-byte first-chunk rule,
+  collection, cleanup by position, the boot's blob checks), never against IDF
+  itself, so a divergence between the two goes unseen.
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
