@@ -263,10 +263,14 @@ the pixel shows its nearest whole drive level (`roundedLevel`) and stops
 dithering, so a static scene at any brightness, dim and night levels included,
 settles whole and stops sparkling. A fade that moves its content byte at least
 once a second, such as a 60 s breath at 40% (17-18 frames a byte), keeps
-dithering through its descent and never snaps between steps. A settled pixel's
-carries are reseeded, so when its colour or the level next moves it resumes
-staggered, within one step of the level it held. A skipped segment leaves
-`previousBuffer` behind, which only holds a pixel dithering longer.
+dithering through its descent. A byte held longer than that, such as the eased
+trough of a slow breath, settles mid-fade and can step by up to half a drive
+level when it does; a content byte below 24 at full strip level (more of them at
+a lower level) rounds to 0, so that pixel goes dark until the byte moves again,
+the same 0 it showed before dithering. A settled pixel's carries are reseeded,
+so when its colour or the level next moves it resumes staggered, within one step
+of the level it held. A skipped segment leaves `previousBuffer` behind, which
+only holds a pixel dithering longer.
 
 The level is folded in here, never through the NeoPixel `setBrightness`: the
 drivers stay at their unscaled default, since the driver scaler truncates after
