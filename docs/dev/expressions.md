@@ -233,7 +233,7 @@ Semantics:
 
 ## Mesh cascade integration
 
-Cascade is a dev/testing tool, not a user-facing feature: the app exposes the toggle only in dev mode, on purpose — a fleet of user lamps flashing in sync is visual noise, and only a few specifically controlled lamps ship with it. When `parameters["cascadeEnabled"] == 1`, a local trigger fans out a matching invocation to every reachable peer, closest first, staggered by `parameters["cascadeStaggerMs"]`. The fan-out drains up to 6 frames per 100 ms pass from fixed storage (`CascadeScheduler`), only while the ESP-NOW driver has room (`TxCredit`), each frame's `delayMs` adjusted toward the peer's intended time (fifty peers take at least 800 ms to send, so the far end of a 50-lamp crowd can fire up to about a second late); a second cascade waits behind the one draining, a third replaces the one waiting, and an OTA start stops the drain. Continuous descriptors never cascade — a cascaded long-running expression would override other lamps' behavior, and they retrigger at boot, settings upsert, and wisp release anyway — so `maybeCascade` gates them out, matching the app's hidden toggle. The structural loop break is in `triggerInvocation`, remote-arrived triggers are dispatched to a transient one-shot Expression instance and **never cascade**. A transient whose `trigger()` is rejected (wrong buffer, or the operator's color editor is open) is not retained: it neither occupies the compositor nor blocks the same-sender coalesce check. At most 4 transients are in flight at once and at most 2 of them a peer's, so the lamp's own Test and greetings always have room (`admitTransient`); one is also skipped when the heap cannot spare it, and a dropped one is logged. A crowd of distinct senders cannot stack heap Expressions without limit. An expression upsert (from the app or a relayed `expressionOp`) is held to the caps in `config/config_types.hpp`: a type the variant does not register and a target outside 1-3 are rejected, colours past 8 and parameters past 12 are dropped, and the stored list holds at most 21 entries. See `docs/dev/networking.md` (MSG_EVENT section) for the wire format, the gossip-relay rule, and the per-msgType DedupRing.
+Cascade is a dev/testing tool, not a user-facing feature: the app exposes the toggle only in dev mode, on purpose — a fleet of user lamps flashing in sync is visual noise, and only a few specifically controlled lamps ship with it. When `parameters["cascadeEnabled"] == 1`, a local trigger fans out a matching invocation to every reachable peer, closest first, staggered by `parameters["cascadeStaggerMs"]`. The fan-out drains up to 6 frames per 100 ms pass from fixed storage (`CascadeScheduler`), only while the ESP-NOW driver has room (`TxCredit`), each frame's `delayMs` adjusted toward the peer's intended time (fifty peers take at least 800 ms to send, so the far end of a 50-lamp crowd can fire up to about a second late on an idle link); a second cascade waits behind the one draining, so fired together its far end is about 1.7 s late, a third replaces the one waiting, and an OTA start stops the drain. Relay traffic and mesh resends share the driver's credits, so under contention the far end is later still (`docs/dev/embedded-heap.md`, "What a crowd drives"). Continuous descriptors never cascade — a cascaded long-running expression would override other lamps' behavior, and they retrigger at boot, settings upsert, and wisp release anyway — so `maybeCascade` gates them out, matching the app's hidden toggle. The structural loop break is in `triggerInvocation`, remote-arrived triggers are dispatched to a transient one-shot Expression instance and **never cascade**. A transient whose `trigger()` is rejected (wrong buffer, or the operator's color editor is open) is not retained: it neither occupies the compositor nor blocks the same-sender coalesce check. At most 4 transients are in flight at once and at most 2 of them a peer's, so at least 2 slots stay free of peers for the lamp's own Test and greetings (`admitTransient`); one is also skipped when the largest free block cannot hold 2 KB per target plus 4 KB, and a dropped one is logged. A Test or greeting that cannot play here still sends its cascade (`cascadesFrom`). A crowd of distinct senders cannot stack heap Expressions without limit. An expression upsert (from the app or a relayed `expressionOp`) is held to the caps in `config/config_types.hpp`: a type the variant does not register and a target outside 1-3 are rejected, colours past 8 and parameters past 12 are dropped, and the stored list holds at most 21 entries. See `docs/dev/networking.md` (MSG_EVENT section) for the wire format, the gossip-relay rule, and the per-msgType DedupRing.
 
 ## Expression mirror
 
@@ -276,7 +276,7 @@ A minimal copy-paste type, matching the shipped pattern (registry-driven, no
 factory dispatch). Follows the four steps in **Adding a new expression type**
 above.
 
-Append `"fooTempo"` to `kExpressionParamKeys` (`config/config_types.hpp`) first; until it is there the key is dropped at parse and `getParam` reads the default.
+Append `"tempo"` to `kExpressionParamKeys` (`config/config_types.hpp`) first (it sorts after `spotSpeed`, so it keeps the table's byte-wise order); until it is there the key is dropped at parse and `getParam` reads the default.
 
 `foo/foo_expression.hpp`:
 
@@ -291,7 +291,7 @@ namespace lamp {
 // Make-less descriptor data the .cpp composes via withMake(); native-test
 // seam so test_builtin_descriptors pins the production catalog.
 inline constexpr ParamSpec kFooParams[] = {
-  { .key = "fooTempo", .kind = ParamKind::Int, .label = "Tempo",
+  { .key = "tempo", .kind = ParamKind::Int, .label = "Tempo",
     .min = 100, .max = 4000, .def = 1000, .unit = "ms" },
   kOpacityParam,
 };
@@ -345,7 +345,7 @@ void FooExpression::configureFromParameters(
     const ExpressionParams& parameters) {
   // applyDefaults has folded every descriptor key into the map, so the
   // one-arg getParam always finds it — a miss is a schema bug.
-  tempoMs_ = getParam(parameters, "fooTempo");
+  tempoMs_ = getParam(parameters, "tempo");
   configureOpacity(parameters);
 }
 

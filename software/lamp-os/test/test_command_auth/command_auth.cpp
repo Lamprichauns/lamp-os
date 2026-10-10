@@ -17,7 +17,7 @@
 #include "components/network/protocol/event.hpp"
 
 // Native tests don't build src/; compile the real implementation into this TU.
-// The <mbedtls/sha256.h> it includes resolves to the shim in this test dir.
+// The <mbedtls/sha256.h> it includes resolves to test/native_stubs.
 #include "../../src/components/network/protocol/command_auth.cpp"
 
 namespace lp = lamp_protocol;

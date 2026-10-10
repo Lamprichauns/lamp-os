@@ -14,6 +14,9 @@ constexpr size_t kHeapHeadroom = 4096;
 
 // True when the largest free 8-bit block holds `bytes` plus kHeapHeadroom.
 bool heapCanSpare(size_t bytes);
+// True when the free 8-bit heap, in any blocks, holds `bytes` plus
+// kHeapHeadroom: for work that takes many small blocks.
+bool heapHasFree(size_t bytes);
 
 // A `bytes`-long buffer, or null when heapCanSpare refuses or the nothrow
 // allocation fails. Never throws, never grows.

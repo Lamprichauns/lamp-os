@@ -10,6 +10,10 @@ bool heapCanSpare(size_t bytes) {
   return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) >= bytes + kHeapHeadroom;
 }
 
+bool heapHasFree(size_t bytes) {
+  return heap_caps_get_free_size(MALLOC_CAP_8BIT) >= bytes + kHeapHeadroom;
+}
+
 std::unique_ptr<char[]> allocateSpare(size_t bytes) {
   if (!heapCanSpare(bytes)) return nullptr;
   return std::unique_ptr<char[]>(new (std::nothrow) char[bytes]);

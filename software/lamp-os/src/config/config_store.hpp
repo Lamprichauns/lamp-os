@@ -21,10 +21,15 @@ class ConfigStore {
  public:
   virtual ~ConfigStore() = default;
   virtual std::string read(const char* key, const char* defaultValue) = 0;
+  // Length of the string copied into `out` with its NUL; 0 when absent or
+  // longer than `cap` - 1. Takes no heap.
+  virtual size_t readString(const char* key, char* out, size_t cap) = 0;
   virtual size_t write(const char* key, const char* value) = 0;
   // Bytes copied into `out`; 0 when absent or longer than `cap`.
   virtual size_t readBlob(const char* key, void* out, size_t cap) = 0;
   virtual size_t writeBlob(const char* key, const void* data, size_t len) = 0;
+  // True when the key holds a value of any type, readable or not.
+  virtual bool has(const char* key) = 0;
   // True when the key is gone afterwards (absent counts).
   virtual bool erase(const char* key) = 0;
   // Wipe the whole namespace (factory reset). Returns true on success.
@@ -45,6 +50,12 @@ class InMemoryConfigStore : public ConfigStore {
   std::string read(const char* key, const char* defaultValue) override {
     auto it = map_.find(key);
     return it == map_.end() ? std::string(defaultValue) : it->second;
+  }
+  size_t readString(const char* key, char* out, size_t cap) override {
+    auto it = map_.find(key);
+    if (it == map_.end() || it->second.size() + 1 > cap) return 0;
+    std::memcpy(out, it->second.c_str(), it->second.size() + 1);
+    return it->second.size();
   }
   size_t write(const char* key, const char* value) override {
     return writeBlob(key, value, std::strlen(value));
@@ -71,7 +82,7 @@ class InMemoryConfigStore : public ConfigStore {
     map_.clear();
     return true;
   }
-  bool has(const char* key) const { return map_.count(key) != 0; }
+  bool has(const char* key) override { return map_.count(key) != 0; }
 
  private:
   bool crashed() {

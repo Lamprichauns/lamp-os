@@ -80,6 +80,12 @@ Config::Config(ConfigStore* inStore) {
   bool withinCaps = true;
   const config_codec::LoadedRecords records = config_codec::loadStoredConfig(
       *store_, doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode, withinCaps);
+  if (records.unreadable) {
+    // A stored blob holding part of the config did not read; the parts it
+    // held load as defaults, which must not be saved over it.
+    loadFailedWithData_ = true;
+    Serial.println("[cfg] STORED CONFIG BLOB UNREADABLE; serving defaults for it");
+  }
   if (!withinCaps) Serial.println("[cfg] stored expressions over caps; truncated on load");
   for (size_t i = 0; i < kMaxExpressions; ++i) {
     if (records.droppedMask & (1u << i)) {
@@ -99,70 +105,59 @@ Config::Config(ConfigStore* inStore) {
   dispositions_.load();
 };
 
-// The "cfg" JSON is written into this reserved buffer, so a save never
+// The stored JSON is written into this reserved buffer, so a save never
 // waits for a large free block. Loop task only: every save, the webapp's
 // included (webapp::tick drains it), runs there.
 static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
 
+static const char* saveFailure(config_codec::SaveResult result) {
+  switch (result) {
+    case config_codec::SaveResult::TooLarge: return "too large";
+    case config_codec::SaveResult::Invalid: return "invalid";
+    case config_codec::SaveResult::NoHeap: return "no heap";
+    case config_codec::SaveResult::Held: return "held for web-save reboot";
+    default: return "write";
+  }
+}
+
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
-  if (savesFrozen_) {
+  if (!saveGate_.allows()) {
     Serial.printf("[nvs] save via=%s held for web-save reboot\n", via);
     return false;
   }
-  const uint32_t now = millis();
   const config_codec::SaveResult result = config_codec::saveConfig(
       *store_, lamp, base, shade, expressions, homeMode, s_cfgJson, sizeof(s_cfgJson));
   if (result == config_codec::SaveResult::Ok) {
-    persistRetry_.succeed();
+    saveGate_.saved();
 #ifdef LAMP_DEBUG
     Serial.printf("[nvs] config saved via=%s\n", via);
 #endif
     return true;
   }
-  persistRetry_.fail(now);
-  Serial.printf("[nvs] save via=%s failed (%s), retry %lus\n", via,
-                result == config_codec::SaveResult::TooLarge ? "too large" : "write",
-                (unsigned long)(persistRetry_.waitMs() / 1000));
+  saveGate_.failed(millis());
+  Serial.printf("[nvs] save via=%s failed (%s), retry %lus\n", via, saveFailure(result),
+                (unsigned long)(saveGate_.waitMs() / 1000));
   return false;
 }
 
-bool Config::persistDue(uint32_t nowMs) const { return persistRetry_.due(nowMs); }
+bool Config::persistDue(uint32_t nowMs) const { return saveGate_.due(nowMs); }
 
 void Config::maybeRetryPersist(uint32_t nowMs) {
-  if (persistRetry_.pending() && persistRetry_.due(nowMs)) persistConfig("retry");
+  if (saveGate_.pending() && saveGate_.due(nowMs)) persistConfig("retry");
 }
 
-bool Config::persistRawJson(const char* json) {
-  if (!store_) return false;
-  if (!config_codec::configBlobPersistable(json)) {
-#ifdef LAMP_DEBUG
-    Serial.println("[nvs] persistRawJson rejected: blob did not validate; NVS left intact");
-#endif
-    return false;
+config_codec::SaveResult Config::persistRawJson(const char* json) {
+  if (!store_) return config_codec::SaveResult::WriteFailed;
+  const config_codec::SaveResult result =
+      saveGate_.allows()
+          ? config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson), lamp.password)
+          : config_codec::SaveResult::Held;
+  saveGate_.rawFinished(result, millis());
+  if (result != config_codec::SaveResult::Ok) {
+    Serial.printf("[nvs] web save failed (%s)\n", saveFailure(result));
   }
-  // Parse into a scratch model and save it in the stored shape; the caller
-  // reboots to load it, the same as a raw write re-parsed on the next boot.
-  JsonDocument doc;
-  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
-  LampSettings rawLamp;
-  BaseSettings rawBase;
-  ShadeSettings rawShade;
-  ExpressionSettings rawExpressions;
-  HomeModeSettings rawHome;
-  config_codec::fromJson(doc.as<JsonObject>(), rawLamp, rawBase, rawShade,
-                         rawExpressions, rawHome);
-  if (config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade, rawExpressions,
-                               rawHome, s_cfgJson, sizeof(s_cfgJson)) !=
-      config_codec::SaveResult::Ok) {
-    return false;
-  }
-  // The stored config is now the web document, which the reboot loads; a
-  // pending retry or a later in-memory save would overwrite it with the
-  // running config first.
-  persistRetry_.succeed();
-  savesFrozen_ = true;
-  return true;
+  return result;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }
@@ -371,9 +366,10 @@ JsonDocument Config::asHomeModeJson() {
   return doc;
 }
 
-// Per-section JSON cache accessors. Rebuild-if-dirty and the reader's
-// copy-out share one mutex; without it a reader on one core can copy the
-// member string while a rebuild on the other core reallocates it.
+// Per-section JSON caches. Invariant: a cache string is touched only while
+// this mutex is held, and a read rebuilds and copies out under one hold, so a
+// rebuild or a release on the other core never lands between the two. A
+// dirty flag is set without it (invalidate*), which at worst costs a rebuild.
 static SemaphoreHandle_t cacheMutex() {
   static SemaphoreHandle_t m = xSemaphoreCreateMutex();
   return m;
@@ -407,37 +403,46 @@ static void logSectionOom(const char* msg) {
 // grown on a fragmented heap silently stops appending and would cache a cut-off
 // JSON as valid). On failure keep the last-good cache, leave the dirty flag
 // set so it retries when heap recovers, and serve the stale (or empty) bytes.
-#define LAMP_DEFINE_SECTION_CACHED(NAME, BUILDER)                          \
-  void Config::NAME##SectionRebuildIfDirty() {                             \
-    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    if (NAME##SectionDirty_) {                                             \
-      size_t len = 0;                                                      \
-      std::unique_ptr<char[]> json;                                        \
-      if (heapCanSpare(kHeapHeadroom)) {                                   \
-        JsonDocument doc = BUILDER();                                      \
-        json = serializeGuarded(doc, len);                                 \
-      }                                                                    \
-      if (json && (NAME##SectionJson_.capacity() >= len ||                 \
-                   heapCanSpare(len)) &&                                   \
-          assignNoThrow(NAME##SectionJson_, json.get(), len)) {            \
-        NAME##SectionDirty_ = false;                                       \
-      } else {                                                             \
-        logSectionOom(#NAME);                                              \
-      }                                                                    \
-    }                                                                      \
-    xSemaphoreGive(cacheMutex());                                          \
-  }                                                                        \
-  void Config::NAME##SectionJsonCached(std::string& out) {                 \
-    NAME##SectionRebuildIfDirty();                                         \
-    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    if (!((out.capacity() >= NAME##SectionJson_.size() ||                  \
-           heapCanSpare(NAME##SectionJson_.size())) &&                     \
-          assignNoThrow(out, NAME##SectionJson_.data(),                    \
-                        NAME##SectionJson_.size()))) {                     \
-      out.clear();                                                         \
-      logSectionOom(#NAME);                                                \
-    }                                                                      \
-    xSemaphoreGive(cacheMutex());                                          \
+// Caller holds the cache mutex. A failed rebuild keeps the last good copy and
+// stays dirty.
+template <class Build>
+static void rebuildLocked(std::string& cache, bool& dirty, const char* name, Build build) {
+  if (!dirty) return;
+  size_t len = 0;
+  std::unique_ptr<char[]> json;
+  if (heapCanSpare(kHeapHeadroom)) {
+    JsonDocument doc = build();
+    json = serializeGuarded(doc, len);
+  }
+  if (json && (cache.capacity() >= len || heapCanSpare(len)) &&
+      assignNoThrow(cache, json.get(), len)) {
+    dirty = false;
+  } else {
+    logSectionOom(name);
+  }
+}
+
+static void copyOutLocked(const std::string& cache, std::string& out, const char* name) {
+  if (!((out.capacity() >= cache.size() || heapCanSpare(cache.size())) &&
+        assignNoThrow(out, cache.data(), cache.size()))) {
+    out.clear();
+    logSectionOom(name);
+  }
+}
+
+#define LAMP_DEFINE_SECTION_CACHED(NAME, BUILDER)                                     \
+  void Config::NAME##SectionRebuildIfDirty() {                                        \
+    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                                      \
+    rebuildLocked(NAME##SectionJson_, NAME##SectionDirty_, #NAME,                     \
+                  [this] { return BUILDER(); });                                      \
+    xSemaphoreGive(cacheMutex());                                                     \
+  }                                                                                   \
+  void Config::NAME##SectionJsonCached(std::string& out) {                            \
+    xSemaphoreTake(cacheMutex(), portMAX_DELAY);                                      \
+    rebuildLocked(NAME##SectionJson_, NAME##SectionDirty_, #NAME,                     \
+                  [this] { return BUILDER(); });                                      \
+    copyOutLocked(NAME##SectionJson_, out, #NAME);                                    \
+    xSemaphoreGive(cacheMutex());                                                     \
   }
 
 LAMP_DEFINE_SECTION_CACHED(lamp, asLampJson)
@@ -445,8 +450,8 @@ LAMP_DEFINE_SECTION_CACHED(base, asBaseJson)
 LAMP_DEFINE_SECTION_CACHED(shade, asShadeJson)
 LAMP_DEFINE_SECTION_CACHED(home, asHomeModeJson)
 
-// The largest section (about 4 KB at the caps) is written straight into its
-// cache, measured first, so a rebuild takes one exactly-sized block and never
+// The largest section (about 4 KB at the caps) is written straight into a
+// string measured first, so a rebuild takes one exactly-sized block and never
 // a document's worth of small ones.
 static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) {
   w.beginArray();
@@ -454,32 +459,30 @@ static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) 
   w.endArray();
 }
 
+void Config::expressionsSectionRebuildLocked() {
+  if (!expressionsSectionDirty_) return;
+  JsonWriter measure(nullptr, 0);
+  writeExpressionsSection(measure, expressions);
+  const size_t len = measure.length();
+  if (heapCanSpare(len + 1) &&
+      writeExactly(expressionsSectionJson_, len,
+                   [this](JsonWriter& w) { writeExpressionsSection(w, expressions); })) {
+    expressionsSectionDirty_ = false;
+  } else {
+    logSectionOom("expressions");
+  }
+}
+
 void Config::expressionsSectionRebuildIfDirty() {
   xSemaphoreTake(cacheMutex(), portMAX_DELAY);
-  if (expressionsSectionDirty_) {
-    JsonWriter measure(nullptr, 0);
-    writeExpressionsSection(measure, expressions);
-    const size_t len = measure.length();
-    if ((expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) &&
-        writeExactly(expressionsSectionJson_, len,
-                     [this](JsonWriter& w) { writeExpressionsSection(w, expressions); })) {
-      expressionsSectionDirty_ = false;
-    } else {
-      logSectionOom("expressions");
-    }
-  }
+  expressionsSectionRebuildLocked();
   xSemaphoreGive(cacheMutex());
 }
 
 void Config::expressionsSectionJsonCached(std::string& out) {
-  expressionsSectionRebuildIfDirty();
   xSemaphoreTake(cacheMutex(), portMAX_DELAY);
-  if (!((out.capacity() >= expressionsSectionJson_.size() ||
-         heapCanSpare(expressionsSectionJson_.size())) &&
-        assignNoThrow(out, expressionsSectionJson_.data(), expressionsSectionJson_.size()))) {
-    out.clear();
-    logSectionOom("expressions");
-  }
+  expressionsSectionRebuildLocked();
+  copyOutLocked(expressionsSectionJson_, out, "expressions");
   xSemaphoreGive(cacheMutex());
 }
 

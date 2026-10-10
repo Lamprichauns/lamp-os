@@ -12,6 +12,7 @@
 #include "config_store.hpp"
 #include "config_types.hpp"
 #include "disposition_store.hpp"
+#include "save_gate.hpp"
 
 namespace lamp {
 
@@ -85,7 +86,8 @@ class Config {
   // user-saved values are authoritative.
   void applyDefaults(const Defaults& d);
 
-  // True when NVS held a non-empty config blob that failed to deserialize.
+  // True when NVS held a non-empty config, or a blob holding part of it, that
+  // failed to read or deserialize.
   // The lamp served defaults for this boot; callers must NOT overwrite NVS,
   // the stored blob may be recoverable.
   bool loadFailedWithData() const { return loadFailedWithData_; }
@@ -109,10 +111,12 @@ class Config {
    * fade-out-and-reboot. The runtime state has already been applied by
    * the caller; this just writes the canonical JSON to NVS.
    *
-   * Returns true when every key landed. Never throws: when the heap cannot
-   * spare the save or NVS refuses a write, it returns false, logs, and backs
-   * off (5 s doubling to 60 s); maybeRetryPersist() runs the retry. In-memory
-   * state is unchanged.
+   * Returns true when every key landed. Never throws and takes no
+   * config-sized heap (config_codec::saveConfig): when
+   * NVS refuses a write it returns false, logs, and backs off (5 s doubling
+   * to 60 s); maybeRetryPersist() runs the retry. After persistRawJson has
+   * stored a web document it declines, logging, until the reboot that loads
+   * it. In-memory state is unchanged.
    *
    * `via`: short tag like "commit" / "settings_blob" / "expressionOp"
    * included in the log to disambiguate which path triggered the write.
@@ -120,23 +124,25 @@ class Config {
    */
   bool persistConfig(const char* via);
 
-  // False while a failed save is backing off; a caller with its own retry
-  // loop (the commit drain) waits on it.
+  // False while a failed save is backing off, or while a stored web document
+  // holds every save; a caller with its own retry loop (the commit drain)
+  // waits on it.
   bool persistDue(uint32_t nowMs) const;
   // True while a failed save waits for its retry.
-  bool persistPending() const { return persistRetry_.pending(); }
+  bool persistPending() const { return saveGate_.pending(); }
   // Core 1 loop drain: re-runs a failed persistConfig once its backoff ends.
   void maybeRetryPersist(uint32_t nowMs);
   static constexpr uint32_t kPersistRetryBaseMs = 5000;
   static constexpr uint32_t kPersistRetryMaxMs = 60000;
 
   // Saves a caller-supplied whole-config JSON document (the webapp's
-  // whole-document PUT path) in the stored shape, for the next boot to load.
-  // Keeps the namespace/key contract here rather than letting callers open
-  // NVS themselves. Returns true when every key landed; from then on
-  // persistConfig declines (and any pending retry is dropped) until the
-  // reboot that loads it. Loop task only.
-  bool persistRawJson(const char* json);
+  // whole-document PUT path) in the stored shape, for the next boot to load
+  // (config_codec::saveRawJson). Returns Ok when every key landed; from
+  // then on persistConfig declines (and any pending retry is dropped) until
+  // the reboot that loads it, and a second web document is Held. A save
+  // that fails partway leaves the running config's save pending, which
+  // writes it back whole. Loop task only.
+  config_codec::SaveResult persistRawJson(const char* json);
 
   // Wipe persisted state (factory reset). Returns true on success. The caller
   // reboots afterward so defaults reload; in-memory state is left as-is.
@@ -272,8 +278,7 @@ class Config {
 
  private:
   DispositionStore dispositions_{kDispositionFlushIdleMs};
-  RetryBackoff persistRetry_{kPersistRetryBaseMs, kPersistRetryMaxMs};
-  bool savesFrozen_ = false;
+  SaveGate saveGate_{kPersistRetryBaseMs, kPersistRetryMaxMs};
 
   // All dirty=true initially so the first cached() call computes and
   // populates the string. After that, mutations on Core 1 must call
@@ -297,5 +302,8 @@ class Config {
   bool shadeSectionDirty_ = true;
   bool expressionsSectionDirty_ = true;
   bool homeSectionDirty_ = true;
+
+  // Caller holds the cache mutex.
+  void expressionsSectionRebuildLocked();
 };
 }  // namespace lamp

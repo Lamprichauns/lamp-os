@@ -48,6 +48,25 @@ std::string NvsConfigStore::read(const char* key, const char* defaultValue) {
   return defaultValue;
 }
 
+size_t NvsConfigStore::readString(const char* key, char* out, size_t cap) {
+  nvs_handle_t h;
+  if (nvs_open(kNamespace, NVS_READONLY, &h) != ESP_OK) return 0;
+  size_t len = 0;
+  const bool ok = nvs_get_str(h, key, nullptr, &len) == ESP_OK && len > 0 && len <= cap &&
+                  nvs_get_str(h, key, out, &len) == ESP_OK;
+  nvs_close(h);
+  return ok ? len - 1 : 0;
+}
+
+bool NvsConfigStore::has(const char* key) {
+  nvs_handle_t h;
+  if (nvs_open(kNamespace, NVS_READONLY, &h) != ESP_OK) return false;
+  nvs_type_t type;
+  const bool found = nvs_find_key(h, key, &type) == ESP_OK;
+  nvs_close(h);
+  return found;
+}
+
 size_t NvsConfigStore::write(const char* key, const char* value) {
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);
@@ -70,14 +89,19 @@ size_t NvsConfigStore::readBlob(const char* key, void* out, size_t cap) {
 }
 
 size_t NvsConfigStore::writeBlob(const char* key, const void* data, size_t len) {
+  return writeBlobPastOrphan(orphans_, key, data, len, rawWriteBlob) ? len : 0;
+}
+
+BlobWrite NvsConfigStore::rawWriteBlob(const char* key, const void* data, size_t len) {
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);
   if (err != ESP_OK) {
     logFailure("open", key, err);
-    return 0;
+    return BlobWrite::Failed;
   }
-  return commitOrZero(h, nvs_set_blob(h, key, data, len), "set_blob", key,
-                      len);
+  err = nvs_set_blob(h, key, data, len);
+  if (commitOrZero(h, err, "set_blob", key, 1) > 0) return BlobWrite::Ok;
+  return err == ESP_ERR_NO_MEM ? BlobWrite::OutOfMemory : BlobWrite::Failed;
 }
 
 bool NvsConfigStore::erase(const char* key) {

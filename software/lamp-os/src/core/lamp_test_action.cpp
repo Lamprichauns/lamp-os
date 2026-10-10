@@ -294,11 +294,12 @@ void runSerialCommand(char* line, size_t len) {
   }
 
   if (strcmp(line, "heap.get") == 0) {
-    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u txstalls=%lu\n",
+    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u txstalls=%lu txrefused=%lu\n",
                   (unsigned)esp_get_free_heap_size(),
                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
                   (unsigned)esp_get_minimum_free_heap_size(),
-                  (unsigned long)lamp::EspNowLink::s_txCredit.stalls());
+                  (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                  (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     return;
   }
 

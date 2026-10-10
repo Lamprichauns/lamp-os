@@ -130,7 +130,7 @@ void test_add_replaces_existing_id() {
 void test_apply_defaults_fills_missing_and_preserves_present() {
   ExpressionRegistry reg;
   ExpressionParams params;
-  params.set("count", 99);  // already present — must not be overwritten
+  params.set("count", 99);  // already present, so applyDefaults keeps it
 
   reg.applyDefaults(kDesc1, params, 30);
   TEST_ASSERT_EQUAL_UINT32(99, params.get("count", 0));  // untouched
