@@ -8,9 +8,8 @@ namespace lamp {
 
 // NVS-backed ConfigStore: all keys live in the "lamp" namespace. Talks to the
 // nvs_* API directly: Preferences logs its own failures through a path that
-// faults on a fragmented heap, and a full NVS must be a returned 0, not a
-// crash. Each failure logs one line. Must be driven from Core 1 (NVS is not
-// Core-0-safe).
+// faults on a fragmented heap, and a full NVS must come back as a returned 0.
+// Each failure logs one line. Must be driven from the loop task.
 class NvsConfigStore : public ConfigStore {
  public:
   std::string read(const char* key, const char* defaultValue) override;
@@ -22,9 +21,8 @@ class NvsConfigStore : public ConfigStore {
 
   // Boot gate, before the lamp opens NVS: makes sure the partition is
   // initialized, erasing and re-initializing it only when it reports itself
-  // unusable (every stored key is lost then, but the lamp boots with BLE
-  // instead of needing a reflash), then reclaims the WiFi driver's stored
-  // config. Returns true when NVS is usable.
+  // unusable (every stored key is lost then, and the lamp still boots with
+  // BLE), then reclaims the WiFi driver's stored config. Returns true when NVS is usable.
   static bool initFlash();
 
  private:

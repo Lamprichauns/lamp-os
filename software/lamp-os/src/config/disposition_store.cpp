@@ -89,21 +89,25 @@ void DispositionStore::load() {
   // The legacy JSON key exists only before the first migration, or after an
   // older firmware rewrote it following a downgrade; either way it is the
   // newest copy, so it wins over a stale blob.
+  std::vector<Entry> fromBlob;
+  std::array<uint8_t, kMaxBlobLen> blob;
+  const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
+  const bool blobOk = n > 0 && parseBlob(blob.data(), n, fromBlob);
   const std::string json = store_->read(kLegacyJsonKey, "");
-  const bool fromJson = !json.empty();
-  if (fromJson) {
-    if (!parseEntries(json.c_str(), json.size(), next)) return;
-  } else {
-    std::array<uint8_t, kMaxBlobLen> blob;
-    const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
-    if (n == 0 || !parseBlob(blob.data(), n, next)) return;
+  // A JSON that does not parse, or parses to nothing while the blob holds
+  // entries, never replaces the blob; it is dropped by the migration below.
+  bool fromJson = !json.empty() && parseEntries(json.c_str(), json.size(), next) &&
+                  !(next.empty() && blobOk && !fromBlob.empty());
+  if (!fromJson) {
+    if (!json.empty()) store_->erase(kLegacyJsonKey);
+    if (!blobOk) return;
+    next = std::move(fromBlob);
   }
   xSemaphoreTake(mutex_, portMAX_DELAY);
   entries_ = std::move(next);
   xSemaphoreGive(mutex_);
-  // Migrate now rather than on the next change: the JSON is about three
-  // times the blob, and a lamp whose NVS is full gets that space back on
-  // this boot. The blob lands before the JSON goes, so a reset between
+  // Migrate at load: the JSON is about three times the blob, and a lamp
+  // whose NVS is full gets that space back on this boot. The blob lands before the JSON goes, so a reset between
   // them keeps a readable copy.
   if (fromJson && !persist_()) debouncer_.markDirty(0);
 }

@@ -261,8 +261,7 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   // adoption flag so boot's applyDefaults never reverts the name to a default.
   const char* nm = obj["lamp"]["name"] | "";
   if (nm[0] != '\0') obj["lamp"]["named"] = true;
-  // A longer password could never be typed back; refuse rather than store a
-  // truncated one.
+  // A longer password could never be typed back, so the save is refused.
   if (std::strlen(obj["lamp"]["password"] | "") > lamp::kMaxPasswordLen) {
     req->send(400, "application/json", "{\"ok\":false}");
     return;

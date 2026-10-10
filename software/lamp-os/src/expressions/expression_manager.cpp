@@ -193,9 +193,9 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   }
 
   // Every queued ESP-NOW frame holds a WiFi TX buffer until it airs, so the
-  // fan-out drains a batch at a time from fixed storage (tickCascade); a
-  // crowd of 50 in one pass ran the driver out of memory. This replaces any
-  // cascade still draining.
+  // fan-out drains a batch at a time from fixed storage (tickCascade). It
+  // waits behind a cascade still draining; with both slots taken it
+  // replaces the one waiting.
   std::string json;
   serializeInvocation(inv, json);
   const CascadeScheduler::Begin queued =
@@ -203,11 +203,16 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   if (queued == CascadeScheduler::Begin::Replaced) {
     Serial.printf("[cascade] type=%s replaced a waiting cascade\n", entry.type.c_str());
   }
-  if (queued == CascadeScheduler::Begin::Refused) {
-    // Unconditional: an over-cap invocation silently fails to cascade on
-    // deployed lamps; this is the only signal.
+  // Unconditional: a refused cascade silently fails on deployed lamps; this
+  // is the only signal.
+  if (queued == CascadeScheduler::Begin::TooLong) {
     Serial.printf("[cascade] ERR payload %uB over %uB cap, dropped type=%s\n",
                   (unsigned)json.size(), (unsigned)CascadeScheduler::kMaxPayloadLen,
+                  entry.type.c_str());
+    return;
+  }
+  if (queued == CascadeScheduler::Begin::NoDelayField) {
+    Serial.printf("[cascade] ERR payload has no delayMs, dropped type=%s\n",
                   entry.type.c_str());
     return;
   }
@@ -230,8 +235,7 @@ void ExpressionManager::tickCascade(uint32_t nowMs) {
     return;
   }
   const uint32_t overflowBefore = cascade_.overflowDrops();
-  // A frame the driver has no room for waits for a later pass rather than
-  // failing in esp_now_send.
+  // A frame the driver has no room for waits for a later pass.
   cascade_.tickGated(
       nowMs, [this] { return meshLink_->txReady(); },
       [this](const uint8_t* mac, const char* payload, size_t len) {

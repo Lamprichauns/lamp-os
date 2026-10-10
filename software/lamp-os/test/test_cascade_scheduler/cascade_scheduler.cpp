@@ -42,8 +42,9 @@ void beginWith(CascadeScheduler& s, const ExpressionInvocation& inv, size_t peer
                uint32_t staggerMs, uint32_t nowMs) {
   std::string json;
   serializeInvocation(inv, json);
-  TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), staggerMs, nowMs) !=
-                   CascadeScheduler::Begin::Refused);
+  const auto queued = s.begin(json.data(), json.size(), staggerMs, nowMs);
+  TEST_ASSERT_TRUE(queued == CascadeScheduler::Begin::Queued ||
+                   queued == CascadeScheduler::Begin::Replaced);
   for (size_t i = 0; i < peers; ++i) {
     const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
     s.addPeer(mac);
@@ -176,7 +177,11 @@ void test_oversize_payload_is_refused() {
   std::string json = "{\"delayMs\":0,\"pad\":\"" +
                      std::string(CascadeScheduler::kMaxPayloadLen, 'x') + "\"}";
   TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), 0, 0) ==
-                   CascadeScheduler::Begin::Refused);
+                   CascadeScheduler::Begin::TooLong);
+  const char noDelay[] = "{\"type\":\"pulse\"}";
+  TEST_ASSERT_TRUE(s.begin(noDelay, sizeof(noDelay) - 1, 0, 0) ==
+                   CascadeScheduler::Begin::NoDelayField);
+  TEST_ASSERT_FALSE(s.active());
   TEST_ASSERT_FALSE(s.active());
 }
 

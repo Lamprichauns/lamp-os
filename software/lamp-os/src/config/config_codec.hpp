@@ -22,8 +22,8 @@ const ExpressionParams* findExpressionParams(const ExpressionSettings& settings,
                                              const std::string& type, uint8_t target);
 
 // Mirrors an upsert into the stored list: replaces the (type, target) entry,
-// or appends while under kMaxExpressions (growing four slots at a time, not
-// by doubling). False when the list is full and the entry was not stored.
+// or appends while under kMaxExpressions, growing the vector four slots at a
+// time. False when the list is full and the entry was not stored.
 bool mirrorUpsert(ExpressionSettings& settings, const ExpressionConfig& cfg);
 
 // `s` when it names a byte order the strip driver knows ("GRBW", "GRB",

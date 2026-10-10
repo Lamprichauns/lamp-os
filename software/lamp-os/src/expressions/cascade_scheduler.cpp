@@ -13,19 +13,19 @@ constexpr char kDelayField[] = "\"delayMs\":";
 CascadeScheduler::Begin CascadeScheduler::begin(const char* json, size_t len,
                                                 uint32_t staggerMs, uint32_t nowMs) {
   fillingValid_ = false;
-  if (len > kMaxPayloadLen) return Begin::Refused;
+  if (len > kMaxPayloadLen) return Begin::TooLong;
   // Locate the delay digits before touching a slot, so a refusal holds
   // nothing new.
   const char* end = json + len;
   const char* field = std::search(json, end, kDelayField, kDelayField + sizeof(kDelayField) - 1);
-  if (field == end) return Begin::Refused;
+  if (field == end) return Begin::NoDelayField;
   const size_t delayPos = static_cast<size_t>(field - json) + sizeof(kDelayField) - 1;
   size_t delayDigits = 0;
   while (delayPos + delayDigits < len && json[delayPos + delayDigits] >= '0' &&
          json[delayPos + delayDigits] <= '9') {
     ++delayDigits;
   }
-  if (delayDigits == 0) return Begin::Refused;
+  if (delayDigits == 0) return Begin::NoDelayField;
 
   Begin result = Begin::Queued;
   size_t slot;

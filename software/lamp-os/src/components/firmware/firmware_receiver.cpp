@@ -404,7 +404,7 @@ void FirmwareReceiver::onOfferOnLoop(const PendingFirmwareControl& ctrl,
   offerTotalChunks_ = static_cast<uint16_t>(expectedChunks);
 
   // The bitmap is up to 8 KB, allocated per session; a crowd re-offers, so a
-  // fragmented heap declines and the sender retries later instead of aborting.
+  // fragmented heap declines and the sender retries later.
   if (!::lamp::heapCanSpare((expectedChunks + 7) / 8)) {
     Serial.printf("[fw_receiver] OFFER declined: low heap for %u chunks\n",
                   (unsigned)expectedChunks);

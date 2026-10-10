@@ -121,7 +121,7 @@ class Config {
   bool persistConfig(const char* via);
 
   // False while a failed save is backing off; a caller with its own retry
-  // loop (the commit drain) waits on it instead of spinning.
+  // loop (the commit drain) waits on it.
   bool persistDue(uint32_t nowMs) const;
   // True while a failed save waits for its retry.
   bool persistPending() const { return persistRetry_.pending(); }

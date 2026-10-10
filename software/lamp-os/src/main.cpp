@@ -38,8 +38,8 @@ void setup() {
   // Small delay so the boot log isn't lost while the host opens the port.
   delay(50);
 
-  // Before anything opens NVS: a partition that cannot initialize is erased so
-  // the lamp boots with Bluetooth instead of needing a reflash.
+  // Before anything opens NVS: a partition that reports itself unusable is
+  // erased so the lamp still boots with Bluetooth.
   lamp::NvsConfigStore::initFlash();
 
   // Attach the store to the file-scope Config so loadLampType / setLampType

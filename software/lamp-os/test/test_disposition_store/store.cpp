@@ -221,6 +221,27 @@ void test_json_written_after_a_downgrade_wins() {
   TEST_ASSERT_EQUAL_UINT8(5, getMac(reloaded, "11:22:33:44:55:66"));
 }
 
+// A corrupt or empty legacy JSON never replaces a blob that holds entries.
+void test_corrupt_or_empty_json_keeps_the_blob() {
+  for (const char* bad : {"{\"11:22", "{}"}) {
+    InMemoryConfigStore backing;
+    DispositionStore ds(100);
+    ds.attachStore(&backing);
+    setMac(ds, "11:22:33:44:55:66", 4, 0);
+    ds.flushNow(0);
+    backing.write("dispositions", bad);
+    DispositionStore reloaded(100);
+    reloaded.attachStore(&backing);
+    reloaded.load();
+    TEST_ASSERT_EQUAL_UINT8(4, getMac(reloaded, "11:22:33:44:55:66"));
+    DispositionStore again(100);
+    again.attachStore(&backing);
+    again.load();
+    TEST_ASSERT_EQUAL_UINT8(4, getMac(again, "11:22:33:44:55:66"));
+    TEST_ASSERT_FALSE(backing.has("dispositions"));
+  }
+}
+
 void test_asjson_sized_to_the_entries() {
   DispositionStore ds(100);
   setMac(ds, "AA:BB:CC:DD:EE:01", 2, 0);
@@ -287,6 +308,7 @@ int main(int, char**) {
   RUN_TEST(test_legacy_json_migrates_at_load_blob_first);
   RUN_TEST(test_json_written_after_a_downgrade_wins);
   RUN_TEST(test_asjson_sized_to_the_entries);
+  RUN_TEST(test_corrupt_or_empty_json_keeps_the_blob);
   RUN_TEST(test_full_store_matches_arduinojson_bytes);
   RUN_TEST(test_empty_store_serializes_empty_object);
   return UNITY_END();

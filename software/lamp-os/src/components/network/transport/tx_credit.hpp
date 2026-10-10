@@ -31,8 +31,8 @@ class TxCredit {
       if (cur >= kMaxInFlight) return false;
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
-        // The stall clock starts with the first frame out, not at the last
-        // completion, which may be long past.
+        // The stall clock restarts with the first frame out after an idle
+        // spell.
         if (cur == 0) advance(nowMs, true);
         return true;
       }

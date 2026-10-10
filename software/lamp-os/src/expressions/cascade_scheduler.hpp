@@ -27,11 +27,11 @@ class CascadeScheduler {
   static constexpr uint32_t kBatchGapMs = 100;
   static constexpr size_t kMaxPayloadLen = 768;  // a worst-case invocation fits
 
-  enum class Begin : uint8_t { Queued, Replaced, Refused };
+  enum class Begin : uint8_t { Queued, Replaced, TooLong, NoDelayField };
 
   // Queues a fan-out of `json` (an invocation serialized with "delayMs":0)
-  // and makes it the target of addPeer. Refused, holding nothing new, when
-  // it is longer than kMaxPayloadLen or has no delayMs field.
+  // and makes it the target of addPeer. TooLong or NoDelayField hold nothing
+  // new.
   Begin begin(const char* json, size_t len, uint32_t staggerMs, uint32_t nowMs);
   // Adds the next peer to the fan-out begin() just queued, closest first;
   // ignored past kMaxPeers.
