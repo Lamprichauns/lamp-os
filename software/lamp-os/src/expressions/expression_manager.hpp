@@ -90,9 +90,13 @@ class ExpressionManager {
   // In-flight transients; a cascade past it is dropped. Reserved at begin().
   // Two target-both cascades: a shifty pair alone is about 1.8 KB of heap.
   static constexpr size_t kMaxTransients = 4;
-  // Heap a transient may take; one is skipped unless the largest free block
-  // also keeps kHeapHeadroom past it.
+  // Heap one transient may take; an invocation starts only when the largest
+  // free block holds this for each of its targets plus kHeapHeadroom, so a
+  // transient that starts can finish allocating.
   static constexpr size_t kTransientHeapBytes = 2048;
+  // Peers one cascade fans out to, closest first: the frames it queues at
+  // once.
+  static constexpr size_t kMaxCascadeTargets = 8;
 
   // Non-owning pointers to ExpressionEntry::expression instances that the
   // app's Test button fired via dispatchLampAction("test_expression").

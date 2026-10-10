@@ -175,6 +175,10 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
               return a.lastRssi > b.lastRssi;
             });
 
+  // Every queued ESP-NOW frame holds a WiFi TX buffer from the heap until it
+  // airs; fanning out to a whole crowd in one pass queued 50 at once and ran
+  // the driver out of memory. The closest peers carry the wave.
+  if (targets.size() > kMaxCascadeTargets) targets.resize(kMaxCascadeTargets);
   if (targets.empty()) {
 #ifdef LAMP_DEBUG
     Serial.printf("[cascade] skip no-peers type=%s\n", entry.type.c_str());
@@ -419,7 +423,7 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
   // A crowd of distinct senders would otherwise stack one transient pair per
   // sender, each a heap Expression plus its buffers.
   if (transientExpressions_.size() + targetCount > kMaxTransients ||
-      !heapCanSpare(kTransientHeapBytes)) {
+      !heapCanSpare(kTransientHeapBytes * targetCount)) {
 #ifdef LAMP_DEBUG
     Serial.printf("[expr] transient drop %s (%u in flight)\n", inv.type.c_str(),
                   (unsigned)transientExpressions_.size());
