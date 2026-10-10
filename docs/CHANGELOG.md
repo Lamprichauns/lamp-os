@@ -26,8 +26,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   of memory and restart, with or without the app open: saving settings or
   social dispositions on a crowded lamp could crash it outright, and a crowd's
   traffic piled up memory on its own. A save that can't go through now waits
-  and tries again a few seconds later instead of crashing, your stored
-  settings are untouched, and the lamp caps how much a crowd can make it hold
+  and tries again a few seconds later instead of crashing, keeping the
+  settings stored before it, and the lamp caps how much a crowd can make it hold
   at once: other lamps' effects can take at most half of its four effect
   slots, leaving the rest for its own Test and greetings while memory allows.
   When the lamp is too short of memory to show a Test itself, the Test still

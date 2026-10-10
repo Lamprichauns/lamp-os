@@ -13,7 +13,7 @@ source file is where the tag's format strings live.
 
 | Tag | Source | Prints |
 |---|---|---|
-| `[heap]` | `util/heap_probe.hpp`, `core/lamp.cpp` | Free + largest contiguous block at named checkpoints (`at=%s free=%u largest=%u`): boot, mesh, webapp, ble-connect/disconnect/pre/post, ota-stream, web-save; every 30 s in a debug build a `trend` checkpoint and `txstalls=.. txrefused=..`, the TX credits taken back and the sends dropped for want of a credit |
+| `[heap]` | `util/heap_probe.hpp`, `core/lamp.cpp` | Free + largest contiguous block at named checkpoints (`at=%s free=%u largest=%u`): boot, mesh, webapp, ble-connect/disconnect/pre/post, ota-stream, web-save; every 30 s in a debug build a `trend` checkpoint and `txstalls=.. txrefused=..`, the TX credit resets and the sends dropped for want of a credit |
 | `[loop]` | `core/lamp.cpp`, `core/lamp_drains.cpp` | Main-loop health: stack high-water mark, delayed-trigger queue eviction, knockout-drain pixel/brightness; `settingsBlob: save deferred; reboot waits for it`, a settings blob that needs a reboot whose save failed, and `settingsBlob: save never landed; no reboot`, the wait given up after 5 minutes (every build) |
 | `[lamp]` | `core/lamp.cpp`, `main.cpp` | Boot: `FATAL` malformed HwConfig (halt), compiled vs NVS `lampType` |
 | `[gov]` | `core/lamp.cpp` | Power governor clamp / release (`clamp demand=.. budget=.. ceiling=..`, `release demand=..`) |
@@ -31,7 +31,7 @@ source file is where the tag's format strings live.
 | `[wispcoex]` | `components/network/mesh/mesh_link.cpp` | Wisp-frame coex reception meter (`recv=.. maxgap=..ms`) |
 | `[wispdirect]` | `components/network/mesh/mesh_link.cpp` | Direct wisp-paint receive (srcMac) |
 | `[espnow]` | `components/network/transport/espnow_link.cpp` | ESP-NOW transport init / peer-add / reject-len |
-| `[espnow.tx]` | `components/network/transport/espnow_link.cpp` | `no tx callback, credits taken back n=..`: TX credits out for 2 s, presumed lost to a send callback that never came and taken back, with the running count (every build, at most every 10 s) |
+| `[espnow.tx]` | `components/network/transport/espnow_link.cpp` | `no tx callback, credits reset n=..`: TX credits presumed lost after 2 s with no send callback and reset, with the running count (every build, at most every 10 s) |
 | `[wifi]` | `components/network/transport/wifi.cpp` | WiFi state machine (softAP up/failed with `auth=wpa2\|open`, scan) |
 | `[recovery]` | `core/lamp.cpp` | BOOT-hold cleared the control password (5s hold, first minute of uptime) |
 | `[roster]` | `components/network/mesh/lamp_roster.cpp` | Roster update dropped on mutex contention |
