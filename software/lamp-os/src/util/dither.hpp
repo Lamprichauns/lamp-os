@@ -51,4 +51,10 @@ inline uint8_t ditherStep(uint16_t target88, uint8_t& carry) {
   return static_cast<uint8_t>(sum >> 8);
 }
 
+// Nearest 8-bit drive level for an 8.8 target, for a channel that has stopped
+// dithering.
+inline uint8_t roundedLevel(uint16_t target88) {
+  return static_cast<uint8_t>((static_cast<uint32_t>(target88) + 128u) >> 8);
+}
+
 }  // namespace lamp

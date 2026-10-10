@@ -8,6 +8,7 @@
 using lamp::ditherStep;
 using lamp::gammaLevel88;
 using lamp::kGamma88;
+using lamp::roundedLevel;
 
 void setUp() {}
 void tearDown() {}
@@ -64,6 +65,15 @@ void test_whole_levels_are_exact() {
   }
 }
 
+void test_rounded_level_is_nearest_and_exact_at_the_ends() {
+  TEST_ASSERT_EQUAL_UINT8(0, roundedLevel(0));
+  TEST_ASSERT_EQUAL_UINT8(0, roundedLevel(127));
+  TEST_ASSERT_EQUAL_UINT8(1, roundedLevel(128));
+  TEST_ASSERT_EQUAL_UINT8(3, roundedLevel(895));
+  TEST_ASSERT_EQUAL_UINT8(4, roundedLevel(896));
+  TEST_ASSERT_EQUAL_UINT8(255, roundedLevel(65280));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_table_is_gamma_2_6_in_8_8);
@@ -71,5 +81,6 @@ int main(int, char**) {
   RUN_TEST(test_average_tracks_target);
   RUN_TEST(test_zero_stays_off_whatever_the_carry);
   RUN_TEST(test_whole_levels_are_exact);
+  RUN_TEST(test_rounded_level_is_nearest_and_exact_at_the_ends);
   return UNITY_END();
 }
