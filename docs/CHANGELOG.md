@@ -9,15 +9,17 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 
 ### Added
 - **Moments.** Once in a long while a room of lamps that like each other
-  shares a moment, with nothing to set up. **Fireflies**: when three or more
-  lamps a lamp is fond of have stayed together for ten minutes, the room
-  starts sparkling faintly with stars, scattered at first, then drawing into
-  one shared beat for a couple of minutes. **Whisper**: a soft glow travels
-  across the lamp and is handed on, lamp to lamp for up to eight hops, each
-  time to the closest lamp (strongest signal) it is fond of or smitten with
-  that hasn't had it yet. **Heartbeat**: a lamp beats gently when a lamp it
-  is smitten with comes close, quickening as it nears and settling when it
-  leaves. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
+  shares a moment, with nothing to set up, on each lamp's base and in a colour
+  that stands out against it. **Fireflies**: when three or more lamps a lamp
+  is fond of have stayed together for ten minutes, the room's bases start
+  sparkling faintly with stars in each lamp's shade colours, scattered at
+  first, then drawing into one shared beat for a couple of minutes.
+  **Whisper**: a soft glow in the starting lamp's colour travels across a base
+  and is handed on, lamp to lamp for up to eight hops, each time to the
+  closest lamp (strongest signal) it is fond of or smitten with that hasn't
+  had it yet. **Heartbeat**: a lamp's base beats gently in the colour of a
+  lamp it is smitten with when that lamp comes close, quickening as it nears
+  and settling when it leaves. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
   more it takes part (back to normal after a restart), Extroverts start them
   more often and Introverts less, and nothing happens during an update, while
   the wisp is painting, while you preview in the app, or in home mode with

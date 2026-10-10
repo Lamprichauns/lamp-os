@@ -30,17 +30,20 @@ TransientSource::Remote)`. No expression type is added for it.
 
 ## Kinds and their renders
 
-| Kind | Expression | Surface | Params |
+Every Moment renders on the **base**: the shade hides subtle effects. None
+renders in the base's own colours, so each stands out there.
+
+| Kind | Expression | Colour | Params |
 |---|---|---|---|
-| Fireflies (one beat) | `flicker`, Twinkle burst | shade | `fire=0`, `count` = 15% of the shade's pixels **(T)**, `durationMax=700` ms **(T)**, `opacity` per envelope (10 to 25) **(T)** |
-| Whisper (one glow) | `pulse` | shade | `loop=0`, `fullStrip=1`, `pulseSpeed=3`, `size=6`, `easing=1`, `opacity=30` **(T)**, colours borrowed from the base |
-| Heartbeat lub | `flicker`, Twinkle burst | base | `fire=0`, every cell, `durationMax=160` ms, `opacity=60` **(T)** |
-| Heartbeat dub | `flicker`, Twinkle burst | base | as the lub, `durationMax=140` ms, `opacity=35`, 260 ms after the lub's onset **(T)** |
+| Fireflies (one beat) | `flicker`, Twinkle burst | this lamp's shade colours (up to 4, one per beat) | `fire=0`, `count` = 25% of the base's pixels **(T)**, `durationMax=700` ms **(T)**, `opacity` per envelope (10 to 25) **(T)** |
+| Whisper (one glow) | `pulse` | the origin's base colour; the origin itself glows in its shade colours | `loop=0`, `fullStrip=1`, `pulseSpeed=3`, `size=6`, `easing=1`, `opacity=30` **(T)** |
+| Heartbeat lub | `flicker`, Twinkle burst | the Smitten peer's base colour | `fire=0`, every cell, `durationMax=160` ms, `opacity=60` **(T)** |
+| Heartbeat dub | `flicker`, Twinkle burst | as the lub | as the lub, `durationMax=140` ms, `opacity=35`, 260 ms after the lub's onset **(T)** |
 
 **Why flicker.** Fireflies is many soft points: each lamp's beat fires a short,
 faint Twinkle burst of stars, so a crowd sparkles together on the shared
 rhythm. Heartbeat is a whole-surface swell: a burst that lights every cell
-reads as a soft throb of the lamp's own base colour. Glitchy is not used.
+reads as a soft throb in the loved peer's colour. Glitchy is not used.
 Breathing clamps to at least 8 s a cycle and pulse to at least 100 ms a pixel,
 too slow for a beat; spotty runs independent random lifecycles that cannot
 land on a shared beat.
@@ -62,16 +65,23 @@ so the app, `exprcat` and `test_builtin_descriptors` are unchanged:
 - A cell below `kBurstPaintHeat` (0.37, the heat at which Twinkle paints its
   own anchor) is left untouched, so sparks fade in and out of the surface
   instead of dimming the cells around them. A fully saturated channel has no
-  headroom to brighten into, so a burst on a white lamp reads weaker.
+  headroom to brighten into, so an untinted burst on a white lamp reads weaker.
+- A colour in the invocation's colour list **tints** the burst: one is picked
+  per trigger, and each star blends from the colour under it at the paint
+  threshold to the tint's own warmth ramp at the hottest spark. Only burst
+  mode reads it; a configured flicker, whose descriptor offers no colours,
+  ignores it.
 - No key is added to `kExpressionParamKeys`, so `ExpressionParams` and stored
   configs are unchanged. Math and tests: `expressions/shimmer/shimmer_math.hpp`,
   `test/test_shimmer_math/`; the real expression driven to completion:
   `test/test_shimmer_burst/`.
 
-A burst paints the colour under it, so Fireflies and Heartbeat borrow no
-palette. Whisper's pulse borrows up to 4 colours from the base's broadcast
-palette; one within 48 (`colorDistance`) of the shade's first colour is
-whitened 40% with `bloomWhiten`, so a single-colour lamp still shows it.
+**Colours.** Heartbeat takes the peer's base colour as the near view carries it
+(from its BLE advert or HELLO); no wider palette is cached for a peer, since
+colour info is fetched on demand by snafu's greeting alone. Whisper's origin
+colour rides the frame as `c`, so a hop far from the origin still has it. Any
+colour within 48 (`colorDistance`) of this lamp's first base colour is whitened
+40% with `bloomWhiten`, so it still shows.
 
 ## Mesh
 
@@ -92,8 +102,9 @@ top-level `mo` object:
 | `h` | Whisper: lamps visited so far, 1 to 8. |
 | `to` | Whisper: MAC of the next hop. |
 | `v` | Whisper: visited MACs, origin first; exactly `12*h` hex chars. |
+| `c` | Whisper: the origin's first base colour, packed `rrggbbww` lowercase hex. Optional; any other form drops the frame. A hop without it glows in its own shade colours. |
 
-The worst case (Whisper, `h=8`) is under 190 B, inside `EVENT_MAX_PAYLOAD`
+The worst case (Whisper, `h=8`, with `c`) is 198 B, inside `EVENT_MAX_PAYLOAD`
 (230) and the classic 250 B frame; `test_moments` pins it. No new message type
 and no protocol bump: `parseInvocation` ignores unknown keys, and an added JSON
 key changes no parser contract. `MSG_EVENT` rather than `MSG_COMMAND` because a

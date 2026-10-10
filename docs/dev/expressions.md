@@ -238,7 +238,8 @@ Cascade is a dev/testing tool, not a user-facing feature: the app exposes the to
 Moments ([`moments.md`](moments.md)) render only through existing types fired
 with `triggerInvocation(inv, selfMac, /*broadcast=*/false, TransientSource::Remote)`:
 they never cascade or announce, and take only the two peer transient slots.
-Fireflies and Heartbeat fire `flicker` bursts; Whisper fires a `pulse`.
+All of them render on the base, in a colour that is not the base's own:
+Fireflies and Heartbeat fire tinted `flicker` bursts; Whisper fires a `pulse`.
 
 **The flicker burst.** `flicker` reads two keys outside its descriptor, so the
 app and `exprcat` never offer them: on a transient (auto-trigger off) with both
@@ -246,8 +247,11 @@ app and `exprcat` never offer them: on a transient (auto-trigger off) with both
 style's spark band, they rise for the first half of `durationMax` (clamped 100
 to 2000 ms) and fall for the second, and the instance completes so the GC reaps
 it. Cells below `kBurstPaintHeat` (where Twinkle paints its anchor) are left
-untouched. Absent either key, or on a configured auto-triggering flicker, it
-runs continuously, unchanged. No key was
+untouched. A colour in the invocation's list tints the burst: one is picked per
+trigger, and each star blends from the colour under it at that threshold to
+the tint's warmth ramp at the hottest spark (`tintedBurstPaint`). Absent
+either key, or on a configured auto-triggering flicker, it runs continuously
+and paints the colour under it, unchanged. No key was
 added to `kExpressionParamKeys`. Math and tests: `shimmer_math.hpp`,
 `test_shimmer_math`.
 
