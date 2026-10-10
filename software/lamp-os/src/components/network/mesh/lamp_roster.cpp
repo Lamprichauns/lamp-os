@@ -50,6 +50,15 @@ uint32_t lastSeen(const RosterEntry& e) {
   return std::max(e.lastSeenNearMs, e.lastSeenMeshMs);
 }
 
+// A BLE advert carries RGB only. Keep the W a HELLO supplied while the
+// advert's RGB still agrees with it, so a W-heavy colour does not read as dark.
+Color keepHelloWhite(Color advert, Color known) {
+  if (advert.r == known.r && advert.g == known.g && advert.b == known.b) {
+    return Color(advert.r, advert.g, advert.b, known.w);
+  }
+  return advert;
+}
+
 NearbyCopy toNearbyCopy(const RosterEntry& e) {
   NearbyCopy c;
   std::memcpy(c.name, e.name, sizeof(c.name));
@@ -59,6 +68,7 @@ NearbyCopy toNearbyCopy(const RosterEntry& e) {
   c.shadeColor = e.shadeColor;
   c.lastRssi = e.lastRssi;
   c.lastSeenNearMs = e.lastSeenNearMs;
+  c.lastSeenBleMs = e.lastSeenBleMs;
   c.variant = e.variant;
   return c;
 }
@@ -156,20 +166,24 @@ void LampRoster::addOrUpdateFromBle(const char* name, const uint8_t ble[6],
     e.baseColor = base;
     e.shadeColor = shade;
     e.lastSeenNearMs = now;
+    if (rssi != -127) e.lastSeenBleMs = now;
     e.lastRssi = rssi;
     store_[count_++] = e;
   } else {
     // Empty name from a nameless BLE adv must not erase a known display name
     // on the merged entry.
     if (name[0] != '\0') copyName(store_[idx].name, name);
-    store_[idx].baseColor = base;
-    store_[idx].shadeColor = shade;
+    store_[idx].baseColor = keepHelloWhite(base, store_[idx].baseColor);
+    store_[idx].shadeColor = keepHelloWhite(shade, store_[idx].shadeColor);
     store_[idx].lastSeenNearMs = now;
     // RSSI freshens on every BLE adv (~30 Hz) so the closest-peer sort key
     // tracks current signal strength rather than a one-shot first-seen
     // value. -127 is the "unknown" sentinel; only overwrite when the
     // caller supplied a real reading.
-    if (rssi != -127) store_[idx].lastRssi = rssi;
+    if (rssi != -127) {
+      store_[idx].lastRssi = rssi;
+      store_[idx].lastSeenBleMs = now;
+    }
   }
   generation_++;
   xSemaphoreGive(mutex_);

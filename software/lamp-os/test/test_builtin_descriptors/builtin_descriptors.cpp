@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 
 #include <cstring>
+#include <vector>
 
 #include "expressions/breathing/breathing_expression.hpp"
 #include "expressions/shimmer/shimmer_expression.hpp"
@@ -13,6 +14,7 @@
 #include "expressions/shifty/shifty_expression.hpp"
 #include "expressions/spotty/spotty_expression.hpp"
 #include "expressions/bloom/bloom_expression.hpp"
+#include "expressions/expr_variant_sets.hpp"
 #include "config/config_types.hpp"
 #include "expressions/expression_invocation.hpp"
 
@@ -497,6 +499,25 @@ void test_every_type_fits_the_parameter_cap() {
   }
 }
 
+// A Moment frame rides MSG_EVENT as `"type":"moment"`; an older lamp builds
+// no transient for it only because no variant registers that id. Walks the
+// same per-variant sets the runtime registration expands (standard, lioness
+// and loaf register the base set).
+void test_no_variant_registers_the_moment_sentinel() {
+#define X(N) &k##N##DescriptorData,
+  const std::vector<std::vector<const ExpressionDescriptor*>> variants = {
+      {LAMPOS_BASE_EXPRESSIONS(X)},
+      {LAMPOS_SNAFU_EXPRESSIONS(X)},
+      {LAMPOS_STAFF_EXPRESSIONS(X)},
+  };
+#undef X
+  for (const auto& registry : variants) {
+    for (const ExpressionDescriptor* d : registry) {
+      TEST_ASSERT_NOT_EQUAL(0, std::strcmp(d->id, "moment"));
+    }
+  }
+}
+
 // The table is append-only: an index already written to a lamp's NVS must
 // keep naming the same key.
 void test_param_key_table_prefix_is_pinned() {
@@ -517,6 +538,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_every_descriptor_key_has_a_stored_index);
   RUN_TEST(test_param_key_table_prefix_is_pinned);
+  RUN_TEST(test_no_variant_registers_the_moment_sentinel);
   RUN_TEST(test_every_type_fits_the_parameter_cap);
   RUN_TEST(test_all_five_ids_present);
   RUN_TEST(test_continuous_flags);

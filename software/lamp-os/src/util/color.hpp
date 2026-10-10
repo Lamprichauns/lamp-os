@@ -59,6 +59,10 @@ bool packedHexToColors(const char* s, std::vector<Color>& out,
 
 uint32_t colorDistance(Color c1, Color c2);
 
+// Parse the 2 hex chars at `p` (either case) into `out`. False on any
+// non-hex char, leaving `out` untouched.
+bool parseHexByte(const char* p, uint8_t& out);
+
 /**
  * vivid RGB color for a hue in degrees. Full saturation + value,
  * white channel 0. Used to give a fresh lamp a unique default color (the

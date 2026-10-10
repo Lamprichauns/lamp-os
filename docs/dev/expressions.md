@@ -235,6 +235,28 @@ Semantics:
 
 Cascade is a dev/testing tool, not a user-facing feature: the app exposes the toggle only in dev mode, on purpose — a fleet of user lamps flashing in sync is visual noise, and only a few specifically controlled lamps ship with it. When `parameters["cascadeEnabled"] == 1`, a local trigger fans out a matching invocation to every reachable peer, closest first, staggered by `parameters["cascadeStaggerMs"]`. The fan-out drains up to 6 frames per 100 ms pass from fixed storage (`CascadeScheduler`), only while the ESP-NOW driver has room (`TxCredit`), each frame's `delayMs` adjusted toward the peer's intended time (fifty peers take at least 800 ms to send, so the far end of a 50-lamp crowd can fire up to about a second late on an idle link); a second cascade waits behind the one draining, so fired together its far end is about 1.7 s late, a third replaces the one waiting, and an OTA start stops the drain. Relay traffic and mesh resends share the driver's credits, so under contention the far end is later still (`docs/dev/embedded-heap.md`, "What a crowd drives"). Continuous descriptors never cascade — a cascaded long-running expression would override other lamps' behavior, and they retrigger at boot, settings upsert, and wisp release anyway — so `maybeCascade` gates them out, matching the app's hidden toggle. The structural loop break is in `triggerInvocation`, remote-arrived triggers are dispatched to a transient one-shot Expression instance and **never cascade**. A transient whose `trigger()` is rejected (wrong buffer, or the operator's color editor is open) is not retained: it neither occupies the compositor nor blocks the same-sender coalesce check. At most 4 transients are in flight at once and at most 2 of them a peer's, so at least 2 slots stay free of peers for the lamp's own Test and greetings (`admitTransient`); one is also skipped when the largest free block cannot hold 2 KB per target plus 4 KB, and a dropped one is logged. A Test or greeting that cannot play here still sends its cascade (`cascadesFrom`). A crowd of distinct senders cannot stack heap Expressions without limit. While home mode is active with social off, a Remote invocation is refused and a Remote transient already running fades out over a second and is reaped, and a transient of a home-disabled type is reaped at once; during the app's Home Mode preview new Remote invocations are refused but nothing running is faded or reaped ([`lamp-framework.md`](lamp-framework.md#home-mode)). An expression upsert (from the app, its `CHAR_REMOTE_OP` write included) is held to the caps in `config/config_types.hpp`: a type the variant does not register and a target outside 1-3 are rejected, colours past 8 and parameters past 12 are dropped, and the stored list holds at most 21 entries. See `docs/dev/networking.md` (MSG_EVENT section) for the wire format, the gossip-relay rule, and the per-msgType DedupRing.
 
+## Moments as a transient source
+
+Moments ([`moments.md`](moments.md)) render only through existing types fired
+with `triggerInvocation(inv, selfMac, /*broadcast=*/false, TransientSource::Remote)`:
+they never cascade or announce, and take only the two peer transient slots.
+All of them render on the base, in a colour that is not the base's own:
+Fireflies fires tinted `flicker` bursts; Whisper fires a `pulse`.
+
+**The flicker burst.** `flicker` reads two keys outside its descriptor, so the
+app and `exprcat` never offer them: on a transient (auto-trigger off) with both
+`count` and `durationMax` above 0, a trigger lights exactly `count` cells (clamped to the zone) from the
+style's spark band, they rise for the first half of `durationMax` (clamped 100
+to 2000 ms) and fall for the second, and the instance completes so the GC reaps
+it. Cells below `kBurstPaintHeat` (where Twinkle paints its anchor) are left
+untouched. A colour in the invocation's list tints the burst: one is picked per
+trigger, and each star blends from the colour under it at that threshold to
+the tint's warmth ramp at the hottest spark (`tintedBurstPaint`). Absent
+either key, or on a configured auto-triggering flicker, it runs continuously
+and paints the colour under it, unchanged. No key was
+added to `kExpressionParamKeys`. Math and tests: `shimmer_math.hpp`,
+`test_shimmer_math`.
+
 ## Expression mirror
 
 The social echo the fleet ships (rather than cascade, which is dev-only). Every local fire of a triggered (non-`continuous`) expression announces a `MSG_EVENT` (see `ExpressionManager::emitEvent`; continuous types are gated out for the same reason cascade gates them). On receipt, `SocialEchoObserver` (registered on `ExpressionObserverRegistry`) rolls a disposition + social-mode weighted chance to replay that exact expression a short delay later:
@@ -243,12 +265,13 @@ The social echo the fleet ships (rather than cascade, which is dev-only). Every 
 - Introvert-only cooldown (`kIntrovertMirrorCooldownMs`) between mirrors so an introvert doesn't chatter; Ambivert/Extrovert have none.
 - The replay is scheduled into a small pending buffer and fired from `tick()` via `triggerInvocation`, which suppresses cascade — so two warm lamps never echo each other into a loop.
 - Skipped entirely during OTA and while a local Test/preview is active.
+- Never sees a Moment frame: `deliverEvent` hands a payload carrying `mo` to the Moment director before the fan-out.
 
 All feel numbers (`kMirrorBasePct`, `kMirrorModeFactorX10`, cooldown, delay floor + jitter) live in `behaviors/social_echo.hpp` and are bench-tunable.
 
 ## Testing
 
-Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` (each `test_<name>/` dir is its own suite; there is no single `test/native/` path). Run them with `npm run lamp:test`. Existing coverage:
+Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` (each `test_<name>/` dir is its own suite; there is no single `test/native/` path). Run them with `npm run lamp:test`. The native env builds every suite under ASan and UBSan with undefined behaviour fatal (`platformio.ini`), so an overrun fails its test instead of passing by luck, at about twice the plain run time. Existing coverage:
 
 - `test/test_personality_engine/personality_engine.cpp`, auto-trigger cadence, enable/disable
 - `test/test_transient_override/transient_override.cpp`, the ColorOverride state machine that drives per-surface wisp presence
@@ -258,6 +281,9 @@ Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` 
 - `test/test_glitchy_timing/glitchy_timing.cpp`, glitchy's millis-driven duration gate (≥1 painted frame, wrap-safe deadline)
 - `test/test_glitchy_coverage/glitchy_coverage.cpp`, `glitchBlockPlan` scatter→grain-block math (solid sentinel, grain-1 at max, exact per-level density, monotonic sparsity, empty/undersized region)
 - `test/test_transient_lifetime/transient_lifetime.cpp`, transient GC backstop + never-started-transient rejection
+- `test/test_shimmer_math/shimmer_math.cpp`, flicker heat/warmth math and the burst (spark band, the anchor-neutral paint threshold, a spark lit mid-burst and dark at completion)
+- `test/test_shimmer_burst/shimmer_burst.cpp`, the real `ShimmerExpression` on stub frame buffers: a transient burst completes for the GC, only sparked cells paint, a configured flicker with the burst keys stays continuous
+- `test/test_moments/moments.cpp`, Moments: pacing, cooldown, the 50-lamp herd, the Fireflies timeline, Whisper hops, the `mo` codec, render routing, the mirror bypass
 - `test/test_social_echo/social_echo.cpp`, expression-mirror rate grid, disp<4 early-out, introvert cooldown, replay scheduling window + fire, emitEvent continuous-gate
 
 To add a host-side test for a new expression: instantiate it with a stub `FrameBuffer` (see the personality-engine suite for the pattern), call the public `trigger()` to fire `onTrigger()`, then call `draw()` per frame and assert on the buffer's pixel state. You don't need a real Compositor — `Expression::control()` (the auto-cadence driver) is the only thing that requires one.

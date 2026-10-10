@@ -63,6 +63,7 @@ class ShimmerExpression : public Expression {
     float target = 0.0f;
   };
   void advanceWind(uint32_t nowMs, uint32_t deltaMs);
+  void drawBurst();
 
   Zone zone_;
   FireStyle style_ = fireStyle(1);
@@ -72,6 +73,16 @@ class ShimmerExpression : public Expression {
   Flutter flutter_;
   uint32_t nextGustMs_ = 0;
   uint32_t lastUpdateMs_ = 0;
+  // Hidden burst params: `count` stars over `durationMax` ms, both > 0, make a
+  // transient's trigger one short burst that completes; a colour in the
+  // invocation tints its stars (docs/dev/moments.md). A configured instance,
+  // enabled or not, runs continuously whatever it carries.
+  bool bursting() const { return burstMs_ > 0 && isTransient; }
+  uint16_t burstCount_ = 0;
+  uint32_t burstMs_ = 0;
+  uint32_t burstStartMs_ = 0;
+  bool burstTinted_ = false;
+  Color burstTint_;
 };
 
 }  // namespace lamp

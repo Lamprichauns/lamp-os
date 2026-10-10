@@ -69,10 +69,12 @@ it back upstream, see [Contributing](../../README.md#contributing).
   the descriptor model, the wisp-override gate, the testing pattern, and the
   new-expression skeleton.
 - [`social.md`](social.md), overview of how a lamp behaves around other lamps,
-  greetings and crowd-dim, and how they fit together. **Start here** for the
+  greetings, crowd-dim and Moments, and how they fit together. **Start here** for the
   social system, then the docs below.
 - [`personality-greetings.md`](personality-greetings.md), disposition-driven
   greeting animations (how lamps acknowledge peers they meet on the mesh).
+- [`moments.md`](moments.md), the rare crowd-level expressions (Fireflies,
+  Whisper): pacing, the `mo` wire object, suppressors, bench steps.
 - [`personality-signals.md`](personality-signals.md), the signals a custom
   lamp can react to (crowd weight/composition, presence, time, etc.).
 - [`utilities.md`](utilities.md), the mechanical helper toolbox

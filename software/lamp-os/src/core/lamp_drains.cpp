@@ -27,6 +27,7 @@
 #include "config/config.hpp"
 #include "components/firmware/ota_quiet_mode.hpp"
 #include "core/compositor.hpp"
+#include "core/moments.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/pending_slot_aggregate.hpp"
 
@@ -645,11 +646,8 @@ void Lamp::drainEvent() {
   {
     lamp::PendingEvent ev;
     if (lamp::pendingSlots.event.drain(pendingMux, ev)) {
-      JsonDocument doc;
-      if (deserializeJson(doc, ev.payload, ev.payloadLen) != DeserializationError::Ok) return;
-      lamp::ExpressionInvocation inv;
-      if (!lamp::parseInvocation(doc.as<JsonObjectConst>(), inv)) return;
-      expressionObserverRegistry.fanOut(ev.sourceMac, inv);
+      lamp::deliverEvent(ev.payload, ev.payloadLen, ev.sourceMac, millis(),
+                         lamp::momentDirector, expressionObserverRegistry);
     }
   }
 }

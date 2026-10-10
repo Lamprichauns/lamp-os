@@ -75,6 +75,10 @@ class PersonalityEngine {
   // BLE-reachable crowd can't approach 255, so no realistic overflow.
   CrowdComposition crowdComposition() const;
 
+  // The BLE-reachable near view this engine samples (the inject_nearby
+  // override when one is active). Moments read the same view.
+  const std::vector<NearbyCopy>& nearbyPeers() const;
+
   // Per-peer greeting tuning. Returned at SocialBehavior::control() time
   // so the waveform is read in lockstep with the cooldown gate the
   // behavior already does. Pure read. The raw overload is the hot-path form
@@ -136,10 +140,6 @@ class PersonalityEngine {
   // deadband, and updates crowdDimFactor_/lastCommittedLevel_ if needed.
   void sampleAndSmoothCrowd_(uint32_t nowMs,
                               const std::vector<NearbyCopy>& peers);
-
-  // Get the current BLE-reachable snapshot (or the test override). Pure
-  // read; called only at the sample cadence to refresh blePeerCache_.
-  const std::vector<NearbyCopy>& snapshotBlePeers_() const;
 
   Config* config_ = nullptr;
 

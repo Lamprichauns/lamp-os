@@ -135,6 +135,9 @@ class Compositor {
    */
   void setHomeModePolicy(bool socialDisabled, std::vector<std::string> disabledIds);
 
+  // Home mode is active with social off: the lamp ignores other lamps.
+  bool homeSuppressesSocial() const { return homeMode && homeSocialDisabled_; }
+
   /**
    * True when home mode is active AND `type` is in the home-disabled set.
    * Shared with the render-skip decision so the mesh receive path can drop

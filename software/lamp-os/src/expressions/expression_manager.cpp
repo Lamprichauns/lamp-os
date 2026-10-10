@@ -480,6 +480,7 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 #endif
       continue;
     }
+    expr->isTransient = true;
     expr->autoTriggerEnabled = false;  // transients fire once; the STOPPED-state auto-retrigger and any onComplete re-chain are gated off
 
     Expression* raw = expr.get();

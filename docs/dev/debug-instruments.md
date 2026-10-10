@@ -36,6 +36,7 @@ source file is where the tag's format strings live.
 | `[recovery]` | `core/lamp.cpp` | BOOT-hold cleared the control password (5s hold, first minute of uptime) |
 | `[roster]` | `components/network/mesh/lamp_roster.cpp` | Roster update dropped on mutex contention |
 | `[arrival]` | `core/arrival_notifier.cpp` | `onArrival` observer registry full |
+| `[moment]` | `core/moments.cpp`, `core/lamp_test_action.cpp` | Moments: `start`, `join`, `accept`, `end` with kind and seed, a Whisper hop or chain end, settle reason, a frame given up, a skip with its reason (every build); `moment_state` dumps, each Fireflies beat `ff k=.. d=..` and a refused render (debug builds). See [`moments.md`](moments.md) |
 | `[social]` | `behaviors/social.cpp` | Greet decision (`greet %s mode=.. frames=..`), introvert fatigue window |
 | `[ble]` | `components/network/ble/bluetooth.cpp`, `ble_control.cpp` | Advertising config (adv colors, central scan stop/restart) + brightness recv |
 | `[ble_control]` | `components/network/ble/ble_control.cpp` | GATT client connect / disconnect / auth, edit-session, home-mode focus, knockout write, settings_blob write, page CTRL/DATA, GATT binding + service start/stop, OTA pause/resume |

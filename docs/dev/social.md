@@ -1,6 +1,7 @@
 # Social system overview
 
-How a lamp behaves around other lamps — greeting them and dimming in a crowd.
+How a lamp behaves around other lamps — greeting them, dimming in a crowd, and
+the rare Moments a room of friendly lamps shares.
 This is the map; the per-subsystem detail lives in the linked docs. **The
 code wins ties**; update these docs when it doesn't.
 
@@ -18,15 +19,16 @@ Every social behavior is a function of the same two values:
   Neutral.
 
 A peer's BLE presence (and RSSI) comes from the unified `LampRoster`
-store. Disposition lookups come from `Config`. Both feed both
-subsystems below.
+store. Disposition lookups come from `Config`. Both feed every
+subsystem below.
 
-## Two subsystems
+## Three subsystems
 
 | Subsystem | What it does | Lives in | Detail doc |
 |---|---|---|---|
 | **Greetings** | A one-shot waveform on the shade when the lamp meets a peer — fade to their color, hold, fade back. Shape varies by SocialMode × Disposition. | `behaviors/social.cpp` (renderer), `core/personality_engine.cpp` (timing source) | [`personality-greetings.md`](personality-greetings.md) |
 | **Crowd-dim** | Continuous brightness damping as the room fills with peers, weighted by disposition and floored per mode. Introverts hide harder; Extroverts never dim. | `core/personality_engine.cpp` | [`personality-signals.md`](personality-signals.md) |
+| **Moments** | Rare crowd-level expressions: Fireflies (liked lamps sparkle in sync), Whisper (a glow handed lamp to lamp along friendly peers). Always on, paced to grow rarer with each one. | `core/moments.cpp`, `core/moment_math.cpp` | [`moments.md`](moments.md) |
 
 ### Greetings
 
@@ -60,6 +62,17 @@ busy room makes an introverted lamp recede. The read-only accessors a
 custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
 `crowdComposition()`) are in [`personality-signals.md`](personality-signals.md).
 
+### Moments
+
+`MomentDirector` reads the same near view crowd-dim samples
+(`PersonalityEngine::nearbyPeers()`) and the same dispositions, and once in a
+long while starts a Moment: it renders nothing itself, firing existing
+expressions as transients (a Twinkle `flicker` burst, a `pulse`), and rides
+`MSG_EVENT` for the mesh hand-off. Each kind has its own conditions, a wait
+that grows with every participation and scales with SocialMode, and a crowd
+cooldown so one room starts one Moment. Salty and Wary lamps sit out. Full
+contract: [`moments.md`](moments.md).
+
 ## How they interact
 
 - **Shared inputs, independent outputs.** Both read the same
@@ -67,6 +80,10 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   on the lamp's own surfaces via the behavior stack, crowd-dim via the
   brightness pipeline. They can both be active at once (e.g. dimmed for the
   crowd while mid-greeting on a new arrival).
+- **Moments layer over both.** A Moment draws as transients over the
+  greeting and the scene, dims with crowd-dim, never starts while a greeting
+  plays, and stands down for OTA, a wisp hold, an app preview, and home mode
+  with social off.
 - **Extrovert disengages crowd-dim.** In Extrovert mode `crowdDimFactor()`
   is hard 1.0 — an extrovert lamp greets eagerly (short cooldowns) and
   never recedes.
@@ -93,6 +110,9 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   ticked by the framework.
 - `behaviors/social.{hpp,cpp}` — the greeting renderer + discovery /
   cooldown / fatigue gating.
+- `core/moments.{hpp,cpp}`, `core/moment_math.{hpp,cpp}` — the Moment
+  director and its pure arithmetic; `core/lamp_moments.cpp` binds it to the
+  lamp.
 - `config/` — SocialMode + per-peer dispositions storage (NVS) and their
   BLE sync surfaces.
 
@@ -102,6 +122,8 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   waveforms, the profile shapes, cooldown + fatigue rules.
 - [`personality-signals.md`](personality-signals.md) — the read-only
   signal API custom lamps react to, with worked examples.
+- [`moments.md`](moments.md) — Moments: kinds, wire format, pacing,
+  suppressors, debug hooks and bench steps.
 - [`lamp-social-api.md`](lamp-social-api.md) — the author-facing API a custom
   behavior reaches these signals through: `forEachArrival` / `onArrival` /
   `greetingFor` / `dispositionOf` / `crowd` / `crowdWeight`, via its
