@@ -71,10 +71,12 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   is hard 1.0 — an extrovert lamp greets eagerly (short cooldowns) and
   never recedes.
 - **Home mode can switch social off.** While home mode is active with social
-  off (the default), greetings don't play and the lamp ignores every
-  expression another lamp pushes onto it (cascades and mirrors); peer effects already running fade out, and crowd-dim eases back to
-  full brightness over a second. Detail
-  in [`lamp-framework.md`](lamp-framework.md#home-mode).
+  off (the default), greetings don't play, the lamp ignores every expression
+  another lamp pushes onto it (cascades and mirrors) and reads the room as
+  empty; peer effects already running fade out, crowd-dim eases back to full
+  brightness over a second, and leaving home greets nobody who was near all
+  along. The app's Home Mode preview shows the same but consumes nothing.
+  Detail in [`lamp-framework.md`](lamp-framework.md#home-mode).
 - **OTA outranks personality.** Firmware propagation is gated separately
   from the visual greeting; a lamp distributes/receives OTA regardless of
   social mode. The greeting's appearance is personality's department, not

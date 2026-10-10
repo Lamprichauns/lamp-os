@@ -25,13 +25,20 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **Home mode with social off now ignores other lamps completely.** Before,
   another lamp could still make yours pulse, flicker or shift while it was
   resting at home; only glitch was kept out. Now, while home mode is on with
-  social switched off, your lamp ignores every effect other lamps send it and
-  doesn't greet them, whichever kind of lamp it is, and anything a nearby lamp
-  had already started fades out gently when home mode comes on. It also stops
-  dimming itself for a crowd, easing back to its full home brightness over
-  about a second. Your own
-  expressions, the app's Test button and your wisp keep working, and your lamp
-  still passes messages along so the lamps around it keep talking.
+  social switched off, your lamp ignores every effect other lamps send it,
+  doesn't greet them and behaves as if it were alone in the room, whichever
+  kind of lamp it is: a Lioness's lions stop showing neighbours' colours and
+  a Loaf's ring stops speeding up for nearby loaves. Effects other lamps had
+  already sent fade out gently when home mode comes on, and when you leave
+  home your lamp doesn't greet the lamps that were there all along. It also
+  stops dimming itself for a crowd, easing back to its full home brightness
+  over about a second. Previewing home mode from the app shows all this
+  without changing anything afterwards. Your own expressions, the app's Test
+  button and your wisp keep working, and your lamp still passes messages
+  along so the lamps around it keep talking.
+- **Crowd dimming follows the crowd right away.** When a lamp decided to dim
+  or brighten for a change in the crowd, the change could wait until the next
+  unrelated brightness change to show. It now eases in within a moment.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run
   out of memory and restart, with or without the app open: saving settings
   or social dispositions on a crowded lamp could crash it outright, and a
