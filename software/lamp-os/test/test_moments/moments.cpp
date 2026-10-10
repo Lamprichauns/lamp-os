@@ -73,7 +73,7 @@ struct FakeHost : MomentHost {
   std::vector<std::string> sent;
   std::vector<uint32_t> sentAt;
   std::vector<Render> renders;
-  uint16_t shadePx = 40;
+  uint16_t basePx = 35;
   std::vector<Color> base{Color(255, 0, 0, 0)};
   std::vector<Color> shade{Color(0, 0, 255, 0)};
   std::vector<std::string> logs;
@@ -98,7 +98,7 @@ struct FakeHost : MomentHost {
     renders.push_back(r);
     return true;
   }
-  uint16_t shadePixels() override { return shadePx; }
+  uint16_t basePixels() override { return basePx; }
   const std::vector<Color>& surfaceColors(bool isBase) override { return isBase ? base : shade; }
   void log(const char* line) override { logs.emplace_back(line); }
 
@@ -974,13 +974,18 @@ void test_hop_eight_payload_fits_the_event_frame() {
   f.seed = 0xFFFFFFFFu;
   f.ageMs = 2000;
   f.hop = 8;
+  f.hasColor = true;
+  f.color = Color(255, 255, 255, 255);
   for (uint8_t i = 0; i < 8; ++i) macOf(0xF0 + i, f.visited[i]);
   macOf(0xFF, f.to);
   char buf[lamp_protocol::EVENT_MAX_PAYLOAD];
   const size_t n = encodeMomentFrame(f, buf, sizeof(buf));
   TEST_ASSERT_TRUE(n > 0);
   TEST_ASSERT_TRUE(n <= lamp_protocol::EVENT_MAX_PAYLOAD);
-  TEST_ASSERT_TRUE(n <= 190);
+  char size[24];
+  std::snprintf(size, sizeof(size), "worst case %u B", static_cast<unsigned>(n));
+  TEST_MESSAGE(size);
+  TEST_ASSERT_TRUE(n <= 210);
 }
 
 void test_codec_round_trips() {
@@ -991,6 +996,8 @@ void test_codec_round_trips() {
   f.hop = 3;
   for (uint8_t i = 0; i < 3; ++i) macOf(i + 1, f.visited[i]);
   macOf(77, f.to);
+  f.hasColor = true;
+  f.color = Color(0x12, 0xAB, 0x00, 0xFF);
   JsonDocument doc;
   TEST_ASSERT_TRUE(deserializeJson(doc, encode(f)) == DeserializationError::Ok);
   MomentFrame back;
@@ -1001,6 +1008,8 @@ void test_codec_round_trips() {
   TEST_ASSERT_EQUAL_UINT8(3, back.hop);
   TEST_ASSERT_EQUAL_MEMORY(f.to, back.to, 6);
   TEST_ASSERT_EQUAL_MEMORY(f.visited, back.visited, 18);
+  TEST_ASSERT_TRUE(back.hasColor);
+  TEST_ASSERT_TRUE(back.color == f.color);
 
   MomentFrame ff;
   ff.kind = MomentKind::Fireflies;
@@ -1031,39 +1040,110 @@ void test_older_lamps_parse_the_sentinel() {
 }
 
 
-void test_renders_are_remote_terminal_and_single_surface() {
+void test_renders_are_remote_terminal_and_on_the_base() {
   Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
   r.director.force(MomentKind::Fireflies, 99, 0);
   r.run(0, 5000, 5);
+  r.host.nowMs = 6000;
   r.director.begin(&r.host, r.self, 1, 6000);
   r.director.force(MomentKind::Whisper, 98, 6000);
-  TEST_ASSERT_TRUE(r.host.renders.size() >= 3);
+  r.host.nowMs = 7000;
+  r.director.begin(&r.host, r.self, 2, 7000);
+  r.director.force(MomentKind::Heartbeat, 97, 7000);
+  r.run(7000, 8000, 5);
+  size_t kinds[3] = {0, 0, 0};
   for (const Render& rd : r.host.renders) {
     TEST_ASSERT_TRUE(rd.source == TransientSource::Remote);
     TEST_ASSERT_FALSE(rd.broadcast);
     TEST_ASSERT_EQUAL_MEMORY(r.self, rd.src, 6);
-    TEST_ASSERT_TRUE(rd.inv.target == TARGET_SHADE || rd.inv.target == TARGET_BASE);
-    TEST_ASSERT_TRUE(rd.inv.type == "flicker" || rd.inv.type == "pulse");
+    TEST_ASSERT_EQUAL_UINT8(TARGET_BASE, rd.inv.target);
+    TEST_ASSERT_FALSE(rd.inv.colors.empty());
+    if (rd.atMs < 6000) ++kinds[0];
+    else if (rd.atMs < 7000) ++kinds[1];
+    else ++kinds[2];
   }
+  TEST_ASSERT_TRUE(kinds[0] > 0 && kinds[1] > 0 && kinds[2] > 0);
   const Render& blink = r.host.renders.front();
   TEST_ASSERT_EQUAL_STRING("flicker", blink.inv.type.c_str());
   TEST_ASSERT_EQUAL_UINT32(0, blink.inv.parameters.get("fire", 9));
-  TEST_ASSERT_EQUAL_UINT32(firefliesStars(40), blink.inv.parameters.get("count", 0));
+  TEST_ASSERT_EQUAL_UINT32(firefliesStars(35), blink.inv.parameters.get("count", 0));
   TEST_ASSERT_EQUAL_UINT32(10, blink.inv.parameters.get("opacity", 0));
 }
 
-void test_whisper_borrows_the_base_palette_and_whitens_a_match() {
+void test_fireflies_take_the_shade_colours() {
   Rig r;
-  r.host.base = {Color(255, 0, 0, 0), Color(0, 255, 0, 0), Color(1, 2, 3, 4), Color(9, 9, 9, 9),
-                 Color(7, 7, 7, 7)};
-  r.host.shade = {Color(250, 5, 0, 0)};
+  r.host.shade = {Color(0, 200, 0, 0), Color(0, 0, 200, 0)};
+  r.director.force(MomentKind::Fireflies, 99, 0);
+  r.run(0, 3000, 5);
+  const Render& blink = r.host.renders.front();
+  TEST_ASSERT_EQUAL_UINT32(2, blink.inv.colors.size());
+  TEST_ASSERT_TRUE(blink.inv.colors[0] == Color(0, 200, 0, 0));
+  TEST_ASSERT_TRUE(blink.inv.colors[1] == Color(0, 0, 200, 0));
+}
+
+void test_heartbeat_takes_the_smitten_peers_colour() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  NearbyCopy loved = peerOf(30, -50, 0);
+  loved.baseColor = Color(10, 20, 230, 0);
+  r.host.peers.push_back(loved);
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.run(0, 2000, 5);
+  TEST_ASSERT_TRUE(r.host.renders.size() >= 2);
+  for (const Render& rd : r.host.renders) {
+    TEST_ASSERT_EQUAL_UINT32(1, rd.inv.colors.size());
+    TEST_ASSERT_TRUE(rd.inv.colors[0] == Color(10, 20, 230, 0));
+  }
+}
+
+// The origin glows in its shade colours and carries its base colour down the
+// chain; every hop glows in that colour.
+void test_whisper_takes_the_origins_colour() {
+  Rig origin(1);
+  origin.host.base = {Color(220, 0, 90, 0)};
+  origin.host.shade = {Color(0, 180, 0, 0)};
+  origin.host.like(2, kDispositionFond);
+  origin.host.peers.push_back(peerOf(2, -50, 0));
+  origin.director.force(MomentKind::Whisper, 5, 0);
+  TEST_ASSERT_TRUE(origin.host.renders[0].inv.colors[0] == Color(0, 180, 0, 0));
+  const MomentFrame first = decodeSent(origin.host.sent[0]);
+  TEST_ASSERT_TRUE(first.hasColor);
+  TEST_ASSERT_TRUE(first.color == Color(220, 0, 90, 0));
+
+  Rig hop(2);
+  hop.host.like(3, kDispositionFond);
+  hop.host.peers.push_back(peerOf(3, -50, 0));
+  hop.frame(origin.self, origin.host.sent[0], 30);
+  for (uint32_t t = 30; t <= 4000; t += 10) {
+    seeAt(hop.host.peers[0], t);
+    hop.host.nowMs = t;
+    hop.director.tick(t);
+  }
+  TEST_ASSERT_EQUAL_UINT32(1, hop.host.rendersOf("pulse"));
+  TEST_ASSERT_TRUE(hop.host.renders[0].inv.colors[0] == Color(220, 0, 90, 0));
+  TEST_ASSERT_TRUE(decodeSent(hop.host.sent[0]).color == Color(220, 0, 90, 0));
+}
+
+void test_a_colour_matching_the_base_is_whitened() {
+  Rig r;
+  r.host.base = {Color(250, 5, 0, 0)};
+  r.host.shade = {Color(255, 0, 0, 0), Color(0, 255, 0, 0)};
   r.director.force(MomentKind::Whisper, 3, 0);
   const Render& glow = r.host.renders.back();
-  TEST_ASSERT_EQUAL_STRING("pulse", glow.inv.type.c_str());
-  TEST_ASSERT_EQUAL_UINT8(TARGET_SHADE, glow.inv.target);
-  TEST_ASSERT_EQUAL_UINT32(4, glow.inv.colors.size());
   TEST_ASSERT_TRUE(glow.inv.colors[0] == bloomWhiten(Color(255, 0, 0, 0), 102));
   TEST_ASSERT_TRUE(glow.inv.colors[1] == Color(0, 255, 0, 0));
+}
+
+void test_a_malformed_origin_colour_drops_the_frame() {
+  Rig r(9);
+  uint8_t sender[6];
+  macOf(8, sender);
+  r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\",\"c\":\"zz00ff00\"}}", 1000);
+  TEST_ASSERT_FALSE(r.director.active());
+  r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\",\"c\":\"ff00\"}}", 1000);
+  TEST_ASSERT_FALSE(r.director.active());
 }
 
 struct MirrorSpy : IExpressionObserver {
@@ -1371,8 +1451,12 @@ int main(int, char**) {
   RUN_TEST(test_codec_round_trips);
   RUN_TEST(test_unknown_kind_is_ignored);
   RUN_TEST(test_older_lamps_parse_the_sentinel);
-  RUN_TEST(test_renders_are_remote_terminal_and_single_surface);
-  RUN_TEST(test_whisper_borrows_the_base_palette_and_whitens_a_match);
+  RUN_TEST(test_renders_are_remote_terminal_and_on_the_base);
+  RUN_TEST(test_fireflies_take_the_shade_colours);
+  RUN_TEST(test_heartbeat_takes_the_smitten_peers_colour);
+  RUN_TEST(test_whisper_takes_the_origins_colour);
+  RUN_TEST(test_a_colour_matching_the_base_is_whitened);
+  RUN_TEST(test_a_malformed_origin_colour_drops_the_frame);
   RUN_TEST(test_moment_frames_never_reach_the_mirror);
   RUN_TEST(test_a_suppressor_mid_moment_ends_it);
   RUN_TEST(test_unsent_fireflies_start_aborts_but_still_grows);

@@ -28,7 +28,7 @@ constexpr uint8_t kFirefliesOpacityLow = 10;
 constexpr uint8_t kFirefliesOpacityPeak = 25;
 constexpr uint16_t kFirefliesRampInBlinks = 6;
 constexpr uint16_t kFirefliesRampOutFrom = 110;
-constexpr uint16_t kFirefliesStarPercent = 15;
+constexpr uint16_t kFirefliesStarPercent = 25;
 
 bool parseHexMac(const char* s, uint8_t out[6]) {
   for (int i = 0; i < 6; ++i) {
@@ -130,8 +130,8 @@ uint8_t firefliesOpacity(uint16_t blink) {
                               span * out / (kFirefliesBlinks - kFirefliesRampOutFrom));
 }
 
-uint16_t firefliesStars(uint16_t shadePixels) {
-  const uint32_t stars = static_cast<uint32_t>(shadePixels) * kFirefliesStarPercent / 100;
+uint16_t firefliesStars(uint16_t surfacePixels) {
+  const uint32_t stars = static_cast<uint32_t>(surfacePixels) * kFirefliesStarPercent / 100;
   return static_cast<uint16_t>(stars < 1 ? 1 : stars);
 }
 
@@ -165,12 +165,17 @@ size_t encodeMomentFrame(const MomentFrame& f, char* out, size_t cap) {
     char visited[kWhisperMaxHops * 12 + 1] = {0};
     const uint8_t hops = f.hop > kWhisperMaxHops ? kWhisperMaxHops : f.hop;
     for (uint8_t i = 0; i < hops; ++i) appendHexMac(visited + 12 * i, f.visited[i]);
+    char color[16] = {0};
+    if (f.hasColor) {
+      std::snprintf(color, sizeof(color), ",\"c\":\"%02x%02x%02x%02x\"", f.color.r, f.color.g,
+                    f.color.b, f.color.w);
+    }
     n = std::snprintf(buf, sizeof(buf),
                       "{\"type\":\"moment\",\"mo\":{\"k\":%u,\"s\":%lu,\"h\":%u,\"a\":%u,"
-                      "\"to\":\"%s\",\"v\":\"%s\"}}",
+                      "\"to\":\"%s\",\"v\":\"%s\"%s}}",
                       static_cast<unsigned>(f.kind), static_cast<unsigned long>(f.seed),
                       static_cast<unsigned>(hops), static_cast<unsigned>(f.ageMs), to,
-                      visited);
+                      visited, color);
   } else {
     n = std::snprintf(buf, sizeof(buf), "{\"type\":\"moment\",\"mo\":{\"k\":%u,\"s\":%lu,\"a\":%u}}",
                       static_cast<unsigned>(f.kind), static_cast<unsigned long>(f.seed),
@@ -207,6 +212,16 @@ bool decodeMomentFrame(JsonObjectConst mo, MomentFrame& out) {
   if (!parseHexMac(to, f.to)) return false;
   for (uint8_t i = 0; i < h; ++i) {
     if (!parseHexMac(v + 12 * i, f.visited[i])) return false;
+  }
+  if (!mo["c"].isNull()) {
+    const char* c = mo["c"].as<const char*>();
+    uint8_t rgbw[4];
+    if (!c || std::strlen(c) != 8) return false;
+    for (int i = 0; i < 4; ++i) {
+      if (!parseHexByte(c + 2 * i, rgbw[i])) return false;
+    }
+    f.hasColor = true;
+    f.color = Color(rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
   }
   f.hop = h;
   out = f;

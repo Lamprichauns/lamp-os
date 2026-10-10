@@ -40,7 +40,7 @@ class MomentHost {
   // ExpressionManager::triggerInvocation.
   virtual bool trigger(const ExpressionInvocation& inv, const uint8_t srcMac[6],
                        bool broadcast, TransientSource source) = 0;
-  virtual uint16_t shadePixels() = 0;
+  virtual uint16_t basePixels() = 0;
   // The surface's broadcast palette.
   virtual const std::vector<Color>& surfaceColors(bool base) = 0;
   // One `[moment]` line, under Print's 64 B stack buffer.
@@ -112,6 +112,13 @@ class MomentDirector {
     // Whisper: the frame's hop count and visited list, origin first.
     uint8_t hop = 0;
     uint8_t visited[kWhisperMaxHops][6] = {};
+    // Whisper: the origin's colour, carried down the chain.
+    bool hasChainColor = false;
+    Color chainColor;
+    // The colour this lamp renders in: the Smitten peer's for a Heartbeat,
+    // the origin's for a Whisper hop. Without one it renders its shade colours.
+    bool hasTint = false;
+    Color tint;
     // Heartbeat
     uint8_t peer[6] = {0};
     bool hasPeer = false;
@@ -169,6 +176,10 @@ class MomentDirector {
   bool seen(const uint8_t origin[6], uint32_t seed, MomentKind kind) const;
   void remember(const uint8_t origin[6], uint32_t seed, MomentKind kind);
 
+  // Appends `c` to the invocation, whitened when it sits too close to this
+  // lamp's own base colour to stand out on it.
+  void addStandingOut(ExpressionInvocation& inv, Color c);
+  void addTintOrShade(ExpressionInvocation& inv);
   void renderBlink();
   void renderGlow();
   void renderBeat(uint32_t burstMs, uint8_t opacity);

@@ -50,7 +50,7 @@ class LampMomentHost : public lamp::MomentHost {
                lamp::TransientSource source) override {
     return expressionManager.triggerInvocation(inv, srcMac, broadcast, source);
   }
-  uint16_t shadePixels() override { return shade.pixelCount; }
+  uint16_t basePixels() override { return base.pixelCount; }
   const std::vector<lamp::Color>& surfaceColors(bool isBase) override {
     return isBase ? config.base.broadcastColors() : config.shade.broadcastColors();
   }

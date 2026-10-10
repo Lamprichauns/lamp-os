@@ -32,8 +32,7 @@ constexpr uint32_t kWhisperPulseSize = 6;
 constexpr uint32_t kWhisperEasingSmooth = 1;
 constexpr uint8_t kWhisperOpacity = 30;
 constexpr size_t kBorrowedColors = 4;
-// A borrowed colour this close to the surface's own is whitened so a
-// single-colour lamp still shows its Moment.
+// A colour this close to the base's own is whitened so it still stands out.
 constexpr uint32_t kBorrowSameColor = 48;
 constexpr uint8_t kBorrowWhiten = 102;
 
@@ -194,6 +193,12 @@ void MomentDirector::initiate(MomentKind kind, uint32_t seed, uint32_t nowMs) {
       moment_.seed = seed;
       std::memcpy(moment_.origin, self_, 6);
       moment_.nextMs = nowMs;
+      // The chain carries the origin's own colour; the origin itself glows in
+      // its shade colours, since its base colour would not show on its base.
+      if (!host_->surfaceColors(/*base=*/true).empty()) {
+        moment_.hasChainColor = true;
+        moment_.chainColor = host_->surfaceColors(/*base=*/true).front();
+      }
       remember(self_, seed, kind);
       // The origin glows and announces the first hop at once, so every
       // bystander's crowd cooldown lands before a second origin's backoff.
@@ -288,6 +293,10 @@ void MomentDirector::onWhisper(const uint8_t src[6], const MomentFrame& f, uint3
   std::memcpy(moment_.origin, f.visited[0], 6);
   moment_.hop = f.hop;
   std::memcpy(moment_.visited, f.visited, sizeof(moment_.visited));
+  moment_.hasChainColor = f.hasColor;
+  moment_.chainColor = f.color;
+  moment_.hasTint = f.hasColor;
+  moment_.tint = f.color;
   // The sender glowed `a` ago; this lamp glows one hand-off after it.
   moment_.nextMs = nowMs - f.ageMs + kWhisperHandOffMs;
   participate(MomentKind::Whisper, nowMs);
@@ -346,6 +355,8 @@ void MomentDirector::tickWhisper(uint32_t nowMs) {
   f.kind = MomentKind::Whisper;
   f.seed = moment_.seed;
   f.hop = static_cast<uint8_t>(moment_.hop + 1);
+  f.hasColor = moment_.hasChainColor;
+  f.color = moment_.chainColor;
   std::memcpy(f.visited, moment_.visited, sizeof(f.visited));
   // Bounded apart from the hop rule above, so the list is never overrun.
   std::memcpy(f.visited[std::min<uint8_t>(moment_.hop, kWhisperMaxHops - 1)], self_, 6);
@@ -372,6 +383,8 @@ void MomentDirector::startHeartbeat(const NearbyCopy* peer, uint32_t nowMs) {
     std::memcpy(moment_.peer, peer->mac, 6);
     moment_.hasPeer = true;
     moment_.rssiEma = peer->lastRssi;
+    moment_.hasTint = true;
+    moment_.tint = peer->baseColor;
     moment_.lastSightingMs = peer->lastSeenBleMs;
   }
   moment_.nextMs = nowMs;
@@ -509,14 +522,32 @@ bool MomentDirector::render(ExpressionInvocation& inv) {
   return ok;
 }
 
+void MomentDirector::addStandingOut(ExpressionInvocation& inv, Color c) {
+  const std::vector<Color>& own = host_->surfaceColors(/*base=*/true);
+  if (!own.empty() && colorDistance(c, own.front()) <= kBorrowSameColor) {
+    c = bloomWhiten(c, kBorrowWhiten);
+  }
+  inv.colors.push_back(c);
+}
+
+void MomentDirector::addTintOrShade(ExpressionInvocation& inv) {
+  if (moment_.hasTint) {
+    addStandingOut(inv, moment_.tint);
+    return;
+  }
+  const std::vector<Color>& shade = host_->surfaceColors(/*base=*/false);
+  for (size_t i = 0; i < shade.size() && i < kBorrowedColors; ++i) addStandingOut(inv, shade[i]);
+}
+
 void MomentDirector::renderBlink() {
   ExpressionInvocation inv;
   inv.type = kTwinkle;
-  inv.target = TARGET_SHADE;
+  inv.target = TARGET_BASE;
   inv.parameters.set("fire", kTwinkleStyle);
-  inv.parameters.set("count", firefliesStars(host_->shadePixels()));
+  inv.parameters.set("count", firefliesStars(host_->basePixels()));
   inv.parameters.set("durationMax", kFirefliesBurstMs);
   inv.parameters.set("opacity", firefliesOpacity(moment_.blink));
+  addTintOrShade(inv);
   render(inv);
 }
 
@@ -528,28 +559,21 @@ void MomentDirector::renderBeat(uint32_t burstMs, uint8_t opacity) {
   inv.parameters.set("count", kWholeSurface);
   inv.parameters.set("durationMax", burstMs);
   inv.parameters.set("opacity", opacity);
+  addTintOrShade(inv);
   render(inv);
 }
 
 void MomentDirector::renderGlow() {
   ExpressionInvocation inv;
   inv.type = "pulse";
-  inv.target = TARGET_SHADE;
+  inv.target = TARGET_BASE;
   inv.parameters.set("loop", 0);
   inv.parameters.set("fullStrip", 1);
   inv.parameters.set("pulseSpeed", kWhisperPulseSpeed);
   inv.parameters.set("size", kWhisperPulseSize);
   inv.parameters.set("easing", kWhisperEasingSmooth);
   inv.parameters.set("opacity", kWhisperOpacity);
-  const std::vector<Color>& borrowed = host_->surfaceColors(/*base=*/true);
-  const std::vector<Color>& own = host_->surfaceColors(/*base=*/false);
-  for (size_t i = 0; i < borrowed.size() && i < kBorrowedColors; ++i) {
-    Color c = borrowed[i];
-    if (!own.empty() && colorDistance(c, own.front()) <= kBorrowSameColor) {
-      c = bloomWhiten(c, kBorrowWhiten);
-    }
-    inv.colors.push_back(c);
-  }
+  addTintOrShade(inv);
   render(inv);
 }
 

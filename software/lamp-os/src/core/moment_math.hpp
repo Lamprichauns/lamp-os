@@ -91,8 +91,8 @@ inline uint32_t firefliesBlinkMs(uint32_t t0, uint32_t periodMs, uint16_t blink,
   return t0 + static_cast<uint32_t>(blink) * periodMs + static_cast<uint32_t>(offset);
 }
 uint8_t firefliesOpacity(uint16_t blink);
-// Stars lit by one blink on a shade of `shadePixels`.
-uint16_t firefliesStars(uint16_t shadePixels);
+// Stars lit by one blink on a surface of `surfacePixels`.
+uint16_t firefliesStars(uint16_t surfacePixels);
 
 uint32_t heartbeatPeriodMs(float rssiEma);
 float heartbeatEma(float ema, int8_t rssi);
@@ -163,8 +163,8 @@ bool selectWhisperHop(const std::vector<NearbyCopy>& peers, uint32_t nowMs,
 
 inline constexpr uint32_t kMomentMaxAgeMs = 2000;
 
-// The `mo` object of a MSG_EVENT Moment frame. `hop` and the MACs carry a
-// Whisper only.
+// The `mo` object of a MSG_EVENT Moment frame. `hop`, the MACs and the colour
+// carry a Whisper only.
 struct MomentFrame {
   MomentKind kind = MomentKind::Fireflies;
   uint32_t seed = 0;
@@ -172,6 +172,9 @@ struct MomentFrame {
   uint8_t hop = 0;
   uint8_t to[6] = {0};
   uint8_t visited[kWhisperMaxHops][6] = {};
+  // Whisper: the origin's colour, `c` on the wire.
+  bool hasColor = false;
+  Color color;
 };
 
 // Writes the whole MSG_EVENT payload, `{"type":"moment","mo":{...}}`, into
