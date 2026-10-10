@@ -660,6 +660,10 @@ The lamp partitions two app slots (`ota_0`/app0, `ota_1`/app1) plus an `otadata`
 
 A legacy receiver erases + accepts on every fresh `MSG_FW_OFFER`, so two distributors offering the same peer concurrently stomp each other and the transfer never completes. Before offering, the distributor skips a peer the mesh already shows as being served: the peer's own `HELLO_TLV_OTA_STATE` reads receiving, or some roster peer reports `HELLO_TLV_OTA_STATE` = sending with `HELLO_TLV_OTA_SENDING_TO` == that peer. The caller (`tickOtaOffers`, `components/firmware/ota_offer.cpp`) computes this from the roster (which holds peers only, so a lamp never counts its own in-progress send) and passes it to `considerPeerForOta`. Local, roster-derived — no wire change.
 
+### Offer scan and the inter-session hold
+
+`tickOtaOffers` (`components/firmware/ota_offer.cpp`) runs in `Lamp::tick` on every variant once the compositor's startup phase has ended, at most once a second (`OtaOfferThrottle::kIntervalMs`). It walks the ESP-NOW roster and calls `considerPeerForOta` and `fs_ota::considerPeer` per peer, unless an OTA is moving in either direction for either image, a reachable peer runs newer firmware (receive-first), or OTA quiet mode is held. One quiet holder is exempt: after a session ends the distributor keeps its quiet for `kInterSessionQuietHoldMs` (10 s) so the next offer arms inside that hold and inherits its quiet, and the indicator stays up through a wave instead of flashing back to normal between sessions. The scan runs during that hold only when it is the sole holder (`ota_quiet_mode::holders()` is 1 and `FirmwareDistributor::holdingIdleQuiet()`); quiet from a received OTA, a BLE-pushed OTA or an FS session still blocks it. The gate is `offerBusy` in `ota_offer.hpp`, pure and natively tested.
+
 ### Channel promotion
 
 A beta lamp graduates to stable via OTA when a stable-channel distributor with a version >= the beta peer's version is present. The decision is one-directional: beta accepts stable, stable never accepts beta. The `{type}` prefix (`standard`, `snafu`) must match exactly at every checkpoint; cross-variant OTA is always rejected.

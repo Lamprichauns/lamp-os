@@ -26,6 +26,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   and snafu and lioness lamps at any time, never offered a firmware or web-UI
   update to the lamps around them, so an update could stall at them. Every
   lamp type now passes updates on in every mode.
+- **Lamps passing an update along stay on the update display.** A lamp
+  updating several neighbours in a row no longer flashes back to its normal
+  colours between one neighbour and the next.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run out
   of memory and restart, with or without the app open: saving settings or
   social dispositions on a crowded lamp could crash it outright, and a crowd's
