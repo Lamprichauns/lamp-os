@@ -19,11 +19,19 @@ namespace lamp {
 // collection. A string occupies 1 + ceil((len + 1) / 32) contiguous entries in
 // one page. A blob is written in chunks, each 1 + ceil(chunk / 32) entries in
 // a page's tail, then a one-entry index; the new version lands before the old
-// one is erased. requestNewPage activates a free page while two are free, else
-// copies the live items of the page with the fewest live entries into the
-// last free page and frees it, refusing when no page has a free or erased
-// entry. A string write gets one requestNewPage retry. Identical rewrites are
-// skipped. Keys of other namespaces are written with putSystem.
+// one is erased; a blob's first chunk moves to a fresh page rather than split
+// into a tail under 400 bytes. requestNewPage activates a free page while two
+// are free, else copies the live items of the page with the fewest live
+// entries into the last free page and frees it, refusing when no page has a
+// free or erased entry. A string write gets one requestNewPage retry.
+// Identical rewrites are skipped. A failed blob write cleans up as IDF 5.5's
+// writeMultiPageBlob does: on the page of each chunk it recorded, it erases
+// the first chunk numbered by its position (0, 1, ...) rather than by the new
+// version's offset, so it can take the old version's chunk instead of its own.
+// failBlobKey forces that failure on the next write of that lamp key, as
+// requestNewPage failing after its first chunk is recorded. Erasing a blob takes its index and that version's
+// chunks; chunks of another version stay until IDF's boot scan. Keys of other
+// namespaces are written with putSystem.
 class PagedNvs : public ConfigStore {
  public:
   static constexpr size_t kPages = 5;
@@ -32,6 +40,7 @@ class PagedNvs : public ConfigStore {
   static constexpr size_t kChunkMax = kEntrySize * (kEntries - 1);
 
   size_t failedWrites = 0;
+  std::string failBlobKey;  // a lamp key; cleared once the failure fires
 
   PagedNvs() {
     for (size_t i = 0; i < kPages; ++i) free_.push_back(i);
@@ -42,8 +51,19 @@ class PagedNvs : public ConfigStore {
     const Item* item = findLive(ns(key), Kind::String);
     return item ? item->data.substr(0, item->data.size() - 1) : std::string(defaultValue);
   }
+  size_t readString(const char* key, char* out, size_t cap) override {
+    const Item* item = findLive(ns(key), Kind::String);
+    if (!item || item->data.size() > cap) return 0;
+    std::memcpy(out, item->data.data(), item->data.size());
+    return item->data.size() - 1;
+  }
   size_t write(const char* key, const char* value) override {
     return putString(ns(key), value) ? std::strlen(value) : 0;
+  }
+  bool has(const char* key) override {
+    const std::string k = ns(key);
+    return findLive(k, Kind::String) || findLive(k, Kind::Primitive) ||
+           findLive(k, Kind::BlobIndex);
   }
   size_t readBlob(const char* key, void* out, size_t cap) override {
     std::string value;
@@ -188,7 +208,7 @@ class PagedNvs : public ConfigStore {
       bool found = false;
       for (const auto& page : pages_) {
         for (const auto& item : page.items) {
-          if (item.live && item.key == key && item.kind == Kind::BlobData &&
+          if (!found && item.live && item.key == key && item.kind == Kind::BlobData &&
               item.chunk == index->chunk + c) {
             out += item.data;
             found = true;
@@ -200,18 +220,30 @@ class PagedNvs : public ConfigStore {
     return true;
   }
 
-  // Every live item under `key` except those `keep` says to.
-  template <typename Keep>
-  void eraseWhere(const std::string& key, Keep keep) {
+  // Every live item under `key` that `match` picks.
+  template <typename Match>
+  void eraseWhere(const std::string& key, Match match) {
     for (auto& page : pages_) {
       for (auto& item : page.items) {
-        if (item.live && item.key == key && !keep(item)) kill(page, item);
+        if (item.live && item.key == key && match(item)) kill(page, item);
       }
     }
   }
 
+  // nvs_erase_key: a single item, or a blob's index and its version's chunks.
   void eraseKey(const std::string& key) {
-    eraseWhere(key, [](const Item&) { return false; });
+    const Item* index = findLive(key, Kind::BlobIndex);
+    if (index) {
+      const uint8_t start = index->chunk;
+      const uint8_t count = index->chunkCount;
+      eraseWhere(key, [&](const Item& item) {
+        return item.kind == Kind::BlobIndex ||
+               (item.kind == Kind::BlobData && item.chunk >= start && item.chunk < start + count);
+      });
+    }
+    eraseWhere(key, [](const Item& item) {
+      return item.kind == Kind::String || item.kind == Kind::Primitive;
+    });
   }
 
   bool fail() {
@@ -253,6 +285,7 @@ class PagedNvs : public ConfigStore {
     const uint8_t start = old && old->chunk == 0 ? 128 : 0;
     if (data.size() > (kPages - 1) * kChunkMax) return fail();
 
+    std::vector<size_t> usedPages;  // the page of each chunk recorded
     uint8_t chunks = 0;
     size_t offset = 0;
     bool ok = true;
@@ -274,6 +307,12 @@ class PagedNvs : public ConfigStore {
       const size_t len = std::min(data.size() - offset, tail);
       pageWrite(page, Item{key, Kind::BlobData, static_cast<uint8_t>(start + chunks), 0,
                            spanOf(Kind::BlobData, len), data.substr(offset, len), true});
+      usedPages.push_back(list_.back());
+      if (key == ns(failBlobKey.c_str())) {
+        failBlobKey.clear();
+        ok = false;
+        break;
+      }
       ++chunks;
       offset += len;
       if (offset < data.size() || tail - len < kEntrySize) {
@@ -289,14 +328,21 @@ class PagedNvs : public ConfigStore {
       }
     }
     if (!ok) {
-      eraseWhere(key, [&](const Item& item) {
-        return !(item.kind == Kind::BlobData && item.chunk >= start && item.chunk < start + chunks);
-      });
+      for (size_t ii = 0; ii < usedPages.size(); ++ii) {
+        Page& p = pages_[usedPages[ii]];
+        for (auto& item : p.items) {
+          if (item.live && item.key == key && item.kind == Kind::BlobData && item.chunk == ii) {
+            kill(p, item);
+            break;
+          }
+        }
+      }
       return fail();
     }
     eraseWhere(key, [&](const Item& item) {
-      return item.kind == Kind::BlobIndex ? item.chunk == start
-                                          : item.chunk >= start && item.chunk < start + chunks;
+      if (item.kind == Kind::BlobIndex) return item.chunk != start;
+      if (item.kind == Kind::BlobData) return item.chunk < start || item.chunk >= start + 128;
+      return true;
     });
     return true;
   }

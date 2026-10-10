@@ -86,7 +86,8 @@ class Config {
   // user-saved values are authoritative.
   void applyDefaults(const Defaults& d);
 
-  // True when NVS held a non-empty config blob that failed to deserialize.
+  // True when NVS held a non-empty config, or a blob holding part of it, that
+  // failed to read or deserialize.
   // The lamp served defaults for this boot; callers must NOT overwrite NVS,
   // the stored blob may be recoverable.
   bool loadFailedWithData() const { return loadFailedWithData_; }
@@ -110,7 +111,8 @@ class Config {
    * fade-out-and-reboot. The runtime state has already been applied by
    * the caller; this just writes the canonical JSON to NVS.
    *
-   * Returns true when every key landed. Never throws and takes no heap: when
+   * Returns true when every key landed. Never throws and takes no
+   * config-sized heap (config_codec::saveConfig): when
    * NVS refuses a write it returns false, logs, and backs off (5 s doubling
    * to 60 s); maybeRetryPersist() runs the retry. After persistRawJson has
    * stored a web document it declines, logging, until the reboot that loads
@@ -135,11 +137,12 @@ class Config {
 
   // Saves a caller-supplied whole-config JSON document (the webapp's
   // whole-document PUT path) in the stored shape, for the next boot to load
-  // (config_codec::saveRawJson). Returns true when every key landed; from
+  // (config_codec::saveRawJson). Returns Ok when every key landed; from
   // then on persistConfig declines (and any pending retry is dropped) until
-  // the reboot that loads it. A save that fails partway leaves the running
-  // config's save pending, which writes it back whole. Loop task only.
-  bool persistRawJson(const char* json);
+  // the reboot that loads it, and a second web document is Held. A save
+  // that fails partway leaves the running config's save pending, which
+  // writes it back whole. Loop task only.
+  config_codec::SaveResult persistRawJson(const char* json);
 
   // Wipe persisted state (factory reset). Returns true on success. The caller
   // reboots afterward so defaults reload; in-memory state is left as-is.

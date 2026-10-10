@@ -82,9 +82,10 @@ constexpr size_t kMaxExpressionRecordLen =
 size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out);
 bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 
-// Invalid and NoHeap come from saveRawJson only, and leave the store
-// untouched, as TooLarge does.
-enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge, Invalid, NoHeap };
+// Invalid and NoHeap come from saveRawJson, Held from Config while a stored
+// web document waits for its reboot; each leaves the store untouched, as
+// TooLarge does.
+enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge, Invalid, NoHeap, Held };
 
 // The save buffer's length: it holds a whole config up to kMaxWholeCfgLen
 // and a split save's rest at the caps with every escapable string fully
@@ -99,17 +100,20 @@ static_assert(kMaxWholeCfgLen <= kMaxStoredCfgJsonLen, "the save buffer holds a 
 
 // Saves the model. A whole config up to kMaxWholeCfgLen is one "cfg"
 // string carrying the expressions and knockout too, the form any firmware
-// reads; when NVS cannot place it beside the split keys it is staged as the
-// "cfgb" blob first, and the split keys are erased once it is authoritative.
+// reads; when NVS cannot place it beside the split keys it is staged as a
+// rest blob first, and the other keys are erased once it is authoritative.
 // A larger config splits: each expression as a record ("x0", "x1", ...), the
-// knockout levels in "ko", the count in "xn", record slots past the count
-// erased, the rest but the lamp section as the "cfgb" blob, and last the lamp
-// section as the "cfg" string, which an older firmware reads too. Every value
-// but the cfg string is a blob NVS may spread across pages. The JSON is built
+// knockout levels in "ko", the count in "xn" (a decimal string), record slots
+// past the count erased, the rest but the lamp section as a rest blob (a
+// generation byte, then the JSON, in "cfgb" and "cfgc" by turns so a rewrite
+// never touches the live copy), and last the lamp section alone as the "cfg"
+// string, staged in "cfgl" while "cfg" is replaced. The JSON is checked
 // before any write, so TooLarge leaves the store untouched; an unchanged key
-// is not rewritten (NVS skips identical writes), and a save needs no heap.
-// Stops at the first failed write; the caller keeps its dirty state and
-// retries.
+// is not rewritten (NVS skips identical writes). A save takes no
+// config-sized heap: the JSON goes into `cfgBuffer` and records come off the
+// stack, and only NVS itself allocates, a handle per call and small bookkeeping
+// per page. Stops at the first failed write; the caller keeps its dirty state
+// and retries.
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
@@ -120,6 +124,7 @@ struct LoadedRecords {
   bool present = false;      // the expressions came from records
   uint32_t droppedMask = 0;  // bit i: record "x<i>" missing or unreadable
   uint8_t duplicates = 0;    // records skipped as a repeat (type, target)
+  bool unreadable = false;   // a stored rest or lamp blob did not read
 };
 
 // Overlays what a split save keeps outside the stored JSON. The JSON wins
@@ -143,17 +148,37 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
                                ExpressionSettings& expressions,
                                HomeModeSettings& homeMode, bool& withinCaps);
 
-// Heap a raw save may take beyond its document: the parse holds about twice
-// the document, the strings copied out of it once more, and the model at the
-// caps stays under kRawSaveModelBytes.
-constexpr size_t kRawSaveHeapPerByte = 3;
-constexpr size_t kRawSaveModelBytes = 8192;
+// Heap a raw save takes beside its document, bounded from the host
+// measurements in test_config_persist_validate (64-bit, so its slots and
+// pools are twice the ESP32's) with margin. In all, the parse and the model
+// take at most kRawSlotBytes per structural token (`{`, `[`, `:`, `,`),
+// kRawBytesPerByte per document byte and per byte of its longest string
+// (strings are built, kept, and copied into the model), and kRawModelBytes
+// for the model at the caps. The largest single block is a pool of slots or
+// the longest string: at most kRawPoolBytes, or the longest string plus
+// kRawStringSlack.
+constexpr size_t kRawSlotBytes = 13;
+constexpr size_t kRawBytesPerByte = 2;
+constexpr size_t kRawModelBytes = 4096;
+constexpr size_t kRawPoolBytes = 4096;
+constexpr size_t kRawStringSlack = 128;
+
+// What a raw save's heap gate reads off a document without parsing it.
+struct RawJsonShape {
+  size_t len = 0;
+  size_t tokens = 0;    // structural characters, counted inside strings too
+  size_t longest = 0;   // the longest string's raw length
+  size_t heapBytes() const;
+  size_t largestBlock() const;
+};
+RawJsonShape scanRawJson(const char* json);
 
 // Saves a whole config document (the webapp's whole-document PUT) through
 // fromJson and saveConfig, for the next boot to load. Invalid when it does
 // not parse or carries no `lamp` object, so a truncated body cannot replace a
-// good config; NoHeap when the heap cannot spare the parse and the model
-// (heapCanSpare), so no allocation on the way can throw.
+// good config; NoHeap when the free heap cannot hold the parse and the model,
+// or the largest free block their largest single block, so no allocation on
+// the way can throw.
 SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
                        size_t cfgBufferLen);
 

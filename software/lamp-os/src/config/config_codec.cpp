@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -458,7 +459,10 @@ constexpr uint8_t kRecordFormat = 1;
 constexpr uint8_t kRecordEnabled = 0x01;
 constexpr const char* kCountKey = "xn";
 constexpr const char* kKnockoutKey = "ko";
-constexpr const char* kSplitCfgKey = "cfgb";
+// The rest (or a staged whole config) as a blob: a generation byte, then the
+// JSON. Two keys in turn, so a rewrite never touches the live copy.
+constexpr const char* kRestKeys[2] = {"cfgb", "cfgc"};
+constexpr uint8_t kRestGenerations = 3;
 constexpr const char* kLampCfgKey = "cfgl";
 // Record slots every save sweeps ("x0".."x31"), past kMaxExpressions, so a
 // record no count names is erased wherever it sits.
@@ -558,7 +562,92 @@ static void eraseSplitKeys(ConfigStore& store) {
   }
   store.erase(kCountKey);
   store.erase(kKnockoutKey);
+}
+
+static void eraseRest(ConfigStore& store) {
+  for (const char* key : kRestKeys) store.erase(key);
   store.erase(kLampCfgKey);
+}
+
+struct RestBlob {
+  int slot = -1;  // the key holding the newer blob, -1 for none
+  uint8_t gen = 0;
+  bool unreadable = false;  // a rest key exists but did not read
+};
+
+// A blob from an earlier build of this layout has no generation byte.
+static size_t restOffset(const char* buf) { return buf[0] == '{' ? 0 : 1; }
+
+// The newer of the two rest blobs: generations count 0, 1, 2, 0, ..., so of
+// two the newer is the one a step ahead. Reads into `buf`.
+static RestBlob newestRest(ConfigStore& store, char* buf, size_t cap) {
+  RestBlob found;
+  bool ok[2];
+  uint8_t gen[2] = {0, 0};
+  for (int i = 0; i < 2; ++i) {
+    ok[i] = store.readBlob(kRestKeys[i], buf, cap) > 0;
+    if (ok[i] && restOffset(buf) == 1) gen[i] = static_cast<uint8_t>(buf[0]);
+    if (!ok[i] && store.has(kRestKeys[i])) found.unreadable = true;
+  }
+  if (ok[0] && ok[1]) {
+    found.slot = (gen[1] + kRestGenerations - gen[0]) % kRestGenerations == 1 ? 1 : 0;
+  } else if (ok[0] || ok[1]) {
+    found.slot = ok[0] ? 0 : 1;
+  }
+  if (found.slot >= 0) found.gen = gen[found.slot];
+  return found;
+}
+
+// Writes `json` after the next generation byte to the key the newer blob is
+// not in, erased first, then erases the older one. A failed write touches
+// only the key that held nothing live: IDF's cleanup of a failed blob write
+// can take a chunk of the version it replaces.
+template <class Write>
+static bool writeRest(ConfigStore& store, char* buf, size_t cap, Write write) {
+  const RestBlob newer = newestRest(store, buf, cap);
+  JsonWriter w(buf + 1, cap - 1);
+  write(w);
+  w.finish();
+  if (!w.ok()) return false;
+  buf[0] = static_cast<char>((newer.gen + 1) % kRestGenerations);
+  const char* target = kRestKeys[newer.slot == 0 ? 1 : 0];
+  if (!store.erase(target) || store.writeBlob(target, buf, 1 + w.length()) == 0) return false;
+  return newer.slot < 0 || store.erase(kRestKeys[newer.slot]);
+}
+
+template <class Write>
+static size_t build(char* buf, size_t cap, Write write) {
+  JsonWriter w(buf, cap);
+  write(w);
+  w.finish();
+  return w.ok() ? w.length() : 0;
+}
+
+static bool writeSplitKeys(ConfigStore& store, const BaseSettings& base,
+                           const ExpressionSettings& expressions) {
+  char key[5];
+  const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
+  uint8_t record[kMaxExpressionRecordLen];
+  for (size_t i = 0; i < count; ++i) {
+    const size_t len = encodeExpression(expressions.expressions[i], record);
+    recordKey(i, key);
+    if (store.writeBlob(key, record, len) == 0) return false;
+  }
+  if (!base.knockoutPixels.empty() &&
+      store.writeBlob(kKnockoutKey, base.knockoutPixels.data(), base.knockoutPixels.size()) ==
+          0) {
+    return false;
+  }
+  // A string, which a failed rewrite leaves as it was.
+  char countText[4];
+  std::snprintf(countText, sizeof(countText), "%u", static_cast<unsigned>(count));
+  if (store.write(kCountKey, countText) == 0) return false;
+  // Every slot past the count, so a record left by a save cut short is gone.
+  for (size_t i = count; i < kRecordKeySlots; ++i) {
+    recordKey(i, key);
+    store.erase(key);
+  }
+  return true;
 }
 
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
@@ -566,84 +655,84 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const ExpressionSettings& expressions,
                       const HomeModeSettings& homeMode, char* cfgBuffer,
                       size_t cfgBufferLen) {
+  const auto whole = [&](JsonWriter& w) {
+    writeStoredJson(w, &lamp, base, shade, homeMode, &expressions);
+  };
+  const auto rest = [&](JsonWriter& w) {
+    writeStoredJson(w, nullptr, base, shade, homeMode, nullptr);
+  };
+  const auto lampOnly = [&](JsonWriter& w) { writeLampOnlyJson(w, lamp); };
+
   // Whole: everything in the one "cfg" string, the form every firmware reads.
   // A cfg string carrying an expressions array is the authority from the
-  // moment it lands, so the split keys go after it.
-  {
-    JsonWriter whole(cfgBuffer, std::min(cfgBufferLen, kMaxWholeCfgLen + 1));
-    writeStoredJson(whole, &lamp, base, shade, homeMode, &expressions);
-    whole.finish();
-    if (whole.ok()) {
-      if (store.write("cfg", cfgBuffer) == 0) {
-        // NVS could not place the string beside the split keys. Stage it as
-        // a "cfgb" blob, which may span pages and is the authority once the
-        // cfg string is gone, then clear the room and place the string.
-        if (store.writeBlob(kSplitCfgKey, cfgBuffer, whole.length()) == 0 ||
-            !store.erase("cfg")) {
-          return SaveResult::WriteFailed;
-        }
-        eraseSplitKeys(store);
-        if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
+  // moment it lands, so every other key goes after it.
+  if (build(cfgBuffer, std::min(cfgBufferLen, kMaxWholeCfgLen + 1), whole) > 0) {
+    if (store.write("cfg", cfgBuffer) == 0) {
+      // NVS could not place the string beside the split keys. Stage it as a
+      // rest blob, which may span pages and is the authority once the cfg
+      // string is gone, then clear the room and place the string.
+      if (!writeRest(store, cfgBuffer, cfgBufferLen, whole) || !store.erase("cfg")) {
+        return SaveResult::WriteFailed;
       }
       eraseSplitKeys(store);
-      store.erase(kSplitCfgKey);
-      return SaveResult::Ok;
+      store.erase(kLampCfgKey);
+      if (build(cfgBuffer, cfgBufferLen, whole) == 0 || store.write("cfg", cfgBuffer) == 0) {
+        return SaveResult::WriteFailed;
+      }
+    }
+    eraseSplitKeys(store);
+    eraseRest(store);
+    return SaveResult::Ok;
+  }
+
+  // Split: the expressions as records beside the rest. The rest must fit the
+  // blob form, checked before any write so TooLarge writes nothing.
+  if (cfgBufferLen < 2 || build(cfgBuffer + 1, cfgBufferLen - 1, rest) == 0) {
+    return SaveResult::TooLarge;
+  }
+
+  // The rest as a blob and the lamp section alone in "cfg". The lamp section
+  // lives in one of three places: a staged whole rest blob when that is the
+  // newest, else "cfg" when it holds the lamp section alone, else "cfgl"
+  // (a save cut short with "cfg" erased). Unless "cfg" holds it, the new lamp
+  // section is staged in "cfgl" first, since from when "cfg" is erased until
+  // the new one lands it is the only copy; a "cfgl" that is the current copy
+  // stays as it is. A stale lamp-only "cfg" (a staged whole is newer) goes
+  // before the rest blob replaces that whole; any other "cfg" (a whole
+  // string, or a rest string from an earlier build) is the authority until
+  // the rest blob lands, and goes after.
+  const RestBlob newer = newestRest(store, cfgBuffer, cfgBufferLen);
+  bool stagedWhole = false;
+  if (newer.slot >= 0) {
+    const size_t len =
+        store.readBlob(kRestKeys[newer.slot], cfgBuffer, cfgBufferLen - 1);
+    cfgBuffer[len] = '\0';
+    stagedWhole = len > 0 && std::strstr(cfgBuffer + restOffset(cfgBuffer),
+                                         "\"expressions\":") != nullptr;
+  }
+  const bool cfgPresent = store.has("cfg");
+  const size_t cfgLen = store.readString("cfg", cfgBuffer, cfgBufferLen);
+  const bool cfgIsLampOnly = cfgLen > 0 && std::strstr(cfgBuffer, "\"base\":") == nullptr &&
+                             std::strstr(cfgBuffer, "\"expressions\":") == nullptr;
+  const bool cfgHoldsLamp = cfgIsLampOnly && !stagedWhole;
+  const bool cfgIsAuthority = cfgPresent && !cfgIsLampOnly;
+  const bool lampBlobHoldsLamp = !cfgPresent && !stagedWhole && store.has(kLampCfgKey);
+  if (!cfgHoldsLamp && !lampBlobHoldsLamp) {
+    const size_t len = build(cfgBuffer, cfgBufferLen, lampOnly);
+    if (len == 0 || !store.erase(kLampCfgKey) ||
+        store.writeBlob(kLampCfgKey, cfgBuffer, len) == 0) {
+      return SaveResult::WriteFailed;
     }
   }
-
-  // Split: the records and knockout blob, then the rest of the config as the
-  // "cfgb" blob, then the lamp section as the "cfg" string, which an older
-  // firmware reads too. Losing its expressions array is what hands authority
-  // to the split keys. The JSON is built first so TooLarge writes nothing.
-  JsonWriter rest(cfgBuffer, cfgBufferLen);
-  writeStoredJson(rest, nullptr, base, shade, homeMode, nullptr);
-  rest.finish();
-  if (!rest.ok()) return SaveResult::TooLarge;
-
-  // Switching from whole: a page with room for the lamp string beside the
-  // whole one and every split key is not assured, so the lamp section is
-  // staged as the "cfgl" blob while the store is still small, and the whole
-  // string is erased before the lamp string is written.
-  const bool wasSplit = store.readBlob(kSplitCfgKey, cfgBuffer, cfgBufferLen) > 0;
-  JsonWriter lampOnly(cfgBuffer, cfgBufferLen);
-  writeLampOnlyJson(lampOnly, lamp);
-  lampOnly.finish();
-  if (!lampOnly.ok()) return SaveResult::TooLarge;
-  if (!wasSplit && store.writeBlob(kLampCfgKey, cfgBuffer, lampOnly.length()) == 0) {
+  if ((cfgIsLampOnly && !cfgHoldsLamp && !store.erase("cfg")) ||
+      !writeSplitKeys(store, base, expressions) ||
+      !writeRest(store, cfgBuffer, cfgBufferLen, rest) ||
+      (cfgIsAuthority && !store.erase("cfg"))) {
     return SaveResult::WriteFailed;
   }
-
-  char key[5];
-  const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
-  uint8_t record[kMaxExpressionRecordLen];
-  for (size_t i = 0; i < count; ++i) {
-    const size_t len = encodeExpression(expressions.expressions[i], record);
-    recordKey(i, key);
-    if (store.writeBlob(key, record, len) == 0) return SaveResult::WriteFailed;
-  }
-  if (!base.knockoutPixels.empty() &&
-      store.writeBlob(kKnockoutKey, base.knockoutPixels.data(),
-                      base.knockoutPixels.size()) == 0) {
+  if (build(cfgBuffer, cfgBufferLen, lampOnly) == 0 || store.write("cfg", cfgBuffer) == 0) {
     return SaveResult::WriteFailed;
   }
-  const uint8_t n = static_cast<uint8_t>(count);
-  if (store.writeBlob(kCountKey, &n, 1) == 0) return SaveResult::WriteFailed;
-  // Every slot past the count, so a record left by a save cut short is gone.
-  for (size_t i = count; i < kRecordKeySlots; ++i) {
-    recordKey(i, key);
-    store.erase(key);
-  }
-  JsonWriter restAgain(cfgBuffer, cfgBufferLen);
-  writeStoredJson(restAgain, nullptr, base, shade, homeMode, nullptr);
-  restAgain.finish();
-  if (store.writeBlob(kSplitCfgKey, cfgBuffer, restAgain.length()) == 0 ||
-      (!wasSplit && !store.erase("cfg"))) {
-    return SaveResult::WriteFailed;
-  }
-  JsonWriter lampAgain(cfgBuffer, cfgBufferLen);
-  writeLampOnlyJson(lampAgain, lamp);
-  lampAgain.finish();
-  if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
   store.erase(kLampCfgKey);
   return SaveResult::Ok;
 }
@@ -660,8 +749,16 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
     }
   }
   if (cfgHasExpressions) return result;
-  uint8_t n = 0;
-  if (store.readBlob(kCountKey, &n, 1) != 1) return result;
+  size_t n = 0;
+  char countText[4];
+  if (store.readString(kCountKey, countText, sizeof(countText)) > 0) {
+    n = std::strtoul(countText, nullptr, 10);
+  } else {
+    // An earlier build of this layout kept the count as a one-byte blob.
+    uint8_t count = 0;
+    if (store.readBlob(kCountKey, &count, 1) != 1) return result;
+    n = count;
+  }
   result.present = true;
   expressions.expressions.clear();
   expressions.expressions.reserve(std::min<size_t>(n, kMaxExpressions));
@@ -696,52 +793,105 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
                                ExpressionSettings& expressions,
                                HomeModeSettings& homeMode, bool& withinCaps) {
   // A cfg string with an expressions array (a whole save, or any older
-  // firmware's) is the authority over every other key.
-  // A "cfgb" beside it is a save cut short or a downgrade's leftover, and
-  // goes: a split save takes "cfgb" to mean the store is split already.
+  // release's) is the authority over every blob; one left beside it is a
+  // save cut short or a downgrade's leftover, and goes.
   if (root["expressions"].is<JsonArray>()) {
     withinCaps = fromJson(root, lamp, base, shade, expressions, homeMode);
-    store.erase(kSplitCfgKey);
+    eraseRest(store);
     return LoadedRecords{};
   }
-  // Otherwise "cfgb" holds the config: a staged whole one when it carries
-  // expressions, else the rest beside the records, with the lamp section
-  // from the cfg string, or from "cfgl" while a save has the string erased.
-  // A store without "cfgb" was split by a build that kept the rest in the
-  // cfg string.
-  std::unique_ptr<char[]> stored(new (std::nothrow) char[kMaxStoredCfgJsonLen]);
-  const size_t storedLen =
-      stored ? store.readBlob(kSplitCfgKey, stored.get(), kMaxStoredCfgJsonLen) : 0;
-  JsonDocument storedDoc;
+  // Otherwise the newer rest blob holds the config: a staged whole one when
+  // it carries expressions, else the rest beside the records, with the lamp
+  // section from the cfg string, or from "cfgl" while a save has it erased.
+  // With no rest blob, the cfg string holds the rest too: a store split by an
+  // earlier build of this layout.
+  bool unreadable = false;
+  std::unique_ptr<char[]> buf(new (std::nothrow) char[kMaxStoredCfgJsonLen + 1]);
+  const size_t cap = kMaxStoredCfgJsonLen + 1;
+  JsonDocument doc;
   JsonObject from = root;
-  if (storedLen > 0 &&
-      deserializeJson(storedDoc, stored.get(), storedLen) == DeserializationError::Ok &&
-      storedDoc.is<JsonObject>()) {
-    from = storedDoc.as<JsonObject>();
-    if (from["expressions"].is<JsonArray>()) {
-      // A staged whole config carries its own lamp section.
-    } else if (root["lamp"].is<JsonObject>()) {
-      from["lamp"] = root["lamp"];
-    } else if (!from["lamp"].is<JsonObject>()) {
-      const size_t lampLen = store.readBlob(kLampCfgKey, stored.get(), kMaxStoredCfgJsonLen);
-      JsonDocument lampDoc;
-      if (lampLen > 0 &&
-          deserializeJson(lampDoc, stored.get(), lampLen) == DeserializationError::Ok) {
-        from["lamp"] = lampDoc["lamp"];
+  if (!buf) {
+    unreadable = true;
+  } else {
+    const RestBlob newer = newestRest(store, buf.get(), cap);
+    unreadable = newer.unreadable;
+    const size_t len = newer.slot < 0 ? 0 : store.readBlob(kRestKeys[newer.slot], buf.get(), cap);
+    const size_t off = len > 0 ? restOffset(buf.get()) : 0;
+    if (len > off &&
+        deserializeJson(doc, buf.get() + off, len - off) == DeserializationError::Ok &&
+        doc.is<JsonObject>()) {
+      from = doc.as<JsonObject>();
+      if (!from["expressions"].is<JsonArray>()) {
+        if (root["lamp"].is<JsonObject>()) {
+          from["lamp"] = root["lamp"];
+        } else {
+          const size_t lampLen = store.readBlob(kLampCfgKey, buf.get(), cap);
+          JsonDocument lampDoc;
+          if (lampLen > 0 &&
+              deserializeJson(lampDoc, buf.get(), lampLen) == DeserializationError::Ok &&
+              lampDoc["lamp"].is<JsonObject>()) {
+            from["lamp"] = lampDoc["lamp"];
+          } else if (store.has(kLampCfgKey)) {
+            unreadable = true;
+          }
+        }
       }
+    } else if (newer.slot >= 0) {
+      unreadable = true;
     }
   }
   withinCaps = fromJson(from, lamp, base, shade, expressions, homeMode);
-  if (from["expressions"].is<JsonArray>()) return LoadedRecords{};
-  return loadRecords(store, base, expressions, from["base"]["knockout"].is<JsonArray>(),
-                     false);
+  LoadedRecords loaded;
+  if (!from["expressions"].is<JsonArray>()) {
+    loaded = loadRecords(store, base, expressions, from["base"]["knockout"].is<JsonArray>(),
+                         false);
+  }
+  loaded.unreadable = unreadable;
+  return loaded;
+}
+
+RawJsonShape scanRawJson(const char* json) {
+  RawJsonShape shape;
+  bool inString = false;
+  size_t run = 0;
+  for (const char* c = json; *c; ++c, ++shape.len) {
+    if (*c == '{' || *c == '[' || *c == ':' || *c == ',') ++shape.tokens;
+    if (inString) {
+      if (*c == '\\' && c[1]) {
+        ++c;
+        ++shape.len;
+        run += 2;
+      } else if (*c == '"') {
+        inString = false;
+        shape.longest = std::max(shape.longest, run);
+      } else {
+        ++run;
+      }
+    } else if (*c == '"') {
+      inString = true;
+      run = 0;
+    }
+  }
+  if (inString) shape.longest = std::max(shape.longest, run);
+  return shape;
+}
+
+size_t RawJsonShape::heapBytes() const {
+  return kRawSlotBytes * (tokens + 1) + kRawBytesPerByte * (len + longest) + kRawModelBytes;
+}
+
+size_t RawJsonShape::largestBlock() const {
+  return std::max(kRawPoolBytes, longest + kRawStringSlack);
 }
 
 SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
                        size_t cfgBufferLen) {
   if (json == nullptr) return SaveResult::Invalid;
-  const size_t len = std::strlen(json);
-  if (!heapCanSpare(kRawSaveHeapPerByte * len + kRawSaveModelBytes)) return SaveResult::NoHeap;
+  const RawJsonShape shape = scanRawJson(json);
+  const size_t len = shape.len;
+  if (!heapHasFree(shape.heapBytes()) || !heapCanSpare(shape.largestBlock())) {
+    return SaveResult::NoHeap;
+  }
   JsonDocument doc;
   if (deserializeJson(doc, json, len) != DeserializationError::Ok ||
       !doc["lamp"].is<JsonObject>()) {

@@ -13,9 +13,11 @@ namespace lamp {
 class NvsConfigStore : public ConfigStore {
  public:
   std::string read(const char* key, const char* defaultValue) override;
+  size_t readString(const char* key, char* out, size_t cap) override;
   size_t write(const char* key, const char* value) override;
   size_t readBlob(const char* key, void* out, size_t cap) override;
   size_t writeBlob(const char* key, const void* data, size_t len) override;
+  bool has(const char* key) override;
   bool erase(const char* key) override;
   bool clear() override;
 

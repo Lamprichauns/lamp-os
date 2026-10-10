@@ -48,6 +48,25 @@ std::string NvsConfigStore::read(const char* key, const char* defaultValue) {
   return defaultValue;
 }
 
+size_t NvsConfigStore::readString(const char* key, char* out, size_t cap) {
+  nvs_handle_t h;
+  if (nvs_open(kNamespace, NVS_READONLY, &h) != ESP_OK) return 0;
+  size_t len = 0;
+  const bool ok = nvs_get_str(h, key, nullptr, &len) == ESP_OK && len > 0 && len <= cap &&
+                  nvs_get_str(h, key, out, &len) == ESP_OK;
+  nvs_close(h);
+  return ok ? len - 1 : 0;
+}
+
+bool NvsConfigStore::has(const char* key) {
+  nvs_handle_t h;
+  if (nvs_open(kNamespace, NVS_READONLY, &h) != ESP_OK) return false;
+  nvs_type_t type;
+  const bool found = nvs_find_key(h, key, &type) == ESP_OK;
+  nvs_close(h);
+  return found;
+}
+
 size_t NvsConfigStore::write(const char* key, const char* value) {
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);

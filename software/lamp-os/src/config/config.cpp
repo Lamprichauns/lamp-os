@@ -80,6 +80,12 @@ Config::Config(ConfigStore* inStore) {
   bool withinCaps = true;
   const config_codec::LoadedRecords records = config_codec::loadStoredConfig(
       *store_, doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode, withinCaps);
+  if (records.unreadable) {
+    // A stored blob holding part of the config did not read; the parts it
+    // held load as defaults, which must not be saved over it.
+    loadFailedWithData_ = true;
+    Serial.println("[cfg] STORED CONFIG BLOB UNREADABLE; serving defaults for it");
+  }
   if (!withinCaps) Serial.println("[cfg] stored expressions over caps; truncated on load");
   for (size_t i = 0; i < kMaxExpressions; ++i) {
     if (records.droppedMask & (1u << i)) {
@@ -109,13 +115,14 @@ static const char* saveFailure(config_codec::SaveResult result) {
     case config_codec::SaveResult::TooLarge: return "too large";
     case config_codec::SaveResult::Invalid: return "invalid";
     case config_codec::SaveResult::NoHeap: return "no heap";
+    case config_codec::SaveResult::Held: return "held for web-save reboot";
     default: return "write";
   }
 }
 
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
-  if (saveGate_.frozen()) {
+  if (!saveGate_.allows()) {
     Serial.printf("[nvs] save via=%s held for web-save reboot\n", via);
     return false;
   }
@@ -140,17 +147,16 @@ void Config::maybeRetryPersist(uint32_t nowMs) {
   if (saveGate_.pending() && saveGate_.due(nowMs)) persistConfig("retry");
 }
 
-bool Config::persistRawJson(const char* json) {
-  if (!store_) return false;
+config_codec::SaveResult Config::persistRawJson(const char* json) {
+  if (!store_) return config_codec::SaveResult::WriteFailed;
   const config_codec::SaveResult result =
-      config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson));
-  if (result == config_codec::SaveResult::Ok) {
-    saveGate_.rawSaved();
-    return true;
+      saveGate_.allows() ? config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson))
+                         : config_codec::SaveResult::Held;
+  saveGate_.rawFinished(result, millis());
+  if (result != config_codec::SaveResult::Ok) {
+    Serial.printf("[nvs] web save failed (%s)\n", saveFailure(result));
   }
-  Serial.printf("[nvs] web save failed (%s)\n", saveFailure(result));
-  if (result == config_codec::SaveResult::WriteFailed) saveGate_.rawFailed(millis());
-  return false;
+  return result;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }
@@ -359,9 +365,10 @@ JsonDocument Config::asHomeModeJson() {
   return doc;
 }
 
-// Per-section JSON cache accessors. Rebuild-if-dirty and the reader's
-// copy-out share one mutex; without it a reader on one core can copy the
-// member string while a rebuild on the other core reallocates it.
+// Per-section JSON caches. Invariant: a cache string is touched only while
+// this mutex is held, and a read rebuilds and copies out under one hold, so a
+// rebuild or a release on the other core never lands between the two. A
+// dirty flag is set without it (invalidate*), which at worst costs a rebuild.
 static SemaphoreHandle_t cacheMutex() {
   static SemaphoreHandle_t m = xSemaphoreCreateMutex();
   return m;
@@ -395,10 +402,8 @@ static void logSectionOom(const char* msg) {
 // grown on a fragmented heap silently stops appending and would cache a cut-off
 // JSON as valid). On failure keep the last-good cache, leave the dirty flag
 // set so it retries when heap recovers, and serve the stale (or empty) bytes.
-// Section caches are rebuilt and copied out under one hold of the cache
-// mutex, so a release on Core 1 (releaseSectionCaches) lands either before a
-// Core 0 read, which then rebuilds, or after it. A failed rebuild keeps the
-// last good copy and stays dirty.
+// Caller holds the cache mutex. A failed rebuild keeps the last good copy and
+// stays dirty.
 template <class Build>
 static void rebuildLocked(std::string& cache, bool& dirty, const char* name, Build build) {
   if (!dirty) return;

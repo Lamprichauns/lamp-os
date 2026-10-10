@@ -166,13 +166,13 @@ struct WebSave {
 static WebSave s_webSavePending;
 static uint32_t s_webSaveSeq = 0;
 static uint32_t s_webSaveDoneSeq = 0;
-static bool s_webSaveDoneOk = false;
+static lamp::config_codec::SaveResult s_webSaveDoneResult = lamp::config_codec::SaveResult::Ok;
 static portMUX_TYPE s_webSaveMux = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t s_webSaveDone = nullptr;
 static constexpr uint32_t kWebSaveWaitMs = 3000;
 static constexpr uint32_t kRebootDelayMs = 1500;
 
-enum class WebSaveResult { Saved, Failed, Withdrawn, StillSaving };
+enum class WebSaveResult { Saved, Failed, Held, Withdrawn, StillSaving };
 
 static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
   if (!s_webSaveDone) return WebSaveResult::Failed;
@@ -190,9 +190,13 @@ static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
     if (left > 0 && xSemaphoreTake(s_webSaveDone, pdMS_TO_TICKS(left)) == pdTRUE) {
       portENTER_CRITICAL(&s_webSaveMux);
       const bool mine = s_webSaveDoneSeq == seq;
-      const bool ok = s_webSaveDoneOk;
+      const lamp::config_codec::SaveResult result = s_webSaveDoneResult;
       portEXIT_CRITICAL(&s_webSaveMux);
-      if (mine) return ok ? WebSaveResult::Saved : WebSaveResult::Failed;
+      if (mine) {
+        if (result == lamp::config_codec::SaveResult::Ok) return WebSaveResult::Saved;
+        return result == lamp::config_codec::SaveResult::Held ? WebSaveResult::Held
+                                                              : WebSaveResult::Failed;
+      }
       continue;  // an earlier hand-off's result
     }
     portENTER_CRITICAL(&s_webSaveMux);
@@ -218,7 +222,8 @@ static void drainWebSave() {
   s_webSavePending = {};
   portEXIT_CRITICAL(&s_webSaveMux);
   if (!save.body) return;
-  const bool ok = s_config->persistRawJson(save.body);
+  const lamp::config_codec::SaveResult result = s_config->persistRawJson(save.body);
+  const bool ok = result == lamp::config_codec::SaveResult::Ok;
   delete[] save.body;
   // Every build: a handler that already answered 202 has no other way to
   // surface the failure.
@@ -229,7 +234,7 @@ static void drainWebSave() {
   }
   portENTER_CRITICAL(&s_webSaveMux);
   s_webSaveDoneSeq = save.seq;
-  s_webSaveDoneOk = ok;
+  s_webSaveDoneResult = result;
   portEXIT_CRITICAL(&s_webSaveMux);
   xSemaphoreGive(s_webSaveDone);
 }
@@ -293,6 +298,10 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
       // Taken by the loop but not done in time: it lands, and reboots, on
       // its own.
       req->send(202, "application/json", "{\"ok\":true,\"pending\":true}");
+      return;
+    case WebSaveResult::Held:
+      // An earlier save waits for its reboot; this one would write over it.
+      req->send(409, "application/json", "{\"ok\":false}");
       return;
     case WebSaveResult::Failed:
     case WebSaveResult::Withdrawn:
