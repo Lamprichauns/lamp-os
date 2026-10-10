@@ -48,12 +48,43 @@ inline FireStyle fireStyle(uint32_t value) {
     {0.00f, 0.02f, 900, 0.00f,    0,    0, 0.030f, 0.60f, 1.00f, 0.00f,  0, 0.15f, 0.00f, 0.80f},
     // Coals: a dim ember bed, several embers breathing in and out in place, no wind.
     {0.06f, 0.05f, 1600, 0.00f,    0,    0, 0.045f, 0.55f, 0.85f, 0.00f,  0, 0.30f, 0.00f, 0.40f},
-    // Candle: a slow convective sway plus a fast turbulent brightness flutter,
-    // with the occasional brighter flicker-up.
-    {0.36f, 0.16f, 220, 0.08f, 1500, 3500, 0.012f, 0.70f, 0.95f, 0.075f, 16, 0.55f, 0.15f, 0.50f},
-    // Campfire: lively, brighter, regular gusts with a subtle flutter and embers
-    // that flare up.
-    {0.50f, 0.28f, 180, 0.18f, 3000, 7000, 0.020f, 0.85f, 1.00f, 0.02f, 16, 0.80f, 0.40f, 0.30f},
+    // Candle: a slow sway with a gentle flutter and the occasional soft
+    // flicker-up. Bench dials: stepMs + gust* set the sway, flutter* the
+    // shimmer on top, sparkChance how often a flicker-up comes.
+    {
+      .restLevel     = 0.36f,
+      .amp           = 0.16f,
+      .stepMs        = 500,    // per-pixel heat easing (ms); higher = slower sway
+      .windAmp       = 0.08f,  // depth of the whole-flame sway
+      .gustLoMs      = 2000,   // a new sway target every gustLo..gustHi ms
+      .gustHiMs      = 4000,
+      .sparkChance   = 0.020f, // per-retarget odds of a flicker-up
+      .sparkLo       = 0.70f,  // flicker-up heat band
+      .sparkHi       = 0.95f,
+      .flutterAmp    = 0.040f, // flutter depth (fraction of brightness)
+      .flutterStepMs = 80,     // flutter step period (ms); higher = calmer
+      .warmthSwing   = 0.55f,
+      .whiteHot      = 0.15f,
+      .minBright     = 0.50f,
+    },
+    // Campfire: the liveliest and brightest, regular long gusts, a light
+    // flutter and embers that flare up. Same dials as Candle.
+    {
+      .restLevel     = 0.50f,
+      .amp           = 0.28f,
+      .stepMs        = 300,    // per-pixel heat easing (ms); higher = slower
+      .windAmp       = 0.18f,  // depth of the gusts
+      .gustLoMs      = 3500,   // a new gust target every gustLo..gustHi ms
+      .gustHiMs      = 7000,
+      .sparkChance   = 0.012f, // per-retarget odds of an ember flare
+      .sparkLo       = 0.75f,  // flare heat band
+      .sparkHi       = 0.95f,
+      .flutterAmp    = 0.015f, // flutter depth (fraction of brightness)
+      .flutterStepMs = 40,     // flutter step period (ms); higher = calmer
+      .warmthSwing   = 0.80f,
+      .whiteHot      = 0.40f,
+      .minBright     = 0.30f,
+    },
   };
   if (value > 3) value = 3;
   return table[value];

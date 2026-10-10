@@ -231,6 +231,57 @@ void test_flutter_large_delta_bounded() {
   TEST_ASSERT_TRUE(v <= s.flutterAmp + 1e-4f && v >= -s.flutterAmp - 1e-4f);
 }
 
+// Total brightness travel of the flutter over 10 s at 60 fps.
+static float flutterTravel(float amp, uint32_t stepMs) {
+  FastRng rng(99);
+  Flutter f;
+  float prev = 0.0f;
+  float travel = 0.0f;
+  for (uint32_t t = 0; t < 10000; t += 16) {
+    const float v = advanceFlutter(f, amp, stepMs, 16, rng);
+    travel += std::fabs(v - prev);
+    prev = v;
+  }
+  return travel;
+}
+
+// The tuning the flame styles shipped with: one flutter step per 16 ms frame.
+struct OldFlame {
+  float flutterAmp;
+  uint32_t stepMs;
+};
+static constexpr OldFlame kOldCandle{0.075f, 220};
+static constexpr OldFlame kOldCampfire{0.02f, 180};
+static constexpr uint32_t kOldFlutterStepMs = 16;
+
+void test_candle_calmer_than_before() {
+  const FireStyle s = fireStyle(2);
+  // Flutter travels at most a fifth as far per second as the old per-frame buzz.
+  const float before = flutterTravel(kOldCandle.flutterAmp, kOldFlutterStepMs);
+  const float after = flutterTravel(s.flutterAmp, s.flutterStepMs);
+  TEST_ASSERT_TRUE(after * 5.0f <= before);
+  // Per-pixel heat eases at least twice as slowly.
+  TEST_ASSERT_TRUE(approachFactor(16, s.stepMs) * 2.0f <=
+                   approachFactor(16, kOldCandle.stepMs));
+}
+
+void test_campfire_calmer_than_before() {
+  const FireStyle s = fireStyle(3);
+  const float before = flutterTravel(kOldCampfire.flutterAmp, kOldFlutterStepMs);
+  const float after = flutterTravel(s.flutterAmp, s.flutterStepMs);
+  TEST_ASSERT_TRUE(after * 2.0f <= before);
+  TEST_ASSERT_TRUE(approachFactor(16, s.stepMs) * 1.5f <=
+                   approachFactor(16, kOldCampfire.stepMs));
+}
+
+void test_liveliness_order() {
+  // Coals < Candle < Campfire: faster heat easing, faster flutter, deeper wind.
+  TEST_ASSERT_TRUE(fireStyle(1).stepMs > fireStyle(2).stepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).stepMs > fireStyle(3).stepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).flutterStepMs > fireStyle(3).flutterStepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).windAmp < fireStyle(3).windAmp);
+}
+
 void test_approach_heat_moves_toward_target() {
   const float a = approachHeat(0.0f, 1.0f, approachFactor(90, 180));
   TEST_ASSERT_TRUE(a > 0.0f && a < 1.0f);
@@ -348,6 +399,9 @@ int main(int, char**) {
   RUN_TEST(test_flutter_is_frame_rate_independent);
   RUN_TEST(test_flutter_zero_delta_holds);
   RUN_TEST(test_flutter_large_delta_bounded);
+  RUN_TEST(test_candle_calmer_than_before);
+  RUN_TEST(test_campfire_calmer_than_before);
+  RUN_TEST(test_liveliness_order);
   RUN_TEST(test_approach_heat_moves_toward_target);
   RUN_TEST(test_approach_frame_rate_independent);
   RUN_TEST(test_approach_zero_and_large_delta_stable);
