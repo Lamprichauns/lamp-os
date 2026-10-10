@@ -13,7 +13,7 @@
 
 namespace lamp {
 
-enum ExpressionTarget {
+enum ExpressionTarget : uint8_t {
   TARGET_SHADE = 1,
   TARGET_BASE = 2,
   TARGET_BOTH = 3
