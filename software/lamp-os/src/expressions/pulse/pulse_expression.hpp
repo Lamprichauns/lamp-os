@@ -73,8 +73,9 @@ inline constexpr ExpressionDescriptor kPulseDescriptorData{
  *
  * Creates a smooth pulse effect that moves vertically, with configurable
  * speed and colors. The pulse blends with existing colors for a layered effect.
- * Targeting both surfaces, one wave rises through the base and on up through
- * the shade; both run their zone from pixel 0 upward.
+ * Targeting both surfaces, one wave rises from the bottom of the base and on
+ * up through the shade. Logical pixel 0 is the top of each surface, so the
+ * rise walks each surface's indices downward.
  */
 class PulseExpression : public Expression {
  private:
@@ -92,7 +93,7 @@ class PulseExpression : public Expression {
   Zone zone_;                      // Wave travel bounds, in strip positions
   FrameBuffer* above_ = nullptr;   // Shade continuing the strip past lowerEnd_
   uint16_t lowerEnd_ = 0;          // Last strip position on fb
-  uint16_t aboveMin_ = 0;          // above_ pixel at strip position lowerEnd_ + 1
+  uint16_t aboveMax_ = 0;          // above_ pixel at strip position lowerEnd_ + 1
   bool loopContinuous_ = false;   // Ping-pong forever instead of ending on exit
   bool reachedFarEnd_ = false;    // Continuous wave has touched the far end; arms preview one-cycle stop
   bool firstEntranceDone_ = false;  // Continuous leg 0 enters off-strip; later legs ping-pong the visible edges

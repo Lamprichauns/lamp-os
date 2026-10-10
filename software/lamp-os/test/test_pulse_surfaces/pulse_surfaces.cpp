@@ -31,16 +31,20 @@ constexpr uint32_t kFrameMs = 16;
 const Color kBackground{0, 0, 0, 0};
 const Color kPulse{200, 40, 10, 0};
 
+// The standard lamp: standard_lamp.hpp declares the base strip reversed and
+// the shade not. Physically the base is wired from its bottom and the shade
+// from its top.
 struct Rig {
+  Adafruit_NeoPixel shadeStrip;
+  Adafruit_NeoPixel baseStrip;
   FrameBuffer shade;
   FrameBuffer base;
   BehaviorContext ctx;
 
   Rig() {
-    shade.pixelCount = kShadePx;
-    shade.buffer.assign(kShadePx, kBackground);
-    base.pixelCount = kBasePx;
-    base.buffer.assign(kBasePx, kBackground);
+    shade.begin({}, {{&shadeStrip, "Shade", 0, kShadePx, /*reversed=*/false}});
+    base.begin({}, {{&baseStrip, "Base", 0, kBasePx, /*reversed=*/true}});
+    clear();
     ctx.expressionFrameBuffers = {&shade, &base};
     ctx.expressionManager = reinterpret_cast<ExpressionManager*>(this);
     overrides.base.setOperatorEditing(false);
@@ -109,17 +113,23 @@ std::unique_ptr<PulseExpression> buildBoth(Rig& rig, const ExpressionParams& par
   return p;
 }
 
-// Strip position of the brightest pixel: base 0..kBasePx-1, then the shade
-// above it. -1 when nothing is lit.
-int peakPosition(const Rig& rig) {
+// Height of the brightest physical pixel, read off the strips after a flush:
+// base pixel p is height p, shade pixel p is counted down from the lamp top.
+// -1 when nothing is lit.
+int peakPosition(Rig& rig) {
   int best = -1;
-  uint8_t bestR = 0;
-  for (int i = 0; i < kBasePx; ++i) {
-    if (rig.base.buffer[i].r > bestR) { bestR = rig.base.buffer[i].r; best = i; }
-  }
-  for (int i = 0; i < kShadePx; ++i) {
-    if (rig.shade.buffer[i].r > bestR) { bestR = rig.shade.buffer[i].r; best = kBasePx + i; }
-  }
+  uint32_t bestR = 0;
+  auto scan = [&](FrameBuffer& fb, Adafruit_NeoPixel& strip, auto height) {
+    strip.reset();
+    fb.previousBuffer.clear();
+    fb.flush();
+    for (const auto& call : strip.pixelCalls) {
+      const uint32_t r = (call.c >> 16) & 0xFF;
+      if (r > bestR) { bestR = r; best = height(call.n); }
+    }
+  };
+  scan(rig.base, rig.baseStrip, [](int p) { return p; });
+  scan(rig.shade, rig.shadeStrip, [](int p) { return kBasePx + kShadePx - 1 - p; });
   return best;
 }
 
@@ -233,8 +243,9 @@ void test_both_fires_once_per_logical_trigger() {
 }
 
 // The wave climbs the base bottom to top and carries straight on into the
-// shade: the peak never moves backward and never skips a pixel, across the join
-// included.
+// shade: the peak starts on the base's bottom physical pixel, never moves
+// backward or skips a pixel, crosses from the base top to the shade bottom, and
+// ends on the shade top.
 void test_both_wave_crosses_join_continuously() {
   Rig rig;
   auto p = buildBoth(rig, {{"pulseSpeed", 10}, {"size", 1}});
@@ -244,6 +255,7 @@ void test_both_wave_crosses_join_continuously() {
   const RunResult r = run(rig, *p, 20000, [&](uint32_t) {
     const int peak = peakPosition(rig);
     if (peak < 0) return;
+    if (last < 0) TEST_ASSERT_EQUAL_INT(0, peak);
     if (last >= 0) {
       TEST_ASSERT_TRUE(peak >= last);
       TEST_ASSERT_TRUE(peak - last <= 1);
@@ -281,9 +293,9 @@ void test_both_maps_each_surface_zone() {
     const bool shadeNow = anyLit(rig.shade.buffer, 5, 20);
     if (baseLit && !shadeLit && !shadeNow) baseLitBeforeShade = true;
     if (shadeNow) shadeLit = true;
-    // Peak in the shade's zone bottom sits directly above the base zone top.
-    uint8_t baseTop = rig.base.buffer[20].r;
-    uint8_t shadeBottom = rig.shade.buffer[5].r;
+    // The base zone tops out at logical 5; the shade zone starts at logical 20.
+    uint8_t baseTop = rig.base.buffer[5].r;
+    uint8_t shadeBottom = rig.shade.buffer[20].r;
     const bool peakInBase = baseTop >= shadeBottom;
     if (baseTop > 0 || shadeBottom > 0) {
       if (lastWasBase && !peakInBase) ++crossings;
@@ -297,17 +309,20 @@ void test_both_maps_each_surface_zone() {
 
 // pulseSpeed is the time to cross the whole strip: base and shade together
 // take as long as one surface alone at the same setting. Timed from the peak
-// reaching the second pixel, since the bottom pixel peaks while the wave is
-// still entering below the strip.
+// reaching the second pixel, since the first pixel peaks while the wave is
+// still entering off the strip.
 void test_both_speed_spans_whole_strip() {
   const ExpressionParams params{{"pulseSpeed", 10}, {"size", 1}};
-  auto crossingMs = [](Rig& rig, PulseExpression& p, int bottom, int top) {
+  // A single shade pulse runs its logical order, which on the standard shade
+  // is top down; `from` and `to` are heights in travel order.
+  auto crossingMs = [](Rig& rig, PulseExpression& p, int from, int to) {
+    const int second = from + (to > from ? 1 : -1);
     uint32_t startMs = 0;
     uint32_t topMs = 0;
     run(rig, p, 20000, [&](uint32_t now) {
       const int peak = peakPosition(rig);
-      if (peak == bottom + 1 && startMs == 0) startMs = now;
-      if (peak == top && topMs == 0) topMs = now;
+      if (peak == second && startMs == 0) startMs = now;
+      if (peak == to && topMs == 0) topMs = now;
     });
     TEST_ASSERT_TRUE(startMs > 0 && topMs > startMs);
     return topMs - startMs;
@@ -322,7 +337,7 @@ void test_both_speed_spans_whole_strip() {
   Rig single;
   PulseExpression shade(&single.shade);
   build(single, shade, TARGET_SHADE, params);
-  const uint32_t shadeMs = crossingMs(single, shade, kBasePx, kBasePx + kShadePx - 1);
+  const uint32_t shadeMs = crossingMs(single, shade, kBasePx + kShadePx - 1, kBasePx);
 
   TEST_ASSERT_UINT32_WITHIN(2 * kFrameMs, expectMs(kBasePx + kShadePx), bothMs);
   TEST_ASSERT_UINT32_WITHIN(2 * kFrameMs, expectMs(kShadePx), shadeMs);

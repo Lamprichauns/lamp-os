@@ -23,7 +23,7 @@ void PulseExpression::configureFromParameters(const ExpressionParams& parameters
   lowerEnd_ = zone_.posMax;
   if (above_ && above_->pixelCount > 0) {
     const Zone upper = resolveZone(parameters, above_->pixelCount);
-    aboveMin_ = upper.posMin;
+    aboveMax_ = upper.posMax;
     zone_.posMax = static_cast<uint16_t>(lowerEnd_ + upper.size());
   }
 
@@ -196,7 +196,9 @@ void PulseExpression::draw() {
     if (!(upper ? upperLive : lowerLive)) continue;
     uint32_t blendFactor = calculateBlendFactor(pos);
     if (blendFactor == 0) continue;  // Skip pixels with no blend
-    Color& px = upper ? above_->buffer[aboveMin_ + (pos - lowerEnd_ - 1)] : fb->buffer[pos];
+    Color& px = !above_ ? fb->buffer[pos]
+                : upper  ? above_->buffer[aboveMax_ - (pos - lowerEnd_ - 1)]
+                         : fb->buffer[zone_.posMin + lowerEnd_ - pos];
     const Color painted =
         (blendFactor >= 100)
             ? pulseColor
