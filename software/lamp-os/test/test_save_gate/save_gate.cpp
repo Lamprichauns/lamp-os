@@ -69,6 +69,9 @@ void test_a_deferred_settings_reboot_cannot_wait_forever() {
                    DeferredReboot::GiveUp);
   TEST_ASSERT_TRUE(deferredReboot(true, true, 0xFFFFFF00u, kDeferredRebootMaxMs) ==
                    DeferredReboot::GiveUp);
+  // A save that landed is never given up on: it waits out a firmware receive.
+  TEST_ASSERT_TRUE(deferredReboot(false, true, 0, 10 * kDeferredRebootMaxMs) ==
+                   DeferredReboot::Wait);
 }
 
 int main(int, char**) {
