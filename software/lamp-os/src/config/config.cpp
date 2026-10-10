@@ -99,7 +99,7 @@ Config::Config(ConfigStore* inStore) {
   dispositions_.load();
 };
 
-// The "cfg" JSON is written into this reserved buffer, so a save never
+// The stored JSON is written into this reserved buffer, so a save never
 // waits for a large free block. Loop task only: every save, the webapp's
 // included (webapp::tick drains it), runs there.
 static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
