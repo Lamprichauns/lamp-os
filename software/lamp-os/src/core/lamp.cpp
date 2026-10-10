@@ -403,8 +403,9 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
     // Match the stored (type,target) exactly, whatever the target value. A
     // range-guarded remove leaves a malformed or legacy target (e.g. an
     // out-of-range value written by an older build) permanently undeletable;
-    // the exact key match is the safety, so no numeric bound is needed.
-    if (type) {
+    // the exact key match is the safety. A value outside a byte matches no
+    // stored target and would wrap onto a real one, so it removes nothing.
+    if (type && tgt >= 0 && tgt <= UINT8_MAX) {
       ::expressionManager.removeExpression(type, static_cast<lamp::ExpressionTarget>(tgt), &::compositor);
       if (mutateConfig) {
         auto& exprs = ::config.expressions.expressions;
