@@ -257,8 +257,6 @@ void test_warmth_modulate_black_anchor_stays_black() {
   TEST_ASSERT_EQUAL_UINT8(0, hot.w);  // no fake-fire: shimmer of nothing is nothing
 }
 
-// --- burst ------------------------------------------------------------------
-
 void test_spark_target_lands_in_the_spark_band() {
   const FireStyle twinkle = fireStyle(0);
   LoRng lo;

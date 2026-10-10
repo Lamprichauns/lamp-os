@@ -121,8 +121,6 @@ initiator's growth still applies.
 
 **Airtime.** Fireflies 2 frames a Moment, Whisper 2 a hop (16 at most), Heartbeat none.
 
-**Older lamps' mirror** is the one cost they pay; see above.
-
 ## Pacing
 
 All in RAM, reset on reboot, nothing in NVS. Per kind:
