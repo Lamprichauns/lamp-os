@@ -132,6 +132,8 @@ and (with upfront-erase) reliable at speed without the erase-stall failure class
 
 > **Currency note.** A sibling **filesystem-image OTA** (`fs_ota`, signed via
 > `scripts/sign_fs.py`, state carried in `HELLO_TLV_FS_STATE`) now rides the same
-> `SocialBehavior` targeting path and chunk transport described here. This ADR
-> covers the firmware-image case; the FS-image path is the same shape applied to
-> the SPIFFS partition.
+> targeting path and chunk transport described here. Targeting has since moved
+> out of `SocialBehavior` into the framework loop (`tickOtaOffers`,
+> `components/firmware/ota_offer.cpp`), throttled to 1 s, so every variant offers
+> in every mode. This ADR covers the firmware-image case; the FS-image path is
+> the same shape applied to the SPIFFS partition.

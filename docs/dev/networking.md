@@ -658,7 +658,7 @@ The lamp partitions two app slots (`ota_0`/app0, `ota_1`/app1) plus an `otadata`
 
 ### Serve-once coordination
 
-A legacy receiver erases + accepts on every fresh `MSG_FW_OFFER`, so two distributors offering the same peer concurrently stomp each other and the transfer never completes. Before offering, the distributor skips a peer the mesh already shows as being served: the peer's own `HELLO_TLV_OTA_STATE` reads receiving, or some roster peer reports `HELLO_TLV_OTA_STATE` = sending with `HELLO_TLV_OTA_SENDING_TO` == that peer. The caller (`SocialBehavior::control`) computes this from the roster (which holds peers only, so a lamp never counts its own in-progress send) and passes it to `considerPeerForOta`. Local, roster-derived — no wire change.
+A legacy receiver erases + accepts on every fresh `MSG_FW_OFFER`, so two distributors offering the same peer concurrently stomp each other and the transfer never completes. Before offering, the distributor skips a peer the mesh already shows as being served: the peer's own `HELLO_TLV_OTA_STATE` reads receiving, or some roster peer reports `HELLO_TLV_OTA_STATE` = sending with `HELLO_TLV_OTA_SENDING_TO` == that peer. The caller (`tickOtaOffers`, `components/firmware/ota_offer.cpp`) computes this from the roster (which holds peers only, so a lamp never counts its own in-progress send) and passes it to `considerPeerForOta`. Local, roster-derived — no wire change.
 
 ### Channel promotion
 
