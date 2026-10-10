@@ -30,8 +30,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   settings are untouched, and the lamp caps how much a crowd can make it hold
   at once, always keeping room for its own Test and greeting effects. A
   cascade still reaches every lamp around, sent in waves rather than all at
-  once, so in a crowd of 50 the farthest lamps can fire up to about half a
-  second after their usual moment. Expressions keep at most 8 colours each,
+  once, so in a crowd of 50 the farthest lamps can fire up to about a second
+  after their usual moment. Expressions keep at most 8 colours each,
   and a stored setup beyond the app's limits is trimmed back to them when the
   lamp updates.
 - **Big setups keep saving.** A lamp with many expressions could run out of
@@ -43,10 +43,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   lamp's storage reports itself unusable at startup it is cleared so the
   lamp still comes up and can be set up again from the app.
 - **Settings the lamp can't keep are refused up front.** A control password
-  longer than 64 characters is refused, from the app and from the web page,
-  instead of being stored in a form you could never type back. An expression
-  type the lamp doesn't have is refused instead of being saved and never
-  showing.
+  longer than 64 characters, or a home network name longer than 32, is
+  refused from the app and from the web page, instead of being stored in a
+  form that could never work. An expression type the lamp doesn't have is
+  refused instead of being saved and never showing.
 - **Going back to an older firmware.** A lamp with a typical setup keeps its
   expressions if it is flashed back to an older release. One with a very
   large setup (more than fits a single settings record, roughly four or more

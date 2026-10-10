@@ -114,7 +114,9 @@ Two properties make it lethal:
    "cfg" JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact
    JSON straight into a fixed buffer, byte-identical to ArduinoJson) into a
    2176-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above the
-   2106-byte worst case with every free-text field fully escaped). The dispositions flush writes its blob from the stack. A
+   2121-byte worst case with every free-text field fully escaped and every
+   number at its widest). The dispositions flush writes its blob from the
+   stack. A
    failed save (a full NVS, or a cfg JSON that outgrew its buffer) backs off 5 s
    doubling to 60 s (`util/retry_backoff.hpp`) for both, and the commit drain
    waits on the same backoff, so no failure path retries at loop rate. Old
@@ -148,7 +150,7 @@ config stopped saving, inside what the app allows.
 | `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 121 B | 21 x 6 = 126 |
 | `xn` | expression count | 1 B | 3 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfg` | the rest as JSON (`writeStoredJson`) | 2106 B fully escaped | 67 |
+| `cfg` | the rest as JSON (`writeStoredJson`) | 2121 B fully escaped | 68 |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
 | `lampType` | variant id | under 16 B | 2 |
 
@@ -168,8 +170,8 @@ Outside it, 166 entries (`systemEntries` in `test_config_records`):
   bytes, 3 each) for 8 is 24; `csfc_sec_N` (8 bytes) 3; `local_irk_N` and
   `rpa_rec_N` (under 32 bytes, 3 each) for 3 each is 18. Total 91.
 
-The rewrite copy of the largest item adds 67. Total 465 of 504 with every
-free-text field quote- or backslash-filled, 449 with plain text, and 431 for
+The rewrite copy of the largest item adds 68. Total 467 of 504 with every
+free-text field quote- or backslash-filled, 451 with plain text, and 433 for
 the standard variant's real worst case (its six types at every target). A
 whole save needs 332, and the moment a split config turns whole (the new
 `cfg` lands before the records go) peaks at 471. All are measured by
@@ -184,10 +186,13 @@ expression reads is dropped at parse.
 The caps that bound `cfg`: 8 colours per surface segment (the app offers 6),
 4 segments per role (variants define at most 3), 16-byte segment names, a
 32-byte lamp name, a 64-byte password, a 32-byte SSID, a byte order the strip
-driver knows, 8 home-mode type names. Every write path refuses an over-long
-password or SSID and ignores an unknown byte order; `fromJson` also bounds
-what it loads (truncating a password stored before the cap, which the BOOT
-button can clear), so no field can make every save fail.
+driver knows, 8 home-mode type names (type ids only). The BLE settings path
+and the web PUT both refuse an over-long password or SSID (BLE logs the
+refusal, the web answers 400), and both ignore an unknown byte order;
+`fromJson` also bounds what it loads (truncating a password or SSID stored
+before the cap; the BOOT button clears a password), so no field can make
+every save fail. A repeated (type, target) in the cfg JSON loads once, the
+first kept, as the records do.
 
 Arduino's `initArduino` runs `nvs_flash_init` before `setup()`, erasing and
 re-initializing on `NO_FREE_PAGES` or `NEW_VERSION_FOUND`.
@@ -243,7 +248,10 @@ switch between the two shapes. The boot log's
 split-saved one loses its expressions there (that release reads only the
 `cfg` JSON, which then has none), and dispositions reset there in either
 case, since the older release reads only the JSON key the migration removed.
-Flashed forward again, whatever the older release saved is what loads.
+A parameter key the older release does not know (one appended to
+`kExpressionParamKeys` later) is dropped there, and stays dropped if that
+release saves. Flashed forward again, whatever the older release saved is
+what loads.
 
 ## What expressions cost at runtime
 
@@ -325,15 +333,17 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   app's Test) reaches every mesh peer, closest first. `CascadeScheduler`
   (`expressions/cascade_scheduler.hpp`) holds up to two fan-outs (peers and one
   serialized invocation each, about 2.2 KB of .bss: 50 MACs and a 768-byte
-  payload per fan-out, above the 536-byte worst case). The loop sends up to 8
-  frames per pass, only while TX credits remain (a frame with none waits for a
-  later pass), and passes are 100 ms apart, past a command's two resend copies
+  payload per fan-out, above the 536-byte worst case). The loop sends up to 6
+  frames per pass (`kBatchSize`, held to the 6 TX credits), only while credits
+  remain (a frame with none waits for a later pass), and passes are 100 ms
+  apart, past a command's two resend copies
   40 ms apart, so a batch never overwrites the previous batch's resends in the
   10-slot ring. Each frame's `delayMs` is rewritten in place to keep the
   peer's intended fire time, (i + 1) x stagger capped at 1 s from the original
-  fire, less the time the drain has taken, never below zero; the 50th peer
-  leaves about 600 ms after the fire, so with a short stagger the far end of a
-  50-lamp crowd fires up to about half a second late. A second cascade waits
+  fire, less the time the drain has taken, never below zero. Fifty peers take
+  9 passes, so the last leaves at least 800 ms after the fire (later when relay
+  traffic holds credits), and with a short stagger the far end of a 50-lamp
+  crowd fires up to about a second late. A second cascade waits
   behind the one draining; a third replaces the one waiting. An OTA start
   stops the drain, and a frame whose delay rewrite would overflow is dropped
   and logged.
