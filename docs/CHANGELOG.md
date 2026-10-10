@@ -30,6 +30,13 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   settings are untouched, and the lamp caps how much a crowd can make it hold
   at once. Expressions keep at most 8 colours each, and a stored setup beyond
   the app's limits is trimmed back to them when the lamp updates.
+- **Big setups keep saving.** A lamp with many expressions could run out of
+  room to store its settings and quietly stop saving changes, and a full
+  store could leave a lamp unable to start Bluetooth until it was reflashed.
+  Settings are now stored compactly so every expression the app allows fits
+  with room to spare; your existing settings carry over on update. If the
+  lamp's storage is ever unreadable at startup it is cleared so the lamp
+  still comes up and can be set up again from the app.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at

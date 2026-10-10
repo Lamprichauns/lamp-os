@@ -109,15 +109,61 @@ Two properties make it lethal:
    the document, refuses one that overflowed while it was built (it would save
    truncated), and serializes into one exactly-sized buffer. A refused save
    never aborts: it logs, keeps the dirty state and retries later.
-   `Config::persistConfig` gates the document build itself on the headroom and
-   retries every 5 s from the loop (`maybeRetryPersist`); the commit drain
-   hashes and writes that same buffer and re-arms its 2.5 s debounce; the
-   dispositions flush writes its compact JSON directly into one
-   `allocateSpare` buffer and retries one idle window later. The stored bytes
-   are what ArduinoJson wrote before, so an updating lamp reads its NVS
-   unchanged. Do not lean on `try`/`catch (std::bad_alloc)` alone: the build
-   sets `CONFIG_CXX_EXCEPTIONS_EMG_POOL_SIZE=0`, so on a truly exhausted heap
-   the throw itself cannot allocate and ends in `terminate()`.
+   `Config::persistConfig` gates the save on the headroom, writes the expression
+   records and knockout from stack buffers, and builds only the bounded "cfg"
+   JSON on the heap; the dispositions flush writes its blob from the stack and
+   touches no heap. A failed save, short heap or full NVS alike, backs off 5 s
+   doubling to 60 s (`util/retry_backoff.hpp`) for both, and the commit drain
+   waits on the same backoff, so no failure path retries at loop rate. Old
+   stored formats load unchanged and move to the current keys on the first
+   save. Do not lean on `try`/`catch (std::bad_alloc)` alone: the build sets
+   `CONFIG_CXX_EXCEPTIONS_EMG_POOL_SIZE=0`, so on a truly exhausted heap the
+   throw itself cannot allocate and ends in `terminate()`.
+
+## The NVS budget
+
+The `nvs` partition is 20 KB (0x5000, five 4 KB pages) and OTA cannot change
+the partition table. NVS keeps one page free for garbage collection, so four
+pages of 126 32-byte entries hold everything: 504 entries. A string costs a
+header entry plus its bytes; a blob adds an index entry; a string must fit one
+page; and rewriting an item needs room for the new copy before the old one is
+erased. A single growing JSON string broke all of that: past about 2.4 KB the
+config stopped saving, inside what the app allows.
+
+`config_codec::saveConfig` splits the lamp's namespace so no value outgrows a
+page and the whole fits at the caps (`config/config_types.hpp`):
+
+| Key | Content | Worst case | Entries |
+|---|---|---|---|
+| `x0`..`x23` | one expression each, compact record (`encodeExpression`) | 141 B | 24 x 7 = 168 |
+| `xn` | expression count | 1 B | 3 |
+| `ko` | knockout level per pixel | 255 B | 10 |
+| `cfg` | the rest as JSON (`toStoredJson`) | about 1.85 KB | 60 |
+| `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
+| `lampType` | variant id | under 16 B | 2 |
+
+Outside it: PHY calibration (a 1904-byte blob plus two small keys, 66 entries),
+the WiFi driver's namespace (at most 64; the lamp now keeps WiFi config in RAM,
+so it only shrinks), the crash record (4) and four namespace entries. The
+rewrite copy of the largest item adds 60. Total 463 of 504, measured by
+`test_config_records`. A record stores parameter keys as indexes into
+`kExpressionParamKeys`, which is append-only and pinned by
+`test_builtin_descriptors`; a key no expression reads is dropped at parse.
+
+The caps that bound `cfg`: 8 colours per surface segment (the app offers 6),
+4 segments per role (variants define at most 3), 16-byte segment names, a
+32-byte lamp name, a 64-byte password (a longer one is refused, never
+truncated), a 32-byte SSID, 8 home-mode type names.
+
+A partition that will not initialize at all is erased and re-initialized in
+`setup()` (`NvsConfigStore::initFlash`) before anything opens it: every stored
+setting is lost, but the lamp boots with Bluetooth, where leaving it would
+need a USB reflash. Nothing on an uninitialized partition is readable through
+the API, so there is nothing to salvage first. A failed NimBLE init skips every
+later BLE start instead of faulting in `NimBLEServer::start`.
+
+Saves go through the `nvs_*` API, never `Preferences`: Preferences logs a
+failed write through a formatting path that faulted on a starved heap.
 
 ## What a crowd drives with no phone attached
 
