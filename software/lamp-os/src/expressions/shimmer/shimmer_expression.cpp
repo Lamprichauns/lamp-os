@@ -57,7 +57,7 @@ void ShimmerExpression::onTrigger() {
   if (regionSize == 0 || !fb || fb->pixelCount == 0) return;
 
   cells_.resize(regionSize);
-  if (burstMs_ > 0) {
+  if (bursting()) {
     burstStartMs_ = millis();
     // Selection sampling: exactly burstCount_ distinct cells spark, so a
     // full-count burst lights every one.
@@ -136,7 +136,7 @@ void ShimmerExpression::drawBurst() {
 }
 
 void ShimmerExpression::draw() {
-  if (burstMs_ > 0) {
+  if (bursting()) {
     drawBurst();
     return;
   }

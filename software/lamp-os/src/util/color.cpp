@@ -41,15 +41,15 @@ inline int hexNibble(char c) {
   return -1;
 }
 
-// Parse 2 hex chars at `p` into `out`. Returns false on any non-hex byte.
-inline bool parseHexByte(const char* p, uint8_t& out) {
+}  // namespace
+
+bool parseHexByte(const char* p, uint8_t& out) {
   int hi = hexNibble(p[0]);
   int lo = hexNibble(p[1]);
   if (hi < 0 || lo < 0) return false;
   out = static_cast<uint8_t>((hi << 4) | lo);
   return true;
 }
-}  // namespace
 
 // These payload bytes are attacker-reachable over BLE + ESP-NOW
 // (shadeColors, baseColors, expressionOp.entry.colors,

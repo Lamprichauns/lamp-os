@@ -59,7 +59,8 @@ class MomentDirector {
   void onFrame(const uint8_t srcMac[6], JsonObjectConst mo, uint32_t nowMs);
 
   // Starts `kind` now, past eligibility, conditions and the crowd cooldown,
-  // never past a suppressor or a Moment already running. A zero seed rolls one.
+  // never past a suppressor or a Moment already running. A zero seed rolls
+  // one. True when the Moment started.
   bool force(MomentKind kind, uint32_t seed, uint32_t nowMs);
   void dumpState(uint32_t nowMs);
 
@@ -115,7 +116,7 @@ class MomentDirector {
     uint8_t peer[6] = {0};
     bool hasPeer = false;
     float rssiEma = 0.0f;
-    uint32_t lastFreshMs = 0;
+    uint32_t lastSightingMs = 0;
     bool faint = false;
     uint32_t faintSinceMs = 0;
     bool dubPending = false;

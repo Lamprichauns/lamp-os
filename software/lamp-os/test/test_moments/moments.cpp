@@ -43,7 +43,14 @@ NearbyCopy peerOf(uint8_t n, int8_t rssi, uint32_t seenMs) {
   p.hasMac = true;
   p.lastRssi = rssi;
   p.lastSeenNearMs = seenMs;
+  p.lastSeenBleMs = seenMs;
   return p;
+}
+
+// A BLE sighting at `ms`: renews presence and the RSSI's freshness together.
+void seeAt(NearbyCopy& p, uint32_t ms) {
+  p.lastSeenNearMs = ms;
+  p.lastSeenBleMs = ms;
 }
 
 struct Render {
@@ -196,10 +203,12 @@ std::string whisperTo(const uint8_t to[6], uint32_t seed, std::initializer_list<
   return encode(f);
 }
 
-void addLikedPeers(Rig& r, uint32_t nowMs) {
-  for (uint8_t n = 10; n < 13; ++n) {
+// Three liked peers too faint for a Whisper (Fond needs -62 dBm), so only
+// Fireflies can qualify.
+void addLikedPeers(Rig& r, uint32_t nowMs, uint8_t count = 3) {
+  for (uint8_t n = 10; n < 10 + count; ++n) {
     r.host.like(n, kDispositionFond);
-    r.host.peers.push_back(peerOf(n, -60, nowMs));
+    r.host.peers.push_back(peerOf(n, -75, nowMs));
   }
 }
 
@@ -214,7 +223,6 @@ void readyForFireflies(Rig& r) {
 void setUp() {}
 void tearDown() {}
 
-// --- 1. pacing ---------------------------------------------------------------
 
 void test_wait_lies_in_the_range_times_mode() {
   FastRng rng(99);
@@ -285,7 +293,6 @@ void test_mode_change_does_not_reroll() {
   TEST_ASSERT_TRUE(r.director.eligible(MomentKind::Fireflies, at));
 }
 
-// --- 2. eligibility and cooldown --------------------------------------------
 
 void test_hearing_a_frame_sets_the_crowd_cooldown_with_max() {
   Rig r;
@@ -310,7 +317,7 @@ void test_cooldown_blocks_initiation_but_not_joining() {
   const uint32_t t = 100 * kMin;
   r.frame(far, firefliesStart(1), t);  // heard, refused: cooling now
   TEST_ASSERT_FALSE(r.director.active());
-  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = t;
+  for (NearbyCopy& p : r.host.peers) seeAt(p, t);
   r.run(t, t + 120000, 100);
   TEST_ASSERT_FALSE(r.director.active());
   TEST_ASSERT_TRUE(r.host.sent.empty());
@@ -342,7 +349,7 @@ void test_initiates_after_eligibility_and_backoff() {
   Rig r(1, 9, 0);
   readyForFireflies(r);
   const uint32_t t = 100 * kMin;
-  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = t;
+  for (NearbyCopy& p : r.host.peers) seeAt(p, t);
   r.host.greeting = true;
   r.run(t, t + 100000, 100);
   TEST_ASSERT_FALSE(r.director.active());
@@ -359,7 +366,7 @@ void test_a_lapse_disarms_the_backoff() {
   const uint32_t t = 100 * kMin;
   uint32_t now = t;
   for (; !r.director.backoffArmed(MomentKind::Fireflies); now += 1000) {
-    for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = now;
+    for (NearbyCopy& p : r.host.peers) seeAt(p, now);
     r.director.tick(now);
     TEST_ASSERT_TRUE(now < t + 5000);
   }
@@ -378,7 +385,7 @@ void test_suppressors_block_initiation() {
     const uint32_t t = 100 * kMin;
     r.host.suppress = why;
     for (uint32_t now = t; now <= t + 100000; now += 100) {
-      for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = now;
+      for (NearbyCopy& p : r.host.peers) seeAt(p, now);
       r.host.nowMs = now;
       r.director.tick(now);
     }
@@ -388,7 +395,6 @@ void test_suppressors_block_initiation() {
   }
 }
 
-// --- 3. herd ----------------------------------------------------------------
 
 namespace {
 
@@ -397,61 +403,74 @@ struct Herd {
   Bus bus;
 };
 
-size_t runHerd(uint32_t runSeed) {
+// Every lamp in the room eligible and ready for `kind` at once; returns how
+// many of them started one.
+size_t runHerd(MomentKind kind, size_t lamps, uint32_t runSeed) {
   Herd herd;
-  constexpr size_t kLamps = 50;
-  for (size_t i = 0; i < kLamps; ++i) {
+  for (size_t i = 0; i < lamps; ++i) {
     auto rig = std::make_unique<Rig>(static_cast<uint8_t>(i), runSeed * 7919u + i * 104729u + 1, 0);
-    readyForFireflies(*rig);
-    for (size_t j = 0; j < kLamps; ++j) rig->host.like(static_cast<uint8_t>(j), kDispositionFond);
+    if (kind == MomentKind::Fireflies) {
+      readyForFireflies(*rig);
+      for (size_t j = 0; j < lamps; ++j) rig->host.like(static_cast<uint8_t>(j), kDispositionFond);
+    } else {
+      // Peers arrive after boot, so the Fireflies still clock is not yet run.
+      for (size_t j = 0; j < lamps; ++j) {
+        if (j == i) continue;
+        rig->host.like(static_cast<uint8_t>(j), kDispositionFond);
+        rig->host.peers.push_back(peerOf(static_cast<uint8_t>(j), -55, 0));
+      }
+    }
     rig->host.bus = &herd.bus;
     herd.bus.hosts.push_back(&rig->host);
     herd.bus.directors.push_back(&rig->director);
     herd.rigs.push_back(std::move(rig));
   }
-  // Every lamp is eligible and its liked set stable by now.
   const uint32_t start = 100 * kMin;
   for (uint32_t t = start;; t += 5) {
     herd.bus.deliver(t);
     bool armed = false;
     for (auto& rig : herd.rigs) {
-      for (NearbyCopy& p : rig->host.peers) p.lastSeenNearMs = t;
+      for (NearbyCopy& p : rig->host.peers) seeAt(p, t);
       rig->host.nowMs = t;
       rig->director.tick(t);
-      armed = armed || rig->director.backoffArmed(MomentKind::Fireflies);
+      armed = armed || rig->director.backoffArmed(kind);
     }
     if (t > start + 1000 && !armed && herd.bus.flight.empty()) break;
     TEST_ASSERT_TRUE(t < start + 200000);
   }
-  std::vector<size_t> initiators;
-  for (size_t i = 0; i < herd.rigs.size(); ++i) {
-    for (const std::string& line : herd.rigs[i]->host.logs) {
-      if (line.rfind("[moment] start k=1", 0) == 0) initiators.push_back(i);
-    }
+  char prefix[32];
+  std::snprintf(prefix, sizeof(prefix), "[moment] start k=%u", static_cast<unsigned>(kind));
+  size_t starts = 0;
+  for (auto& rig : herd.rigs) {
+    for (const std::string& line : rig->host.logs) starts += line.rfind(prefix, 0) == 0;
   }
-  return initiators.size();
+  return starts;
 }
 
-}  // namespace
-
-void test_herd_starts_one_fireflies_in_a_room_of_fifty() {
+void assertHerd(MomentKind kind, size_t lamps) {
   constexpr int kRuns = 1000;
   int exactlyOne = 0;
   size_t worst = 0;
   for (int run = 0; run < kRuns; ++run) {
-    const size_t n = runHerd(static_cast<uint32_t>(run + 1));
+    const size_t n = runHerd(kind, lamps, static_cast<uint32_t>(run + 1));
     exactlyOne += n == 1;
     worst = n > worst ? n : worst;
   }
   char summary[64];
-  std::snprintf(summary, sizeof(summary), "single starts %d/%d, worst %u", exactlyOne, kRuns,
+  std::snprintf(summary, sizeof(summary), "k=%u lamps=%u single %d/%d worst %u",
+                static_cast<unsigned>(kind), static_cast<unsigned>(lamps), exactlyOne, kRuns,
                 static_cast<unsigned>(worst));
   TEST_MESSAGE(summary);
-  TEST_ASSERT_TRUE_MESSAGE(exactlyOne * 100 >= kRuns * 95, "fewer than 95% single starts");
-  TEST_ASSERT_TRUE_MESSAGE(worst <= 2, "more than two lamps started one Fireflies");
+  TEST_ASSERT_TRUE_MESSAGE(exactlyOne * 100 >= kRuns * 95, summary);
+  TEST_ASSERT_TRUE_MESSAGE(worst <= 2, summary);
 }
 
-// --- 4. fireflies math ------------------------------------------------------
+}  // namespace
+
+void test_herd_starts_one_fireflies_in_a_room_of_fifty() { assertHerd(MomentKind::Fireflies, 50); }
+void test_herd_starts_one_whisper_among_five() { assertHerd(MomentKind::Whisper, 5); }
+void test_herd_starts_one_whisper_among_ten() { assertHerd(MomentKind::Whisper, 10); }
+void test_herd_starts_one_whisper_among_twenty() { assertHerd(MomentKind::Whisper, 20); }
 
 void test_fireflies_period_and_first_offset_ranges() {
   uint8_t mac[6];
@@ -536,7 +555,6 @@ void test_fireflies_late_joiner_recovers_t0_from_age() {
   TEST_ASSERT_UINT32_WITHIN(5, ea, la);
 }
 
-// --- 5. fireflies join gates ------------------------------------------------
 
 void test_fireflies_join_gates() {
   uint8_t origin[6];
@@ -561,9 +579,9 @@ void test_fireflies_join_gates() {
   }
   {
     Rig r;
-    r.director.force(MomentKind::Whisper, 3, 500);
+    r.director.force(MomentKind::Heartbeat, 3, 500);
     r.frame(origin, firefliesStart(5), 1000);
-    TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Whisper);
+    TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
   }
 }
 
@@ -580,7 +598,6 @@ void test_fireflies_resent_copy_is_ignored() {
   TEST_ASSERT_EQUAL_UINT8(g, r.director.growth(MomentKind::Fireflies));
 }
 
-// --- 6. stability -----------------------------------------------------------
 
 void test_liked_fingerprint_tracks_the_liked_set_only() {
   std::map<uint64_t, uint8_t> d;
@@ -633,7 +650,6 @@ void test_a_liked_departure_resets_the_still_clock() {
   TEST_ASSERT_FALSE(r.director.active());
 }
 
-// --- 7. whisper -------------------------------------------------------------
 
 void test_next_hop_picks_the_strongest_liked_fresh_unvisited() {
   std::map<uint64_t, uint8_t> d;
@@ -694,7 +710,7 @@ void test_hop_eight_does_not_forward() {
   macOf(8, sender);
   r.frame(sender, whisperTo(r.self, 5, {1, 2, 3, 4, 5, 6, 7, 8}), 1000);
   TEST_ASSERT_TRUE(r.director.active());
-  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = 4000;
+  for (NearbyCopy& p : r.host.peers) seeAt(p, 4000);
   r.run(1000, 6000, 10);
   TEST_ASSERT_TRUE(r.host.sent.empty());
 
@@ -787,7 +803,7 @@ void test_ring_of_ten_never_revisits_and_ends_within_eight_hops() {
   for (uint32_t t = 0; t < 60000; t += 10) {
     bus.deliver(t);
     for (auto& rig : rigs) {
-      for (NearbyCopy& p : rig->host.peers) p.lastSeenNearMs = t;
+      for (NearbyCopy& p : rig->host.peers) seeAt(p, t);
       rig->host.nowMs = t;
       rig->director.tick(t);
     }
@@ -804,7 +820,6 @@ void test_ring_of_ten_never_revisits_and_ends_within_eight_hops() {
   TEST_ASSERT_EQUAL_UINT32(16, hopFrames);  // 8 hops, each sent twice
 }
 
-// --- 8. heartbeat -----------------------------------------------------------
 
 void test_heartbeat_period_follows_rssi() {
   TEST_ASSERT_EQUAL_UINT32(1500, heartbeatPeriodMs(-90.0f));
@@ -836,7 +851,7 @@ void test_heartbeat_quickens_as_the_peer_comes_closer() {
   r.host.peers.push_back(peerOf(30, -64, 0));
   TEST_ASSERT_TRUE(r.director.force(MomentKind::Heartbeat, 1, 0));
   for (uint32_t t = 0; t <= 30000; t += 10) {
-    r.host.peers[0].lastSeenNearMs = t;
+    seeAt(r.host.peers[0], t);
     r.host.peers[0].lastRssi = static_cast<int8_t>(t < 10000 ? -64 : -46);
     r.host.nowMs = t;
     r.director.tick(t);
@@ -876,9 +891,9 @@ void test_heartbeat_settles_when_the_peer_goes_stale() {
   r.run(0, 60000, 10);  // the peer is never seen again after t=0
   TEST_ASSERT_FALSE(r.director.active());
   const std::vector<uint32_t> beats = beatTimes(r.host);
-  // Fresh for 15 s after t=0, then 10 s stale, then six settling beats.
-  TEST_ASSERT_TRUE(beats.back() > 25000);
-  TEST_ASSERT_TRUE(beats.back() < 40000);
+  // Last BLE sighting at t=0: settling starts 10 s later and takes six beats.
+  TEST_ASSERT_TRUE(beats.back() > 10000);
+  TEST_ASSERT_TRUE(beats.back() < 25000);
   TEST_ASSERT_EQUAL_UINT8(10, r.host.renders.back().inv.parameters.get("opacity", 0));
   bool settled = false;
   for (const std::string& l : r.host.logs) settled = settled || l == "[moment] hb settle stale";
@@ -891,7 +906,7 @@ void test_heartbeat_settles_at_the_time_cap() {
   r.host.peers.push_back(peerOf(30, -50, 0));
   r.director.force(MomentKind::Heartbeat, 1, 0);
   for (uint32_t t = 0; t <= 200000; t += 10) {
-    r.host.peers[0].lastSeenNearMs = t;
+    seeAt(r.host.peers[0], t);
     r.host.nowMs = t;
     r.director.tick(t);
   }
@@ -907,19 +922,18 @@ void test_heartbeat_waits_for_the_greeting() {
   r.host.peers.push_back(peerOf(30, -50, 0));
   r.host.greeting = true;
   for (uint32_t t = 0; t <= 100 * kMin; t += 1000) {
-    r.host.peers[0].lastSeenNearMs = t;
+    seeAt(r.host.peers[0], t);
     r.host.nowMs = t;
     r.director.tick(t);
   }
   TEST_ASSERT_FALSE(r.director.active());
   r.host.greeting = false;
-  r.host.peers[0].lastSeenNearMs = 100 * kMin + 1000;
+  seeAt(r.host.peers[0], 100 * kMin + 1000);
   r.run(100 * kMin + 1000, 100 * kMin + 1100, 10);
   TEST_ASSERT_TRUE(r.director.active());
   TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
 }
 
-// --- 9. codec ---------------------------------------------------------------
 
 void test_hop_eight_payload_fits_the_event_frame() {
   MomentFrame f;
@@ -983,7 +997,6 @@ void test_older_lamps_parse_the_sentinel() {
   TEST_ASSERT_EQUAL_STRING("moment", inv.type.c_str());
 }
 
-// --- 10. render routing and the receive path ---------------------------------
 
 void test_renders_are_remote_terminal_and_single_surface() {
   Rig r;
@@ -1088,6 +1101,9 @@ int main(int, char**) {
   RUN_TEST(test_a_lapse_disarms_the_backoff);
   RUN_TEST(test_suppressors_block_initiation);
   RUN_TEST(test_herd_starts_one_fireflies_in_a_room_of_fifty);
+  RUN_TEST(test_herd_starts_one_whisper_among_five);
+  RUN_TEST(test_herd_starts_one_whisper_among_ten);
+  RUN_TEST(test_herd_starts_one_whisper_among_twenty);
   RUN_TEST(test_fireflies_period_and_first_offset_ranges);
   RUN_TEST(test_fireflies_offset_shrinks_and_reaches_zero_by_84);
   RUN_TEST(test_fireflies_two_lamps_land_on_one_beat);

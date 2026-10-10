@@ -59,6 +59,9 @@ struct RosterEntry {
   bool hasMac = false;
   uint32_t lastSeenNearMs = 0;
   uint32_t lastSeenMeshMs = 0;
+  // Last BLE sighting, the only stamp that refreshes lastRssi. A direct HELLO
+  // can renew lastSeenNearMs while lastRssi stands still.
+  uint32_t lastSeenBleMs = 0;
   bool acknowledged = false;  // SocialBehavior's per-MAC greeting state
   // Packed semver (major<<16|minor<<8|patch) from MSG_HELLO.
   // Zero until the first HELLO (BLE adv doesn't carry it).
@@ -129,6 +132,7 @@ struct NearbyCopy {
   Color    shadeColor = Color();
   int8_t   lastRssi = -127;
   uint32_t lastSeenNearMs = 0;
+  uint32_t lastSeenBleMs = 0;
   lamp_protocol::LampVariant variant = lamp_protocol::LampVariant::Unknown;
 };
 static_assert(std::is_trivially_copyable<NearbyCopy>::value,

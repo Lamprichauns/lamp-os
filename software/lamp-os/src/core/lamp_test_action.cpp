@@ -253,6 +253,7 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
       p.baseColor = lamp::hexStringToColor(baseHex.c_str());
       p.lastRssi = v["rssi"].is<int>() ? static_cast<int8_t>(v["rssi"].as<int>()) : -50;
       p.lastSeenNearMs = millis();
+      p.lastSeenBleMs = p.lastSeenNearMs;
       const char* mac = v["mac"] | "";
       p.hasMac = lamp::parseBdAddr(mac, p.mac);
       const int disp = v["disposition"] | 3;

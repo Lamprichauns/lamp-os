@@ -17,8 +17,9 @@
 
 namespace {
 
-// A wisp presence above this means the wisp holds the surface; flicker and
-// pulse ignore the wisp-dim and would paint over its show.
+// A wisp presence above this means the wisp holds the surface. Pulse ignores
+// the wisp-dim and a flicker burst still shows at its 0.3 floor, so either
+// would draw over the show.
 constexpr float kWispHolds = 0.01f;
 
 class LampMomentHost : public lamp::MomentHost {

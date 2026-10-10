@@ -59,6 +59,7 @@ NearbyCopy toNearbyCopy(const RosterEntry& e) {
   c.shadeColor = e.shadeColor;
   c.lastRssi = e.lastRssi;
   c.lastSeenNearMs = e.lastSeenNearMs;
+  c.lastSeenBleMs = e.lastSeenBleMs;
   c.variant = e.variant;
   return c;
 }
@@ -156,6 +157,7 @@ void LampRoster::addOrUpdateFromBle(const char* name, const uint8_t ble[6],
     e.baseColor = base;
     e.shadeColor = shade;
     e.lastSeenNearMs = now;
+    e.lastSeenBleMs = now;
     e.lastRssi = rssi;
     store_[count_++] = e;
   } else {
@@ -165,6 +167,7 @@ void LampRoster::addOrUpdateFromBle(const char* name, const uint8_t ble[6],
     store_[idx].baseColor = base;
     store_[idx].shadeColor = shade;
     store_[idx].lastSeenNearMs = now;
+    store_[idx].lastSeenBleMs = now;
     // RSSI freshens on every BLE adv (~30 Hz) so the closest-peer sort key
     // tracks current signal strength rather than a one-shot first-seen
     // value. -127 is the "unknown" sentinel; only overwrite when the

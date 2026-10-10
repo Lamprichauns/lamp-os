@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "util/color.hpp"
+
 namespace lamp {
 
 namespace {
@@ -28,19 +30,9 @@ constexpr uint16_t kFirefliesRampInBlinks = 6;
 constexpr uint16_t kFirefliesRampOutFrom = 110;
 constexpr uint16_t kFirefliesStarPercent = 15;
 
-int macNibble(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-  return -1;
-}
-
 bool parseHexMac(const char* s, uint8_t out[6]) {
   for (int i = 0; i < 6; ++i) {
-    const int hi = macNibble(s[2 * i]);
-    const int lo = macNibble(s[2 * i + 1]);
-    if (hi < 0 || lo < 0) return false;
-    out[i] = static_cast<uint8_t>((hi << 4) | lo);
+    if (!parseHexByte(s + 2 * i, out[i])) return false;
   }
   return true;
 }
@@ -177,7 +169,7 @@ size_t encodeMomentFrame(const MomentFrame& f, char* out, size_t cap) {
                       "{\"type\":\"moment\",\"mo\":{\"k\":%u,\"s\":%lu,\"h\":%u,\"a\":%u,"
                       "\"to\":\"%s\",\"v\":\"%s\"}}",
                       static_cast<unsigned>(f.kind), static_cast<unsigned long>(f.seed),
-                      static_cast<unsigned>(f.hop), static_cast<unsigned>(f.ageMs), to,
+                      static_cast<unsigned>(hops), static_cast<unsigned>(f.ageMs), to,
                       visited);
   } else {
     n = std::snprintf(buf, sizeof(buf), "{\"type\":\"moment\",\"mo\":{\"k\":%u,\"s\":%lu,\"a\":%u}}",

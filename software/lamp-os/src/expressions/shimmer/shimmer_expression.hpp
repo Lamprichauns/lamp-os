@@ -74,8 +74,9 @@ class ShimmerExpression : public Expression {
   uint32_t nextGustMs_ = 0;
   uint32_t lastUpdateMs_ = 0;
   // Hidden burst params: `count` stars over `durationMax` ms, both > 0, make a
-  // trigger one short burst that completes (docs/dev/moments.md). Absent, the
-  // expression runs continuously as configured.
+  // transient's trigger one short burst that completes (docs/dev/moments.md).
+  // A configured, auto-triggering instance runs continuously whatever it carries.
+  bool bursting() const { return burstMs_ > 0 && !autoTriggerEnabled; }
   uint16_t burstCount_ = 0;
   uint32_t burstMs_ = 0;
   uint32_t burstStartMs_ = 0;

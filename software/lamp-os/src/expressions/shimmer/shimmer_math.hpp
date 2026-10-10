@@ -178,8 +178,8 @@ inline constexpr uint32_t kBurstMinMs = 100;
 inline constexpr uint32_t kBurstMaxMs = 2000;
 
 // Heat at which a Twinkle cell paints its own anchor (brightness gain and floor
-// mix cancel) for any channel below full scale. A burst leaves cooler cells untouched, so sparks fade in and out
-// of the surface instead of dimming the cells around them.
+// mix cancel) on any channel below full scale. A burst leaves cooler cells
+// untouched, so sparks fade in and out without dimming their neighbours.
 inline constexpr float kBurstPaintHeat = 0.37f;
 
 inline uint32_t clampBurstMs(uint32_t ms) {

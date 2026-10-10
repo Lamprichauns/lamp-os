@@ -1,5 +1,6 @@
 #include "core/moments.hpp"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -192,9 +193,11 @@ void MomentDirector::initiate(MomentKind kind, uint32_t seed, uint32_t nowMs) {
       moment_.role = Role::Initiator;
       moment_.seed = seed;
       std::memcpy(moment_.origin, self_, 6);
-      moment_.nextMs = nowMs + kWhisperHandOffMs;
+      moment_.nextMs = nowMs;
       remember(self_, seed, kind);
-      renderGlow();
+      // The origin glows and announces the first hop at once, so every
+      // bystander's crowd cooldown lands before a second origin's backoff.
+      tickWhisper(nowMs);
       break;
     case MomentKind::Heartbeat: {
       auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
@@ -218,7 +221,7 @@ bool MomentDirector::force(MomentKind kind, uint32_t seed, uint32_t nowMs) {
     return false;
   }
   initiate(kind, seed, nowMs);
-  return active();
+  return true;
 }
 
 void MomentDirector::endMoment(const char* why) {
@@ -285,8 +288,8 @@ void MomentDirector::onWhisper(const uint8_t src[6], const MomentFrame& f, uint3
   std::memcpy(moment_.origin, f.visited[0], 6);
   moment_.hop = f.hop;
   std::memcpy(moment_.visited, f.visited, sizeof(moment_.visited));
-  moment_.nextMs = nowMs + kWhisperHandOffMs;
-  renderGlow();
+  // The sender glowed `a` ago; this lamp glows one hand-off after it.
+  moment_.nextMs = nowMs - f.ageMs + kWhisperHandOffMs;
   participate(MomentKind::Whisper, nowMs);
   logf("[moment] accept k=2 s=%lu h=%u", static_cast<unsigned long>(f.seed),
        static_cast<unsigned>(f.hop));
@@ -334,22 +337,26 @@ void MomentDirector::tickFireflies(uint32_t nowMs) {
 
 void MomentDirector::tickWhisper(uint32_t nowMs) {
   if (!timeReached(nowMs, moment_.nextMs)) return;
-  if (moment_.hop < kWhisperMaxHops) {
-    MomentFrame f;
-    f.kind = MomentKind::Whisper;
-    f.seed = moment_.seed;
-    f.hop = static_cast<uint8_t>(moment_.hop + 1);
-    std::memcpy(f.visited, moment_.visited, sizeof(f.visited));
-    std::memcpy(f.visited[moment_.hop], self_, 6);
-    auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
-    if (selectWhisperHop(host_->nearbyPeers(), nowMs, self_, f.visited, f.hop, disposition,
-                         f.to)) {
-      queueFrame(f, nowMs, nowMs);
-      logf("[moment] wh hop h=%u to=%02X%02X%02X", static_cast<unsigned>(f.hop), f.to[3],
-           f.to[4], f.to[5]);
-    } else {
-      logf("[moment] wh chain ends, no hop");
-    }
+  renderGlow();
+  if (moment_.hop >= kWhisperMaxHops) {
+    endMoment("last hop");
+    return;
+  }
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = moment_.seed;
+  f.hop = static_cast<uint8_t>(moment_.hop + 1);
+  std::memcpy(f.visited, moment_.visited, sizeof(f.visited));
+  // Bounded apart from the hop rule above, so the list is never overrun.
+  std::memcpy(f.visited[std::min<uint8_t>(moment_.hop, kWhisperMaxHops - 1)], self_, 6);
+  auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
+  if (selectWhisperHop(host_->nearbyPeers(), nowMs, self_, f.visited, f.hop, disposition,
+                       f.to)) {
+    queueFrame(f, nowMs, nowMs);
+    logf("[moment] wh hop h=%u to=%02X%02X%02X", static_cast<unsigned>(f.hop), f.to[3],
+         f.to[4], f.to[5]);
+  } else {
+    logf("[moment] wh chain ends, no hop");
   }
   endMoment("handed on");
 }
@@ -359,12 +366,13 @@ void MomentDirector::startHeartbeat(const NearbyCopy* peer, uint32_t nowMs) {
   moment_.kind = static_cast<uint8_t>(MomentKind::Heartbeat);
   moment_.role = Role::Initiator;
   moment_.t0 = nowMs;
-  moment_.lastFreshMs = nowMs;
+  moment_.lastSightingMs = nowMs;
   moment_.rssiEma = -75.0f;
   if (peer) {
     std::memcpy(moment_.peer, peer->mac, 6);
     moment_.hasPeer = true;
     moment_.rssiEma = peer->lastRssi;
+    moment_.lastSightingMs = peer->lastSeenBleMs;
   }
   moment_.nextMs = nowMs;
 }
@@ -373,9 +381,11 @@ void MomentDirector::sampleHeartbeat(uint32_t nowMs) {
   if (moment_.hasPeer) {
     for (const NearbyCopy& p : host_->nearbyPeers()) {
       if (!isPeer(p) || std::memcmp(p.mac, moment_.peer, 6) != 0) continue;
-      if (isFresh(p, nowMs)) {
+      // Only a new BLE sighting carries a new RSSI; a direct HELLO renews
+      // presence while lastRssi stands still.
+      if (p.lastSeenBleMs != moment_.lastSightingMs) {
         moment_.rssiEma = heartbeatEma(moment_.rssiEma, p.lastRssi);
-        moment_.lastFreshMs = nowMs;
+        moment_.lastSightingMs = p.lastSeenBleMs;
       }
       break;
     }
@@ -389,7 +399,8 @@ void MomentDirector::sampleHeartbeat(uint32_t nowMs) {
     moment_.faint = false;
   }
   if (moment_.settleBeat > 0) return;
-  const bool stale = nowMs - moment_.lastFreshMs >= kHeartbeatStaleMs;
+  const bool stale =
+      static_cast<int32_t>(nowMs - moment_.lastSightingMs) >= static_cast<int32_t>(kHeartbeatStaleMs);
   const bool faded = moment_.faint && nowMs - moment_.faintSinceMs >= kHeartbeatStaleMs;
   const bool capped = nowMs - moment_.t0 >= kHeartbeatMaxMs;
   if (stale || faded || capped) {
@@ -460,8 +471,10 @@ void MomentDirector::tickOutbox(uint32_t nowMs) {
   outbox_.frame.ageMs = static_cast<uint16_t>(age > kMomentMaxAgeMs ? kMomentMaxAgeMs : age);
   char payload[lamp_protocol::EVENT_MAX_PAYLOAD];
   const size_t len = encodeMomentFrame(outbox_.frame, payload, sizeof(payload));
-  if (len > 0) host_->send(payload, len);
-  outbox_.sentAny = true;
+  if (len > 0) {
+    host_->send(payload, len);
+    outbox_.sentAny = true;
+  }
   if (--outbox_.copiesLeft == 0) {
     outbox_.pending = false;
     return;

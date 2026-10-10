@@ -26,7 +26,9 @@ inline constexpr uint8_t kDispositionFond = 4;
 inline constexpr uint8_t kDispositionSmitten = 5;
 
 inline constexpr uint32_t kMinuteMs = 60000;
-// A peer heard by BLE within this window is fresh.
+// A peer whose BLE advert was heard within this window is fresh, so its
+// lastRssi is current. One never heard over BLE carries -127 dBm, below every
+// threshold.
 inline constexpr uint32_t kMomentFreshMs = 15000;
 
 struct MomentPacing {
@@ -53,7 +55,7 @@ uint32_t macLow32(const uint8_t mac[6]);
 
 inline bool isLiked(uint8_t disposition) { return disposition >= kDispositionFond; }
 inline bool isFresh(const NearbyCopy& p, uint32_t nowMs) {
-  return nowMs - p.lastSeenNearMs <= kMomentFreshMs;
+  return static_cast<int32_t>(nowMs - p.lastSeenBleMs) <= static_cast<int32_t>(kMomentFreshMs);
 }
 inline bool isPeer(const NearbyCopy& p) { return p.name[0] != '\0' && p.hasMac; }
 
