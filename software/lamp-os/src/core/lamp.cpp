@@ -1108,8 +1108,10 @@ void lamp::Lamp::tick() {
     // value; layering crowd-dim or OTA pulse mid-drag would make the slider
     // feel laggy and disconnected. Once the window elapses the next
     // applyEffectiveBrightness call reapplies both multipliers cleanly.
-    if (!lamp::overrides.brightness.isActive() && lamp::brightnessFadeSeeded() &&
-        lamp::brightnessFadeSource() != lamp::brightnessFadeTarget()) {
+    const bool userFading = !lamp::overrides.brightness.isActive() &&
+                            lamp::brightnessFadeSeeded() &&
+                            lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
+    if (userFading) {
       const uint8_t level = computeUserBrightnessNow(now);
       lamp::setAllStripsBrightness(
           lamp::calculateBrightnessLevel(s_hwMaxBrightness, level));
@@ -1129,9 +1131,6 @@ void lamp::Lamp::tick() {
     if (lamp::personalityEngine.consumePendingApply()) {
       pendingApplyEffectiveBrightness = true;
     }
-    const bool userFading = !lamp::overrides.brightness.isActive() &&
-                            lamp::brightnessFadeSeeded() &&
-                            lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
     // crowdDimFading() consumes the landing pass, so it is asked only when
     // the reapply can run.
     if (!userFading && !lamp::ota_quiet_mode::isQuiet() && lamp::crowdDimFading(now)) {
