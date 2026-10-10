@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "util/color.hpp"
@@ -11,11 +12,13 @@ inline float clampUnit(float v) {
   return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
 }
 
-// restLevel/amp are the heat band; stepMs the per-pixel flicker responsiveness;
+// restLevel/amp are the heat band; stepMs the per-pixel flicker responsiveness
+// (heat eases toward its target with this time constant, wind with 3x it);
 // windAmp/gust* the global smooth gust (windAmp 0 = still). sparkChance is the
 // per-roll probability a heat target instead lands in the hot [sparkLo,sparkHi]
-// ember band (0 = never). flutterAmp is the amplitude of a fast per-frame global
-// brightness random-walk layered on top of the smooth movement (0 = none).
+// ember band (0 = never). flutterAmp is the amplitude of a global brightness
+// random-walk layered on top of the smooth movement (0 = none), taking one step
+// every flutterStepMs of wall time.
 // warmthSwing/whiteHot shape how heat modulates the lamp's own colour (see
 // warmthModulate): warmthSwing is the hue slide toward yellow at peak / maroon
 // at floor (0 = pure brightness), whiteHot the desaturation toward white at the
@@ -33,6 +36,7 @@ struct FireStyle {
   float sparkLo;
   float sparkHi;
   float flutterAmp;
+  uint32_t flutterStepMs;
   float warmthSwing;
   float whiteHot;
   float minBright;
@@ -41,15 +45,15 @@ struct FireStyle {
 inline FireStyle fireStyle(uint32_t value) {
   static constexpr FireStyle table[] = {
     // Twinkle: near-dark base, sparse sparks that rise and fade slowly, no wind.
-    {0.00f, 0.02f, 900, 0.00f,    0,    0, 0.030f, 0.60f, 1.00f, 0.00f, 0.15f, 0.00f, 0.80f},
+    {0.00f, 0.02f, 900, 0.00f,    0,    0, 0.030f, 0.60f, 1.00f, 0.00f,  0, 0.15f, 0.00f, 0.80f},
     // Coals: a dim ember bed, several embers breathing in and out in place, no wind.
-    {0.06f, 0.05f, 1600, 0.00f,    0,    0, 0.045f, 0.55f, 0.85f, 0.00f, 0.30f, 0.00f, 0.40f},
+    {0.06f, 0.05f, 1600, 0.00f,    0,    0, 0.045f, 0.55f, 0.85f, 0.00f,  0, 0.30f, 0.00f, 0.40f},
     // Candle: a slow convective sway plus a fast turbulent brightness flutter,
     // with the occasional brighter flicker-up.
-    {0.36f, 0.16f, 220, 0.08f, 1500, 3500, 0.012f, 0.70f, 0.95f, 0.075f, 0.55f, 0.15f, 0.50f},
+    {0.36f, 0.16f, 220, 0.08f, 1500, 3500, 0.012f, 0.70f, 0.95f, 0.075f, 16, 0.55f, 0.15f, 0.50f},
     // Campfire: lively, brighter, regular gusts with a subtle flutter and embers
     // that flare up.
-    {0.50f, 0.28f, 180, 0.18f, 3000, 7000, 0.020f, 0.85f, 1.00f, 0.02f, 0.80f, 0.40f, 0.30f},
+    {0.50f, 0.28f, 180, 0.18f, 3000, 7000, 0.020f, 0.85f, 1.00f, 0.02f, 16, 0.80f, 0.40f, 0.30f},
   };
   if (value > 3) value = 3;
   return table[value];
@@ -80,24 +84,48 @@ inline uint32_t nextGustAt(uint32_t nowMs, const FireStyle& s, Rng& rng) {
 }
 
 inline constexpr float kFlutterStepFrac = 0.5f;
+// Wall time a single draw may catch up on. A longer gap (a stall) drops the
+// excess so the walk resumes rather than replaying seconds of steps at once.
+inline constexpr uint32_t kFlutterMaxCatchUpMs = 250;
 
-// One step of a bounded fast random-walk in [-flutterAmp, +flutterAmp]. Each call
-// nudges by up to +/- kFlutterStepFrac*amp and clamps. amp 0 yields 0.
+// A bounded random-walk in [-amp, +amp] stepped on wall time. from/to are the
+// walk's last two points and carryMs the time since `to` was rolled; the shown
+// value glides from one to the other across each step.
+struct Flutter {
+  float from = 0.0f;
+  float to = 0.0f;
+  uint32_t carryMs = 0;
+};
+
+// Advance the walk by deltaMs and return the value to show. One step every
+// stepMs nudges by up to +/- kFlutterStepFrac*amp and clamps, so the motion
+// depends only on elapsed time, never on how many draws covered it. amp 0
+// yields 0 and draws no rng.
 template <class Rng>
-inline float advanceFlutter(float flutter, float amp, Rng& rng) {
-  if (amp <= 0.0f) return 0.0f;
+inline float advanceFlutter(Flutter& f, float amp, uint32_t stepMs,
+                            uint32_t deltaMs, Rng& rng) {
+  if (amp <= 0.0f || stepMs == 0) return 0.0f;
+  f.carryMs += std::min(deltaMs, kFlutterMaxCatchUpMs);
   const float step = amp * kFlutterStepFrac;
-  const float delta = (rng.range(0, 2000) / 1000.0f - 1.0f) * step;
-  const float v = flutter + delta;
-  return v < -amp ? -amp : (v > amp ? amp : v);
+  while (f.carryMs >= stepMs) {
+    f.carryMs -= stepMs;
+    f.from = f.to;
+    const float v = f.to + (rng.range(0, 2000) / 1000.0f - 1.0f) * step;
+    f.to = v < -amp ? -amp : (v > amp ? amp : v);
+  }
+  return f.from + (f.to - f.from) * (static_cast<float>(f.carryMs) / stepMs);
 }
 
-inline float approachHeat(float heat, float target, uint32_t deltaMs,
-                          uint32_t stepMs) {
-  if (stepMs == 0) return target;
-  float k = static_cast<float>(deltaMs) / static_cast<float>(stepMs);
-  if (k > 1.0f) k = 1.0f;
-  return heat + (target - heat) * k;
+// Fraction of the remaining distance to close over deltaMs with time constant
+// stepMs. Exponential, so any split of the same wall time lands in the same
+// place and a long gap settles on the target without overshoot.
+inline float approachFactor(uint32_t deltaMs, uint32_t stepMs) {
+  if (stepMs == 0) return 1.0f;
+  return 1.0f - std::exp(-static_cast<float>(deltaMs) / stepMs);
+}
+
+inline float approachHeat(float heat, float target, float factor) {
+  return heat + (target - heat) * factor;
 }
 
 inline float heatBrightness(float heat, float minBright) {

@@ -1,8 +1,10 @@
 #include <unity.h>
+#include <cmath>
 #include <vector>
 
 #include "expressions/shimmer/shimmer_math.hpp"
 #include "util/color.hpp"
+#include "util/fast_rng.hpp"
 
 using namespace lamp;
 
@@ -110,7 +112,7 @@ void test_roll_wind_target_still_air_is_zero() {
 }
 
 void test_next_gust_at_within_dwell_window() {
-  const FireStyle s = fireStyle(2);  // Candle, gust [4500, 9000]
+  const FireStyle s = fireStyle(2);  // Candle
   LoRng lo;
   HiRng hi;
   TEST_ASSERT_EQUAL_UINT32(5000u + s.gustLoMs, nextGustAt(5000u, s, lo));
@@ -144,7 +146,9 @@ void test_flutter_calm_styles_unperturbed() {
     const FireStyle s = fireStyle(idx);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, s.flutterAmp);
     CountingRng rng;
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, advanceFlutter(0.25f, s.flutterAmp, rng));
+    Flutter f{0.25f, 0.25f, 0};
+    TEST_ASSERT_EQUAL_FLOAT(
+        0.0f, advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 16, rng));
     TEST_ASSERT_EQUAL_UINT32(0, rng.calls);
   }
 }
@@ -156,25 +160,96 @@ void test_flutter_stays_within_amplitude() {
   // it must never escape [-amp, +amp].
   HiRng hi;
   LoRng lo;
-  float f = 0.0f;
-  for (int i = 0; i < 200; ++i) {
-    f = advanceFlutter(f, candle.flutterAmp, hi);
-    TEST_ASSERT_TRUE(f <= candle.flutterAmp + 1e-4f);
-    TEST_ASSERT_TRUE(f >= -candle.flutterAmp - 1e-4f);
+  Flutter f;
+  for (int i = 0; i < 400; ++i) {
+    const float v = advanceFlutter(f, candle.flutterAmp, candle.flutterStepMs,
+                                   16, hi);
+    TEST_ASSERT_TRUE(v <= candle.flutterAmp + 1e-4f);
+    TEST_ASSERT_TRUE(v >= -candle.flutterAmp - 1e-4f);
   }
-  for (int i = 0; i < 200; ++i) {
-    f = advanceFlutter(f, candle.flutterAmp, lo);
-    TEST_ASSERT_TRUE(f <= candle.flutterAmp + 1e-4f);
-    TEST_ASSERT_TRUE(f >= -candle.flutterAmp - 1e-4f);
+  for (int i = 0; i < 400; ++i) {
+    const float v = advanceFlutter(f, candle.flutterAmp, candle.flutterStepMs,
+                                   16, lo);
+    TEST_ASSERT_TRUE(v <= candle.flutterAmp + 1e-4f);
+    TEST_ASSERT_TRUE(v >= -candle.flutterAmp - 1e-4f);
   }
 }
 
+// Runs a flutter at a fixed frame period and records the shown value at every
+// multiple of sampleMs, over totalMs of wall time.
+static std::vector<float> flutterTrace(float amp, uint32_t stepMs,
+                                       uint32_t frameMs, uint32_t sampleMs,
+                                       uint32_t totalMs) {
+  FastRng rng(12345);
+  Flutter f;
+  std::vector<float> out;
+  for (uint32_t t = frameMs; t <= totalMs; t += frameMs) {
+    const float v = advanceFlutter(f, amp, stepMs, frameMs, rng);
+    if (t % sampleMs == 0) out.push_back(v);
+  }
+  return out;
+}
+
+void test_flutter_is_frame_rate_independent() {
+  // 33 ms (~30 fps) and 8 ms (125 fps) frames over the same wall time, sampled
+  // where both land on a frame: the same seed shows the same value, for every
+  // flame style's step period.
+  for (uint32_t idx = 2; idx <= 3; ++idx) {
+    const FireStyle s = fireStyle(idx);
+    const auto slow = flutterTrace(s.flutterAmp, s.flutterStepMs, 33, 264, 26400);
+    const auto fast = flutterTrace(s.flutterAmp, s.flutterStepMs, 8, 264, 26400);
+    TEST_ASSERT_EQUAL_UINT32(100, slow.size());
+    TEST_ASSERT_EQUAL_UINT32(slow.size(), fast.size());
+    for (size_t i = 0; i < slow.size(); ++i) {
+      TEST_ASSERT_FLOAT_WITHIN(1e-5f, slow[i], fast[i]);
+    }
+  }
+}
+
+void test_flutter_zero_delta_holds() {
+  FastRng rng(7);
+  CountingRng counter;
+  Flutter f;
+  const FireStyle s = fireStyle(2);
+  const float a = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 130, rng);
+  const Flutter before = f;
+  const float b = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 0, counter);
+  TEST_ASSERT_EQUAL_FLOAT(a, b);
+  TEST_ASSERT_EQUAL_UINT32(0, counter.calls);
+  TEST_ASSERT_EQUAL_UINT32(before.carryMs, f.carryMs);
+}
+
+void test_flutter_large_delta_bounded() {
+  // A stall of any length catches up at most kFlutterMaxCatchUpMs of steps,
+  // stays in band and leaves less than one step pending.
+  const FireStyle s = fireStyle(3);
+  CountingRng rng;
+  Flutter f;
+  const float v = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 0xFFFFFFFFu, rng);
+  TEST_ASSERT_EQUAL_UINT32(kFlutterMaxCatchUpMs / s.flutterStepMs, rng.calls);
+  TEST_ASSERT_TRUE(f.carryMs < s.flutterStepMs);
+  TEST_ASSERT_TRUE(v <= s.flutterAmp + 1e-4f && v >= -s.flutterAmp - 1e-4f);
+}
+
 void test_approach_heat_moves_toward_target() {
-  const float a = approachHeat(0.0f, 1.0f, 90, 180);   // half a step
+  const float a = approachHeat(0.0f, 1.0f, approachFactor(90, 180));
   TEST_ASSERT_TRUE(a > 0.0f && a < 1.0f);
-  const float full = approachHeat(0.0f, 1.0f, 500, 180);  // dt > step, cap at target
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, full);
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, approachHeat(0.3f, 1.0f, 10, 0));  // stepMs 0 snaps
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, approachHeat(0.3f, 1.0f, approachFactor(10, 0)));
+}
+
+void test_approach_frame_rate_independent() {
+  // Two 8 ms draws land where one 16 ms draw does.
+  const float k8 = approachFactor(8, 220);
+  const float twice = approachHeat(approachHeat(0.0f, 1.0f, k8), 1.0f, k8);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, approachHeat(0.0f, 1.0f, approachFactor(16, 220)),
+                           twice);
+}
+
+void test_approach_zero_and_large_delta_stable() {
+  TEST_ASSERT_EQUAL_FLOAT(0.4f, approachHeat(0.4f, 0.9f, approachFactor(0, 500)));
+  const float k = approachFactor(0xFFFFFFFFu, 500);
+  TEST_ASSERT_TRUE(k >= 0.0f && k <= 1.0f);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.9f, approachHeat(0.4f, 0.9f, k));
 }
 
 void test_heat_brightness_monotonic_with_floor() {
@@ -270,7 +345,12 @@ int main(int, char**) {
   RUN_TEST(test_fire_styles_split_sparkle_and_flame);
   RUN_TEST(test_flutter_calm_styles_unperturbed);
   RUN_TEST(test_flutter_stays_within_amplitude);
+  RUN_TEST(test_flutter_is_frame_rate_independent);
+  RUN_TEST(test_flutter_zero_delta_holds);
+  RUN_TEST(test_flutter_large_delta_bounded);
   RUN_TEST(test_approach_heat_moves_toward_target);
+  RUN_TEST(test_approach_frame_rate_independent);
+  RUN_TEST(test_approach_zero_and_large_delta_stable);
   RUN_TEST(test_heat_brightness_monotonic_with_floor);
   RUN_TEST(test_warmth_modulate_neutral_returns_anchor);
   RUN_TEST(test_warmth_modulate_direction_warm_anchor);
