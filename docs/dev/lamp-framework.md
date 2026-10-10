@@ -127,7 +127,9 @@ query always draw.
 While home mode is active with `socialDisabled` set, the lamp also ignores what
 other lamps push onto it. One pure decision, `homeModeBlocksRemote(homeActive,
 socialDisabled, source)` in `core/home_mode_gate.hpp`, read through
-`Compositor::blocksRemote(source)`, gates every peer path:
+`Compositor::blocksRemote(source)`, gates every peer path. No lamp sends
+another lamp settings over `MSG_CONTROL_OP`, which carries only wisp traffic
+([`networking.md`](networking.md)), so that message needs no gate.
 
 - `ExpressionManager::triggerInvocation` refuses a `TransientSource::Remote`
   invocation: a cascade (`MSG_COMMAND`, immediate or delayed) and an event
@@ -139,12 +141,10 @@ socialDisabled, source)` in `core/home_mode_gate.hpp`, read through
   calling back (`BehaviorContext::ignoresPeers()`), so snafu's greeting, the
   Lioness greeting and the staff bloom stay quiet alongside the skipped
   `SocialBehavior`, and leaving home does not greet peers that were already near.
-- A `MSG_CONTROL_OP` from the mesh is still relayed and its `wispStatus` /
-  `wispConfig` still cached, but its `brightness`, colours, `knockout` and
-  `expressionOp` are not applied.
 
 The lamp's own sources stay `TransientSource::Local` and always pass: the app's
-Test button and its remote op over BLE. The
+Test button and its remote op over BLE (`CHAR_REMOTE_OP`, applied only on the
+lamp it is written to). The
 wisp's paint, overrides and brightness are the owner's controller, not a peer,
 and pass too. `disabledExpressionTypes` keeps blocking its types from every
 source.

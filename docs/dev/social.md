@@ -72,8 +72,7 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   never recedes.
 - **Home mode can switch social off.** While home mode is active with social
   off (the default), greetings don't play and the lamp ignores every
-  expression another lamp pushes onto it (cascades, mirrors, relayed remote
-  ops); peer effects already running fade out, and crowd-dim eases back to
+  expression another lamp pushes onto it (cascades and mirrors); peer effects already running fade out, and crowd-dim eases back to
   full brightness over a second. Detail
   in [`lamp-framework.md`](lamp-framework.md#home-mode).
 - **OTA outranks personality.** Firmware propagation is gated separately

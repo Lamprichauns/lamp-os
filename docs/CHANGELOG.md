@@ -77,6 +77,13 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   loading instead of showing made-up values you could accidentally save.
 
 ### Changed
+- **Lamps no longer pass settings on to other lamps.** A lamp used to be able
+  to forward brightness, colour and expression changes it was handed to
+  another lamp across the mesh. No released app has ever used this, so
+  it is gone: a lamp only takes settings from the app connected to it. Lamps
+  still pass along everything your wisp sends and receives, so the wisp keeps
+  working everywhere it did, and lamps on older firmware keep talking to
+  newer ones.
 - **The wisp sends its settings on their own.** Its LED, brightness and drift
   settings now go out when they change or when the app asks, rather than only
   inside the status every lamp passes along every thirty seconds. For this
