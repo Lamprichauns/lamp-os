@@ -1123,7 +1123,7 @@ void lamp::Lamp::tick() {
     // applyEffectiveBrightness pump when the crowd-dim factor crosses the
     // deadband, or when SocialMode changes the dim regime.
     lamp::personalityEngine.tick(now);
-    if (lamp::personalityEngine.consumePendingApply()) {
+    if (lamp::personalityEngine.consumePendingApply() || lamp::crowdDimFading(now)) {
       pendingApplyEffectiveBrightness = true;
     }
   }

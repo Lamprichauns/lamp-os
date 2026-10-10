@@ -59,6 +59,10 @@ void stampConfiguratorActivity(uint32_t nowMs);
 // existing routing/dimming logic. Used by brightnessImmediate.
 void applyEffectiveBrightness();
 
+// True while the crowd-dim factor is still ramping toward its target, so the
+// loop keeps reapplying brightness until it lands.
+bool crowdDimFading(uint32_t nowMs);
+
 namespace apply {
 
 // User-direct BLE write. Routes to homeMode.brightness vs lamp.brightness

@@ -17,6 +17,7 @@
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "core/compositor.hpp"
+#include "core/crowd_dim_fade.hpp"
 #include "core/frame_buffer.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/personality_engine.hpp"
@@ -88,55 +89,32 @@ void settleBrightnessFade() {
 // when its smoothed weighted-peer count crosses the deadband (>= 2/100
 // change). The factor is a hard step: without interpolation a deadband
 // crossing snaps brightness by >= 2 levels in one frame, visible at low
-// overall brightness. This triple interpolates between successive engine
-// targets over kCrowdDimFadeMs so the transition reads smooth.
-//
-// Distinct from the user-write triple (s_userBrightness*): that path only
-// runs while no transient override is active and is driven by BLE writes.
-// Crowd-dim fades run every frame inside effectiveBrightness() and stay out
-// of the OTA pulse multiplier's way by only re-arming when the engine's
-// TARGET factor changes (not when raw brightness changes).
+// overall brightness. CrowdDimFade ramps between successive targets, re-arming
+// only when the TARGET factor changes (not when raw brightness changes), so it
+// stays out of the OTA pulse multiplier's way. Distinct from the user-write
+// micro-fade (s_userBrightness*), which BLE writes drive.
 static constexpr uint16_t kCrowdDimFadeMs = 80;
-static float    s_crowdAppliedFactor = 1.0f;
-static float    s_crowdTargetFactor  = 1.0f;
-static uint32_t s_crowdFadeStartMs   = 0;
-static bool     s_crowdFadeActive    = false;
+// Home mode switching crowd-dim off or back on moves the factor a long way at
+// once, so it ramps over a second rather than the deadband's 80 ms.
+static constexpr uint16_t kCrowdDimHomeFadeMs = 1000;
+static lamp::CrowdDimFade s_crowdDim;
+static bool s_crowdDimIgnored = false;
 
-// Current interpolated crowd-dim factor. Detects target changes against the
-// engine and (re)starts a fade from the current value, so a mid-fade
-// retrigger glides instead of snapping.
 static float currentCrowdDimFactor(uint32_t nowMs) {
-  const float engineTarget = lamp::personalityEngine.crowdDimFactor();
-  if (engineTarget != s_crowdTargetFactor) {
-    float startFrom = s_crowdAppliedFactor;
-    if (s_crowdFadeActive) {
-      const uint32_t elapsed = nowMs - s_crowdFadeStartMs;
-      if (elapsed >= kCrowdDimFadeMs) {
-        startFrom = s_crowdTargetFactor;
-      } else {
-        const float span = s_crowdTargetFactor - s_crowdAppliedFactor;
-        startFrom = s_crowdAppliedFactor +
-                    span * (static_cast<float>(elapsed) /
-                            static_cast<float>(kCrowdDimFadeMs));
-      }
-    }
-    s_crowdAppliedFactor = startFrom;
-    s_crowdTargetFactor  = engineTarget;
-    s_crowdFadeStartMs   = nowMs;
-    s_crowdFadeActive    = true;
-  }
-  if (!s_crowdFadeActive) return s_crowdTargetFactor;
-  const uint32_t elapsed = nowMs - s_crowdFadeStartMs;
-  if (elapsed >= kCrowdDimFadeMs) {
-    s_crowdAppliedFactor = s_crowdTargetFactor;
-    s_crowdFadeActive = false;
-    return s_crowdTargetFactor;
-  }
-  const float span = s_crowdTargetFactor - s_crowdAppliedFactor;
-  return s_crowdAppliedFactor +
-         span * (static_cast<float>(elapsed) /
-                 static_cast<float>(kCrowdDimFadeMs));
+  const bool homeActive = compositor.homeMode;
+  const bool socialDisabled = config.homeMode.socialDisabled;
+  const bool ignored =
+      lamp::homeModeBlocksRemote(homeActive, socialDisabled, lamp::TransientSource::Remote);
+  const uint32_t fadeMs = ignored != s_crowdDimIgnored ? kCrowdDimHomeFadeMs : kCrowdDimFadeMs;
+  s_crowdDimIgnored = ignored;
+  const float target = lamp::crowdDimTarget(lamp::personalityEngine.crowdDimFactor(),
+                                            homeActive, socialDisabled);
+  return s_crowdDim.at(target, fadeMs, nowMs);
 }
+
+namespace lamp {
+bool crowdDimFading(uint32_t nowMs) { return s_crowdDim.fading(nowMs); }
+}  // namespace lamp
 
 // Crowd-dim output floor, in percent. Deliberately above the space-dim floor
 // (20) — 30% is already very dim, and crowd-dim is a mood nudge, not a shutoff.
