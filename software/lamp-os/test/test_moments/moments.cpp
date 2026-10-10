@@ -1069,6 +1069,8 @@ void test_renders_are_remote_terminal_and_on_the_base() {
   TEST_ASSERT_EQUAL_STRING("flicker", blink.inv.type.c_str());
   TEST_ASSERT_EQUAL_UINT32(0, blink.inv.parameters.get("fire", 9));
   TEST_ASSERT_EQUAL_UINT32(firefliesStars(35), blink.inv.parameters.get("count", 0));
+  TEST_ASSERT_EQUAL_UINT16(8, firefliesStars(35));  // a quarter of a 35-px base
+  TEST_ASSERT_EQUAL_UINT16(1, firefliesStars(2));
   TEST_ASSERT_EQUAL_UINT32(10, blink.inv.parameters.get("opacity", 0));
 }
 
@@ -1143,6 +1145,8 @@ void test_a_malformed_origin_colour_drops_the_frame() {
   r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\",\"c\":\"zz00ff00\"}}", 1000);
   TEST_ASSERT_FALSE(r.director.active());
   r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\",\"c\":\"ff00\"}}", 1000);
+  TEST_ASSERT_FALSE(r.director.active());
+  r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\",\"c\":\"ff00ff00ff\"}}", 1000);
   TEST_ASSERT_FALSE(r.director.active());
 }
 

@@ -117,35 +117,47 @@ void test_a_configured_flicker_with_burst_keys_stays_continuous() {
   TEST_ASSERT_EQUAL_UINT32(kPixels, widest);
 }
 
-size_t bluestPixel(ShimmerExpression& e, Surfaces& s, uint32_t spanMs) {
-  e.trigger();
+// The most blue and the most white any pixel reached over the run. The anchor
+// carries neither, so either can only come from a colour other than it.
+struct Reach {
   uint8_t blue = 0;
+  uint8_t white = 0;
+};
+
+Reach reach(ShimmerExpression& e, Surfaces& s, uint32_t spanMs) {
+  e.trigger();
+  Reach r;
   for (uint32_t now = 1000; now < 1000 + spanMs; now += kFrameMs) {
     frame(e, s, now);
-    for (const Color& c : s.shade.buffer) blue = c.b > blue ? c.b : blue;
+    for (const Color& c : s.shade.buffer) {
+      r.blue = c.b > r.blue ? c.b : r.blue;
+      r.white = c.w > r.white ? c.w : r.white;
+    }
   }
-  return blue;
+  return r;
 }
 
 void test_a_burst_paints_its_tint() {
   Surfaces s;
   ShimmerExpression e(&s.shade);
   burstOn(e, s, /*transient=*/true, {kBlueTint});
-  TEST_ASSERT_TRUE(bluestPixel(e, s, kBurstMs) > 0);
+  TEST_ASSERT_TRUE(reach(e, s, kBurstMs).blue > 0);
 }
 
 void test_an_untinted_burst_paints_the_colour_under_it() {
   Surfaces s;
   ShimmerExpression e(&s.shade);
   burstOn(e, s, /*transient=*/true);
-  TEST_ASSERT_EQUAL_UINT8(0, bluestPixel(e, s, kBurstMs));
+  const Reach r = reach(e, s, kBurstMs);
+  TEST_ASSERT_EQUAL_UINT8(0, r.blue);
+  TEST_ASSERT_EQUAL_UINT8(0, r.white);
 }
 
 void test_a_configured_flicker_ignores_a_tint() {
   Surfaces s;
   ShimmerExpression e(&s.shade);
   burstOn(e, s, /*transient=*/false, {kBlueTint});
-  TEST_ASSERT_EQUAL_UINT8(0, bluestPixel(e, s, 5 * kBurstMs));
+  TEST_ASSERT_EQUAL_UINT8(0, reach(e, s, 5 * kBurstMs).blue);
 }
 
 int main(int, char**) {
