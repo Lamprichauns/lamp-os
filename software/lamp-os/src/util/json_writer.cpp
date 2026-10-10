@@ -64,7 +64,6 @@ void JsonWriter::value(const char* s) {
       case '\n': putRaw("\\n"); break;
       case '\r': putRaw("\\r"); break;
       case '\t': putRaw("\\t"); break;
-
       default: put(*s);
     }
   }

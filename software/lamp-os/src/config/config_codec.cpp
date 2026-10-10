@@ -460,7 +460,8 @@ constexpr const char* kCountKey = "xn";
 constexpr const char* kKnockoutKey = "ko";
 constexpr const char* kSplitCfgKey = "cfgb";
 constexpr const char* kLampCfgKey = "cfgl";
-// Record keys any build has written ("x0".."x31"); the cap has been lower.
+// Record slots every save sweeps ("x0".."x31"), past kMaxExpressions, so a
+// record no count names is erased wherever it sits.
 constexpr size_t kRecordKeySlots = 32;
 
 void putU32(uint8_t*& p, uint32_t v) {
@@ -476,7 +477,6 @@ uint32_t getU32(const uint8_t*& p) {
 void recordKey(size_t i, char (&key)[5]) {
   std::snprintf(key, sizeof(key), "x%u", static_cast<unsigned>(i));
 }
-
 
 }  // namespace
 
