@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -41,16 +42,21 @@ void beginWith(CascadeScheduler& s, const ExpressionInvocation& inv, size_t peer
                uint32_t staggerMs, uint32_t nowMs) {
   std::string json;
   serializeInvocation(inv, json);
-  TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), staggerMs, nowMs));
+  TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), staggerMs, nowMs) !=
+                   CascadeScheduler::Begin::Refused);
   for (size_t i = 0; i < peers; ++i) {
     const uint8_t mac[6] = {0x02, 0, 0, 0, 0, static_cast<uint8_t>(i)};
     s.addPeer(mac);
   }
 }
 
-size_t drain(CascadeScheduler& s, uint32_t nowMs, std::vector<Sent>& out) {
+size_t drain(CascadeScheduler& s, uint32_t nowMs, std::vector<Sent>& out,
+             size_t room = SIZE_MAX) {
   return s.tick(nowMs, [&](const uint8_t* mac, const char* payload, size_t len) {
+    if (room == 0) return false;
+    --room;
     out.push_back({mac[5], std::string(payload, len)});
+    return true;
   });
 }
 
@@ -99,16 +105,41 @@ void test_every_peer_is_reached_in_bounded_batches() {
   }
 }
 
-void test_a_new_cascade_replaces_the_remainder() {
+// A second cascade waits behind the one draining and still reaches every
+// peer; a third replaces the one waiting, never the one draining.
+void test_cascades_queue_behind_the_drain() {
   CascadeScheduler s;
   beginWith(s, sampleInvocation(), 20, 0, 0);
   std::vector<Sent> sent;
   drain(s, 0, sent);
   TEST_ASSERT_EQUAL(12, s.pending());
   beginWith(s, sampleInvocation(), 3, 0, 10);
-  TEST_ASSERT_EQUAL(3, s.pending());
-  drain(s, 10, sent);
-  TEST_ASSERT_FALSE(s.active());
+  TEST_ASSERT_EQUAL(15, s.pending());
+  std::string json;
+  serializeInvocation(sampleInvocation(), json);
+  TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), 0, 20) ==
+                   CascadeScheduler::Begin::Replaced);
+  for (int i = 0; i < 5; ++i) {
+    const uint8_t mac[6] = {0x03, 0, 0, 0, 0, static_cast<uint8_t>(i)};
+    s.addPeer(mac);
+  }
+  TEST_ASSERT_EQUAL(17, s.pending());
+  for (uint32_t t = 100; s.active(); t += CascadeScheduler::kBatchGapMs) drain(s, t, sent);
+  TEST_ASSERT_EQUAL(25, sent.size());
+}
+
+// A frame the driver cannot take now is retried on a later pass, not lost.
+void test_refused_send_is_retried() {
+  CascadeScheduler s;
+  beginWith(s, sampleInvocation(), 10, 0, 0);
+  std::vector<Sent> sent;
+  TEST_ASSERT_EQUAL(3, drain(s, 0, sent, 3));
+  TEST_ASSERT_EQUAL(7, s.pending());
+  TEST_ASSERT_EQUAL(0, drain(s, 10, sent));
+  drain(s, CascadeScheduler::kBatchGapMs, sent);
+  drain(s, 2 * CascadeScheduler::kBatchGapMs, sent);
+  TEST_ASSERT_EQUAL(10, sent.size());
+  for (size_t i = 0; i < sent.size(); ++i) TEST_ASSERT_EQUAL_UINT8(i, sent[i].peer);
 }
 
 void test_cancel_stops_the_drain() {
@@ -123,7 +154,8 @@ void test_oversize_payload_is_refused() {
   CascadeScheduler s;
   std::string json = "{\"delayMs\":0,\"pad\":\"" +
                      std::string(CascadeScheduler::kMaxPayloadLen, 'x') + "\"}";
-  TEST_ASSERT_FALSE(s.begin(json.data(), json.size(), 0, 0));
+  TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), 0, 0) ==
+                   CascadeScheduler::Begin::Refused);
   TEST_ASSERT_FALSE(s.active());
 }
 
@@ -154,7 +186,8 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_delay_keeps_the_intended_fire_time);
   RUN_TEST(test_every_peer_is_reached_in_bounded_batches);
-  RUN_TEST(test_a_new_cascade_replaces_the_remainder);
+  RUN_TEST(test_cascades_queue_behind_the_drain);
+  RUN_TEST(test_refused_send_is_retried);
   RUN_TEST(test_cancel_stops_the_drain);
   RUN_TEST(test_oversize_payload_is_refused);
   RUN_TEST(test_worst_case_invocation_fits);

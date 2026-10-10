@@ -153,6 +153,11 @@ class MeshLink {
   static void onRecv(const uint8_t* mac, const uint8_t* data, size_t len,
                      int8_t rssi);
 
+  // True while the ESP-NOW driver can take another frame (TX credits left).
+  bool txReady() const {
+    return EspNowLink::s_txCredit.inFlight() < TxCredit::kMaxInFlight;
+  }
+
  private:
   EspNowLink link_;
   Config* config_ = nullptr;

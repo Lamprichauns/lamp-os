@@ -198,11 +198,12 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   // cascade still draining.
   std::string json;
   serializeInvocation(inv, json);
-  if (cascade_.active()) {
-    Serial.printf("[cascade] type=%s replaces a drain with %u peers left\n",
-                  entry.type.c_str(), (unsigned)cascade_.pending());
+  const CascadeScheduler::Begin queued =
+      cascade_.begin(json.data(), json.size(), staggerMs, nowMs);
+  if (queued == CascadeScheduler::Begin::Replaced) {
+    Serial.printf("[cascade] type=%s replaced a waiting cascade\n", entry.type.c_str());
   }
-  if (!cascade_.begin(json.data(), json.size(), staggerMs, nowMs)) {
+  if (queued == CascadeScheduler::Begin::Refused) {
     // Unconditional: an over-cap invocation silently fails to cascade on
     // deployed lamps; this is the only signal.
     Serial.printf("[cascade] ERR payload %uB over %uB cap, dropped type=%s\n",
@@ -228,9 +229,19 @@ void ExpressionManager::tickCascade(uint32_t nowMs) {
     cascade_.cancel();
     return;
   }
+  const uint32_t overflowBefore = cascade_.overflowDrops();
+  // A frame the driver has no room for waits for a later pass rather than
+  // failing in esp_now_send.
   cascade_.tick(nowMs, [this](const uint8_t* mac, const char* payload, size_t len) {
+    if (!meshLink_->txReady()) return false;
     meshLink_->sendCommand(mac, reinterpret_cast<const uint8_t*>(payload), len);
+    return true;
   });
+  if (cascade_.overflowDrops() != overflowBefore) {
+    Serial.printf("[cascade] ERR %u frames dropped: delay rewrite over %uB\n",
+                  (unsigned)(cascade_.overflowDrops() - overflowBefore),
+                  (unsigned)CascadeScheduler::kMaxPayloadLen);
+  }
 }
 
 void ExpressionManager::emitEvent(const ExpressionEntry& entry) {

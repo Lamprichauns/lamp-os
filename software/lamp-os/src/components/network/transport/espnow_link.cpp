@@ -10,6 +10,18 @@
 namespace lamp {
 
 EspNowRecvFn EspNowLink::s_recv = nullptr;
+TxCredit EspNowLink::s_txCredit;
+
+// Submits one frame under a TX credit; a refused submit returns the credit.
+static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_t& err) {
+  if (!EspNowLink::s_txCredit.tryAcquire(millis())) {
+    err = ESP_ERR_ESPNOW_NO_MEM;
+    return false;
+  }
+  err = esp_now_send(mac, data, len);
+  if (err != ESP_OK) EspNowLink::s_txCredit.cancel();
+  return err == ESP_OK;
+}
 
 // ESP-NOW v2 max payload is 1470 B; reject anything outside [0, 1470] so a
 // negative/garbage len from a driver error path can't be cast to a huge size_t.
@@ -34,12 +46,11 @@ static void recvTrampoline(const esp_now_recv_info_t* info, const uint8_t* data,
   EspNowLink::s_recv(info->src_addr, data, static_cast<size_t>(len), rssi);
 }
 
-// TX-completion diagnostic. Fires on the WiFi task after the radio either
-// emits the frame or declines (queue full, driver error, no peer, etc.).
-// Added 2026-06-03 to diagnose cascade reception silence — log the actual
-// PHY result so we can tell whether broadcasts physically left the radio.
+// Fires on the WiFi task once the driver is done with a frame, sent or not;
+// returns its TX credit.
 static void sendTrampoline(const esp_now_send_info_t* /*info*/,
                            esp_now_send_status_t status) {
+  EspNowLink::s_txCredit.complete(millis());
 #ifdef LAMP_DEBUG
   // TX diagnostic — only log failures. We already verified earlier in the
   // 2026-06-04 session that all sends succeed at PHY layer; logging every
@@ -99,16 +110,18 @@ bool EspNowLink::begin(EspNowRecvFn recv) {
 
 bool EspNowLink::broadcast(const uint8_t* data, size_t len) {
   static const uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-  const esp_err_t err = esp_now_send(bcast, data, len);
+  esp_err_t err = ESP_OK;
+  const bool ok = submit(bcast, data, len, err);
 #ifdef LAMP_DEBUG
-  // esp_now_send returning non-ESP_OK means the frame never hits the driver
-  // queue; the send callback never fires. Callers discard this return value.
-  if (err != ESP_OK) {
-    Serial.printf("[espnow.tx] submit FAIL err=%d (0x%x) len=%u\n",
-                  (int)err, (unsigned)err, (unsigned)len);
+  // A refused submit never reaches the driver queue and the send callback
+  // never fires. Callers discard this return value.
+  if (!ok) {
+    Serial.printf("[espnow.tx] submit FAIL err=%d (0x%x) len=%u inflight=%u\n",
+                  (int)err, (unsigned)err, (unsigned)len,
+                  (unsigned)s_txCredit.inFlight());
   }
 #endif
-  return err == ESP_OK;
+  return ok;
 }
 
 // ponytail: single cached peer slot, not an LRU table; one display wisp. Grow to N-slot only if we ever unicast to multiple wisps at once.
@@ -132,7 +145,8 @@ bool EspNowLink::send(const uint8_t mac[6], const uint8_t* data, size_t len) {
     std::memcpy(peerMac_, mac, 6);
     peerSet_ = true;
   }
-  return esp_now_send(mac, data, len) == ESP_OK;
+  esp_err_t err = ESP_OK;
+  return submit(mac, data, len, err);
 }
 
 void EspNowLink::getMac(uint8_t out[6]) {
