@@ -67,6 +67,10 @@ class Expression : public AnimatedBehavior {
    */
   float wispDimScale();
 
+  // The retire fade alone: 1.0 until retire(), then ramping to 0 over
+  // kRetireFadeMs.
+  float retireScale() const;
+
   // Read the shared "opacity" param (clamped 10..100, default 100) into
   // opacityPct_. Call from each subclass configureFromParameters.
   void configureOpacity(const ExpressionParams& parameters);

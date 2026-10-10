@@ -19,6 +19,7 @@
 #include "core/frame_buffer.cpp"
 #include "util/color.cpp"
 #include "expressions/bloom/bloom_expression.cpp"
+#include "expressions/glitchy/glitchy_expression.cpp"
 #include "behaviors/social_echo.cpp"
 #include "config/disposition_store.cpp"
 
@@ -153,7 +154,7 @@ void test_running_peer_transient_fades_out_on_home_entry() {
 
   r.compositor.homeMode = true;
   r.manager.gcTransients();
-  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());  // fading, not cut
+  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());  // still fading
 
   set_mock_millis(10000 + Expression::kRetireFadeMs / 2);
   r.manager.gcTransients();
@@ -238,8 +239,8 @@ void test_manager_ignores_peers_in_home_and_preview() {
   TEST_ASSERT_FALSE(r.manager.ignoresPeers());
 }
 
-// A peer transient fading out after home mode ends no longer holds the
-// sender's place: the same peer's next invocation starts.
+// A peer transient fading out after home mode ends leaves the sender's place
+// free: the same peer's next invocation starts.
 void test_retiring_transient_does_not_coalesce() {
   Rig r;
   TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
@@ -271,6 +272,30 @@ void test_retired_bloom_paints_nothing() {
   TEST_ASSERT_TRUE(r.shade.buffer[0] == Color());
 }
 
+// A retiring glitch hands the background back to the live scene as it fades:
+// the snapshot taken at its trigger no longer holds the surface still.
+void test_retiring_glitch_releases_the_background() {
+  Rig r;
+  GlitchyExpression glitch(&r.shade);
+  glitch.configure({Color(0xFF, 0, 0, 0)}, 60, 900, TARGET_SHADE);
+  glitch.configureFromParameters({{"durationMin", 1000}, {"durationMax", 1000}});
+  r.compositor.addBehavior(&glitch);
+  TEST_ASSERT_TRUE(glitch.trigger());  // snapshot: dark
+  glitch.draw();
+
+  const Color live(0, 0, 0, 0xFF);
+  r.shade.buffer.assign(4, live);
+  glitch.draw();
+  TEST_ASSERT_EQUAL_UINT8(0, r.shade.buffer[0].w);  // running: snapshot holds
+
+  glitch.retire();
+  set_mock_millis(10000 + Expression::kRetireFadeMs / 2);
+  r.shade.buffer.assign(4, live);
+  glitch.draw();
+  TEST_ASSERT_TRUE(r.shade.buffer[0].w > 0x30);
+  TEST_ASSERT_TRUE(r.shade.buffer[0].w < 0xFF);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_peer_invocation_blocked_in_home_social_off);
@@ -286,5 +311,6 @@ int main(int, char**) {
   RUN_TEST(test_echo_books_nothing_at_home_or_in_preview);
   RUN_TEST(test_manager_ignores_peers_in_home_and_preview);
   RUN_TEST(test_retiring_transient_does_not_coalesce);
+  RUN_TEST(test_retiring_glitch_releases_the_background);
   return UNITY_END();
 }

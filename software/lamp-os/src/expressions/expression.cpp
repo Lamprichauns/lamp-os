@@ -73,14 +73,15 @@ bool Expression::shouldAffectBuffer() {
   }
 }
 
+float Expression::retireScale() const {
+  if (!retiring_) return 1.0f;
+  const uint32_t elapsed = millis() - retireStartMs_;
+  return elapsed >= kRetireFadeMs ? 0.0f
+                                  : 1.0f - static_cast<float>(elapsed) / kRetireFadeMs;
+}
+
 float Expression::wispDimScale() {
-  float retireScale = 1.0f;
-  if (retiring_) {
-    const uint32_t elapsed = millis() - retireStartMs_;
-    retireScale = elapsed >= kRetireFadeMs
-                      ? 0.0f
-                      : 1.0f - static_cast<float>(elapsed) / kRetireFadeMs;
-  }
+  const float retireScale = this->retireScale();
   if (!context_ || !context_->compositor ||
       context_->expressionFrameBuffers.size() < 2) {
     return retireScale;
