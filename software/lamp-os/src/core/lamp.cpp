@@ -837,8 +837,8 @@ void lamp::Lamp::setup() {
   // that only one transport (mesh OR BLE) drives an active OTA at a time.
   ble_control::setFirmwareReceiver(&firmwareReceiver);
 
-  // Gossip OTA: the lamp can ALSO originate offers to peers it meets via the
-  // social system. Wire the distributor through the same
+  // Gossip OTA: the lamp can ALSO originate offers to the peers tickOtaOffers
+  // finds on the mesh. Wire the distributor through the same
   // EspNowFirmwareTransport (it emits MSG_FW_OFFER/CHUNK/DONE and listens for
   // ACCEPT/REQ/RESULT via mesh_link's dispatch ladder).
   lamp::firmwareDistributor.begin(&meshFwTransport);
