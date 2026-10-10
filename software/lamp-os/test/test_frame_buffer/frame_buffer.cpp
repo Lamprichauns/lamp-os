@@ -223,14 +223,15 @@ void test_static_pixels_settle_to_rounded_level_and_dedup() {
 // hold and after it; full stays exact while dithering and once settled.
 void test_zero_stays_off_and_full_stays_exact() {
   FrameBuffer fade;
-  fade.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
+  fade.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 2}});
   for (int v = 60; v >= -40; v--) {
-    fade.buffer = {Color(v > 0 ? v : 0, 0, 0, 0)};
+    // The second pixel keeps changing, so every frame pushes the settled zero.
+    fade.buffer = {Color(v > 0 ? v : 0, 0, 0, 0), Color(49, 0, 0, v & 1)};
     neo0.reset();
     fade.flush();
-    if (v <= 0 && !neo0.pixelCalls.empty()) TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c);
+    TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
+    if (v <= 0) TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c);
   }
-  TEST_ASSERT_TRUE(neo0.pixelCalls.empty());
 
   FrameBuffer full;
   full.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
