@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <array>
+#include <new>
+#include <string>
 
 #include "util/bd_addr.hpp"
 #include "util/heap_guard.hpp"
@@ -174,18 +176,28 @@ void DispositionStore::writeJsonLocked_(char* out) const {
 }
 
 std::string DispositionStore::asJson() const {
-  // Sized from the entry count under the lock, so a concurrent set() cannot
-  // outgrow it, and allocated only when the heap can spare it (this runs on
-  // the NimBLE host task).
+  // Sized from the entry count, allocated outside the lock so a failed
+  // allocation never leaves it held, and only when the heap can spare it
+  // (this runs on the NimBLE host task); written once the count is seen
+  // unchanged under the lock.
   std::string out;
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  const size_t len = jsonLen(entries_.size());
-  if (heapCanSpare(len + 1)) {
-    out.resize(len);
-    writeJsonLocked_(out.data());
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+    const size_t len = jsonLen(entries_.size());
+    xSemaphoreGive(mutex_);
+    if (!heapCanSpare(len + 1)) return std::string();
+    try {
+      out.resize(len);
+    } catch (const std::bad_alloc&) {
+      return std::string();
+    }
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+    const bool unchanged = jsonLen(entries_.size()) == len;
+    if (unchanged) writeJsonLocked_(out.data());
+    xSemaphoreGive(mutex_);
+    if (unchanged) return out;
   }
-  xSemaphoreGive(mutex_);
-  return out;
+  return std::string();
 }
 
 bool DispositionStore::setFromJson(const char* json, size_t len,

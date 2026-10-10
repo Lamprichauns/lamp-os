@@ -6,6 +6,9 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <new>
 
 #include "config/config_store.hpp"
 #include "config/disposition_store.hpp"
@@ -14,6 +17,17 @@
 // Native tests don't build src/, so compile the real implementation in.
 #include "../../src/config/disposition_store.cpp"
 #include "../../src/util/heap_guard.cpp"
+
+// Allocations fail while set, the way a fragmented heap refuses one.
+static bool g_failAllocations = false;
+void* operator new(size_t size) {
+  if (g_failAllocations) throw std::bad_alloc();
+  void* p = std::malloc(size ? size : 1);
+  if (!p) throw std::bad_alloc();
+  return p;
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete(void* p, size_t) noexcept { std::free(p); }
 
 using namespace lamp;
 
@@ -291,6 +305,27 @@ void test_empty_store_serializes_empty_object() {
   TEST_ASSERT_EQUAL_STRING("{}", ds.asJson().c_str());
 }
 
+// A failed allocation for the JSON leaves no lock held: the next caller on
+// either core can still take it.
+void test_a_failed_json_allocation_gives_the_lock_back() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const char* entries = "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}";
+  TEST_ASSERT_TRUE(ds.setFromJson(entries, std::strlen(entries), 0));
+  const int heldBefore = g_semaphoresHeld;
+  std::string json = "x";
+  g_failAllocations = true;
+  try {
+    json = ds.asJson();
+  } catch (const std::bad_alloc&) {
+  }
+  g_failAllocations = false;
+  TEST_ASSERT_EQUAL(heldBefore, g_semaphoresHeld);
+  TEST_ASSERT_TRUE(json.empty());
+  TEST_ASSERT_EQUAL_STRING(entries, ds.asJson().c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_unknown_peer_returns_default);
@@ -311,5 +346,6 @@ int main(int, char**) {
   RUN_TEST(test_corrupt_or_empty_json_keeps_the_blob);
   RUN_TEST(test_full_store_matches_arduinojson_bytes);
   RUN_TEST(test_empty_store_serializes_empty_object);
+  RUN_TEST(test_a_failed_json_allocation_gives_the_lock_back);
   return UNITY_END();
 }
