@@ -89,10 +89,21 @@ void test_mirror_replaces_appends_and_refuses_when_full() {
   TEST_ASSERT_EQUAL(kMaxExpressions, s.expressions.size());
 }
 
+// The lamp's own Test or greeting sends its wave even when it cannot play
+// here; a peer's invocation never re-sends, played or not.
+void test_a_local_broadcast_cascades_even_when_refused_here() {
+  TEST_ASSERT_TRUE(cascadesFrom(true, false, TransientSource::Local));
+  TEST_ASSERT_TRUE(cascadesFrom(true, true, TransientSource::Local));
+  TEST_ASSERT_TRUE(cascadesFrom(true, true, TransientSource::Remote));
+  TEST_ASSERT_FALSE(cascadesFrom(true, false, TransientSource::Remote));
+  TEST_ASSERT_FALSE(cascadesFrom(false, true, TransientSource::Local));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cap_bounds_every_source);
   RUN_TEST(test_remote_cannot_starve_local);
+  RUN_TEST(test_a_local_broadcast_cascades_even_when_refused_here);
   RUN_TEST(test_heap_gate_refuses_any_source);
   RUN_TEST(test_admission_counts_live_sources);
   RUN_TEST(test_lookup_finds_only_the_matching_entry);

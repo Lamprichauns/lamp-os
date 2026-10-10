@@ -31,6 +31,19 @@ void test_a_send_without_a_credit_is_counted() {
   TEST_ASSERT_EQUAL_UINT32(2, c.refused());
 }
 
+// Every credit lost and nothing sent since: a caller that asks available()
+// before it submits (the cascade drain) gets the reset, rather than waiting
+// on a send that never comes.
+void test_a_full_leak_on_a_quiet_link_frees_up_for_a_waiting_caller() {
+  TxCredit c;
+  for (uint16_t i = 0; i < TxCredit::kMaxInFlight; ++i) TEST_ASSERT_TRUE(c.tryAcquire(100));
+  TEST_ASSERT_FALSE(c.available(100 + TxCredit::kStallMs - 1));
+  TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
+  TEST_ASSERT_TRUE(c.available(100 + TxCredit::kStallMs));
+  TEST_ASSERT_EQUAL_UINT32(1, c.stalls());
+  TEST_ASSERT_EQUAL_UINT16(0, c.inFlight());
+}
+
 void test_refused_submit_returns_its_credit() {
   TxCredit c;
   TEST_ASSERT_TRUE(c.tryAcquire(0));
@@ -116,6 +129,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_bound_holds_until_a_frame_completes);
   RUN_TEST(test_refused_submit_returns_its_credit);
+  RUN_TEST(test_a_full_leak_on_a_quiet_link_frees_up_for_a_waiting_caller);
   RUN_TEST(test_a_send_without_a_credit_is_counted);
   RUN_TEST(test_lost_completions_reset_after_the_stall_window);
   RUN_TEST(test_extra_completions_never_underflow);
