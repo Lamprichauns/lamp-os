@@ -95,6 +95,29 @@ void test_timestamp_before_ramp_start_reads_as_start() {
   TEST_ASSERT_EQUAL_FLOAT(0.5f, d.at(0.5f, true, 990));
 }
 
+// Leaving home starts a 1 s ramp from 1.0 to the engine's 0.5; a crowd commit
+// to 0.48 at 300 ms keeps the remaining 700 ms instead of landing in 80.
+void test_commit_during_home_ramp_keeps_its_remaining_time() {
+  CrowdDim d;
+  d.at(0.5f, true, 0);
+  d.at(0.5f, false, 10000);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.85f, d.at(0.5f, false, 10300));
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.85f, d.at(0.48f, false, 10300));
+  // The 1 s curve to 0.5 reads 0.675 at 650 ms; the commit stays near it.
+  TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.675f, d.at(0.48f, false, 10650));
+  TEST_ASSERT_EQUAL_FLOAT(0.48f, d.at(0.48f, false, 11000));
+}
+
+// Once the home ramp has landed, a commit takes the ordinary 80 ms.
+void test_commit_after_home_ramp_takes_80ms() {
+  CrowdDim d;
+  d.at(0.5f, true, 0);
+  d.at(0.5f, false, 10000);
+  d.at(0.5f, false, 11000);
+  d.at(0.48f, false, 12000);
+  TEST_ASSERT_EQUAL_FLOAT(0.48f, d.at(0.48f, false, 12000 + kCrowdDimFadeMs));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_ordinary_commit_ramps_over_80ms);
@@ -104,5 +127,7 @@ int main(int, char**) {
   RUN_TEST(test_fading_covers_the_landing_pass);
   RUN_TEST(test_settled_ramp_survives_millis_wrap);
   RUN_TEST(test_timestamp_before_ramp_start_reads_as_start);
+  RUN_TEST(test_commit_during_home_ramp_keeps_its_remaining_time);
+  RUN_TEST(test_commit_after_home_ramp_takes_80ms);
   return UNITY_END();
 }
