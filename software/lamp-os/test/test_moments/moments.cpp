@@ -1,0 +1,1090 @@
+// Native pin for Moments (docs/dev/moments.md): the pure math, the director
+// against a fake host, and multi-lamp simulations over a fake mesh bus.
+
+#include <unity.h>
+
+#include <ArduinoJson.h>
+
+#include <cstdint>
+#include <cstring>
+#include <deque>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "core/moment_math.cpp"
+#include "core/moments.cpp"
+#include "expressions/expression_invocation.cpp"
+#include "expressions/expression_observer.cpp"
+#include "util/color.cpp"
+
+using namespace lamp;
+
+namespace {
+
+constexpr uint32_t kMin = 60000;
+
+void macOf(uint8_t n, uint8_t out[6]) {
+  const uint8_t m[6] = {0x24, 0x0A, 0xC4, 0x10, 0x20, n};
+  std::memcpy(out, m, 6);
+}
+
+uint64_t macKey(const uint8_t m[6]) {
+  uint64_t k = 0;
+  for (int i = 0; i < 6; ++i) k = (k << 8) | m[i];
+  return k;
+}
+
+NearbyCopy peerOf(uint8_t n, int8_t rssi, uint32_t seenMs) {
+  NearbyCopy p;
+  std::snprintf(p.name, sizeof(p.name), "lamp%u", static_cast<unsigned>(n));
+  macOf(n, p.mac);
+  p.hasMac = true;
+  p.lastRssi = rssi;
+  p.lastSeenNearMs = seenMs;
+  return p;
+}
+
+struct Render {
+  ExpressionInvocation inv;
+  uint8_t src[6];
+  bool broadcast;
+  TransientSource source;
+  uint32_t atMs;
+};
+
+struct Bus;
+
+struct FakeHost : MomentHost {
+  std::vector<NearbyCopy> peers;
+  std::map<uint64_t, uint8_t> dispositions;
+  SocialMode mode = SocialMode::Ambivert;
+  const char* suppress = nullptr;
+  bool greeting = false;
+  bool sendable = true;
+  std::vector<std::string> sent;
+  std::vector<Render> renders;
+  uint16_t shadePx = 40;
+  std::vector<Color> base{Color(255, 0, 0, 0)};
+  std::vector<Color> shade{Color(0, 0, 255, 0)};
+  std::vector<std::string> logs;
+  uint32_t nowMs = 0;
+  Bus* bus = nullptr;
+  uint8_t self[6] = {0};
+
+  const std::vector<NearbyCopy>& nearbyPeers() override { return peers; }
+  uint8_t disposition(const uint8_t mac[6]) override {
+    auto it = dispositions.find(macKey(mac));
+    return it == dispositions.end() ? kDispositionNeutral : it->second;
+  }
+  SocialMode socialMode() override { return mode; }
+  const char* suppressor() override { return suppress; }
+  bool greetingActive() override { return greeting; }
+  bool canSend() override { return sendable; }
+  void send(const char* payload, size_t len) override;
+  bool trigger(const ExpressionInvocation& inv, const uint8_t src[6], bool broadcast,
+               TransientSource source) override {
+    Render r{inv, {}, broadcast, source, nowMs};
+    std::memcpy(r.src, src, 6);
+    renders.push_back(r);
+    return true;
+  }
+  uint16_t shadePixels() override { return shadePx; }
+  const std::vector<Color>& surfaceColors(bool isBase) override { return isBase ? base : shade; }
+  void log(const char* line) override { logs.emplace_back(line); }
+
+  void like(uint8_t n, uint8_t d) {
+    uint8_t m[6];
+    macOf(n, m);
+    dispositions[macKey(m)] = d;
+  }
+  size_t rendersOf(const char* type) const {
+    size_t n = 0;
+    for (const Render& r : renders) n += r.inv.type == type;
+    return n;
+  }
+};
+
+// Broadcast mesh: every frame reaches every other lamp after `latencyMs`.
+struct Bus {
+  struct InFlight {
+    uint32_t atMs;
+    size_t from;
+    std::string payload;
+  };
+  uint32_t latencyMs = 30;
+  std::vector<FakeHost*> hosts;
+  std::vector<MomentDirector*> directors;
+  std::deque<InFlight> flight;
+  std::vector<size_t> sentBy;
+
+  void post(FakeHost* h, const std::string& payload) {
+    for (size_t i = 0; i < hosts.size(); ++i) {
+      if (hosts[i] == h) {
+        flight.push_back({h->nowMs + latencyMs, i, payload});
+        sentBy.push_back(i);
+      }
+    }
+  }
+  void deliver(uint32_t nowMs) {
+    while (!flight.empty() && timeReached(nowMs, flight.front().atMs)) {
+      InFlight f = flight.front();
+      flight.pop_front();
+      ExpressionObserverRegistry none;
+      for (size_t i = 0; i < directors.size(); ++i) {
+        if (i == f.from) continue;
+        hosts[i]->nowMs = nowMs;
+        deliverEvent(reinterpret_cast<const uint8_t*>(f.payload.data()), f.payload.size(),
+                     hosts[f.from]->self, nowMs, *directors[i], none);
+      }
+    }
+  }
+};
+
+void FakeHost::send(const char* payload, size_t len) {
+  sent.emplace_back(payload, len);
+  if (bus) bus->post(this, sent.back());
+}
+
+struct Rig {
+  FakeHost host;
+  MomentDirector director;
+  uint8_t self[6];
+  uint32_t seed;
+
+  explicit Rig(uint8_t n = 1, uint32_t rngSeed = 7, uint32_t nowMs = 0) : seed(rngSeed) {
+    macOf(n, self);
+    std::memcpy(host.self, self, 6);
+    host.nowMs = nowMs;
+    director.begin(&host, self, rngSeed, nowMs);
+  }
+  void run(uint32_t fromMs, uint32_t toMs, uint32_t stepMs = 10) {
+    for (uint32_t t = fromMs; t <= toMs; t += stepMs) {
+      host.nowMs = t;
+      director.tick(t);
+    }
+  }
+  void frame(const uint8_t src[6], const std::string& payload, uint32_t nowMs) {
+    host.nowMs = nowMs;
+    ExpressionObserverRegistry none;
+    deliverEvent(reinterpret_cast<const uint8_t*>(payload.data()), payload.size(), src, nowMs,
+                 director, none);
+  }
+};
+
+std::string encode(const MomentFrame& f) {
+  char buf[256];
+  const size_t n = encodeMomentFrame(f, buf, sizeof(buf));
+  return std::string(buf, n);
+}
+
+std::string firefliesStart(uint32_t seed, uint16_t age = 0) {
+  MomentFrame f;
+  f.kind = MomentKind::Fireflies;
+  f.seed = seed;
+  f.ageMs = age;
+  return encode(f);
+}
+
+std::string whisperTo(const uint8_t to[6], uint32_t seed, std::initializer_list<uint8_t> visited) {
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = seed;
+  std::memcpy(f.to, to, 6);
+  for (uint8_t n : visited) macOf(n, f.visited[f.hop++]);
+  return encode(f);
+}
+
+void addLikedPeers(Rig& r, uint32_t nowMs) {
+  for (uint8_t n = 10; n < 13; ++n) {
+    r.host.like(n, kDispositionFond);
+    r.host.peers.push_back(peerOf(n, -60, nowMs));
+  }
+}
+
+// Three liked peers present from boot, so the still clock runs from t=0.
+void readyForFireflies(Rig& r) {
+  addLikedPeers(r, 0);
+  r.director.begin(&r.host, r.self, r.seed, 0);
+}
+
+}  // namespace
+
+void setUp() {}
+void tearDown() {}
+
+// --- 1. pacing ---------------------------------------------------------------
+
+void test_wait_lies_in_the_range_times_mode() {
+  FastRng rng(99);
+  const SocialMode modes[] = {SocialMode::Introvert, SocialMode::Ambivert, SocialMode::Extrovert};
+  for (size_t k = 0; k < kMomentKindCount; ++k) {
+    const MomentKind kind = static_cast<MomentKind>(k + 1);
+    const MomentPacing& p = momentPacing(kind);
+    for (SocialMode m : modes) {
+      const uint64_t pct = momentModePercent(m);
+      for (int i = 0; i < 500; ++i) {
+        const uint64_t w = momentWaitMs(kind, 0, m, rng);
+        TEST_ASSERT_TRUE(w >= p.loMin * kMin * pct / 100);
+        TEST_ASSERT_TRUE(w <= p.hiMin * kMin * pct / 100);
+      }
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT32(150, momentModePercent(SocialMode::Introvert));
+  TEST_ASSERT_EQUAL_UINT32(100, momentModePercent(SocialMode::Ambivert));
+  TEST_ASSERT_EQUAL_UINT32(70, momentModePercent(SocialMode::Extrovert));
+}
+
+void test_growth_shifts_both_ends_and_stops_at_the_cap() {
+  TEST_ASSERT_EQUAL_UINT16(20, momentPacing(MomentKind::Fireflies).loMin);
+  TEST_ASSERT_EQUAL_UINT16(60, momentPacing(MomentKind::Fireflies).hiMin);
+  TEST_ASSERT_EQUAL_UINT16(30, momentPacing(MomentKind::Fireflies).stepMin);
+  TEST_ASSERT_EQUAL_UINT16(8, momentPacing(MomentKind::Whisper).loMin);
+  TEST_ASSERT_EQUAL_UINT16(10, momentPacing(MomentKind::Whisper).stepMin);
+  FastRng rng(5);
+  for (int i = 0; i < 300; ++i) {
+    const uint32_t w = momentWaitMs(MomentKind::Fireflies, 6, SocialMode::Ambivert, rng);
+    TEST_ASSERT_TRUE(w >= 200 * kMin && w <= 240 * kMin);
+    const uint32_t capped = momentWaitMs(MomentKind::Fireflies, 9, SocialMode::Ambivert, rng);
+    TEST_ASSERT_TRUE(capped >= 200 * kMin && capped <= 240 * kMin);
+    const uint32_t wh = momentWaitMs(MomentKind::Whisper, 2, SocialMode::Ambivert, rng);
+    TEST_ASSERT_TRUE(wh >= 28 * kMin && wh <= 40 * kMin);
+  }
+  uint8_t g = 0;
+  for (int i = 0; i < 10; ++i) g = momentGrow(MomentKind::Fireflies, g);
+  TEST_ASSERT_EQUAL_UINT8(6, g);
+}
+
+void test_participation_grows_and_rerolls_from_now() {
+  Rig r;
+  TEST_ASSERT_EQUAL_UINT8(0, r.director.growth(MomentKind::Whisper));
+  TEST_ASSERT_TRUE(r.director.force(MomentKind::Whisper, 11, 1000));
+  TEST_ASSERT_EQUAL_UINT8(1, r.director.growth(MomentKind::Whisper));
+  TEST_ASSERT_FALSE(r.director.eligible(MomentKind::Whisper, 1000 + 18 * kMin - 1));
+  TEST_ASSERT_TRUE(r.director.eligible(MomentKind::Whisper, 1000 + 30 * kMin));
+}
+
+void test_state_resets_on_begin() {
+  Rig r;
+  r.director.force(MomentKind::Whisper, 11, 1000);
+  r.director.begin(&r.host, r.self, 3, 2000);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT8(0, r.director.growth(MomentKind::Whisper));
+  TEST_ASSERT_FALSE(r.director.coolingDown(MomentKind::Whisper, 2000));
+  TEST_ASSERT_FALSE(r.director.eligible(MomentKind::Fireflies, 2000));
+}
+
+void test_mode_change_does_not_reroll() {
+  Rig r(1, 42, 0);
+  uint32_t at = 0;
+  while (!r.director.eligible(MomentKind::Fireflies, at)) at += 1000;
+  r.host.mode = SocialMode::Introvert;
+  r.run(0, at - 1000, 1000);
+  TEST_ASSERT_FALSE(r.director.eligible(MomentKind::Fireflies, at - 1000));
+  TEST_ASSERT_TRUE(r.director.eligible(MomentKind::Fireflies, at));
+}
+
+// --- 2. eligibility and cooldown --------------------------------------------
+
+void test_hearing_a_frame_sets_the_crowd_cooldown_with_max() {
+  Rig r;
+  uint8_t other[6];
+  macOf(50, other);
+  r.host.like(50, 1);  // Salty: hears but never joins
+  r.frame(other, firefliesStart(5), 10 * kMin);
+  TEST_ASSERT_TRUE(r.director.coolingDown(MomentKind::Fireflies, 54 * kMin));
+  TEST_ASSERT_FALSE(r.director.coolingDown(MomentKind::Whisper, 10 * kMin));
+  // A frame stamped earlier never shortens the window.
+  r.frame(other, firefliesStart(6), 5 * kMin);
+  TEST_ASSERT_TRUE(r.director.coolingDown(MomentKind::Fireflies, 54 * kMin));
+  TEST_ASSERT_FALSE(r.director.coolingDown(MomentKind::Fireflies, 55 * kMin + 1));
+}
+
+void test_cooldown_blocks_initiation_but_not_joining() {
+  Rig r(1, 9, 0);
+  readyForFireflies(r);
+  uint8_t far[6];
+  macOf(60, far);
+  r.host.like(60, 1);
+  const uint32_t t = 100 * kMin;
+  r.frame(far, firefliesStart(1), t);  // heard, refused: cooling now
+  TEST_ASSERT_FALSE(r.director.active());
+  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = t;
+  r.run(t, t + 120000, 100);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_TRUE(r.host.sent.empty());
+
+  uint8_t friendly[6];
+  macOf(61, friendly);
+  r.host.like(61, kDispositionFond);
+  r.frame(friendly, firefliesStart(2), t + 130000);
+  TEST_ASSERT_TRUE(r.director.active());
+  TEST_ASSERT_TRUE(r.director.role() == MomentDirector::Role::Joiner);
+}
+
+void test_cooldown_does_not_block_accepting_a_whisper() {
+  Rig r;
+  uint8_t sender[6];
+  macOf(70, sender);
+  r.host.like(70, kDispositionFond);
+  uint8_t bystander[6];
+  macOf(71, bystander);
+  r.frame(sender, whisperTo(bystander, 3, {70}), 1000);  // overheard: cooling
+  TEST_ASSERT_TRUE(r.director.coolingDown(MomentKind::Whisper, 1000));
+  TEST_ASSERT_FALSE(r.director.active());
+  r.frame(sender, whisperTo(r.self, 4, {70}), 2000);
+  TEST_ASSERT_TRUE(r.director.active());
+  TEST_ASSERT_TRUE(r.director.role() == MomentDirector::Role::Accepter);
+}
+
+void test_initiates_after_eligibility_and_backoff() {
+  Rig r(1, 9, 0);
+  readyForFireflies(r);
+  const uint32_t t = 100 * kMin;
+  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = t;
+  r.host.greeting = true;
+  r.run(t, t + 100000, 100);
+  TEST_ASSERT_FALSE(r.director.active());
+  r.host.greeting = false;
+  r.run(t + 100000, t + 200000, 100);
+  TEST_ASSERT_TRUE(r.director.active());
+  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Fireflies);
+  TEST_ASSERT_EQUAL_UINT32(2, r.host.sent.size());
+}
+
+// --- 3. herd ----------------------------------------------------------------
+
+namespace {
+
+struct Herd {
+  std::vector<std::unique_ptr<Rig>> rigs;
+  Bus bus;
+};
+
+size_t runHerd(uint32_t runSeed) {
+  Herd herd;
+  constexpr size_t kLamps = 50;
+  for (size_t i = 0; i < kLamps; ++i) {
+    auto rig = std::make_unique<Rig>(static_cast<uint8_t>(i), runSeed * 7919u + i * 104729u + 1, 0);
+    readyForFireflies(*rig);
+    for (size_t j = 0; j < kLamps; ++j) rig->host.like(static_cast<uint8_t>(j), kDispositionFond);
+    rig->host.bus = &herd.bus;
+    herd.bus.hosts.push_back(&rig->host);
+    herd.bus.directors.push_back(&rig->director);
+    herd.rigs.push_back(std::move(rig));
+  }
+  // Every lamp is eligible and its liked set stable by now.
+  const uint32_t start = 100 * kMin;
+  for (uint32_t t = start;; t += 5) {
+    herd.bus.deliver(t);
+    bool armed = false;
+    for (auto& rig : herd.rigs) {
+      for (NearbyCopy& p : rig->host.peers) p.lastSeenNearMs = t;
+      rig->host.nowMs = t;
+      rig->director.tick(t);
+      armed = armed || rig->director.backoffArmed(MomentKind::Fireflies);
+    }
+    if (t > start + 1000 && !armed && herd.bus.flight.empty()) break;
+    TEST_ASSERT_TRUE(t < start + 200000);
+  }
+  std::vector<size_t> initiators;
+  for (size_t i = 0; i < herd.rigs.size(); ++i) {
+    for (const std::string& line : herd.rigs[i]->host.logs) {
+      if (line.rfind("[moment] start k=1", 0) == 0) initiators.push_back(i);
+    }
+  }
+  return initiators.size();
+}
+
+}  // namespace
+
+void test_herd_starts_one_fireflies_in_a_room_of_fifty() {
+  constexpr int kRuns = 1000;
+  int exactlyOne = 0;
+  size_t worst = 0;
+  for (int run = 0; run < kRuns; ++run) {
+    const size_t n = runHerd(static_cast<uint32_t>(run + 1));
+    exactlyOne += n == 1;
+    worst = n > worst ? n : worst;
+  }
+  char summary[64];
+  std::snprintf(summary, sizeof(summary), "single starts %d/%d, worst %u", exactlyOne, kRuns,
+                static_cast<unsigned>(worst));
+  TEST_MESSAGE(summary);
+  TEST_ASSERT_TRUE_MESSAGE(exactlyOne * 100 >= kRuns * 95, "fewer than 95% single starts");
+  TEST_ASSERT_TRUE_MESSAGE(worst <= 2, "more than two lamps started one Fireflies");
+}
+
+// --- 4. fireflies math ------------------------------------------------------
+
+void test_fireflies_period_and_first_offset_ranges() {
+  uint8_t mac[6];
+  for (uint32_t s = 0; s < 5000; s += 7) {
+    const uint32_t t = firefliesPeriodMs(s * 2654435761u);
+    TEST_ASSERT_TRUE(t >= 1000 && t < 1600);
+    macOf(static_cast<uint8_t>(s), mac);
+    const int32_t d = firefliesFirstOffset(s * 2654435761u, mac);
+    TEST_ASSERT_TRUE(d >= -static_cast<int32_t>(t / 2));
+    TEST_ASSERT_TRUE(d < static_cast<int32_t>(t - t / 2));
+  }
+}
+
+void test_fireflies_offset_shrinks_and_reaches_zero_by_84() {
+  for (int32_t d1 : {799, -800, 512, -37, 11, -10, 0}) {
+    int32_t d = d1;
+    for (uint16_t k = 1; k <= kFirefliesBlinks; ++k) {
+      const int32_t next = firefliesNextOffset(d, k);
+      TEST_ASSERT_TRUE(std::abs(next) <= std::abs(d));
+      if (k < 9) TEST_ASSERT_EQUAL_INT32(d, next);
+      d = next;
+      if (k + 1 >= 84) TEST_ASSERT_EQUAL_INT32_MESSAGE(0, d, "not converged by blink 84");
+    }
+  }
+}
+
+void test_fireflies_two_lamps_land_on_one_beat() {
+  uint8_t a[6], b[6];
+  macOf(1, a);
+  macOf(2, b);
+  const uint32_t seed = 3405691582u;
+  const uint32_t t = firefliesPeriodMs(seed);
+  int32_t da = firefliesFirstOffset(seed, a);
+  int32_t db = firefliesFirstOffset(seed, b);
+  TEST_ASSERT_NOT_EQUAL(da, db);
+  for (uint16_t k = 1; k < kFirefliesBlinks; ++k) {
+    da = firefliesNextOffset(da, k);
+    db = firefliesNextOffset(db, k);
+  }
+  TEST_ASSERT_EQUAL_UINT32(firefliesBlinkMs(0, t, kFirefliesBlinks, da),
+                           firefliesBlinkMs(0, t, kFirefliesBlinks, db));
+}
+
+void test_fireflies_envelope_endpoints() {
+  TEST_ASSERT_EQUAL_UINT8(10, firefliesOpacity(1));
+  TEST_ASSERT_EQUAL_UINT8(25, firefliesOpacity(6));
+  TEST_ASSERT_EQUAL_UINT8(25, firefliesOpacity(7));
+  TEST_ASSERT_EQUAL_UINT8(25, firefliesOpacity(110));
+  TEST_ASSERT_TRUE(firefliesOpacity(111) < 25);
+  TEST_ASSERT_EQUAL_UINT8(10, firefliesOpacity(120));
+}
+
+void test_fireflies_timeline_is_deterministic() {
+  Rig a(3, 1, 0), b(3, 2, 0);
+  a.director.force(MomentKind::Fireflies, 777, 1000);
+  b.director.force(MomentKind::Fireflies, 777, 1000);
+  a.run(1000, 1000 + 200000, 5);
+  b.run(1000, 1000 + 200000, 5);
+  TEST_ASSERT_EQUAL_UINT32(kFirefliesBlinks, a.host.rendersOf("flicker"));
+  TEST_ASSERT_EQUAL_UINT32(a.host.renders.size(), b.host.renders.size());
+  for (size_t i = 0; i < a.host.renders.size(); ++i) {
+    TEST_ASSERT_EQUAL_UINT32(a.host.renders[i].atMs, b.host.renders[i].atMs);
+  }
+  TEST_ASSERT_FALSE(a.director.active());
+}
+
+void test_fireflies_late_joiner_recovers_t0_from_age() {
+  Rig early(4, 1, 0), late(5, 2, 0);
+  uint8_t origin[6];
+  macOf(9, origin);
+  early.host.like(9, kDispositionFond);
+  late.host.like(9, kDispositionFond);
+  early.frame(origin, firefliesStart(1234, 0), 10000);
+  late.frame(origin, firefliesStart(1234, 1500), 11500);
+  TEST_ASSERT_TRUE(early.director.active());
+  TEST_ASSERT_TRUE(late.director.active());
+  early.run(10000, 400000, 5);
+  late.run(11500, 400000, 5);
+  // Both converge, so their last blinks fall within one 5 ms tick.
+  const uint32_t ea = early.host.renders.back().atMs;
+  const uint32_t la = late.host.renders.back().atMs;
+  TEST_ASSERT_UINT32_WITHIN(5, ea, la);
+}
+
+// --- 5. fireflies join gates ------------------------------------------------
+
+void test_fireflies_join_gates() {
+  uint8_t origin[6];
+  macOf(9, origin);
+  for (uint8_t d = 1; d <= 2; ++d) {
+    Rig r;
+    r.host.like(9, d);
+    r.frame(origin, firefliesStart(5), 1000);
+    TEST_ASSERT_FALSE(r.director.active());
+  }
+  {
+    Rig r;
+    r.frame(origin, firefliesStart(5), 1000);  // unknown peer reads as Neutral
+    TEST_ASSERT_TRUE(r.director.active());
+  }
+  const char* reasons[] = {"ota", "wisp", "preview", "home"};
+  for (const char* why : reasons) {
+    Rig r;
+    r.host.suppress = why;
+    r.frame(origin, firefliesStart(5), 1000);
+    TEST_ASSERT_FALSE_MESSAGE(r.director.active(), why);
+  }
+  {
+    Rig r;
+    r.director.force(MomentKind::Whisper, 3, 500);
+    r.frame(origin, firefliesStart(5), 1000);
+    TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Whisper);
+  }
+}
+
+void test_fireflies_resent_copy_is_ignored() {
+  Rig r;
+  uint8_t origin[6];
+  macOf(9, origin);
+  r.frame(origin, firefliesStart(5), 1000);
+  const uint8_t g = r.director.growth(MomentKind::Fireflies);
+  r.run(1000, 200000, 5);
+  TEST_ASSERT_FALSE(r.director.active());
+  r.frame(origin, firefliesStart(5, 200), 200100);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT8(g, r.director.growth(MomentKind::Fireflies));
+}
+
+// --- 6. stability -----------------------------------------------------------
+
+void test_liked_fingerprint_tracks_the_liked_set_only() {
+  std::map<uint64_t, uint8_t> d;
+  auto disp = [&](const uint8_t* m) {
+    auto it = d.find(macKey(m));
+    return it == d.end() ? kDispositionNeutral : it->second;
+  };
+  std::vector<NearbyCopy> peers = {peerOf(1, -60, 0), peerOf(2, -60, 0)};
+  d[macKey(peers[0].mac)] = kDispositionFond;
+  const uint32_t one = likedFingerprint(peers, disp);
+  peers.push_back(peerOf(3, -60, 0));  // a Neutral arrival
+  TEST_ASSERT_EQUAL_UINT32(one, likedFingerprint(peers, disp));
+  d[macKey(peers[2].mac)] = kDispositionSmitten;  // disposition change
+  const uint32_t two = likedFingerprint(peers, disp);
+  TEST_ASSERT_NOT_EQUAL(one, two);
+  peers.push_back(peerOf(4, -60, 0));
+  d[macKey(peers[3].mac)] = kDispositionFond;  // a liked arrival
+  const uint32_t three = likedFingerprint(peers, disp);
+  TEST_ASSERT_NOT_EQUAL(two, three);
+  peers.pop_back();  // departure
+  TEST_ASSERT_EQUAL_UINT32(two, likedFingerprint(peers, disp));
+}
+
+void test_ten_still_minutes_make_fireflies_possible() {
+  Rig r(1, 9, 0);
+  r.run(0, 100 * kMin, 1000);  // eligible, no liked peers yet
+  TEST_ASSERT_FALSE(r.director.active());
+  const uint32_t t = 100 * kMin;
+  addLikedPeers(r, t);
+  r.run(t, t + 9 * kMin, 1000);
+  TEST_ASSERT_FALSE(r.director.backoffArmed(MomentKind::Fireflies));
+  TEST_ASSERT_FALSE(r.director.active());
+  // A Neutral peer coming and going does not reset the clock.
+  r.host.peers.push_back(peerOf(40, -60, t));
+  r.run(t + 9 * kMin, t + 10 * kMin + 2000, 1000);
+  TEST_ASSERT_TRUE(r.director.backoffArmed(MomentKind::Fireflies) || r.director.active());
+}
+
+void test_a_liked_departure_resets_the_still_clock() {
+  Rig r(1, 9, 0);
+  const uint32_t t = 100 * kMin;
+  r.run(0, t, 1000);
+  addLikedPeers(r, t);
+  r.host.peers.push_back(peerOf(13, -60, t));
+  r.host.like(13, kDispositionFond);
+  r.run(t, t + 9 * kMin, 1000);
+  r.host.peers.pop_back();
+  r.run(t + 9 * kMin, t + 11 * kMin, 1000);
+  TEST_ASSERT_FALSE(r.director.backoffArmed(MomentKind::Fireflies));
+  TEST_ASSERT_FALSE(r.director.active());
+}
+
+// --- 7. whisper -------------------------------------------------------------
+
+void test_next_hop_picks_the_strongest_liked_fresh_unvisited() {
+  std::map<uint64_t, uint8_t> d;
+  auto disp = [&](const uint8_t* m) {
+    auto it = d.find(macKey(m));
+    return it == d.end() ? kDispositionNeutral : it->second;
+  };
+  const uint32_t now = 100000;
+  std::vector<NearbyCopy> peers = {
+      peerOf(1, -40, now),                     // Neutral: not liked
+      peerOf(2, -50, now - 20000),             // stale
+      peerOf(3, -85, now),                     // below the floor
+      peerOf(4, -55, now),                     // visited
+      peerOf(5, -60, now),                     // the pick
+      peerOf(6, -70, now),
+  };
+  for (uint8_t n = 2; n <= 6; ++n) d[macKey(peers[n - 1].mac)] = kDispositionFond;
+  uint8_t self[6], visited[1][6], out[6];
+  macOf(99, self);
+  macOf(4, visited[0]);
+  TEST_ASSERT_TRUE(selectWhisperHop(peers, now, self, visited, 1, disp, out));
+  TEST_ASSERT_EQUAL_UINT8(5, out[5]);
+}
+
+void test_next_hop_ties_go_to_smitten_then_lower_mac() {
+  std::map<uint64_t, uint8_t> d;
+  auto disp = [&](const uint8_t* m) { return d[macKey(m)]; };
+  const uint32_t now = 100000;
+  std::vector<NearbyCopy> peers = {peerOf(7, -60, now), peerOf(8, -60, now), peerOf(6, -60, now)};
+  d[macKey(peers[0].mac)] = kDispositionFond;
+  d[macKey(peers[1].mac)] = kDispositionSmitten;
+  d[macKey(peers[2].mac)] = kDispositionFond;
+  uint8_t self[6], out[6];
+  macOf(99, self);
+  TEST_ASSERT_TRUE(selectWhisperHop(peers, now, self, nullptr, 0, disp, out));
+  TEST_ASSERT_EQUAL_UINT8(8, out[5]);
+  d[macKey(peers[1].mac)] = kDispositionFond;
+  TEST_ASSERT_TRUE(selectWhisperHop(peers, now, self, nullptr, 0, disp, out));
+  TEST_ASSERT_EQUAL_UINT8(6, out[5]);
+}
+
+void test_no_candidate_ends_the_chain() {
+  Rig r;
+  r.host.peers.push_back(peerOf(20, -60, 0));  // Neutral
+  r.director.force(MomentKind::Whisper, 3, 0);
+  r.run(0, 10000, 10);
+  TEST_ASSERT_TRUE(r.host.sent.empty());
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT32(1, r.host.rendersOf("pulse"));
+}
+
+void test_hop_eight_does_not_forward() {
+  Rig r(9);
+  r.host.like(30, kDispositionFond);
+  r.host.like(8, kDispositionFond);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  uint8_t sender[6];
+  macOf(8, sender);
+  r.frame(sender, whisperTo(r.self, 5, {1, 2, 3, 4, 5, 6, 7, 8}), 1000);
+  TEST_ASSERT_TRUE(r.director.active());
+  for (NearbyCopy& p : r.host.peers) p.lastSeenNearMs = 4000;
+  r.run(1000, 6000, 10);
+  TEST_ASSERT_TRUE(r.host.sent.empty());
+
+  Rig r7(9);
+  r7.host.like(30, kDispositionFond);
+  r7.host.peers.push_back(peerOf(30, -50, 4000));
+  r7.frame(sender, whisperTo(r7.self, 5, {1, 2, 3, 4, 5, 6, 8}), 1000);
+  r7.run(1000, 6000, 10);
+  TEST_ASSERT_EQUAL_UINT32(2, r7.host.sent.size());
+}
+
+void test_malformed_whisper_frames_are_dropped() {
+  Rig r(9);
+  uint8_t sender[6];
+  macOf(8, sender);
+  const char* bad[] = {
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":0,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":9,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001240AC4102001\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":2,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC41020ZZ\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC41020\",\"v\":\"240AC4102001\"}}",
+      "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":2001,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\"}}",
+  };
+  for (const char* b : bad) {
+    r.frame(sender, b, 1000);
+    TEST_ASSERT_FALSE_MESSAGE(r.director.active(), b);
+    TEST_ASSERT_FALSE_MESSAGE(r.director.coolingDown(MomentKind::Whisper, 1000), b);
+  }
+  r.frame(sender, "{\"type\":\"moment\",\"mo\":{\"k\":2,\"s\":1,\"h\":1,\"a\":0,\"to\":\"240AC4102009\",\"v\":\"240AC4102001\"}}", 1000);
+  TEST_ASSERT_TRUE(r.director.active());
+}
+
+void test_duplicate_whisper_is_ignored() {
+  Rig r(9);
+  uint8_t sender[6];
+  macOf(8, sender);
+  r.frame(sender, whisperTo(r.self, 5, {1}), 1000);
+  TEST_ASSERT_TRUE(r.director.active());
+  r.run(1000, 6000, 10);
+  TEST_ASSERT_FALSE(r.director.active());
+  r.frame(sender, whisperTo(r.self, 5, {1}), 7000);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT32(1, r.host.rendersOf("pulse"));
+  r.frame(sender, whisperTo(r.self, 6, {1}), 8000);  // a new Whisper
+  TEST_ASSERT_TRUE(r.director.active());
+}
+
+void test_wary_toward_the_sender_drops_the_whisper() {
+  Rig r(9);
+  uint8_t sender[6];
+  macOf(8, sender);
+  r.host.like(8, 2);
+  r.frame(sender, whisperTo(r.self, 5, {1, 8}), 1000);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT32(0, r.host.renders.size());
+}
+
+void test_whisper_suppressors() {
+  const char* reasons[] = {"ota", "wisp", "preview", "home"};
+  for (const char* why : reasons) {
+    Rig r(9);
+    uint8_t sender[6];
+    macOf(8, sender);
+    r.host.suppress = why;
+    r.frame(sender, whisperTo(r.self, 5, {8}), 1000);
+    TEST_ASSERT_FALSE_MESSAGE(r.director.active(), why);
+    TEST_ASSERT_FALSE_MESSAGE(r.director.force(MomentKind::Whisper, 1, 1000), why);
+  }
+}
+
+// Ten lamps in a ring, each liking only its two neighbours, every one ready.
+void test_ring_of_ten_never_revisits_and_ends_within_eight_hops() {
+  constexpr uint8_t kLamps = 10;
+  Bus bus;
+  std::vector<std::unique_ptr<Rig>> rigs;
+  for (uint8_t i = 0; i < kLamps; ++i) {
+    auto rig = std::make_unique<Rig>(i, 100 + i, 0);
+    for (uint8_t nb : {static_cast<uint8_t>((i + 1) % kLamps),
+                       static_cast<uint8_t>((i + kLamps - 1) % kLamps)}) {
+      rig->host.like(nb, kDispositionFond);
+      rig->host.peers.push_back(peerOf(nb, nb == (i + 1) % kLamps ? -50 : -55, 0));
+    }
+    rig->host.bus = &bus;
+    bus.hosts.push_back(&rig->host);
+    bus.directors.push_back(&rig->director);
+    rigs.push_back(std::move(rig));
+  }
+  rigs[0]->director.force(MomentKind::Whisper, 4242, 0);
+  for (uint32_t t = 0; t < 60000; t += 10) {
+    bus.deliver(t);
+    for (auto& rig : rigs) {
+      for (NearbyCopy& p : rig->host.peers) p.lastSeenNearMs = t;
+      rig->host.nowMs = t;
+      rig->director.tick(t);
+    }
+  }
+  std::vector<size_t> glows;
+  for (size_t i = 0; i < rigs.size(); ++i) {
+    const size_t n = rigs[i]->host.rendersOf("pulse");
+    TEST_ASSERT_TRUE_MESSAGE(n <= 1, "a lamp glowed twice");
+    if (n) glows.push_back(i);
+  }
+  TEST_ASSERT_EQUAL_UINT32(9, glows.size());  // origin + 8 hops
+  size_t hopFrames = 0;
+  for (auto& rig : rigs) hopFrames += rig->host.sent.size();
+  TEST_ASSERT_EQUAL_UINT32(16, hopFrames);  // 8 hops, each sent twice
+}
+
+// --- 8. heartbeat -----------------------------------------------------------
+
+void test_heartbeat_period_follows_rssi() {
+  TEST_ASSERT_EQUAL_UINT32(1500, heartbeatPeriodMs(-90.0f));
+  TEST_ASSERT_EQUAL_UINT32(1500, heartbeatPeriodMs(-75.0f));
+  TEST_ASSERT_EQUAL_UINT32(1100, heartbeatPeriodMs(-60.0f));
+  TEST_ASSERT_EQUAL_UINT32(700, heartbeatPeriodMs(-45.0f));
+  TEST_ASSERT_EQUAL_UINT32(700, heartbeatPeriodMs(-30.0f));
+  TEST_ASSERT_EQUAL_FLOAT(-72.0f, heartbeatEma(-75.0f, -60));
+}
+
+namespace {
+
+std::vector<uint32_t> beatTimes(const FakeHost& h, uint8_t opacityAtLeast = 0) {
+  std::vector<uint32_t> out;
+  for (const Render& r : h.renders) {
+    if (r.inv.parameters.get("durationMax", 0) == 160 &&
+        r.inv.parameters.get("opacity", 0) >= opacityAtLeast) {
+      out.push_back(r.atMs);
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
+void test_heartbeat_quickens_as_the_peer_comes_closer() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -64, 0));
+  TEST_ASSERT_TRUE(r.director.force(MomentKind::Heartbeat, 1, 0));
+  for (uint32_t t = 0; t <= 30000; t += 10) {
+    r.host.peers[0].lastSeenNearMs = t;
+    r.host.peers[0].lastRssi = static_cast<int8_t>(t < 10000 ? -64 : -46);
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
+  const std::vector<uint32_t> beats = beatTimes(r.host);
+  TEST_ASSERT_TRUE(beats.size() > 10);
+  const uint32_t early = beats[2] - beats[1];
+  const uint32_t lateGap = beats.back() - beats[beats.size() - 2];
+  TEST_ASSERT_UINT32_WITHIN(20, heartbeatPeriodMs(-64.0f), early);
+  TEST_ASSERT_TRUE(lateGap < early);
+  TEST_ASSERT_UINT32_WITHIN(40, 700, lateGap);
+  TEST_ASSERT_TRUE(r.host.sent.empty());
+}
+
+void test_heartbeat_lub_completes_before_the_dub() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.run(0, 3000, 5);
+  TEST_ASSERT_TRUE(r.host.renders.size() >= 2);
+  const Render& lub = r.host.renders[0];
+  const Render& dub = r.host.renders[1];
+  TEST_ASSERT_EQUAL_STRING("flicker", lub.inv.type.c_str());
+  TEST_ASSERT_EQUAL_UINT8(TARGET_BASE, lub.inv.target);
+  TEST_ASSERT_EQUAL_UINT32(160, lub.inv.parameters.get("durationMax", 0));
+  TEST_ASSERT_EQUAL_UINT32(140, dub.inv.parameters.get("durationMax", 0));
+  TEST_ASSERT_TRUE(lub.atMs + lub.inv.parameters.get("durationMax", 0) < dub.atMs);
+  TEST_ASSERT_UINT32_WITHIN(5, MomentDirector::kHeartbeatDubMs, dub.atMs - lub.atMs);
+}
+
+void test_heartbeat_settles_when_the_peer_goes_stale() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.run(0, 60000, 10);  // the peer is never seen again after t=0
+  TEST_ASSERT_FALSE(r.director.active());
+  const std::vector<uint32_t> beats = beatTimes(r.host);
+  // Fresh for 15 s after t=0, then 10 s stale, then six settling beats.
+  TEST_ASSERT_TRUE(beats.back() > 25000);
+  TEST_ASSERT_TRUE(beats.back() < 40000);
+  TEST_ASSERT_EQUAL_UINT8(10, r.host.renders.back().inv.parameters.get("opacity", 0));
+  bool settled = false;
+  for (const std::string& l : r.host.logs) settled = settled || l == "[moment] hb settle stale";
+  TEST_ASSERT_TRUE(settled);
+}
+
+void test_heartbeat_settles_at_the_time_cap() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  for (uint32_t t = 0; t <= 200000; t += 10) {
+    r.host.peers[0].lastSeenNearMs = t;
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
+  TEST_ASSERT_FALSE(r.director.active());
+  const std::vector<uint32_t> beats = beatTimes(r.host);
+  TEST_ASSERT_TRUE(beats.back() >= MomentDirector::kHeartbeatMaxMs);
+  TEST_ASSERT_TRUE(beats.back() < MomentDirector::kHeartbeatMaxMs + 15000);
+}
+
+void test_heartbeat_waits_for_the_greeting() {
+  Rig r(1, 9, 0);
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.host.greeting = true;
+  for (uint32_t t = 0; t <= 100 * kMin; t += 1000) {
+    r.host.peers[0].lastSeenNearMs = t;
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
+  TEST_ASSERT_FALSE(r.director.active());
+  r.host.greeting = false;
+  r.host.peers[0].lastSeenNearMs = 100 * kMin + 1000;
+  r.run(100 * kMin + 1000, 100 * kMin + 1100, 10);
+  TEST_ASSERT_TRUE(r.director.active());
+  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
+}
+
+// --- 9. codec ---------------------------------------------------------------
+
+void test_hop_eight_payload_fits_the_event_frame() {
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 0xFFFFFFFFu;
+  f.ageMs = 2000;
+  f.hop = 8;
+  for (uint8_t i = 0; i < 8; ++i) macOf(0xF0 + i, f.visited[i]);
+  macOf(0xFF, f.to);
+  char buf[lamp_protocol::EVENT_MAX_PAYLOAD];
+  const size_t n = encodeMomentFrame(f, buf, sizeof(buf));
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_TRUE(n <= lamp_protocol::EVENT_MAX_PAYLOAD);
+  TEST_ASSERT_TRUE(n <= 190);
+}
+
+void test_codec_round_trips() {
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 3405691582u;
+  f.ageMs = 1234;
+  f.hop = 3;
+  for (uint8_t i = 0; i < 3; ++i) macOf(i + 1, f.visited[i]);
+  macOf(77, f.to);
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, encode(f)) == DeserializationError::Ok);
+  MomentFrame back;
+  TEST_ASSERT_TRUE(decodeMomentFrame(doc["mo"].as<JsonObjectConst>(), back));
+  TEST_ASSERT_TRUE(back.kind == MomentKind::Whisper);
+  TEST_ASSERT_EQUAL_UINT32(f.seed, back.seed);
+  TEST_ASSERT_EQUAL_UINT16(1234, back.ageMs);
+  TEST_ASSERT_EQUAL_UINT8(3, back.hop);
+  TEST_ASSERT_EQUAL_MEMORY(f.to, back.to, 6);
+  TEST_ASSERT_EQUAL_MEMORY(f.visited, back.visited, 18);
+
+  MomentFrame ff;
+  ff.kind = MomentKind::Fireflies;
+  ff.seed = 42;
+  ff.ageMs = 7;
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"moment\",\"mo\":{\"k\":1,\"s\":42,\"a\":7}}", encode(ff).c_str());
+}
+
+void test_unknown_kind_is_ignored() {
+  Rig r;
+  uint8_t src[6];
+  macOf(9, src);
+  r.frame(src, "{\"type\":\"moment\",\"mo\":{\"k\":3,\"s\":1,\"a\":0}}", 1000);
+  r.frame(src, "{\"type\":\"moment\",\"mo\":{\"k\":9,\"s\":1,\"a\":0}}", 1000);
+  TEST_ASSERT_FALSE(r.director.active());
+  for (size_t k = 1; k <= kMomentKindCount; ++k) {
+    TEST_ASSERT_FALSE(r.director.coolingDown(static_cast<MomentKind>(k), 1000));
+  }
+}
+
+// An older lamp parses a Moment frame as an invocation of an unknown type.
+void test_older_lamps_parse_the_sentinel() {
+  JsonDocument doc;
+  deserializeJson(doc, firefliesStart(1));
+  ExpressionInvocation inv;
+  TEST_ASSERT_TRUE(parseInvocation(doc.as<JsonObjectConst>(), inv));
+  TEST_ASSERT_EQUAL_STRING("moment", inv.type.c_str());
+}
+
+// --- 10. render routing and the receive path ---------------------------------
+
+void test_renders_are_remote_terminal_and_single_surface() {
+  Rig r;
+  r.director.force(MomentKind::Fireflies, 99, 0);
+  r.run(0, 5000, 5);
+  r.director.begin(&r.host, r.self, 1, 6000);
+  r.director.force(MomentKind::Whisper, 98, 6000);
+  TEST_ASSERT_TRUE(r.host.renders.size() >= 3);
+  for (const Render& rd : r.host.renders) {
+    TEST_ASSERT_TRUE(rd.source == TransientSource::Remote);
+    TEST_ASSERT_FALSE(rd.broadcast);
+    TEST_ASSERT_EQUAL_MEMORY(r.self, rd.src, 6);
+    TEST_ASSERT_TRUE(rd.inv.target == TARGET_SHADE || rd.inv.target == TARGET_BASE);
+    TEST_ASSERT_TRUE(rd.inv.type == "flicker" || rd.inv.type == "pulse");
+  }
+  const Render& blink = r.host.renders.front();
+  TEST_ASSERT_EQUAL_STRING("flicker", blink.inv.type.c_str());
+  TEST_ASSERT_EQUAL_UINT32(0, blink.inv.parameters.get("fire", 9));
+  TEST_ASSERT_EQUAL_UINT32(firefliesStars(40), blink.inv.parameters.get("count", 0));
+  TEST_ASSERT_EQUAL_UINT32(10, blink.inv.parameters.get("opacity", 0));
+}
+
+void test_whisper_borrows_the_base_palette_and_whitens_a_match() {
+  Rig r;
+  r.host.base = {Color(255, 0, 0, 0), Color(0, 255, 0, 0), Color(1, 2, 3, 4), Color(9, 9, 9, 9),
+                 Color(7, 7, 7, 7)};
+  r.host.shade = {Color(250, 5, 0, 0)};
+  r.director.force(MomentKind::Whisper, 3, 0);
+  const Render& glow = r.host.renders.back();
+  TEST_ASSERT_EQUAL_STRING("pulse", glow.inv.type.c_str());
+  TEST_ASSERT_EQUAL_UINT8(TARGET_SHADE, glow.inv.target);
+  TEST_ASSERT_EQUAL_UINT32(4, glow.inv.colors.size());
+  TEST_ASSERT_TRUE(glow.inv.colors[0] == bloomWhiten(Color(255, 0, 0, 0), 102));
+  TEST_ASSERT_TRUE(glow.inv.colors[1] == Color(0, 255, 0, 0));
+}
+
+struct MirrorSpy : IExpressionObserver {
+  int calls = 0;
+  void onPeerExpression(const uint8_t*, const ExpressionInvocation&) override { ++calls; }
+};
+
+void test_moment_frames_never_reach_the_mirror() {
+  Rig r;
+  ExpressionObserverRegistry registry;
+  MirrorSpy spy;
+  registry.registerObserver(&spy);
+  uint8_t src[6];
+  macOf(9, src);
+  const std::string moment = firefliesStart(5);
+  deliverEvent(reinterpret_cast<const uint8_t*>(moment.data()), moment.size(), src, 1000,
+               r.director, registry);
+  TEST_ASSERT_EQUAL_INT(0, spy.calls);
+  TEST_ASSERT_TRUE(r.director.active());
+  const std::string plain = "{\"type\":\"pulse\",\"target\":1}";
+  deliverEvent(reinterpret_cast<const uint8_t*>(plain.data()), plain.size(), src, 1000,
+               r.director, registry);
+  TEST_ASSERT_EQUAL_INT(1, spy.calls);
+}
+
+void test_a_suppressor_mid_moment_ends_it() {
+  Rig r;
+  r.director.force(MomentKind::Fireflies, 99, 0);
+  r.run(0, 5000, 5);
+  const size_t before = r.host.renders.size();
+  r.host.suppress = "wisp";
+  r.run(5005, 20000, 5);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT32(before, r.host.renders.size());
+}
+
+void test_unsent_fireflies_start_aborts_but_still_grows() {
+  Rig r;
+  r.host.sendable = false;
+  r.director.force(MomentKind::Fireflies, 99, 0);
+  TEST_ASSERT_TRUE(r.director.active());
+  r.run(0, 1500, 10);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_EQUAL_UINT8(1, r.director.growth(MomentKind::Fireflies));
+  TEST_ASSERT_TRUE(r.host.sent.empty());
+}
+
+void test_frames_go_out_twice_with_a_fresh_age() {
+  Rig r;
+  r.director.force(MomentKind::Fireflies, 99, 0);
+  r.run(0, 1000, 10);
+  TEST_ASSERT_EQUAL_UINT32(2, r.host.sent.size());
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"moment\",\"mo\":{\"k\":1,\"s\":99,\"a\":0}}", r.host.sent[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"moment\",\"mo\":{\"k\":1,\"s\":99,\"a\":200}}", r.host.sent[1].c_str());
+}
+
+int main(int, char**) {
+  UNITY_BEGIN();
+  RUN_TEST(test_wait_lies_in_the_range_times_mode);
+  RUN_TEST(test_growth_shifts_both_ends_and_stops_at_the_cap);
+  RUN_TEST(test_participation_grows_and_rerolls_from_now);
+  RUN_TEST(test_state_resets_on_begin);
+  RUN_TEST(test_mode_change_does_not_reroll);
+  RUN_TEST(test_hearing_a_frame_sets_the_crowd_cooldown_with_max);
+  RUN_TEST(test_cooldown_blocks_initiation_but_not_joining);
+  RUN_TEST(test_cooldown_does_not_block_accepting_a_whisper);
+  RUN_TEST(test_initiates_after_eligibility_and_backoff);
+  RUN_TEST(test_herd_starts_one_fireflies_in_a_room_of_fifty);
+  RUN_TEST(test_fireflies_period_and_first_offset_ranges);
+  RUN_TEST(test_fireflies_offset_shrinks_and_reaches_zero_by_84);
+  RUN_TEST(test_fireflies_two_lamps_land_on_one_beat);
+  RUN_TEST(test_fireflies_envelope_endpoints);
+  RUN_TEST(test_fireflies_timeline_is_deterministic);
+  RUN_TEST(test_fireflies_late_joiner_recovers_t0_from_age);
+  RUN_TEST(test_fireflies_join_gates);
+  RUN_TEST(test_fireflies_resent_copy_is_ignored);
+  RUN_TEST(test_liked_fingerprint_tracks_the_liked_set_only);
+  RUN_TEST(test_ten_still_minutes_make_fireflies_possible);
+  RUN_TEST(test_a_liked_departure_resets_the_still_clock);
+  RUN_TEST(test_next_hop_picks_the_strongest_liked_fresh_unvisited);
+  RUN_TEST(test_next_hop_ties_go_to_smitten_then_lower_mac);
+  RUN_TEST(test_no_candidate_ends_the_chain);
+  RUN_TEST(test_hop_eight_does_not_forward);
+  RUN_TEST(test_malformed_whisper_frames_are_dropped);
+  RUN_TEST(test_duplicate_whisper_is_ignored);
+  RUN_TEST(test_wary_toward_the_sender_drops_the_whisper);
+  RUN_TEST(test_whisper_suppressors);
+  RUN_TEST(test_ring_of_ten_never_revisits_and_ends_within_eight_hops);
+  RUN_TEST(test_heartbeat_period_follows_rssi);
+  RUN_TEST(test_heartbeat_quickens_as_the_peer_comes_closer);
+  RUN_TEST(test_heartbeat_lub_completes_before_the_dub);
+  RUN_TEST(test_heartbeat_settles_when_the_peer_goes_stale);
+  RUN_TEST(test_heartbeat_settles_at_the_time_cap);
+  RUN_TEST(test_heartbeat_waits_for_the_greeting);
+  RUN_TEST(test_hop_eight_payload_fits_the_event_frame);
+  RUN_TEST(test_codec_round_trips);
+  RUN_TEST(test_unknown_kind_is_ignored);
+  RUN_TEST(test_older_lamps_parse_the_sentinel);
+  RUN_TEST(test_renders_are_remote_terminal_and_single_surface);
+  RUN_TEST(test_whisper_borrows_the_base_palette_and_whitens_a_match);
+  RUN_TEST(test_moment_frames_never_reach_the_mirror);
+  RUN_TEST(test_a_suppressor_mid_moment_ends_it);
+  RUN_TEST(test_unsent_fireflies_start_aborts_but_still_grows);
+  RUN_TEST(test_frames_go_out_twice_with_a_fresh_age);
+  return UNITY_END();
+}

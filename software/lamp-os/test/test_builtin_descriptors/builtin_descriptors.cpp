@@ -481,6 +481,16 @@ void test_every_type_fits_the_parameter_cap() {
   }
 }
 
+// A Moment frame rides MSG_EVENT as `"type":"moment"`; an older lamp builds
+// no transient for it only because no variant registers that id.
+void test_no_descriptor_is_the_moment_sentinel() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) TEST_ASSERT_NOT_EQUAL(0, std::strcmp(d->id, "moment"));
+}
+
 // The table is append-only: an index already written to a lamp's NVS must
 // keep naming the same key.
 void test_param_key_table_prefix_is_pinned() {
@@ -501,6 +511,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_every_descriptor_key_has_a_stored_index);
   RUN_TEST(test_param_key_table_prefix_is_pinned);
+  RUN_TEST(test_no_descriptor_is_the_moment_sentinel);
   RUN_TEST(test_every_type_fits_the_parameter_cap);
   RUN_TEST(test_all_five_ids_present);
   RUN_TEST(test_continuous_flags);

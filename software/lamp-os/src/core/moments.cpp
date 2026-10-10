@@ -1,0 +1,587 @@
+#include "core/moments.hpp"
+
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+
+#include "components/network/protocol/event.hpp"
+#include "expressions/bloom/bloom_expression.hpp"
+#include "expressions/expression.hpp"
+#include "expressions/primitives.hpp"
+
+namespace lamp {
+
+MomentDirector momentDirector;
+
+namespace {
+
+constexpr const char* kTwinkle = "flicker";
+constexpr uint32_t kTwinkleStyle = 0;
+constexpr uint32_t kFirefliesBurstMs = 700;
+constexpr uint32_t kHeartbeatLubMs = 160;
+constexpr uint32_t kHeartbeatDubBurstMs = 140;
+constexpr uint8_t kHeartbeatLubOpacity = 60;
+constexpr uint8_t kHeartbeatDubOpacity = 35;
+constexpr uint8_t kHeartbeatSettledOpacity = 10;
+// Every cell of the base swells; the flicker burst clamps it to the surface.
+constexpr uint32_t kWholeSurface = 0xFFFF;
+
+constexpr uint32_t kWhisperPulseSpeed = 3;
+constexpr uint32_t kWhisperPulseSize = 6;
+constexpr uint32_t kWhisperEasingSmooth = 1;
+constexpr uint8_t kWhisperOpacity = 30;
+constexpr size_t kBorrowedColors = 4;
+// A borrowed colour this close to the surface's own is whitened so a
+// single-colour lamp still shows its Moment.
+constexpr uint32_t kBorrowSameColor = 48;
+constexpr uint8_t kBorrowWhiten = 102;
+
+bool later(uint32_t a, uint32_t b) { return static_cast<int32_t>(a - b) > 0; }
+
+uint32_t lerpMs(uint32_t from, uint32_t to, uint32_t step, uint32_t steps) {
+  return static_cast<uint32_t>(static_cast<int64_t>(from) +
+                               (static_cast<int64_t>(to) - from) * step / steps);
+}
+
+}  // namespace
+
+void MomentDirector::begin(MomentHost* host, const uint8_t selfMac[6], uint32_t rngSeed,
+                           uint32_t nowMs) {
+  host_ = host;
+  std::memcpy(self_, selfMac, 6);
+  rng_ = FastRng(rngSeed);
+  moment_ = ActiveMoment{};
+  outbox_ = Outbox{};
+  for (DedupEntry& e : dedup_) e = DedupEntry{};
+  dedupHead_ = 0;
+  const SocialMode mode = host_->socialMode();
+  for (size_t i = 0; i < kMomentKindCount; ++i) {
+    const MomentKind kind = static_cast<MomentKind>(i + 1);
+    kinds_[i] = KindState{};
+    kinds_[i].nextEligibleMs = nowMs + momentWaitMs(kind, 0, mode, rng_);
+  }
+  likedFingerprint_ = likedFingerprint(
+      host_->nearbyPeers(), [this](const uint8_t* m) { return host_->disposition(m); },
+      &likedCount_);
+  likedSinceMs_ = nowMs;
+  lastEvalMs_ = nowMs;
+}
+
+bool MomentDirector::coolingDown(MomentKind kind, uint32_t nowMs) const {
+  const KindState& s = state(kind);
+  return s.cooling && !timeReached(nowMs, s.coolUntilMs);
+}
+
+bool MomentDirector::eligible(MomentKind kind, uint32_t nowMs) const {
+  const KindState& s = state(kind);
+  return s.eligible || timeReached(nowMs, s.nextEligibleMs);
+}
+
+void MomentDirector::tick(uint32_t nowMs) {
+  if (!host_) return;
+  if (active()) {
+    if (const char* why = host_->suppressor()) {
+      outbox_.pending = false;
+      endMoment(why);
+    }
+  }
+  tickOutbox(nowMs);
+  switch (moment_.kind) {
+    case static_cast<uint8_t>(MomentKind::Fireflies): tickFireflies(nowMs); break;
+    case static_cast<uint8_t>(MomentKind::Whisper):   tickWhisper(nowMs); break;
+    case static_cast<uint8_t>(MomentKind::Heartbeat): tickHeartbeat(nowMs); break;
+    default: break;
+  }
+  if (nowMs - lastEvalMs_ >= kEvalPeriodMs) {
+    lastEvalMs_ = nowMs;
+    evaluate(nowMs);
+  }
+  for (size_t i = 0; i < kMomentKindCount; ++i) {
+    KindState& s = kinds_[i];
+    if (!s.backoffArmed || !timeReached(nowMs, s.backoffUntilMs)) continue;
+    s.backoffArmed = false;
+    const MomentKind kind = static_cast<MomentKind>(i + 1);
+    if (mayInitiate(kind, nowMs)) initiate(kind, 0, nowMs);
+  }
+}
+
+void MomentDirector::evaluate(uint32_t nowMs) {
+  const uint32_t fp = likedFingerprint(
+      host_->nearbyPeers(), [this](const uint8_t* m) { return host_->disposition(m); },
+      &likedCount_);
+  if (fp != likedFingerprint_) {
+    likedFingerprint_ = fp;
+    likedSinceMs_ = nowMs;
+  }
+  // Latching both deadlines keeps a lamp idle past the 24-day signed-compare
+  // horizon eligible and out of cooldown.
+  for (KindState& s : kinds_) {
+    if (!s.eligible && timeReached(nowMs, s.nextEligibleMs)) s.eligible = true;
+    if (s.cooling && timeReached(nowMs, s.coolUntilMs)) s.cooling = false;
+  }
+  if (moment_.kind == static_cast<uint8_t>(MomentKind::Heartbeat)) sampleHeartbeat(nowMs);
+
+  for (size_t i = 0; i < kMomentKindCount; ++i) {
+    const MomentKind kind = static_cast<MomentKind>(i + 1);
+    KindState& s = kinds_[i];
+    const bool may = mayInitiate(kind, nowMs);
+    if (may && !s.backoffArmed) {
+      s.backoffArmed = true;
+      s.backoffUntilMs = nowMs + momentBackoffMs(kind, rng_);
+    } else if (!may) {
+      s.backoffArmed = false;
+    }
+  }
+}
+
+bool MomentDirector::conditionsHold(MomentKind kind, uint32_t nowMs) {
+  auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
+  switch (kind) {
+    case MomentKind::Fireflies:
+      return likedCount_ >= kFirefliesMinLiked && nowMs - likedSinceMs_ >= kStableLikedMs;
+    case MomentKind::Whisper:
+      return hasWhisperTarget(host_->nearbyPeers(), nowMs, disposition);
+    case MomentKind::Heartbeat:
+      return strongestSmitten(host_->nearbyPeers(), nowMs, kHeartbeatStartRssi,
+                              disposition) != nullptr;
+  }
+  return false;
+}
+
+bool MomentDirector::mayInitiate(MomentKind kind, uint32_t nowMs) {
+  return eligible(kind, nowMs) && !coolingDown(kind, nowMs) && !active() &&
+         host_->suppressor() == nullptr && !host_->greetingActive() &&
+         conditionsHold(kind, nowMs);
+}
+
+void MomentDirector::participate(MomentKind kind, uint32_t nowMs) {
+  KindState& s = state(kind);
+  s.growth = momentGrow(kind, s.growth);
+  s.nextEligibleMs = nowMs + momentWaitMs(kind, s.growth, host_->socialMode(), rng_);
+  s.eligible = false;
+  hearCrowd(kind, nowMs);
+  s.backoffArmed = false;
+}
+
+void MomentDirector::hearCrowd(MomentKind kind, uint32_t nowMs) {
+  KindState& s = state(kind);
+  s.backoffArmed = false;
+  const uint32_t cooldown = momentPacing(kind).crowdCooldownMs;
+  if (cooldown == 0) return;
+  const uint32_t until = nowMs + cooldown;
+  if (!s.cooling || later(until, s.coolUntilMs)) s.coolUntilMs = until;
+  s.cooling = true;
+}
+
+void MomentDirector::initiate(MomentKind kind, uint32_t seed, uint32_t nowMs) {
+  if (seed == 0) seed = rng_.next();
+  participate(kind, nowMs);
+  logf("[moment] start k=%u s=%lu", static_cast<unsigned>(kind),
+       static_cast<unsigned long>(seed));
+  switch (kind) {
+    case MomentKind::Fireflies: {
+      startFireflies(seed, nowMs, self_, Role::Initiator, nowMs);
+      remember(self_, seed, kind);
+      MomentFrame f;
+      f.kind = kind;
+      f.seed = seed;
+      queueFrame(f, nowMs, nowMs);
+      break;
+    }
+    case MomentKind::Whisper:
+      moment_ = ActiveMoment{};
+      moment_.kind = static_cast<uint8_t>(kind);
+      moment_.role = Role::Initiator;
+      moment_.seed = seed;
+      std::memcpy(moment_.origin, self_, 6);
+      moment_.nextMs = nowMs + kWhisperHandOffMs;
+      remember(self_, seed, kind);
+      renderGlow();
+      break;
+    case MomentKind::Heartbeat: {
+      auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
+      const std::vector<NearbyCopy>& peers = host_->nearbyPeers();
+      const NearbyCopy* peer = strongestSmitten(peers, nowMs, kHeartbeatStartRssi, disposition);
+      if (!peer) peer = strongestSmitten(peers, nowMs, INT8_MIN, disposition);
+      startHeartbeat(peer, nowMs);
+      break;
+    }
+  }
+}
+
+bool MomentDirector::force(MomentKind kind, uint32_t seed, uint32_t nowMs) {
+  if (!host_) return false;
+  if (active()) {
+    logf("[moment] force k=%u skip busy", static_cast<unsigned>(kind));
+    return false;
+  }
+  if (const char* why = host_->suppressor()) {
+    logf("[moment] force k=%u skip %s", static_cast<unsigned>(kind), why);
+    return false;
+  }
+  initiate(kind, seed, nowMs);
+  return active();
+}
+
+void MomentDirector::endMoment(const char* why) {
+  if (!active()) return;
+  logf("[moment] end k=%u s=%lu %s", static_cast<unsigned>(moment_.kind),
+       static_cast<unsigned long>(moment_.seed), why);
+  moment_ = ActiveMoment{};
+}
+
+void MomentDirector::onFrame(const uint8_t srcMac[6], JsonObjectConst mo, uint32_t nowMs) {
+  if (!host_) return;
+  MomentFrame f;
+  if (!decodeMomentFrame(mo, f)) return;
+  hearCrowd(f.kind, nowMs);
+  if (f.kind == MomentKind::Fireflies) {
+    onFireflies(srcMac, f, nowMs);
+  } else {
+    onWhisper(srcMac, f, nowMs);
+  }
+}
+
+void MomentDirector::onFireflies(const uint8_t src[6], const MomentFrame& f, uint32_t nowMs) {
+  if (seen(src, f.seed, MomentKind::Fireflies)) return;
+  if (active()) return;
+  if (const char* why = host_->suppressor()) {
+    logf("[moment] ff skip %s", why);
+    return;
+  }
+  if (host_->disposition(src) < kDispositionNeutral) {
+    logf("[moment] ff skip disposition");
+    return;
+  }
+  startFireflies(f.seed, nowMs - f.ageMs, src, Role::Joiner, nowMs);
+  if (!active()) return;
+  remember(src, f.seed, MomentKind::Fireflies);
+  participate(MomentKind::Fireflies, nowMs);
+  logf("[moment] join k=1 s=%lu k#=%u", static_cast<unsigned long>(f.seed),
+       static_cast<unsigned>(moment_.blink));
+}
+
+void MomentDirector::onWhisper(const uint8_t src[6], const MomentFrame& f, uint32_t nowMs) {
+  if (std::memcmp(f.to, self_, 6) != 0) return;
+  if (seen(f.visited[0], f.seed, MomentKind::Whisper)) {
+    logf("[moment] wh skip duplicate");
+    return;
+  }
+  if (active()) {
+    logf("[moment] wh skip busy");
+    return;
+  }
+  if (const char* why = host_->suppressor()) {
+    logf("[moment] wh skip %s", why);
+    return;
+  }
+  if (host_->disposition(src) < kDispositionNeutral) {
+    logf("[moment] wh skip disposition");
+    return;
+  }
+  remember(f.visited[0], f.seed, MomentKind::Whisper);
+  moment_ = ActiveMoment{};
+  moment_.kind = static_cast<uint8_t>(MomentKind::Whisper);
+  moment_.role = Role::Accepter;
+  moment_.seed = f.seed;
+  std::memcpy(moment_.origin, f.visited[0], 6);
+  moment_.hop = f.hop;
+  std::memcpy(moment_.visited, f.visited, sizeof(moment_.visited));
+  moment_.nextMs = nowMs + kWhisperHandOffMs;
+  renderGlow();
+  participate(MomentKind::Whisper, nowMs);
+  logf("[moment] accept k=2 s=%lu h=%u", static_cast<unsigned long>(f.seed),
+       static_cast<unsigned>(f.hop));
+}
+
+void MomentDirector::startFireflies(uint32_t seed, uint32_t t0, const uint8_t origin[6],
+                                    Role role, uint32_t nowMs) {
+  moment_ = ActiveMoment{};
+  moment_.kind = static_cast<uint8_t>(MomentKind::Fireflies);
+  moment_.role = role;
+  moment_.seed = seed;
+  moment_.t0 = t0;
+  std::memcpy(moment_.origin, origin, 6);
+  moment_.periodMs = firefliesPeriodMs(seed);
+  moment_.blink = 1;
+  moment_.offset = firefliesFirstOffset(seed, self_);
+  // A late joiner starts at its first blink still ahead.
+  while (moment_.blink <= kFirefliesBlinks &&
+         later(nowMs, firefliesBlinkMs(t0, moment_.periodMs, moment_.blink, moment_.offset))) {
+    moment_.offset = firefliesNextOffset(moment_.offset, moment_.blink);
+    ++moment_.blink;
+  }
+  if (moment_.blink > kFirefliesBlinks) {
+    moment_ = ActiveMoment{};
+    return;
+  }
+  moment_.nextMs = firefliesBlinkMs(t0, moment_.periodMs, moment_.blink, moment_.offset);
+}
+
+void MomentDirector::tickFireflies(uint32_t nowMs) {
+  if (!timeReached(nowMs, moment_.nextMs)) return;
+  renderBlink();
+#ifdef LAMP_DEBUG
+  logf("[moment] ff k=%u d=%ld", static_cast<unsigned>(moment_.blink),
+       static_cast<long>(moment_.offset));
+#endif
+  moment_.offset = firefliesNextOffset(moment_.offset, moment_.blink);
+  ++moment_.blink;
+  if (moment_.blink > kFirefliesBlinks) {
+    endMoment("done");
+    return;
+  }
+  moment_.nextMs = firefliesBlinkMs(moment_.t0, moment_.periodMs, moment_.blink, moment_.offset);
+}
+
+void MomentDirector::tickWhisper(uint32_t nowMs) {
+  if (!timeReached(nowMs, moment_.nextMs)) return;
+  if (moment_.hop < kWhisperMaxHops) {
+    MomentFrame f;
+    f.kind = MomentKind::Whisper;
+    f.seed = moment_.seed;
+    f.hop = static_cast<uint8_t>(moment_.hop + 1);
+    std::memcpy(f.visited, moment_.visited, sizeof(f.visited));
+    std::memcpy(f.visited[moment_.hop], self_, 6);
+    auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
+    if (selectWhisperHop(host_->nearbyPeers(), nowMs, self_, f.visited, f.hop, disposition,
+                         f.to)) {
+      queueFrame(f, nowMs, nowMs);
+      logf("[moment] wh hop h=%u to=%02X%02X%02X", static_cast<unsigned>(f.hop), f.to[3],
+           f.to[4], f.to[5]);
+    } else {
+      logf("[moment] wh chain ends, no hop");
+    }
+  }
+  endMoment("handed on");
+}
+
+void MomentDirector::startHeartbeat(const NearbyCopy* peer, uint32_t nowMs) {
+  moment_ = ActiveMoment{};
+  moment_.kind = static_cast<uint8_t>(MomentKind::Heartbeat);
+  moment_.role = Role::Initiator;
+  moment_.t0 = nowMs;
+  moment_.lastFreshMs = nowMs;
+  moment_.rssiEma = -75.0f;
+  if (peer) {
+    std::memcpy(moment_.peer, peer->mac, 6);
+    moment_.hasPeer = true;
+    moment_.rssiEma = peer->lastRssi;
+  }
+  moment_.nextMs = nowMs;
+}
+
+void MomentDirector::sampleHeartbeat(uint32_t nowMs) {
+  if (moment_.hasPeer) {
+    for (const NearbyCopy& p : host_->nearbyPeers()) {
+      if (!isPeer(p) || std::memcmp(p.mac, moment_.peer, 6) != 0) continue;
+      if (isFresh(p, nowMs)) {
+        moment_.rssiEma = heartbeatEma(moment_.rssiEma, p.lastRssi);
+        moment_.lastFreshMs = nowMs;
+      }
+      break;
+    }
+  }
+  if (moment_.rssiEma < kHeartbeatFadeRssi) {
+    if (!moment_.faint) {
+      moment_.faint = true;
+      moment_.faintSinceMs = nowMs;
+    }
+  } else {
+    moment_.faint = false;
+  }
+  if (moment_.settleBeat > 0) return;
+  const bool stale = nowMs - moment_.lastFreshMs >= kHeartbeatStaleMs;
+  const bool faded = moment_.faint && nowMs - moment_.faintSinceMs >= kHeartbeatStaleMs;
+  const bool capped = nowMs - moment_.t0 >= kHeartbeatMaxMs;
+  if (stale || faded || capped) {
+    moment_.settleBeat = 1;
+    moment_.settleFromMs = heartbeatPeriodMs(moment_.rssiEma);
+    logf("[moment] hb settle %s", stale ? "stale" : (faded ? "faded" : "time"));
+  }
+}
+
+void MomentDirector::tickHeartbeat(uint32_t nowMs) {
+  if (moment_.dubPending && timeReached(nowMs, moment_.dubMs)) {
+    moment_.dubPending = false;
+    const uint8_t step = moment_.settleBeat > 0 ? moment_.settleBeat - 1 : 0;
+    const uint8_t dub = static_cast<uint8_t>(
+        lerpMs(kHeartbeatDubOpacity, kHeartbeatSettledOpacity, step, kHeartbeatSettleBeats));
+    renderBeat(kHeartbeatDubBurstMs, dub);
+    if (moment_.settleBeat > kHeartbeatSettleBeats) {
+      endMoment("settled");
+      return;
+    }
+  }
+  if (moment_.settleBeat <= kHeartbeatSettleBeats && timeReached(nowMs, moment_.nextMs)) {
+    beat(nowMs);
+  }
+}
+
+void MomentDirector::beat(uint32_t nowMs) {
+  uint32_t period = heartbeatPeriodMs(moment_.rssiEma);
+  uint8_t lub = kHeartbeatLubOpacity;
+  if (moment_.settleBeat > 0) {
+    period = lerpMs(moment_.settleFromMs, kHeartbeatSettleMs, moment_.settleBeat,
+                    kHeartbeatSettleBeats);
+    lub = static_cast<uint8_t>(lerpMs(kHeartbeatLubOpacity, kHeartbeatSettledOpacity,
+                                      moment_.settleBeat, kHeartbeatSettleBeats));
+    ++moment_.settleBeat;
+  }
+  renderBeat(kHeartbeatLubMs, lub);
+  moment_.dubPending = true;
+  moment_.dubMs = nowMs + kHeartbeatDubMs;
+  moment_.nextMs = nowMs + period;
+}
+
+void MomentDirector::queueFrame(const MomentFrame& frame, uint32_t refMs, uint32_t nowMs) {
+  outbox_ = Outbox{};
+  outbox_.pending = true;
+  outbox_.frame = frame;
+  outbox_.refMs = refMs;
+  outbox_.copiesLeft = 2;
+  outbox_.dueMs = nowMs;
+  outbox_.giveUpMs = nowMs + kSendGiveUpMs;
+  tickOutbox(nowMs);
+}
+
+void MomentDirector::tickOutbox(uint32_t nowMs) {
+  if (!outbox_.pending || !timeReached(nowMs, outbox_.dueMs)) return;
+  if (!host_->canSend()) {
+    if (!timeReached(nowMs, outbox_.giveUpMs)) return;
+    outbox_.pending = false;
+    logf("[moment] send gave up k=%u", static_cast<unsigned>(outbox_.frame.kind));
+    if (!outbox_.sentAny && outbox_.frame.kind == MomentKind::Fireflies &&
+        moment_.kind == static_cast<uint8_t>(MomentKind::Fireflies) &&
+        moment_.role == Role::Initiator && moment_.seed == outbox_.frame.seed) {
+      endMoment("unsent");
+    }
+    return;
+  }
+  const uint32_t age = nowMs - outbox_.refMs;
+  outbox_.frame.ageMs = static_cast<uint16_t>(age > kMomentMaxAgeMs ? kMomentMaxAgeMs : age);
+  char payload[lamp_protocol::EVENT_MAX_PAYLOAD];
+  const size_t len = encodeMomentFrame(outbox_.frame, payload, sizeof(payload));
+  if (len > 0) host_->send(payload, len);
+  outbox_.sentAny = true;
+  if (--outbox_.copiesLeft == 0) {
+    outbox_.pending = false;
+    return;
+  }
+  outbox_.dueMs = nowMs + kResendMs;
+  outbox_.giveUpMs = outbox_.dueMs + kSendGiveUpMs;
+}
+
+bool MomentDirector::seen(const uint8_t origin[6], uint32_t seed, MomentKind kind) const {
+  for (const DedupEntry& e : dedup_) {
+    if (e.kind == static_cast<uint8_t>(kind) && e.seed == seed &&
+        std::memcmp(e.origin, origin, 6) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MomentDirector::remember(const uint8_t origin[6], uint32_t seed, MomentKind kind) {
+  DedupEntry& e = dedup_[dedupHead_];
+  std::memcpy(e.origin, origin, 6);
+  e.seed = seed;
+  e.kind = static_cast<uint8_t>(kind);
+  dedupHead_ = static_cast<uint8_t>((dedupHead_ + 1) % kDedupSlots);
+}
+
+bool MomentDirector::render(ExpressionInvocation& inv) {
+  const bool ok = host_->trigger(inv, self_, /*broadcast=*/false, TransientSource::Remote);
+#ifdef LAMP_DEBUG
+  if (!ok) logf("[moment] render refused %s", inv.type.c_str());
+#endif
+  return ok;
+}
+
+void MomentDirector::renderBlink() {
+  ExpressionInvocation inv;
+  inv.type = kTwinkle;
+  inv.target = TARGET_SHADE;
+  inv.parameters.set("fire", kTwinkleStyle);
+  inv.parameters.set("count", firefliesStars(host_->shadePixels()));
+  inv.parameters.set("durationMax", kFirefliesBurstMs);
+  inv.parameters.set("opacity", firefliesOpacity(moment_.blink));
+  render(inv);
+}
+
+void MomentDirector::renderBeat(uint32_t burstMs, uint8_t opacity) {
+  ExpressionInvocation inv;
+  inv.type = kTwinkle;
+  inv.target = TARGET_BASE;
+  inv.parameters.set("fire", kTwinkleStyle);
+  inv.parameters.set("count", kWholeSurface);
+  inv.parameters.set("durationMax", burstMs);
+  inv.parameters.set("opacity", opacity);
+  render(inv);
+}
+
+void MomentDirector::renderGlow() {
+  ExpressionInvocation inv;
+  inv.type = "pulse";
+  inv.target = TARGET_SHADE;
+  inv.parameters.set("loop", 0);
+  inv.parameters.set("fullStrip", 1);
+  inv.parameters.set("pulseSpeed", kWhisperPulseSpeed);
+  inv.parameters.set("size", kWhisperPulseSize);
+  inv.parameters.set("easing", kWhisperEasingSmooth);
+  inv.parameters.set("opacity", kWhisperOpacity);
+  const std::vector<Color>& borrowed = host_->surfaceColors(/*base=*/true);
+  const std::vector<Color>& own = host_->surfaceColors(/*base=*/false);
+  for (size_t i = 0; i < borrowed.size() && i < kBorrowedColors; ++i) {
+    Color c = borrowed[i];
+    if (!own.empty() && colorDistance(c, own.front()) <= kBorrowSameColor) {
+      c = bloomWhiten(c, kBorrowWhiten);
+    }
+    inv.colors.push_back(c);
+  }
+  render(inv);
+}
+
+void MomentDirector::logf(const char* fmt, ...) {
+  char line[64];
+  va_list args;
+  va_start(args, fmt);
+  std::vsnprintf(line, sizeof(line), fmt, args);
+  va_end(args);
+  host_->log(line);
+}
+
+void MomentDirector::dumpState(uint32_t nowMs) {
+  if (!host_) return;
+  for (size_t i = 0; i < kMomentKindCount; ++i) {
+    const MomentKind kind = static_cast<MomentKind>(i + 1);
+    const KindState& s = kinds_[i];
+    const uint32_t waitS = eligible(kind, nowMs) ? 0 : (s.nextEligibleMs - nowMs) / 1000;
+    const uint32_t coolS = coolingDown(kind, nowMs) ? (s.coolUntilMs - nowMs) / 1000 : 0;
+    logf("[moment] k=%u g=%u wait=%lus cool=%lus bo=%d", static_cast<unsigned>(i + 1),
+         static_cast<unsigned>(s.growth), static_cast<unsigned long>(waitS),
+         static_cast<unsigned long>(coolS), s.backoffArmed ? 1 : 0);
+  }
+  logf("[moment] liked=%u stable=%lus", static_cast<unsigned>(likedCount_),
+       static_cast<unsigned long>((nowMs - likedSinceMs_) / 1000));
+  if (active()) {
+    logf("[moment] active k=%u role=%u s=%lu", static_cast<unsigned>(moment_.kind),
+         static_cast<unsigned>(moment_.role), static_cast<unsigned long>(moment_.seed));
+  }
+}
+
+void deliverEvent(const uint8_t* payload, size_t len, const uint8_t srcMac[6], uint32_t nowMs,
+                  MomentDirector& director, ExpressionObserverRegistry& observers) {
+  JsonDocument doc;
+  if (deserializeJson(doc, payload, len) != DeserializationError::Ok) return;
+  JsonObjectConst root = doc.as<JsonObjectConst>();
+  if (root["mo"].is<JsonObjectConst>()) {
+    director.onFrame(srcMac, root["mo"].as<JsonObjectConst>(), nowMs);
+    return;
+  }
+  ExpressionInvocation inv;
+  if (!parseInvocation(root, inv)) return;
+  observers.fanOut(srcMac, inv);
+}
+
+}  // namespace lamp
