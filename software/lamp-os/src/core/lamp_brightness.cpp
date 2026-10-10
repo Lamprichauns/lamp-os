@@ -88,8 +88,8 @@ void settleBrightnessFade() {
 // Crowd-dim micro-fade. PersonalityEngine commits a new crowdDimFactor()
 // when its smoothed weighted-peer count crosses the deadband (>= 2/100
 // change). The factor is a hard step; CrowdDim ramps between successive
-// targets, re-arming only when the TARGET factor changes (not when raw
-// brightness changes), so it stays out of the OTA pulse multiplier's way.
+// targets and re-arms only when the target factor changes, so it stays out
+// of the OTA pulse multiplier's way.
 // Lamp::tick reapplies brightness while crowdDimFading(). Distinct from the
 // user-write micro-fade (s_userBrightness*), which BLE writes drive.
 static lamp::CrowdDim s_crowdDim;

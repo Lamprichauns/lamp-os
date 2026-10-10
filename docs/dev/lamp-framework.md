@@ -121,8 +121,9 @@ virtual queries on `AnimatedBehavior`: `isSocialBehavior()` (true on
 `Expression` subclasses, `nullptr` otherwise). The suppression policy is pushed
 by `reapplyHomeModeState()` via `Compositor::setHomeModePolicy()` and comes from
 `HomeModeSettings::socialDisabled` and `HomeModeSettings::disabledExpressionTypes`.
-The render rule is `!homeMode || !homeModeSkips(b)`; behaviors matching neither
-query always draw. The OTA offer scan (`tickOtaOffers`) runs in
+The render rule is `homeModeTick` (`core/home_mode_gate.hpp`): Run, Skip (an
+expression of a home-disabled type) or Cancel (a social behavior while social
+is off and no app greeting plays); behaviors matching neither query run. The OTA offer scan (`tickOtaOffers`) runs in
 `Lamp::tick` outside the compositor, so home mode never stops a lamp offering
 updates.
 
@@ -147,9 +148,10 @@ another lamp settings over `MSG_CONTROL_OP`, which carries only wisp traffic
   a home-disabled type, Local ones a peer caused included (the Lioness
   greeting's glitch), is reaped at once, since the compositor skips it and it
   would otherwise freeze and resume when home mode ends.
-- `homeModeTick` (`core/home_mode_gate.hpp`) is the compositor's per-behavior
-  decision: run, skip (an expression of a home-disabled type) or cancel (a
-  social behavior while social is off and no app greeting plays).
+- A Local transient a peer caused just before home mode began (a staff bloom
+  for a friend's arrival) is the lamp's own and plays out.
+- A delayed cascade or echo mirror booked before home mode began is dropped
+  when it begins, so nothing booked then fires after home mode ends.
 - `BehaviorContext::forEachArrival` hands no arrival to a greeting (snafu's,
   the Lioness greeting), and `forEachNearby` visits no peer, so the room reads
   as empty: the Lions ambient scene shows no neighbour palettes and sends no

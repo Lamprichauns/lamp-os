@@ -280,5 +280,4 @@ void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string>
   }
 }
 
-
 };  // namespace lamp

@@ -536,7 +536,8 @@ void ExpressionManager::gcTransients() {
       it->expression->retire();
     }
     // A transient home mode skips by type would freeze mid-animation and
-    // resume when home mode ends; outside the preview it is reaped instead.
+    // resume when home mode ends; while home mode discards peers it is
+    // reaped instead.
     const bool skippedAtHome = compositor_ &&
                                compositor_->discardsRemote(TransientSource::Remote) &&
                                compositor_->homeModeSkipsType(it->type);
