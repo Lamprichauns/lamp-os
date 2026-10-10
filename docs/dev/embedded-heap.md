@@ -176,6 +176,13 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   flight; a cascade past that is dropped. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
+- **Expression parameters live inline.** `ExpressionParams` holds one
+  optional `uint32_t` per `kExpressionParamKeys` slot (88 bytes), so a config,
+  an invocation, a transient and a manager entry carry their parameters with
+  no heap node per key, and copying them allocates nothing. Each expression's
+  stored config exists once, in `Config::expressions`; a manager entry keeps
+  only its type and that inline parameter copy, since entries built from a
+  relayed op or an invocation have no Config entry to point at.
 - **Peer-supplied expression data.** An invocation keeps at most 8 colours and
   16 parameter keys; an expression upsert (app, or a relayed `expressionOp`)
   is rejected outside targets 1-3 and held to the same colour and parameter

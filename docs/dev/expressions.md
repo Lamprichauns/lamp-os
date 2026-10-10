@@ -40,7 +40,7 @@ The editor shell (`expression_editor_screen.dart`) owns only colors + target; `e
 
 - `id`, `name`, `continuous` (bool); `colors: {max, label?, help?, inheritsSurface?}`.
 - `advanced` (bool, optional, default false) — expression is offered in the app only when advanced mode is on. Absent = standard. Additive; no `schemaVersion` bump.
-- `interval?` / `duration?`: `{min, max, step, unit, default: [lo, hi], minGap?, label?, minKey?, maxKey?}`. `minKey`/`maxKey` name the instance keys the range writes; only `duration` carries them (into the **params map**). `interval` has none — the client writes it to the instance's **top-level** `intervalMin`/`intervalMax`. `minGap` (present only when non-zero) is the minimum spread the pair must keep between lo and hi, same unit as `min`/`max`. Firmware clamps it authoritatively in `makeExpression` (a client that ignores `minGap` can't commit a too-narrow range); the app/web dual-thumb controls push the opposing thumb so the pair never closes within `minGap`.
+- `interval?` / `duration?`: `{min, max, step, unit, default: [lo, hi], minGap?, label?, minKey?, maxKey?}`. `minKey`/`maxKey` name the instance keys the range writes; only `duration` carries them (into the **params**). `interval` has none — the client writes it to the instance's **top-level** `intervalMin`/`intervalMax`. `minGap` (present only when non-zero) is the minimum spread the pair must keep between lo and hi, same unit as `min`/`max`. Firmware clamps it authoritatively in `makeExpression` (a client that ignores `minGap` can't commit a too-narrow range); the app/web dual-thumb controls push the opposing thumb so the pair never closes within `minGap`.
 - `zone?`: `{}` (present) or `{optional: true}` (whole-strip/region toggle). Absent = no zone.
 - `excludeTargets?`: `[surface…]`; `defaultTarget?`: surface. Surface strings only, see **Target vocabulary**.
 - `params`: `[ {key, type("int"|"enum"), label, min, max, step, default, unit?, invert?, leftLabel?, rightLabel?, help?, requiresZoning?, options?: [{value, label, zoning?, group?}]} ]`. `group` (Type family, e.g. `"Overshoot"`) is present on `easing`'s options; see **Motion** below.
@@ -79,7 +79,7 @@ Hard contract between firmware and every client, read by the firmware but delibe
 - `fullStrip` — synthesized by the client from the optional-zone region toggle: `1` = whole strip, `0` = region. The firmware reads it (`getParam(parameters, "fullStrip", 1)`).
 - `cascade` (`cascadeEnabled` / `cascadeStaggerMs`) — client-hardcoded controls, shown for `continuous:false` expressions in dev mode (and kept visible once set, so they stay editable). Firmware reads them in `maybeCascade`.
 
-**Merge-patch on save.** Any client MUST edit a copy of the raw params map in place and set only the keys it touched — never rebuild the params from its rendered fields. Keys the client never surfaced (a zone hidden behind a toggle, another client's cascade config) would otherwise be dropped. This is a data-loss contract, not a nicety.
+**Merge-patch on save.** Any client MUST edit a copy of the raw params in place and set only the keys it touched — never rebuild the params from its rendered fields. Keys the client never surfaced (a zone hidden behind a toggle, another client's cascade config) would otherwise be dropped. This is a data-loss contract, not a nicety.
 
 **Live zone preview.** Dragging a Zone slider writes a `test_zone_preview` action to `CHAR_EXPRESSION_TEST` (`{a, posMin, posMax, target, color}`). The lamp lights the selected zone in the expression's color and blanks the rest; releasing the slider restores normal rendering.
 
@@ -91,7 +91,7 @@ The Vue web UI (`software/lamp-ui/src/components/expressions/`) renders a **subs
 
 `Expression` derives from `AnimatedBehavior` and is plugged into the `Compositor`, which ticks every registered behaviour every loop iteration. Subclasses override these:
 
-- `void onTrigger()`, **required**. Called once when `trigger()` fires (auto-interval, chain, or manual test) — `trigger()` returns false and skips it when the buffer routing rejects the start (wrong surface, or the operator's color editor is open). Read `colors[]`, `target`, the per-instance parameter map, and set up subclass state (`frames`, `frame`, allocations). Don't set `animationState` here — `trigger()` calls `playOnce()` right after `onTrigger()` returns, overwriting anything you set.
+- `void onTrigger()`, **required**. Called once when `trigger()` fires (auto-interval, chain, or manual test) — `trigger()` returns false and skips it when the buffer routing rejects the start (wrong surface, or the operator's color editor is open). Read `colors[]`, `target`, the per-instance parameters, and set up subclass state (`frames`, `frame`, allocations). Don't set `animationState` here — `trigger()` calls `playOnce()` right after `onTrigger()` returns, overwriting anything you set.
 - `void draw()`, the compositor's render hook (from `AnimatedBehavior`). Every shipped expression overrides `draw()` — it's where pixels actually get written, gated on `shouldAffectBuffer()`. The compositor calls it once per flush window (~16 ms) while the behavior isn't `STOPPED`; `STOPPED` behaviors are never drawn.
 - `void onUpdate()`, optional. Called by `control()` once per flush window while `animationState == PLAYING || PLAYING_ONCE`. Advance animation state here. Set `animationState = STOPPED` when done.
 - `void onComplete()`, optional. Called the tick after `animationState` transitions back to `STOPPED`. Use it to restore any state you snapshotted in `onTrigger` (most expressions hand the buffer back to the configurator's render and don't need this).
@@ -128,12 +128,12 @@ window.
 
 ## Adding a new expression type: minimum viable diff
 
-1. **New subclass** in `software/lamp-os/src/expressions/foo/foo_expression.{hpp,cpp}` (each expression gets its own directory). Derive from `Expression`, override `draw()` (where you paint) and `onTrigger()`; add `onUpdate()`/`onComplete()`/`control()` as the effect needs. Implement `configureFromParameters(const std::map<std::string, uint32_t>&)` to read your params. Read them with the **one-arg** `getParam(parameters, "key")` — `applyDefaults` has already folded every descriptor key into the map, so a miss is a schema bug, not a missing preset. Look at `glitchy/glitchy_expression.cpp` for an interval-triggered brief-flash pattern, `breathing/breathing_expression.cpp` for a continuous always-running pattern, `spotty/spotty_expression.cpp` for a continuous effect with independent per-point lifecycles that dims under wisp override.
+1. **New subclass** in `software/lamp-os/src/expressions/foo/foo_expression.{hpp,cpp}` (each expression gets its own directory). Derive from `Expression`, override `draw()` (where you paint) and `onTrigger()`; add `onUpdate()`/`onComplete()`/`control()` as the effect needs. Implement `configureFromParameters(const ExpressionParams&)` to read your params. Read them with the **one-arg** `getParam(parameters, "key")` — `applyDefaults` has already folded every descriptor key into the parameters, so a miss is a schema bug, not a missing preset. Look at `glitchy/glitchy_expression.cpp` for an interval-triggered brief-flash pattern, `breathing/breathing_expression.cpp` for a continuous always-running pattern, `spotty/spotty_expression.cpp` for a continuous effect with independent per-point lifecycles that dims under wisp override.
 2. **Descriptor** — declare the descriptor data as `inline constexpr` in `foo_expression.hpp` (see the shipped types: `kFooDescriptorData`, make-less) with id, name, `colors`, optional `interval`/`duration`, zone flags, and `params`; in the `.cpp`, compose the registered descriptor with `withMake(kFooDescriptorData, &makeExpr<FooExpression>)` and expose it via a `static const ExpressionDescriptor& classDescriptor()` accessor. The split is a native-test seam: `test_builtin_descriptors` registers the header data directly (the `.make` factory can't link without Arduino), so a descriptor change fails the pinned catalog instead of drifting. Every wire field (and the whole editor) derives from this; there is no separate app-side schema. Return `continuous` here rather than the app — and override `wispDimFloor()` on the class (a value below `1.0`) if the type should dim, not pause, under a wisp hold.
 3. **Register it** — add `reg.add(FooExpression::classDescriptor())` to `Lamp::registerExpressions` in `lamp_behaviors.cpp`. `ExpressionManager::makeExpression` then finds the descriptor by id, builds the instance via `.make`, and folds defaults before `configureFromParameters`. No factory dispatch to edit.
 4. **App presentation** (optional) — add an entry to `expression_presentation.dart` keyed by your `id` for the picker icon + tagline. Skip it and the type falls back to a generic icon and no tagline; every control still renders from the descriptor.
 
-Type-specific params ride the generic `parameters` map automatically — you do **not** touch the reserved-key skip lists (those cover only the fixed top-level fields, see **Parameter contract**). That's it: no protocol bump, no NVS migration. The settings_blob path picks up the new fields on first save, and the app picks up the new controls the next time it reads `exprcat`.
+Type-specific params ride the generic `parameters` automatically — you do **not** touch the reserved-key skip lists (those cover only the fixed top-level fields, see **Parameter contract**). The one table you do touch is `kExpressionParamKeys` in `config/config_types.hpp`: a key missing from it is dropped at parse, so **append** every new key there. Never insert or reorder: stored configs carry a key as its index, and the table's byte-wise order is the JSON key order on every wire (`test_builtin_descriptors` and `test_param_wire_compat` fail on a missing or out-of-order key; an append that breaks the order is a wire-order change to make deliberately). That's it: no protocol bump, no NVS migration. The settings_blob path picks up the new fields on first save, and the app picks up the new controls the next time it reads `exprcat`.
 
 ### Custom-lamp override
 
@@ -141,9 +141,9 @@ A variant owns its own set. Put the subclass + descriptor under `software/lamp-o
 
 ## Parameter contract
 
-`ExpressionConfig::parameters` is a `std::map<std::string, uint32_t>`. Integer-only on purpose: keeps the NVS budget bounded, simplifies the JSON decoder, and matches what the UI (sliders, steppers, segmented enums) produces. If you need a float, store it as fixed-point (milliseconds, hundredths) and document the units at the parameter's call site.
+`ExpressionConfig::parameters` is an `ExpressionParams`: one optional `uint32_t` per `kExpressionParamKeys` slot, held inline, so copying it never allocates and it iterates in key order. Integer-only on purpose: keeps the NVS budget bounded, simplifies the JSON decoder, and matches what the UI (sliders, steppers, segmented enums) produces. If you need a float, store it as fixed-point (milliseconds, hundredths) and document the units at the parameter's call site.
 
-Each expression instance serializes as a flat JSON object: a **fixed set of top-level fields** (`type`, `enabled`, `intervalMin`, `intervalMax`, `target`, `colors`) each with a dedicated decoder, plus every other key spread in from the `parameters` map. On read, a key is a top-level field iff it's in the skip chain — the `keyStr == …` list in `config_codec.cpp::fromJson` and the matching `_reservedKeys` set in `sections.dart`; everything else lands in `parameters`. `disabledDuringWispOverride` is in both skip lists too: it's a pure type-property (never NVS-loaded), and the entry just tolerates and drops it from old blobs.
+Each expression instance serializes as a flat JSON object: a **fixed set of top-level fields** (`type`, `enabled`, `intervalMin`, `intervalMax`, `target`, `colors`) each with a dedicated decoder, plus every other key spread in from the `parameters` map. On read, a key is a top-level field iff it's in the skip chain — the skip list in `config_codec.cpp::parseExpression` and the matching `_reservedKeys` set in `sections.dart`; everything else lands in `parameters`. `disabledDuringWispOverride` is in both skip lists too: it's a pure type-property (never NVS-loaded), and the entry just tolerates and drops it from old blobs.
 
 Those skip lists are **fixed** — adding a per-type param does not touch them, since params flow through `parameters` by definition. You only edit both (at the same commit) if you add a genuinely new top-level field. A param key must not collide with a top-level field name; prefix with the expression's name if there's any ambiguity (e.g. `pulseSpeed`, not `speed`).
 
@@ -231,7 +231,7 @@ Semantics:
 
 ## Mesh cascade integration
 
-Cascade is a dev/testing tool, not a user-facing feature: the app exposes the toggle only in dev mode, on purpose — a fleet of user lamps flashing in sync is visual noise, and only a few specifically controlled lamps ship with it. When `parameters["cascadeEnabled"] == 1`, a local trigger fans out a matching `MSG_EVENT` to every reachable peer, staggered by `parameters["cascadeStaggerMs"]`. Continuous descriptors never cascade — a cascaded long-running expression would override other lamps' behavior, and they retrigger at boot, settings upsert, and wisp release anyway — so `maybeCascade` gates them out, matching the app's hidden toggle. The structural loop break is in `triggerInvocation`, remote-arrived triggers are dispatched to a transient one-shot Expression instance and **never cascade**. A transient whose `trigger()` is rejected (wrong buffer, or the operator's color editor is open) is not retained: it neither occupies the compositor nor blocks the same-sender coalesce check. At most `kMaxTransients` (8) transients are in flight at once; a cascade arriving past that is dropped, so a crowd of distinct senders cannot stack heap Expressions without limit. An expression upsert (from the app or a relayed `expressionOp`) is held to the caps in `config/config_types.hpp`: a target outside 1-3 is rejected, colours past 8 and parameters past 16 are dropped, and the stored list holds at most 32 entries. See `docs/dev/networking.md` (MSG_EVENT section) for the wire format, the gossip-relay rule, and the per-msgType DedupRing.
+Cascade is a dev/testing tool, not a user-facing feature: the app exposes the toggle only in dev mode, on purpose — a fleet of user lamps flashing in sync is visual noise, and only a few specifically controlled lamps ship with it. When `parameters["cascadeEnabled"] == 1`, a local trigger fans out a matching `MSG_EVENT` to every reachable peer, staggered by `parameters["cascadeStaggerMs"]`. Continuous descriptors never cascade — a cascaded long-running expression would override other lamps' behavior, and they retrigger at boot, settings upsert, and wisp release anyway — so `maybeCascade` gates them out, matching the app's hidden toggle. The structural loop break is in `triggerInvocation`, remote-arrived triggers are dispatched to a transient one-shot Expression instance and **never cascade**. A transient whose `trigger()` is rejected (wrong buffer, or the operator's color editor is open) is not retained: it neither occupies the compositor nor blocks the same-sender coalesce check. At most `kMaxTransients` (8) transients are in flight at once; a cascade arriving past that is dropped, so a crowd of distinct senders cannot stack heap Expressions without limit. An expression upsert (from the app or a relayed `expressionOp`) is held to the caps in `config/config_types.hpp`: a target outside 1-3 is rejected, colours past 8 and parameters past 16 are dropped, and the stored list holds at most 24 entries. See `docs/dev/networking.md` (MSG_EVENT section) for the wire format, the gossip-relay rule, and the per-msgType DedupRing.
 
 ## Expression mirror
 
@@ -274,6 +274,8 @@ A minimal copy-paste type, matching the shipped pattern (registry-driven, no
 factory dispatch). Follows the four steps in **Adding a new expression type**
 above.
 
+Append `"fooTempo"` to `kExpressionParamKeys` (`config/config_types.hpp`) first; until it is there the key is dropped at parse and `getParam` reads the default.
+
 `foo/foo_expression.hpp`:
 
 ```cpp
@@ -307,7 +309,7 @@ class FooExpression : public Expression {
   const ExpressionDescriptor& descriptor() const override;  // instance accessor
 
   void configureFromParameters(
-      const std::map<std::string, uint32_t>& parameters) override;
+      const ExpressionParams& parameters) override;
   void draw() override;
 
  protected:
@@ -338,7 +340,7 @@ const ExpressionDescriptor& FooExpression::classDescriptor() { return kFooDescri
 const ExpressionDescriptor& FooExpression::descriptor() const { return kFooDescriptor; }
 
 void FooExpression::configureFromParameters(
-    const std::map<std::string, uint32_t>& parameters) {
+    const ExpressionParams& parameters) {
   // applyDefaults has folded every descriptor key into the map, so the
   // one-arg getParam always finds it — a miss is a schema bug.
   tempoMs_ = getParam(parameters, "fooTempo");
