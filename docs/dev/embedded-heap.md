@@ -133,54 +133,88 @@ page; and rewriting an item needs room for the new copy before the old one is
 erased. A single growing JSON string broke all of that: past about 2.4 KB the
 config stopped saving, inside what the app allows.
 
-`config_codec::saveConfig` splits the lamp's namespace so no value outgrows a
-page and the whole fits at the caps (`config/config_types.hpp`):
+`config_codec::saveConfig` writes one of two shapes, chosen per save:
+
+- **Whole**, when everything fits the 2 KB save buffer: one `cfg` JSON that
+  carries the expressions and the knockout levels too. Every firmware reads
+  this form, so a lamp flashed back to an older release keeps its
+  expressions. A typical setup (up to about four expressions with full colour
+  lists) is saved this way.
+- **Split**, for anything bigger, so no value outgrows a page and the whole
+  fits at the caps (`config/config_types.hpp`):
 
 | Key | Content | Worst case | Entries |
 |---|---|---|---|
 | `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 141 B | 21 x 7 = 147 |
 | `xn` | expression count | 1 B | 3 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfg` | the rest as JSON (`toStoredJson`) | about 1.85 KB | 60 |
+| `cfg` | the rest as JSON (`writeStoredJson`) | about 1.85 KB | 59 |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
 | `lampType` | variant id | under 16 B | 2 |
 
 Outside it: PHY calibration (a 1904-byte blob plus two small keys, 66 entries),
-the WiFi driver's namespace (at most 64; the lamp now keeps WiFi config in RAM,
-so it only shrinks), the crash record (4) and four namespace entries. The
-rewrite copy of the largest item adds 60. Total 442 of 504 at the caps, and 421
-for the standard variant's real worst case (its six types at every target),
-both measured by `test_config_records`. A record stores parameter keys as indexes into
-`kExpressionParamKeys`, which is append-only and pinned by
-`test_builtin_descriptors`; a key no expression reads is dropped at parse.
+the WiFi driver's namespace (at most 64; the lamp keeps WiFi config in RAM and
+erases that namespace at boot, so in practice it is empty), the crash record
+(4) and four namespace entries. The rewrite copy of the largest item adds 59.
+Total 442 of 504 at the caps, and 421 for the standard variant's real worst
+case (its six types at every target). A whole save needs 296, and the moment
+a split config turns whole (the new `cfg` lands before the records go) peaks
+at 456. All four are measured by `test_config_records`. A record carries each
+parameter key as its index in `kExpressionParamKeys`, so that table is
+append-only, pinned by `test_builtin_descriptors`, and kept in byte-wise key
+order (`test_param_wire_compat`); the JSON forms carry key names. A key no
+expression reads is dropped at parse.
 
 The caps that bound `cfg`: 8 colours per surface segment (the app offers 6),
 4 segments per role (variants define at most 3), 16-byte segment names, a
-32-byte lamp name, a 64-byte password (a longer one is refused, never
-truncated), a 32-byte SSID, 8 home-mode type names.
+32-byte lamp name, a 64-byte password, a 32-byte SSID, a byte order the strip
+driver knows, 8 home-mode type names. Every write path refuses an over-long
+password or SSID and ignores an unknown byte order; `fromJson` also bounds
+what it loads (truncating a password stored before the cap, which the BOOT
+button can clear), so no field can make every save fail.
 
-A partition that will not initialize at all is erased and re-initialized in
-`setup()` (`NvsConfigStore::initFlash`) before anything opens it: every stored
-setting is lost, but the lamp boots with Bluetooth, where leaving it would
-need a USB reflash. Nothing on an uninitialized partition is readable through
-the API, so there is nothing to salvage first. A failed NimBLE init skips every
-later BLE start instead of faulting in `NimBLEServer::start`.
+Arduino's `initArduino` runs `nvs_flash_init` before `setup()`, erasing and
+re-initializing on `NO_FREE_PAGES` or `NEW_VERSION_FOUND`.
+`NvsConfigStore::initFlash` runs again first thing in `setup()` (a no-op on an
+initialized partition) and erases only for those two codes or
+`NOT_ENOUGH_SPACE`, the codes that mean the partition itself is unusable:
+every stored setting is lost, but the lamp boots with Bluetooth, where leaving
+it would need a USB reflash. Any other error (out of memory, a transient flash
+fault) erases nothing and the lamp runs without NVS. A failed NimBLE init
+skips every later BLE start, OTA radio pause and resume included.
+
+A partition that initializes but is full gets space back on the first boot:
+the WiFi driver's namespace is erased, and the legacy dispositions JSON (about
+2.2 KB) is rewritten as the 701-byte blob, blob first, then erased.
 
 Saves go through the `nvs_*` API, never `Preferences`: Preferences logs a
-failed write through a formatting path that faulted on a starved heap.
+failed write through a formatting path that faulted on a starved heap. Every
+save runs on the loop task: a web save is handed from the AsyncTCP task to
+`webapp::tick`, which saves and returns the result.
 
-A reset at any point of a save leaves a whole config. The order is fixed:
-the records, then their count, then the erase of records past it, then
-`ko`, then `cfg` (which carries the legacy expression list until that last
-write, so a first save after an update that is cut short still loads the old
-form). An edit rewrites one record and NVS skips the unchanged ones; a remove
-shifts later records down a slot, so a reset mid-shift can leave one record in
-two slots, and the load keeps the first of any repeated (type, target). A
-record that fails to read drops only itself, logged as
-`[cfg] expression record xN unreadable`. `test_config_records` resets the store
-at every write of a remove, an add-and-edit and a first migration. The boot
-log's `[cfg] expressions=N from records|cfg json` is the loaded count; the
-`cfg_bytes` on the line before is the "cfg" JSON alone.
+A reset at any point of a save leaves a whole config. A whole save writes
+`cfg`, then erases `xn`, the records and `ko`. A split save builds its `cfg`
+JSON first (TooLarge writes nothing), then writes the records, `ko`, the count
+`xn`, erases records past the count, and writes `cfg` last. On load the `cfg`
+JSON wins wherever it carries the expressions or the knockout itself, so a
+whole save cut short, or a config an older firmware rewrote after a
+downgrade, loads as written. The dispositions JSON key wins over the blob the
+same way. An edit rewrites one record and NVS skips the unchanged ones; a
+remove shifts later records down a slot, so a reset mid-shift can leave one
+record in two slots, and the load keeps the first of any repeated (type,
+target). Nothing reorders entries, so removes, edits and appends are the
+whole set of cases. A record that fails to read drops only itself, logged as
+`[cfg] expression record xN unreadable`. `test_config_records` resets the
+store at every write of a remove, an add-and-edit, a first migration and a
+switch between the two shapes. The boot log's
+`[cfg] expressions=N from records|cfg json` is the loaded count; the
+`cfg_bytes` on the line before is the `cfg` JSON alone.
+
+**Downgrades.** On an older release a whole-saved lamp keeps everything; a
+split-saved one loses its expressions there (that release reads only the
+`cfg` JSON, which then has none), and dispositions reset there in either
+case, since the older release reads only the JSON key the migration removed.
+Flashed forward again, whatever the older release saved is what loads.
 
 ## What expressions cost at runtime
 
@@ -213,10 +247,13 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
 
 - **Cascade transients.** Every accepted MSG_COMMAND or MSG_EVENT invocation can
   start a one-shot heap Expression per target, alive until its animation
-  completes (up to 180 s). At most `ExpressionManager::kMaxTransients` (4) are in
-  flight, and an invocation starts them only when the largest free block holds
-  2 KB per target plus the headroom, so a transient that starts can finish
-  allocating; a cascade past either is dropped. The vector is reserved at
+  completes (up to 180 s). `admitTransient`
+  (`expressions/transient_admission.hpp`) admits them: at most 4 in flight,
+  at most 2 of them a peer's (cascades and event echoes), so the lamp's own
+  Test and greetings always have room, and only when the largest free block
+  holds 2 KB per target plus the headroom, so a transient that starts can
+  finish allocating. A dropped one logs `[expr] transient drop` on every
+  build, at most every 5 s. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Expression parameters live inline.** `ExpressionParams` holds one
@@ -240,25 +277,41 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   contexts and allocates nothing.
 - **The BLE scan.** The scan callback hands the roster the six address bytes,
   so a lamp advertisement builds no 17-char string on the host task.
+- **ESP-NOW frames in the driver.** Each queued frame holds a WiFi TX buffer
+  until it airs. Past the driver's queue, `esp_now_send` fails with
+  `ESP_ERR_ESPNOW_NO_MEM` (0x3067), and on the bench a burst of those was
+  followed minutes later by the TX path wedging with its buffers (about 8 KB)
+  held and every broadcast failing. `TxCredit`
+  (`components/network/transport/tx_credit.hpp`) bounds the frames handed to
+  the driver and not yet reported by its send callback to 6: every submit
+  takes a credit, the callback returns it, a refused submit returns it at
+  once, and a count no credit has moved for 2 s is presumed lost and resets.
+  A send past the bound fails before it reaches the driver.
 - **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
-  app's Test) reaches every mesh peer, closest first, but queues at most 8
-  frames at a time. Each queued ESP-NOW frame holds a WiFi TX buffer until it
-  airs; fanning out to a crowd of 50 in one pass ran the driver out of memory
-  (`esp_now_send` 0x3067) and took the heap's minimum to about 1 KB.
-  `CascadeScheduler` (`expressions/cascade_scheduler.hpp`) holds the peers
-  and the one serialized invocation in fixed storage (about 1.1 KB of .bss:
-  50 MACs and a 768-byte payload, above the 536-byte worst case) and the loop
-  sends the next batch of 8 every 50 ms. Each frame's `delayMs` is rewritten
-  in place to keep the peer's intended fire time, (i + 1) x stagger capped at
-  1 s from the original fire, less the time the drain has taken, never below
-  zero. A new cascade replaces any remainder of one still draining, and an
-  OTA start stops the drain.
+  app's Test) reaches every mesh peer, closest first. `CascadeScheduler`
+  (`expressions/cascade_scheduler.hpp`) holds up to two fan-outs (peers and one
+  serialized invocation each, about 2.2 KB of .bss: 50 MACs and a 768-byte
+  payload per fan-out, above the 536-byte worst case). The loop sends up to 8
+  frames per pass, only while TX credits remain (a frame with none waits for a
+  later pass), and passes are 100 ms apart, past a command's two resend copies
+  40 ms apart, so a batch never overwrites the previous batch's resends in the
+  10-slot ring. Each frame's `delayMs` is rewritten in place to keep the
+  peer's intended fire time, (i + 1) x stagger capped at 1 s from the original
+  fire, less the time the drain has taken, never below zero; the 50th peer
+  leaves about 600 ms after the fire, so with a short stagger the far end of a
+  50-lamp crowd fires up to about half a second late. A second cascade waits
+  behind the one draining; a third replaces the one waiting. An OTA start
+  stops the drain, and a frame whose delay rewrite would overflow is dropped
+  and logged.
 - **Reads nobody asked for.** The section caches warm, and the state notify
   builds its payload, only while a BLE client holds the link; with no client
-  the caches are freed every tick and rebuild on the next read. The
+  the caches are freed every tick and rebuild on the next read, and the tick
+  after a client connects warms them while the heap allows. The
   expressions section (about 4 KB at the worst case) is measured, then written
   by `JsonWriter` into one exactly-sized block; the smaller sections build
-  their document only with the headroom free.
+  their document only with the headroom free. A heap check cannot reserve
+  the block, so the cache assign and the copy-out also catch `bad_alloc`
+  (best effort, with no exception emergency pool).
 - **OTA sessions.** The receiver's chunk bitmap (up to 8 KB per OFFER) is
   allocated only when `heapCanSpare` allows it; otherwise the OFFER is declined
   busy and the sender retries.
