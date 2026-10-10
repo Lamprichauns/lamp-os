@@ -1,0 +1,6 @@
+# uv constraints for the pioarduino platform's penv (~/.platformio/penv), applied
+# through UV_CONSTRAINT in CI. The platform installs `pioarduino>=6.1.19` there and
+# runs the hybrid custom_sdkconfig build's second `pio run` from it. pioarduino
+# 6.2.0 pulls tool-scons 4.11.1, which lacks SCons.Tool.FortranCommon, and the
+# lamp link fails. 6.1.19 keeps SCons 4.8.1 in both phases.
+pioarduino==6.1.19
