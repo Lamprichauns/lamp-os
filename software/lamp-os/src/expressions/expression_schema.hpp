@@ -150,6 +150,9 @@ struct ExpressionDescriptor {
   // it, but omitted from serializeCatalog so it never surfaces in the app's
   // editable catalog.
   bool internal = false;
+  // TARGET_BOTH builds one instance bound to the base that runs base then
+  // shade as one strip, rather than one instance per surface.
+  bool spansSurfaces = false;
 };
 
 template <class T>

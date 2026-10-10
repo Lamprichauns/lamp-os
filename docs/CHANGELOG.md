@@ -20,6 +20,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   venue network: Straylight's feed arrives over the cable, the wisp's WiFi
   stays off so the mesh keeps its radio, and the app shows the wisp's
   network address. A wisp with no module works exactly as before.
+- **Pulse has a Direction.** Up is the default. Down runs the other way: on
+  both surfaces it drips from the top of the shade down to the bottom of the
+  base.
 
 ### Fixed
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run out
@@ -88,6 +91,20 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   only, joins only when it finds it there, and waits longer between tries (up
   to five minutes) when it doesn't. Searching for a network that was gone kept pulling the wisp away
   from your lamps until they dropped out and went back to their own colours.
+- **A Pulse on both base and shade is one pulse rising up the lamp.** It
+  starts at the bottom of the base, climbs to its top and carries straight on
+  up through the shade, instead of two pulses running side by side. At the
+  default speed it takes about as long as each half used to; at slower
+  settings Pulse speed is the time to climb the whole lamp, so each pixel goes
+  by faster than before. Size is measured against the whole lamp. A Region
+  applies to each surface, and a Pulse on just the shade looks exactly as it
+  did. On a lamp whose base and shade don't stack, the
+  pulse sweeps one and then the other. While lamps are partway through an
+  update, a lamp still on the old firmware shows a received both-surface
+  Pulse as two pulses side by side, ignores Down, and still runs a base-only
+  Pulse down the base.
+- **A Pulse on just the base rises.** It used to run down the base; Up now
+  climbs it from the bottom, like the shade, and Down runs it downward.
 
 ## 1.2.7
 

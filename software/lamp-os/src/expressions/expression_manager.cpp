@@ -6,6 +6,7 @@
 
 #include "expressions/param_utils.hpp"
 #include "expressions/cascade_scheduler.hpp"
+#include "expressions/surface_plan.hpp"
 #include "util/heap_guard.hpp"
 
 #include "components/network/protocol/lamp_protocol.hpp"
@@ -47,11 +48,13 @@ std::unique_ptr<Expression> ExpressionManager::makeExpression(
     const std::vector<Color>& colors,
     uint32_t intervalMin, uint32_t intervalMax,
     ExpressionTarget target,
-    const ExpressionParams& parameters) {
+    const ExpressionParams& parameters,
+    FrameBuffer* above) {
   const ExpressionDescriptor* d = registry_.find(type.c_str());
   if (!d || !d->make) return nullptr;
 
   std::unique_ptr<Expression> expr(d->make(buffer));
+  if (above) expr->joinSurfaceAbove(above);
   if (d->interval && d->interval->minGap) {
     intervalMax = clampRangeHiGap(intervalMin, intervalMax,
                                   static_cast<uint32_t>(d->interval->minGap),
@@ -80,20 +83,13 @@ void ExpressionManager::addExpression(const ExpressionConfig& config, bool confi
   if (!shadeBuffer || !baseBuffer) return;
 
   auto target = static_cast<ExpressionTarget>(config.target);
+  const SurfacePlan plan =
+      surfacePlan(registry_.find(config.type.c_str()), target, shadeBuffer, baseBuffer);
 
-  // Determine target buffers
-  std::vector<FrameBuffer*> targetBuffers;
-  if (target == TARGET_BOTH) {
-    targetBuffers = {shadeBuffer, baseBuffer};
-  } else {
-    targetBuffers = {(target == TARGET_SHADE) ? shadeBuffer : baseBuffer};
-  }
-
-  // Create expressions for each target buffer
-  for (auto* buffer : targetBuffers) {
-    if (auto expr = makeExpression(config.type, buffer, config.colors,
+  for (uint8_t b = 0; b < plan.count; ++b) {
+    if (auto expr = makeExpression(config.type, plan.buffers[b], config.colors,
                                    config.intervalMin, config.intervalMax,
-                                   target, config.parameters)) {
+                                   target, config.parameters, plan.above)) {
       expr->autoTriggerEnabled = config.enabled;
       expressions.push_back(
           {std::move(expr), config.type,
@@ -431,20 +427,10 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
     return false;
   }
 
-  // Determine target buffers, same convention as addExpression. TARGET_BOTH
-  // fires on both halves of the lamp; specific target fires on one.
-  FrameBuffer* targetBuffers[2] = {};
-  size_t targetCount = 0;
-  if (invTarget == TARGET_BOTH) {
-    targetBuffers[targetCount++] = shadeBuffer;
-    targetBuffers[targetCount++] = baseBuffer;
-  } else if (invTarget == TARGET_SHADE) {
-    targetBuffers[targetCount++] = shadeBuffer;
-  } else if (invTarget == TARGET_BASE) {
-    targetBuffers[targetCount++] = baseBuffer;
-  } else {
-    return false;
-  }
+  const SurfacePlan plan =
+      surfacePlan(registry_.find(inv.type.c_str()), invTarget, shadeBuffer, baseBuffer);
+  const size_t targetCount = plan.count;
+  if (targetCount == 0) return false;
 
   const uint32_t nowMs = millis();
   if (source == TransientSource::Local && localCooldown_.waiting(inv.type.c_str(), nowMs)) {
@@ -474,7 +460,7 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   bool triggered = false;
   for (size_t b = 0; admitted && b < targetCount; ++b) {
-    FrameBuffer* buffer = targetBuffers[b];
+    FrameBuffer* buffer = plan.buffers[b];
     // Build a fresh one-shot Expression instance directly from the
     // invocation. NEVER consults this lamp's `expressions` (configured)
     // vector; the receiver's local config is intentionally irrelevant.
@@ -483,7 +469,7 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
     // entirely independent (untouched, unread, unmodified).
     auto expr = makeExpression(inv.type, buffer, inv.colors,
                                /*intervalMin*/ 60, /*intervalMax*/ 900,
-                               invTarget, inv.parameters);
+                               invTarget, inv.parameters, plan.above);
     if (!expr) {
 #ifdef LAMP_DEBUG
       Serial.printf("[expr] transient rejected type=%s (unknown type)\n",

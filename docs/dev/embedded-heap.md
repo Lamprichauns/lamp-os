@@ -447,17 +447,18 @@ bytes (TLSF header plus light poisoning):
 | Type | Object | Buffers | Heap per instance |
 |---|---|---|---|
 | glitchy | 112 B | colours 32, saved pixels 152 | about 330 B |
-| pulse | 132 B | colours 32 | about 190 B |
+| pulse | 140 B | colours 32 | about 200 B |
 | breathing | 108 B | colours 32 | about 165 B |
 | shifty | 148 B | colours 32, saved pixels 152, fill offsets 152 (directional fills only) | about 390-540 B |
 | spotty | 112 B | colours 32, 5 spots 60 | about 240 B |
 | flicker (shimmer) | 176 B | colours 32, a cell per zone pixel 304 | about 550 B |
 
-A target-both expression is two instances. Each configured expression adds
+A target-both expression is two instances, except a Pulse, which runs both
+surfaces as one instance (`spansSurfaces`). Each configured expression adds
 its `Config::expressions` slot (140 B, grown four slots at a time) and colour
 list (about 44 B), and a 32-byte manager entry. The standard worst case (six
-types at every target: 18 configs, 24 instances) is about 8.1 KB of instances,
-2.7 KB of config, 0.8 KB of colours and 1 KB of entries: about 12.6 KB, against
+types at every target: 18 configs, 23 instances) is about 7.9 KB of instances,
+2.7 KB of config, 0.8 KB of colours and 1 KB of entries: about 12.4 KB, against
 about 18.4 KB before entries stopped copying parameters, the config vector
 stopped doubling and shifty dropped its two per-pixel fade buffers. Up to four
 transients come on top (a shifty pair is about 1 KB).
