@@ -40,10 +40,10 @@ std::string viaArduinoJson(const Model& m) {
 
 std::string viaWriter(const Model& m) {
   JsonWriter measure(nullptr, 0);
-  config_codec::writeStoredJson(measure, m.lamp, m.base, m.shade, m.homeMode, nullptr);
+  config_codec::writeStoredJson(measure, &m.lamp, m.base, m.shade, m.homeMode, nullptr);
   std::string out(measure.length() + 1, '\0');
   JsonWriter w(out.data(), out.size());
-  config_codec::writeStoredJson(w, m.lamp, m.base, m.shade, m.homeMode, nullptr);
+  config_codec::writeStoredJson(w, &m.lamp, m.base, m.shade, m.homeMode, nullptr);
   w.finish();
   TEST_ASSERT_TRUE(w.ok());
   TEST_ASSERT_EQUAL(measure.length(), w.length());
@@ -104,7 +104,7 @@ void test_short_buffer_reports_overflow() {
   const Model m = fullModel();
   char buf[32];
   JsonWriter w(buf, sizeof(buf));
-  config_codec::writeStoredJson(w, m.lamp, m.base, m.shade, m.homeMode, nullptr);
+  config_codec::writeStoredJson(w, &m.lamp, m.base, m.shade, m.homeMode, nullptr);
   w.finish();
   TEST_ASSERT_FALSE(w.ok());
   TEST_ASSERT_EQUAL(31, std::string(buf).size());

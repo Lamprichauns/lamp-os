@@ -1,5 +1,6 @@
-// Native tests for the split config storage: each expression as a compact
-// record, knockout levels as a blob, the rest as the "cfg" JSON. Pins the
+// Native tests for the config storage: whole as one "cfg" string, or split
+// into a compact record per expression, the knockout levels and the rest as
+// blobs beside a lamp-only "cfg" string. Pins the
 // round trip, the migration from the single-JSON form, a failed write, and the
 // NVS budget at the caps (docs/dev/embedded-heap.md shows the arithmetic).
 
@@ -13,6 +14,7 @@
 
 #include "config/config_codec.hpp"
 #include "config/disposition_store.hpp"
+#include "paged_nvs.hpp"
 
 #include "../../src/util/color.cpp"
 #include "../../src/util/heap_guard.cpp"
@@ -90,14 +92,14 @@ Model worstCaseModel(char fill = 'z') {
   return m;
 }
 
-SaveResult save(InMemoryConfigStore& store, const Model& m) {
+SaveResult save(ConfigStore& store, const Model& m) {
   static char cfg[config_codec::kMaxStoredCfgJsonLen + 1];
   return config_codec::saveConfig(store, m.lamp, m.base, m.shade, m.expressions,
                                   m.homeMode, cfg, sizeof(cfg));
 }
 
 // The same load Config's constructor runs.
-void load(InMemoryConfigStore& store, Model& m) {
+void load(ConfigStore& store, Model& m) {
   JsonDocument doc;
   deserializeJson(doc, store.read("cfg", "{}"));
   bool withinCaps = true;
@@ -545,6 +547,38 @@ void test_delete_all_survives_a_reset_before_the_record_erase() {
   }
 }
 
+// A whole cfg string is the authority, so a "cfgb" beside it (a save cut
+// short, or left by a downgrade) goes at load: a split save would otherwise
+// take the store for split already and skip staging the lamp section.
+void test_load_of_a_whole_store_drops_a_stale_rest_blob() {
+  InMemoryConfigStore store;
+  Model m;
+  m.lamp.name = "whole";
+  save(store, m);
+  store.writeBlob("cfgb", "{}", 2);
+  Model back;
+  load(store, back);
+  TEST_ASSERT_EQUAL_STRING("whole", back.lamp.name.c_str());
+  TEST_ASSERT_FALSE(store.has("cfgb"));
+}
+
+// A split store's cfg string is the lamp section alone, which an older
+// firmware reads; the rest is the "cfgb" blob.
+void test_split_cfg_string_is_the_lamp_section() {
+  InMemoryConfigStore store;
+  Model m;
+  m.lamp.name = "split";
+  padToSplit(m);
+  padToSplit(m);
+  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, store.read("cfg", "")) == DeserializationError::Ok);
+  TEST_ASSERT_EQUAL_STRING("split", doc["lamp"]["name"] | "");
+  TEST_ASSERT_EQUAL(1, doc.as<JsonObject>().size());
+  TEST_ASSERT_TRUE(store.has("cfgb"));
+  TEST_ASSERT_FALSE(store.has("cfgl"));
+}
+
 // An unreadable record drops only itself.
 void test_unreadable_record_drops_only_itself() {
   InMemoryConfigStore store;
@@ -581,15 +615,14 @@ void test_unregistered_type_record_loads() {
   TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
 }
 
-// Worst-case NVS use against the 20 KB partition: 5 pages, one held free for
-// garbage collection, 126 entries each. The system keys are measured ceilings
-// (PHY calibration is a 1904-byte blob; the WiFi driver's namespace stays under
-// 64 entries), and a rewrite needs room for a second copy of the largest item
-// before the old one is erased.
-constexpr unsigned kUsableEntries = (5 - 1) * 126;
+// NVS budget against the 20 KB partition: 5 pages of 126 entries, one held
+// free for garbage collection. docs/dev/embedded-heap.md shows the arithmetic.
+constexpr size_t kPageEntries = PagedNvs::kEntries;
+constexpr size_t kDataPages = PagedNvs::kPages - 1;
+constexpr size_t kMargin = 32;
 
-// Everything outside the lamp namespace, as measured or bounded from each
-// owner's store format:
+// The keys outside the lamp namespace, as measured or bounded from each
+// owner's store format. `pad` adds that many one-entry keys.
 // - 5 namespace entries: lamp, crash, phy, nvs.net80211, nimble_bond;
 // - PHY calibration: a 1904-byte cal_data blob, a 6-byte cal_mac blob and a
 //   u32 cal_version;
@@ -601,82 +634,352 @@ constexpr unsigned kUsableEntries = (5 - 1) * 126;
 //   for MAX_BONDS + 1, cccd_sec_N blobs (16 bytes) for MAX_CCCDS (8),
 //   csfc_sec_N (8 bytes) for MAX_CSFCS (1, the connection count), and
 //   local_irk_N and rpa_rec_N (under 32 bytes) for MAX_BONDS each.
-size_t systemEntries() {
-  const size_t bonds = 3, cccds = 8, csfcs = 1;
-  const size_t bondStore = 2 * bonds * blobEntries(88) + (bonds + 1) * blobEntries(44) +
-                           cccds * blobEntries(16) + csfcs * blobEntries(8) +
-                           2 * bonds * blobEntries(32);
-  return 5 + blobEntries(1904) + blobEntries(6) + 1 + blobEntries(64) + bondStore;
+struct SystemKey {
+  std::string key;
+  size_t len;
+};
+
+std::vector<SystemKey> systemKeys() {
+  std::vector<SystemKey> keys;
+  for (const char* ns : {"ns/lamp", "ns/crash", "ns/phy", "ns/net80211", "ns/bond"}) {
+    keys.push_back({ns, 0});
+  }
+  keys.push_back({"phy/cal_data", 1904});
+  keys.push_back({"phy/cal_mac", 6});
+  keys.push_back({"phy/cal_version", 0});
+  keys.push_back({"crash/record", 64});
+  for (int i = 0; i < 3; ++i) {
+    keys.push_back({"bond/our_sec_" + std::to_string(i), 88});
+    keys.push_back({"bond/peer_sec_" + std::to_string(i), 88});
+    keys.push_back({"bond/local_irk_" + std::to_string(i), 32});
+    keys.push_back({"bond/rpa_rec_" + std::to_string(i), 32});
+  }
+  for (int i = 0; i < 4; ++i) keys.push_back({"bond/p_dev_rec_" + std::to_string(i), 44});
+  for (int i = 0; i < 8; ++i) keys.push_back({"bond/cccd_sec_" + std::to_string(i), 16});
+  keys.push_back({"bond/csfc_sec_0", 8});
+  return keys;
 }
 
-size_t nvsEntriesNeeded(const Model& m, const char* label) {
-  InMemoryConfigStore store;
-  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
-  const size_t cfgLen = store.read("cfg", "").size();
-  size_t records = 0;
+size_t systemEntries() {
+  size_t n = 0;
+  for (const auto& k : systemKeys()) n += k.len == 0 ? 1 : blobEntries(k.len);
+  return n;
+}
+
+// The lamp namespace's keys besides the config: lampType and dispositions.
+size_t lampExtraEntries() {
+  return stringEntries(16) + blobEntries(DispositionStore::kMaxBlobLen);
+}
+
+enum class Part { Lamp, Rest, Whole };
+
+std::string savedString(const Model& m, Part part) {
+  static char buf[config_codec::kMaxStoredCfgJsonLen + 1];
+  JsonWriter w(buf, sizeof(buf));
+  if (part == Part::Lamp) {
+    config_codec::writeLampOnlyJson(w, m.lamp);
+  } else {
+    config_codec::writeStoredJson(w, part == Part::Whole ? &m.lamp : nullptr, m.base, m.shade,
+                                  m.homeMode, part == Part::Whole ? &m.expressions : nullptr);
+  }
+  w.finish();
+  TEST_ASSERT_TRUE(w.ok());
+  return std::string(buf);
+}
+
+// A string of `span` entries is placed when some page, compacted, has that
+// many free: the page with the fewest live entries holds at most a quarter of
+// the `live` entries on the four data pages. Returns the live entries that
+// could still be added before that guarantee breaks.
+long stringPlacementMargin(size_t live, size_t span) {
+  return static_cast<long>(kDataPages * (kPageEntries - span) + kDataPages - 1) -
+         static_cast<long>(live);
+}
+
+// The split keys but the cfg string: records, count, knockout, rest.
+size_t splitKeyEntries(const Model& m) {
   uint8_t buf[config_codec::kMaxExpressionRecordLen];
+  size_t records = 0;
   for (const auto& e : m.expressions.expressions) {
     records += blobEntries(config_codec::encodeExpression(e, buf));
   }
-  const size_t lampNs = records + blobEntries(1) + blobEntries(255) +
-                        stringEntries(cfgLen) + stringEntries(16) /* lampType */ +
-                        blobEntries(DispositionStore::kMaxBlobLen);
-  const size_t system = systemEntries();
-  const size_t largest = std::max(stringEntries(cfgLen),
-                                  blobEntries(DispositionStore::kMaxBlobLen));
-  const size_t needed = lampNs + system + largest;
-  printf("[budget] %s: %zu expressions in %zu entries, cfg=%zuB, lamp=%zu "
-         "system=%zu rewrite=%zu needed=%zu of %u\n",
-         label, m.expressions.expressions.size(), records, cfgLen, lampNs, system,
-         largest, needed, kUsableEntries);
-  TEST_ASSERT_TRUE(cfgLen <= config_codec::kMaxStoredCfgJsonLen);
-  return needed;
+  return records + blobEntries(1) + blobEntries(m.base.knockoutPixels.size()) +
+         blobEntries(savedString(m, Part::Rest).size());
 }
 
-void test_worst_case_config_fits_nvs_with_margin() {
-  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel(), "caps") + 32 <= kUsableEntries);
+// The whole cfg string at kMaxWholeCfgLen with everything else at its cap:
+// rewritten over its old copy, or placed after a staged "cfgb" copy of the
+// same size once the old string and the split keys are erased.
+void test_whole_cfg_string_is_always_placed() {
+  const size_t span = stringEntries(config_codec::kMaxWholeCfgLen);
+  const size_t live = systemEntries() + lampExtraEntries() +
+                      std::max(span, blobEntries(config_codec::kMaxWholeCfgLen));
+  const long margin = stringPlacementMargin(live, span);
+  printf("[budget] whole cfg: %zu entries, %zu live, margin %ld\n", span, live, margin);
+  TEST_ASSERT_TRUE(margin >= static_cast<long>(kMargin));
 }
 
-// Every free-text field at its cap and made of a character JSON escapes as two
-// bytes still fits the save buffer and the budget, so a web save of such
-// fields cannot fail every save.
-void test_quote_filled_worst_case_fits() {
-  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel('"'), "quotes") + 32 <= kUsableEntries);
+// The split save's lamp string, rewritten over its old copy beside every
+// split key at its cap, or placed after a staged "cfgl" copy once a whole
+// string is erased.
+void test_lamp_cfg_string_is_always_placed() {
+  for (char fill : {'z', '"', '\\'}) {
+    const Model m = worstCaseModel(fill);
+    const size_t lampLen = savedString(m, Part::Lamp).size();
+    const size_t span = stringEntries(lampLen);
+    const size_t live = systemEntries() + lampExtraEntries() + splitKeyEntries(m) +
+                        std::max(span, blobEntries(lampLen));
+    const long margin = stringPlacementMargin(live, span);
+    printf("[budget] lamp cfg '%c': %zu entries, %zu live, margin %ld\n", fill, span, live,
+           margin);
+    TEST_ASSERT_TRUE(margin >= static_cast<long>(kMargin));
+  }
 }
 
-void test_backslash_filled_worst_case_fits() {
-  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel('\\'), "backslashes") + 32 <=
-                   kUsableEntries);
+// A blob under 400 bytes is placed like a string: IDF writes its one chunk
+// whole and moves to a fresh page rather than split it while the tail holds
+// less than 400 bytes. The largest is a disposition blob just under that
+// (14 entries), rewritten beside every split key at its cap.
+void test_small_blobs_are_always_placed() {
+  const size_t span = 1 + (399 + 31) / 32;
+  for (char fill : {'z', '"', '\\'}) {
+    const Model m = worstCaseModel(fill);
+    const size_t live = systemEntries() + lampExtraEntries() + splitKeyEntries(m) +
+                        stringEntries(savedString(m, Part::Lamp).size());
+    const long margin = stringPlacementMargin(live, span);
+    printf("[budget] small blob '%c': %zu entries, %zu live, margin %ld\n", fill, span, live,
+           margin);
+    TEST_ASSERT_TRUE(margin >= static_cast<long>(kMargin));
+  }
 }
 
-// A whole save holds at most the 2 KB cfg JSON and no records. The peak is
-// the moment a split config turns whole: the new cfg lands before the
-// records, the knockout blob and the old cfg are erased.
-void test_whole_save_and_the_switch_to_it_fit_nvs() {
-  const size_t fixed = stringEntries(16) + blobEntries(DispositionStore::kMaxBlobLen) +
-                       systemEntries();
-  const size_t wholeCfg = stringEntries(config_codec::kMaxStoredCfgJsonLen);
-  const size_t whole = fixed + 2 * wholeCfg;
-  const size_t splitLive = kMaxExpressions * blobEntries(config_codec::kMaxExpressionRecordLen) +
-                           blobEntries(1) + blobEntries(255) +
-                           stringEntries(config_codec::kMaxStoredCfgJsonLen);
-  const size_t peak = fixed + splitLive + wholeCfg;
-  printf("[budget] whole: %zu, split-to-whole peak: %zu of %u\n", whole, peak, kUsableEntries);
-  TEST_ASSERT_TRUE(whole + 32 <= kUsableEntries);
-  TEST_ASSERT_TRUE(peak + 32 <= kUsableEntries);
+// Blob rewrites need the new copy's entries before the old copy goes. The
+// split peak is the larger of the rest blob and PHY calibration (1904 bytes)
+// rewritten beside every split key at its cap; the switch from whole adds the
+// split keys beside the whole cfg string, and a lamp string NVS could not
+// place there adds its staged copy.
+void test_split_peaks_fit_the_entries() {
+  for (char fill : {'z', '"', '\\'}) {
+    const Model m = worstCaseModel(fill);
+    const size_t lampLen = savedString(m, Part::Lamp).size();
+    const size_t rewrite =
+        std::max(blobEntries(savedString(m, Part::Rest).size()), blobEntries(1904));
+    const size_t base = systemEntries() + lampExtraEntries() + splitKeyEntries(m);
+    const size_t steady = base + stringEntries(lampLen) + rewrite;
+    const size_t switching =
+        base + stringEntries(config_codec::kMaxWholeCfgLen) + blobEntries(lampLen);
+    printf("[budget] split '%c': steady peak %zu, switch peak %zu of %zu\n", fill, steady,
+           switching, kDataPages * kPageEntries);
+    TEST_ASSERT_TRUE(steady + kMargin <= kDataPages * kPageEntries);
+    TEST_ASSERT_TRUE(switching + kMargin <= kDataPages * kPageEntries);
+  }
 }
 
-// The standard variant's real worst case: its six registered types at every
-// target, every expression full.
-void test_standard_variant_worst_case_fits_nvs() {
-  Model m = worstCaseModel();
-  m.expressions.expressions.clear();
-  for (const char* type : {"glitchy", "pulse", "breathing", "shifty", "spotty", "flicker"}) {
-    for (uint8_t target = 1; target <= 3; ++target) {
-      m.expressions.expressions.push_back(fullExpression(type, target));
+// The largest whole config: full expressions until the next would pass
+// kMaxWholeCfgLen.
+Model largestWholeModel() {
+  Model m;
+  m.lamp.name = std::string(kMaxLampNameLen, 'w');
+  static char buf[config_codec::kMaxWholeCfgLen + 1];
+  for (size_t i = 0; i < kMaxExpressions; ++i) {
+    m.expressions.expressions.push_back(fullExpression("pulse", 1 + i % 3));
+    JsonWriter w(buf, sizeof(buf));
+    config_codec::writeStoredJson(w, &m.lamp, m.base, m.shade, m.homeMode, &m.expressions);
+    w.finish();
+    if (!w.ok()) {
+      m.expressions.expressions.pop_back();
+      break;
     }
   }
-  TEST_ASSERT_TRUE(nvsEntriesNeeded(m, "standard") + 32 <= kUsableEntries);
+  TEST_ASSERT_TRUE(m.expressions.expressions.size() > 1);
+  return m;
+}
+
+uint32_t nextRandom(uint32_t& state) {
+  state = state * 1664525u + 1013904223u;
+  return state >> 8;
+}
+
+// The fields each storage key carries, compared after a load.
+bool sameLamp(const Model& a, const Model& b) {
+  return a.lamp.name == b.lamp.name && a.lamp.password == b.lamp.password &&
+         a.lamp.brightness == b.lamp.brightness;
+}
+bool sameRest(const Model& a, const Model& b) {
+  return a.base.segments.size() == b.base.segments.size() &&
+         a.base.knockoutPixels == b.base.knockoutPixels && a.homeMode.ssid == b.homeMode.ssid;
+}
+bool sameExpressions(const Model& a, const Model& b) {
+  const auto& x = a.expressions.expressions;
+  const auto& y = b.expressions.expressions;
+  if (x.size() != y.size()) return false;
+  for (size_t i = 0; i < x.size(); ++i) {
+    if (x[i].type != y[i].type || x[i].intervalMin != y[i].intervalMin) return false;
+  }
+  return true;
+}
+
+// Fails writes and erases past `budget`, the way a reset mid-save leaves NVS.
+class CrashAfter : public ConfigStore {
+ public:
+  CrashAfter(ConfigStore& inner, size_t budget) : inner_(inner), budget_(budget) {}
+  std::string read(const char* key, const char* d) override { return inner_.read(key, d); }
+  size_t readBlob(const char* key, void* out, size_t cap) override {
+    return inner_.readBlob(key, out, cap);
+  }
+  size_t write(const char* key, const char* value) override {
+    return spend() ? inner_.write(key, value) : 0;
+  }
+  size_t writeBlob(const char* key, const void* data, size_t len) override {
+    return spend() ? inner_.writeBlob(key, data, len) : 0;
+  }
+  bool erase(const char* key) override { return spend() && inner_.erase(key); }
+  bool clear() override { return inner_.clear(); }
+  size_t spent = 0;
+
+ private:
+  bool spend() {
+    if (spent == budget_) return false;
+    ++spent;
+    return true;
+  }
+  ConfigStore& inner_;
+  size_t budget_;
+};
+
+struct Churn {
+  size_t wholeStaged = 0;  // whole saves whose string NVS refused at first
+  size_t toSplit = 0;      // saves switching a whole store to split
+  size_t crashChecks = 0;
+};
+
+bool isWhole(PagedNvs& nvs) {
+  return nvs.read("cfg", "").find("\"expressions\"") != std::string::npos;
+}
+
+// A save that took a staged path, cut short after every write it makes: each
+// load must give back the lamp section, the rest and the expressions each
+// either as before or as saved.
+bool survivesCrashes(const PagedNvs& before, const Model& old, const Model& m, Churn& churn) {
+  for (size_t budget = 0;; ++budget) {
+    PagedNvs nvs = before;
+    CrashAfter crashing(nvs, budget);
+    const bool finished = save(crashing, m) == SaveResult::Ok && crashing.spent < budget;
+    Model back;
+    load(nvs, back);
+    ++churn.crashChecks;
+    if (!(sameLamp(back, old) || sameLamp(back, m)) ||
+        !(sameRest(back, old) || sameRest(back, m)) ||
+        !(sameExpressions(back, old) || sameExpressions(back, m))) {
+      return false;
+    }
+    if (finished) return true;
+  }
+}
+
+// Saves through every shape the store takes (whole, the largest whole, split
+// at every escaped worst case, the standard variant) in a seeded order, with
+// the system keys and dispositions rewritten between saves the way bonding,
+// boots and dispositions churn them, and `pad` one-entry keys beside them.
+// Every write but a refused string must land, and every save must load back
+// as saved; with `crashes`, a save that took a staged path is also cut short
+// after each of its writes.
+bool churnFits(size_t pad, uint32_t seed, size_t rounds, bool crashes, Churn& churn) {
+  PagedNvs nvs;
+  const auto system = systemKeys();
+  for (const auto& k : system) {
+    if (!nvs.putSystem(k.key, k.len)) return false;
+  }
+  for (size_t i = 0; i < pad; ++i) {
+    if (!nvs.putSystem("pad/" + std::to_string(i), 0)) return false;
+  }
+  if (nvs.write("lampType", "standard") == 0) return false;
+
+  Model standard = worstCaseModel();
+  standard.expressions.expressions.clear();
+  for (const char* type : {"glitchy", "pulse", "breathing", "shifty", "spotty", "flicker"}) {
+    for (uint8_t target = 1; target <= 3; ++target) {
+      standard.expressions.expressions.push_back(fullExpression(type, target));
+    }
+  }
+  // Each shape as a load gives it back, so a comparison sees only storage.
+  std::vector<Model> shapes;
+  for (const Model& m : {Model{}, largestWholeModel(), worstCaseModel('z'), worstCaseModel('"'),
+                         worstCaseModel('\\'), standard}) {
+    InMemoryConfigStore canonical;
+    save(canonical, m);
+    shapes.emplace_back();
+    load(canonical, shapes.back());
+  }
+  uint8_t disp[DispositionStore::kMaxBlobLen];
+  Model old;
+  load(nvs, old);
+  for (size_t round = 0; round < rounds; ++round) {
+    Model m = shapes[nextRandom(seed) % shapes.size()];
+    m.lamp.brightness = static_cast<uint8_t>(round);
+    if (!m.expressions.expressions.empty()) {
+      m.expressions.expressions[round % m.expressions.expressions.size()].intervalMin =
+          static_cast<uint32_t>(round);
+    }
+    const PagedNvs before = nvs;
+    const size_t refused = nvs.failedWrites;
+    const bool wasWhole = isWhole(nvs);
+    if (save(nvs, m) != SaveResult::Ok) return false;
+    const bool staged = nvs.failedWrites != refused;
+    const bool switched = wasWhole && !isWhole(nvs);
+    churn.wholeStaged += staged;
+    churn.toSplit += switched;
+    if (crashes && (staged || switched) && !survivesCrashes(before, old, m, churn)) {
+      return false;
+    }
+    Model back;
+    load(nvs, back);
+    if (!sameLamp(back, m) || !sameRest(back, m) || !sameExpressions(back, m)) return false;
+    old = back;
+    const auto& k = system[nextRandom(seed) % system.size()];
+    if (!nvs.putSystem(k.key, k.len, static_cast<uint32_t>(round))) return false;
+    std::memset(disp, static_cast<int>(round), sizeof(disp));
+    if (nvs.writeBlob("disp", disp, nextRandom(seed) % sizeof(disp) + 1) == 0) return false;
+  }
+  return true;
+}
+
+// The page model refuses a string no page has room for, though the entries
+// free across the pages would hold it, and spreads a blob of the same size.
+void test_page_model_confines_a_string_to_one_page() {
+  PagedNvs nvs;
+  for (size_t i = 0; i < kDataPages * kPageEntries; ++i) {
+    TEST_ASSERT_TRUE(nvs.putSystem("p/" + std::to_string(i), 0));
+  }
+  for (size_t page = 0; page < kDataPages; ++page) {
+    for (size_t i = 0; i < 20; ++i) {
+      nvs.eraseSystem("p/" + std::to_string(page * kPageEntries + i));
+    }
+  }
+  TEST_ASSERT_EQUAL(kDataPages * (kPageEntries - 20), nvs.liveEntries());
+  const std::string thirty(29 * 32 - 1, 's');
+  TEST_ASSERT_EQUAL(0, nvs.write("s", thirty.c_str()));
+  TEST_ASSERT_EQUAL(thirty.size(), nvs.writeBlob("b", thirty.data(), thirty.size()));
+  std::string back(thirty.size(), '\0');
+  TEST_ASSERT_EQUAL(thirty.size(), nvs.readBlob("b", &back[0], back.size()));
+  TEST_ASSERT_TRUE(back == thirty);
+}
+
+void test_every_store_shape_survives_churn_with_margin() {
+  Churn churn;
+  // Seed 31 leaves the least room of the first 150 (34 spare entries); seed
+  // 69 switches to split where no page has room for the lamp string beside
+  // the whole one.
+  for (uint32_t seed : {1u, 7u, 31u, 42u, 69u}) {
+    TEST_ASSERT_TRUE(churnFits(kMargin, seed, 400, true, churn));
+  }
+  printf("[budget] churn: %zu staged whole saves, %zu switches to split, %zu crash points\n",
+         churn.wholeStaged, churn.toSplit, churn.crashChecks);
+  TEST_ASSERT_TRUE(churn.wholeStaged > 0);
+  TEST_ASSERT_TRUE(churn.toSplit > 0);
+  size_t pad = kMargin;
+  while (churnFits(pad + 1, 1, 400, false, churn)) ++pad;
+  printf("[budget] churn holds with %zu spare entries\n", pad);
 }
 
 int main(int, char**) {
@@ -697,15 +1000,18 @@ int main(int, char**) {
   RUN_TEST(test_over_long_fields_cannot_fail_every_save);
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
-  RUN_TEST(test_worst_case_config_fits_nvs_with_margin);
-  RUN_TEST(test_quote_filled_worst_case_fits);
-  RUN_TEST(test_backslash_filled_worst_case_fits);
-  RUN_TEST(test_standard_variant_worst_case_fits_nvs);
-  RUN_TEST(test_whole_save_and_the_switch_to_it_fit_nvs);
+  RUN_TEST(test_page_model_confines_a_string_to_one_page);
+  RUN_TEST(test_whole_cfg_string_is_always_placed);
+  RUN_TEST(test_lamp_cfg_string_is_always_placed);
+  RUN_TEST(test_small_blobs_are_always_placed);
+  RUN_TEST(test_split_peaks_fit_the_entries);
+  RUN_TEST(test_every_store_shape_survives_churn_with_margin);
   RUN_TEST(test_crash_mid_save_removing_an_entry_keeps_the_rest);
   RUN_TEST(test_crash_mid_save_adding_and_editing_keeps_the_rest);
   RUN_TEST(test_crash_mid_save_crossing_the_split_keeps_the_rest);
   RUN_TEST(test_crash_mid_migration_keeps_the_legacy_config);
+  RUN_TEST(test_load_of_a_whole_store_drops_a_stale_rest_blob);
+  RUN_TEST(test_split_cfg_string_is_the_lamp_section);
   RUN_TEST(test_unreadable_record_drops_only_itself);
   RUN_TEST(test_cfg_json_over_the_buffer_fails_cleanly);
   RUN_TEST(test_unregistered_type_record_loads);

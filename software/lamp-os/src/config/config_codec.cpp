@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include <lampos/led_types.hpp>
 
@@ -312,10 +314,7 @@ static void writeSegmentsJson(JsonWriter& w, const std::vector<SegmentSettings>&
   w.endArray();
 }
 
-void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
-                     const ShadeSettings& shade, const HomeModeSettings& homeMode,
-                     const ExpressionSettings* whole) {
-  w.beginObject();
+static void writeLampJson(JsonWriter& w, const LampSettings& lamp) {
   w.key("lamp");
   w.beginObject();
   w.key("name");
@@ -341,6 +340,19 @@ void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings
   w.key("socialMode");
   w.value(static_cast<uint32_t>(lamp.socialMode));
   w.endObject();
+}
+
+void writeLampOnlyJson(JsonWriter& w, const LampSettings& lamp) {
+  w.beginObject();
+  writeLampJson(w, lamp);
+  w.endObject();
+}
+
+void writeStoredJson(JsonWriter& w, const LampSettings* lamp, const BaseSettings& base,
+                     const ShadeSettings& shade, const HomeModeSettings& homeMode,
+                     const ExpressionSettings* whole) {
+  w.beginObject();
+  if (lamp) writeLampJson(w, *lamp);
   w.key("base");
   w.beginObject();
   if (!base.byteOrder.empty()) {
@@ -446,6 +458,8 @@ constexpr uint8_t kRecordFormat = 1;
 constexpr uint8_t kRecordEnabled = 0x01;
 constexpr const char* kCountKey = "xn";
 constexpr const char* kKnockoutKey = "ko";
+constexpr const char* kSplitCfgKey = "cfgb";
+constexpr const char* kLampCfgKey = "cfgl";
 // Record keys any build has written ("x0".."x31"); the cap has been lower.
 constexpr size_t kRecordKeySlots = 32;
 
@@ -534,44 +548,72 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out) {
   return true;
 }
 
+static void eraseSplitKeys(ConfigStore& store) {
+  // Every record slot any build wrote, whatever the count says: a split save
+  // cut short before its count landed leaves records the count never named.
+  char key[5];
+  for (size_t i = 0; i < kRecordKeySlots; ++i) {
+    recordKey(i, key);
+    store.erase(key);
+  }
+  store.erase(kCountKey);
+  store.erase(kKnockoutKey);
+  store.erase(kLampCfgKey);
+}
+
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
                       const HomeModeSettings& homeMode, char* cfgBuffer,
                       size_t cfgBufferLen) {
-  char key[5];
-
-  // Whole: everything in the one "cfg" JSON, the form every firmware reads,
-  // so a lamp flashed back to an older build keeps its expressions. The
-  // split keys from an earlier save go after it lands; until then a load
-  // prefers the expressions and knockout the cfg JSON carries.
+  // Whole: everything in the one "cfg" string, the form every firmware reads.
+  // A cfg string carrying an expressions array is the authority from the
+  // moment it lands, so the split keys go after it.
   {
-    JsonWriter whole(cfgBuffer, cfgBufferLen);
-    writeStoredJson(whole, lamp, base, shade, homeMode, &expressions);
+    JsonWriter whole(cfgBuffer, std::min(cfgBufferLen, kMaxWholeCfgLen + 1));
+    writeStoredJson(whole, &lamp, base, shade, homeMode, &expressions);
     whole.finish();
     if (whole.ok()) {
-      if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
-      // Every record slot any build wrote, whatever the count says: a split
-      // save cut short before its count landed leaves records the count
-      // never named. Records go before the count, so no reset can leave a
-      // record no later save reaches.
-      for (size_t i = 0; i < kRecordKeySlots; ++i) {
-        recordKey(i, key);
-        store.erase(key);
+      if (store.write("cfg", cfgBuffer) == 0) {
+        // NVS could not place the string beside the split keys. Stage it as
+        // a "cfgb" blob, which may span pages and is the authority once the
+        // cfg string is gone, then clear the room and place the string.
+        if (store.writeBlob(kSplitCfgKey, cfgBuffer, whole.length()) == 0 ||
+            !store.erase("cfg")) {
+          return SaveResult::WriteFailed;
+        }
+        eraseSplitKeys(store);
+        if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
       }
-      store.erase(kCountKey);
-      store.erase(kKnockoutKey);
+      eraseSplitKeys(store);
+      store.erase(kSplitCfgKey);
       return SaveResult::Ok;
     }
   }
 
-  // Split: too big for one page-sized string. The cfg JSON is built first,
-  // so a TooLarge refusal writes nothing.
+  // Split: the records and knockout blob, then the rest of the config as the
+  // "cfgb" blob, then the lamp section as the "cfg" string, which an older
+  // firmware reads too. Losing its expressions array is what hands authority
+  // to the split keys. The JSON is built first so TooLarge writes nothing.
   JsonWriter rest(cfgBuffer, cfgBufferLen);
-  writeStoredJson(rest, lamp, base, shade, homeMode, nullptr);
+  writeStoredJson(rest, nullptr, base, shade, homeMode, nullptr);
   rest.finish();
   if (!rest.ok()) return SaveResult::TooLarge;
 
+  // Switching from whole: a page with room for the lamp string beside the
+  // whole one and every split key is not assured, so the lamp section is
+  // staged as the "cfgl" blob while the store is still small, and the whole
+  // string is erased before the lamp string is written.
+  const bool wasSplit = store.readBlob(kSplitCfgKey, cfgBuffer, cfgBufferLen) > 0;
+  JsonWriter lampOnly(cfgBuffer, cfgBufferLen);
+  writeLampOnlyJson(lampOnly, lamp);
+  lampOnly.finish();
+  if (!lampOnly.ok()) return SaveResult::TooLarge;
+  if (!wasSplit && store.writeBlob(kLampCfgKey, cfgBuffer, lampOnly.length()) == 0) {
+    return SaveResult::WriteFailed;
+  }
+
+  char key[5];
   const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
   uint8_t record[kMaxExpressionRecordLen];
   for (size_t i = 0; i < count; ++i) {
@@ -591,7 +633,19 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
     recordKey(i, key);
     store.erase(key);
   }
-  return store.write("cfg", cfgBuffer) > 0 ? SaveResult::Ok : SaveResult::WriteFailed;
+  JsonWriter restAgain(cfgBuffer, cfgBufferLen);
+  writeStoredJson(restAgain, nullptr, base, shade, homeMode, nullptr);
+  restAgain.finish();
+  if (store.writeBlob(kSplitCfgKey, cfgBuffer, restAgain.length()) == 0 ||
+      (!wasSplit && !store.erase("cfg"))) {
+    return SaveResult::WriteFailed;
+  }
+  JsonWriter lampAgain(cfgBuffer, cfgBufferLen);
+  writeLampOnlyJson(lampAgain, lamp);
+  lampAgain.finish();
+  if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
+  store.erase(kLampCfgKey);
+  return SaveResult::Ok;
 }
 
 LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
@@ -641,9 +695,46 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
                                BaseSettings& base, ShadeSettings& shade,
                                ExpressionSettings& expressions,
                                HomeModeSettings& homeMode, bool& withinCaps) {
-  withinCaps = fromJson(root, lamp, base, shade, expressions, homeMode);
-  return loadRecords(store, base, expressions, root["base"]["knockout"].is<JsonArray>(),
-                     root["expressions"].is<JsonArray>());
+  // A cfg string with an expressions array (a whole save, or any older
+  // firmware's) is the authority over every other key.
+  // A "cfgb" beside it is a save cut short or a downgrade's leftover, and
+  // goes: a split save takes "cfgb" to mean the store is split already.
+  if (root["expressions"].is<JsonArray>()) {
+    withinCaps = fromJson(root, lamp, base, shade, expressions, homeMode);
+    store.erase(kSplitCfgKey);
+    return LoadedRecords{};
+  }
+  // Otherwise "cfgb" holds the config: a staged whole one when it carries
+  // expressions, else the rest beside the records, with the lamp section
+  // from the cfg string, or from "cfgl" while a save has the string erased.
+  // A store without "cfgb" was split by a build that kept the rest in the
+  // cfg string.
+  std::unique_ptr<char[]> stored(new (std::nothrow) char[kMaxStoredCfgJsonLen]);
+  const size_t storedLen =
+      stored ? store.readBlob(kSplitCfgKey, stored.get(), kMaxStoredCfgJsonLen) : 0;
+  JsonDocument storedDoc;
+  JsonObject from = root;
+  if (storedLen > 0 &&
+      deserializeJson(storedDoc, stored.get(), storedLen) == DeserializationError::Ok &&
+      storedDoc.is<JsonObject>()) {
+    from = storedDoc.as<JsonObject>();
+    if (from["expressions"].is<JsonArray>()) {
+      // A staged whole config carries its own lamp section.
+    } else if (root["lamp"].is<JsonObject>()) {
+      from["lamp"] = root["lamp"];
+    } else if (!from["lamp"].is<JsonObject>()) {
+      const size_t lampLen = store.readBlob(kLampCfgKey, stored.get(), kMaxStoredCfgJsonLen);
+      JsonDocument lampDoc;
+      if (lampLen > 0 &&
+          deserializeJson(lampDoc, stored.get(), lampLen) == DeserializationError::Ok) {
+        from["lamp"] = lampDoc["lamp"];
+      }
+    }
+  }
+  withinCaps = fromJson(from, lamp, base, shade, expressions, homeMode);
+  if (from["expressions"].is<JsonArray>()) return LoadedRecords{};
+  return loadRecords(store, base, expressions, from["base"]["knockout"].is<JsonArray>(),
+                     false);
 }
 
 bool configBlobPersistable(const char* json) {

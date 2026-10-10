@@ -53,9 +53,11 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
 // The same shapes written with no heap, byte-identical to serializeJson of
 // expressionToJson / toStoredJson (pinned by test_json_writer).
 void writeExpressionJson(JsonWriter& w, const ExpressionConfig& expr);
-// `whole` non-null adds base.knockout and the expressions array, the shape
-// of a whole save.
-void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
+// `lamp` null leaves out the lamp section; `whole` non-null adds
+// base.knockout and the expressions array, the shape of a whole save.
+// writeLampOnlyJson writes {"lamp":{...}}, the split save's cfg string.
+void writeLampOnlyJson(JsonWriter& w, const LampSettings& lamp);
+void writeStoredJson(JsonWriter& w, const LampSettings* lamp, const BaseSettings& base,
                      const ShadeSettings& shade, const HomeModeSettings& homeMode,
                      const ExpressionSettings* whole);
 
@@ -82,21 +84,29 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 
 enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge };
 
-// Ceiling of the "cfg" JSON at the caps with every escapable string fully
-// escaped (measured by test_config_records); saveConfig writes it into a
-// buffer this long.
+// Ceiling of the stored config JSON without expressions or knockout, at the
+// caps with every escapable string fully escaped (measured by
+// test_config_records); saveConfig writes it into a buffer this long.
 constexpr size_t kMaxStoredCfgJsonLen = 2176;
+// The largest whole config saved as the one "cfg" string. A string must fit
+// in a single NVS page; at this size NVS can always place it with every
+// other key at its cap (docs/dev/embedded-heap.md, pinned by
+// test_config_records).
+constexpr size_t kMaxWholeCfgLen = 1759;
 
-// Saves the model. When the whole config fits `cfgBuffer` (2 KB) it is one
-// "cfg" JSON carrying the expressions and knockout too, the form any firmware
-// reads, and the split keys from an earlier save are erased after it lands.
-// Otherwise it splits: each expression as a record ("x0", "x1", ...), the
-// knockout levels in "ko", the count in "xn" (written after the records),
-// records past the count erased, then the rest as the "cfg" JSON. The cfg
-// JSON is built before any write, so TooLarge leaves the store untouched. No
-// single value outgrows an NVS page, an unchanged key is not rewritten (NVS
-// skips identical writes), and a save needs no heap. Stops at the first
-// failed write; the caller keeps its dirty state and retries.
+// Saves the model. A whole config up to kMaxWholeCfgLen is one "cfg"
+// string carrying the expressions and knockout too, the form any firmware
+// reads; when NVS cannot place it beside the split keys it is staged as the
+// "cfgb" blob first, and the split keys are erased once it is authoritative.
+// A larger config splits: each expression as a record ("x0", "x1", ...), the
+// knockout levels in "ko", the count in "xn", record slots past the count
+// erased, the rest but the lamp section as the "cfgb" blob, and last the lamp
+// section as the "cfg" string, which an older firmware reads too. Every value
+// but the cfg string is a blob NVS may spread across pages. The JSON is built
+// before any write, so TooLarge leaves the store untouched; an unchanged key
+// is not rewritten (NVS skips identical writes), and a save needs no heap.
+// Stops at the first failed write; the caller keeps its dirty state and
+// retries.
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
@@ -109,7 +119,7 @@ struct LoadedRecords {
   uint8_t duplicates = 0;    // records skipped as a repeat (type, target)
 };
 
-// Overlays what a split save keeps outside the "cfg" JSON. The cfg JSON wins
+// Overlays what a split save keeps outside the stored JSON. The JSON wins
 // wherever it carries the data itself: knockout levels from "ko" only when it
 // has no base.knockout, expressions from their records only when it has no
 // expressions array (an older firmware always writes both, so a config it
@@ -120,9 +130,11 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
                           ExpressionSettings& expressions, bool cfgHasKnockout,
                           bool cfgHasExpressions);
 
-// Loads a stored config: the parsed "cfg" JSON (`root`) through fromJson,
-// then loadRecords with the cfg JSON's own expressions and knockout as the
-// authority. `withinCaps` reports fromJson's result.
+// Loads a stored config from the parsed "cfg" string (`root`): whole when it
+// carries an expressions array (the authority over every other key), else
+// from "cfgb", whole when it carries one and otherwise the rest beside the
+// records, the knockout blob and the cfg string's lamp section. `withinCaps`
+// reports fromJson's result.
 LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings& lamp,
                                BaseSettings& base, ShadeSettings& shade,
                                ExpressionSettings& expressions,
