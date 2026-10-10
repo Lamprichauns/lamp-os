@@ -42,10 +42,7 @@ class OtaOfferThrottle {
   // True when a scan should run at nowMs; stamps nowMs as the last scan.
   bool due(const OtaOfferBusy& busy, uint32_t nowMs) {
     if (busy.any()) return false;
-    if (lastScanMs_ != 0 &&
-        static_cast<int32_t>(nowMs - lastScanMs_) < static_cast<int32_t>(kIntervalMs)) {
-      return false;
-    }
+    if (lastScanMs_ != 0 && nowMs - lastScanMs_ < kIntervalMs) return false;
     lastScanMs_ = nowMs;
     return true;
   }

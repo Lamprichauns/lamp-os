@@ -36,6 +36,12 @@ void test_interval_survives_millis_wrap() {
   TEST_ASSERT_TRUE(t.due({}, 0xFFFFFE00u + OtaOfferThrottle::kIntervalMs));
 }
 
+void test_long_busy_spell_never_locks_the_scan_out() {
+  OtaOfferThrottle t;
+  TEST_ASSERT_TRUE(t.due({}, 1000));
+  TEST_ASSERT_TRUE(t.due({}, 1000 + 0x80000000u));
+}
+
 void test_each_busy_source_blocks_the_scan() {
   OtaOfferBusy sending;   sending.firmwareSending = true;
   OtaOfferBusy receiving; receiving.firmwareReceiving = true;
@@ -105,6 +111,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_first_idle_tick_scans);
   RUN_TEST(test_scans_once_per_interval);
   RUN_TEST(test_interval_survives_millis_wrap);
+  RUN_TEST(test_long_busy_spell_never_locks_the_scan_out);
   RUN_TEST(test_each_busy_source_blocks_the_scan);
   RUN_TEST(test_startup_phase_holds_offers);
   RUN_TEST(test_offer_busy_holds_until_startup_completes);
