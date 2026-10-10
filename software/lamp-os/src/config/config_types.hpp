@@ -191,14 +191,15 @@ inline bool resolveNamed(bool namedKeyPresent, bool loadedNamed,
 }
 
 // Caps on stored and incoming expressions (config entries, upserts, mesh
-// invocations). Colours and the target range match the app's editor; 24
-// entries holds every type at every target (7 x 3) with room for a new type.
-// The stored config fits NVS at these caps; see docs/dev/embedded-heap.md.
+// invocations). Colours and the target range match the app's editor; 21
+// entries holds every type at every target on the largest variant (staff, 7
+// types x 3). The stored config fits NVS at these caps; see
+// docs/dev/embedded-heap.md.
 constexpr uint8_t kExpressionTargetMin = 1;
 constexpr uint8_t kExpressionTargetMax = 3;
 constexpr size_t kMaxExpressionColors = 8;
 constexpr size_t kMaxExpressionParams = 16;
-constexpr size_t kMaxExpressions = 24;
+constexpr size_t kMaxExpressions = 21;
 constexpr size_t kMaxExpressionTypeLen = 15;
 
 // Caps on the rest of the stored config, so its "cfg" JSON has a known

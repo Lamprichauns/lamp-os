@@ -41,17 +41,20 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
  * Manages active expressions and their lifecycle.
  */
 class ExpressionManager {
+ public:
+  using ConfigParamsLookup = const ExpressionParams* (*)(const std::string& type,
+                                                         uint8_t target);
+
  private:
-  // An expression with its type for triggering, and the parameters that built
-  // it for cascade decisions. Config::expressions owns the stored
-  // configuration; an entry keeps only this inline, allocation-free copy of
-  // the parameters, since entries built from a relayed op or an invocation
-  // have no Config entry to point at, and Config's vector moves its elements
-  // on every add and remove.
+  // An expression with its type for triggering. Its parameters (read for
+  // cascades and event payloads) come from the Config entry with the same
+  // (type, target) through configParams_, so a configured expression's
+  // parameters exist once. An entry with no Config entry behind it (a relayed
+  // op, an invocation) carries its own copy in ownParams.
   struct ExpressionEntry {
     std::unique_ptr<Expression> expression;
     std::string type;
-    ExpressionParams params;
+    std::unique_ptr<ExpressionParams> ownParams;
   };
   std::vector<ExpressionEntry> expressions;
   FrameBuffer* shadeBuffer = nullptr;
@@ -63,6 +66,9 @@ class ExpressionManager {
   // intentionally skipping for remote-arrived invocations). Loop-task only,
   // no concurrency.
   bool suppressCascade_ = false;
+
+  ConfigParamsLookup configParams_ = nullptr;
+  const ExpressionParams& paramsOf(const ExpressionEntry& entry) const;
 
   // One-shot Expression instances created on-demand by triggerInvocation when
   // a remote cascade arrives. They live in the compositor for the duration of
@@ -82,7 +88,11 @@ class ExpressionManager {
   };
   std::vector<TransientExpression> transientExpressions_;
   // In-flight transients; a cascade past it is dropped. Reserved at begin().
-  static constexpr size_t kMaxTransients = 8;
+  // Two target-both cascades: a shifty pair alone is about 1.8 KB of heap.
+  static constexpr size_t kMaxTransients = 4;
+  // Heap a transient may take; one is skipped unless the largest free block
+  // also keeps kHeapHeadroom past it.
+  static constexpr size_t kTransientHeapBytes = 2048;
 
   // Non-owning pointers to ExpressionEntry::expression instances that the
   // app's Test button fired via dispatchLampAction("test_expression").
@@ -220,8 +230,14 @@ class ExpressionManager {
   /**
    * Add a new expression. Used at boot by loadFromConfig (compositor
    * not yet built). Runtime callers should use upsertExpression.
+   * `configBacked`: Config holds this (type, target), so the entry reads its
+   * parameters there; false keeps a copy on the entry.
    */
-  void addExpression(const ExpressionConfig& config);
+  void addExpression(const ExpressionConfig& config, bool configBacked = true);
+
+  // Where a configured entry's parameters live: the Config entry for (type,
+  // target), or null. Set once at boot.
+  void setConfigParamsLookup(ConfigParamsLookup lookup) { configParams_ = lookup; }
 
   /**
    * Clear all expressions. Only safe before the compositor has been
@@ -304,7 +320,8 @@ class ExpressionManager {
    * existing entries for (type, target), builds fresh ones from
    * config, and registers them with the compositor.
    */
-  void upsertExpression(const ExpressionConfig& config, Compositor* compositor);
+  void upsertExpression(const ExpressionConfig& config, Compositor* compositor,
+                        bool configBacked = true);
 
   /**
    * Live remove keyed by (type, target). Unregisters from compositor

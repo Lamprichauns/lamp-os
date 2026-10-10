@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "expressions/param_utils.hpp"
+#include "util/heap_guard.hpp"
 
 #include "components/network/protocol/lamp_protocol.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
@@ -64,7 +65,17 @@ std::unique_ptr<Expression> ExpressionManager::makeExpression(
   return expr;
 }
 
-void ExpressionManager::addExpression(const ExpressionConfig& config) {
+const ExpressionParams& ExpressionManager::paramsOf(const ExpressionEntry& entry) const {
+  static const ExpressionParams kNone;
+  if (entry.ownParams) return *entry.ownParams;
+  const ExpressionParams* p =
+      configParams_ && entry.expression
+          ? configParams_(entry.type, static_cast<uint8_t>(entry.expression->getTarget()))
+          : nullptr;
+  return p ? *p : kNone;
+}
+
+void ExpressionManager::addExpression(const ExpressionConfig& config, bool configBacked) {
   if (!shadeBuffer || !baseBuffer) return;
 
   auto target = static_cast<ExpressionTarget>(config.target);
@@ -83,7 +94,9 @@ void ExpressionManager::addExpression(const ExpressionConfig& config) {
                                    config.intervalMin, config.intervalMax,
                                    target, config.parameters)) {
       expr->autoTriggerEnabled = config.enabled;
-      expressions.push_back({std::move(expr), config.type, config.parameters});
+      expressions.push_back(
+          {std::move(expr), config.type,
+           configBacked ? nullptr : std::make_unique<ExpressionParams>(config.parameters)});
     }
   }
 }
@@ -110,7 +123,7 @@ void ExpressionManager::setCompositor(Compositor* compositor) {
 void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                                      const uint8_t* excludeMac) {
   if (!meshLink_ || !entry.expression) return;
-  if (entry.params.get(kParamCascadeEnabled, 0) == 0) {
+  if (paramsOf(entry).get(kParamCascadeEnabled, 0) == 0) {
 #ifdef LAMP_DEBUG
     Serial.printf("[cascade] skip not-enabled type=%s\n", entry.type.c_str());
 #endif
@@ -121,7 +134,7 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   // release; a stored cascadeEnabled=1 would fan out one-shots on each. The
   // app hides the cascade toggle for continuous types, so gate here to match.
   const ExpressionDescriptor* d = registry_.find(entry.type.c_str());
-  if (d && effectiveContinuous(*d, entry.params)) {
+  if (d && effectiveContinuous(*d, paramsOf(entry))) {
 #ifdef LAMP_DEBUG
     Serial.printf("[cascade] skip continuous type=%s\n", entry.type.c_str());
 #endif
@@ -138,13 +151,13 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
   }
   recentCascades_.record(entry.type, intervalIdx, nowMs);
 
-  const uint32_t staggerMs = entry.params.get(kParamCascadeStaggerMs, 0);
+  const uint32_t staggerMs = paramsOf(entry).get(kParamCascadeStaggerMs, 0);
 
   ExpressionInvocation inv;
   inv.type = entry.type;
   inv.colors = entry.expression->getColors();
   inv.target = static_cast<uint8_t>(entry.expression->getTarget());
-  inv.parameters = parametersWithoutCascadeKeys(entry.params);
+  inv.parameters = parametersWithoutCascadeKeys(paramsOf(entry));
 
   std::vector<MeshPeer>& targets = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
   uint8_t myMac[6];
@@ -221,7 +234,7 @@ void ExpressionManager::emitEvent(const ExpressionEntry& entry) {
   // Continuous expressions retrigger at boot, settings upsert, and wisp
   // release; announcing those would spuriously trigger peer mirrors.
   const ExpressionDescriptor* d = registry_.find(entry.type.c_str());
-  if (d && effectiveContinuous(*d, entry.params)) return;
+  if (d && effectiveContinuous(*d, paramsOf(entry))) return;
 
   const uint32_t intervalIdx = static_cast<uint32_t>(entry.expression->getTarget());
   const uint32_t nowMs = millis();
@@ -232,7 +245,7 @@ void ExpressionManager::emitEvent(const ExpressionEntry& entry) {
   inv.type = entry.type;
   inv.colors = entry.expression->getColors();
   inv.target = static_cast<uint8_t>(entry.expression->getTarget());
-  inv.parameters = parametersWithoutCascadeKeys(entry.params);
+  inv.parameters = parametersWithoutCascadeKeys(paramsOf(entry));
 
   std::string json;
   serializeInvocation(inv, json);
@@ -308,12 +321,12 @@ ExpressionManager::entryFromInvocation(const ExpressionInvocation& inv) {
 
   ExpressionEntry entry;
   entry.type = inv.type;
-  entry.params = inv.parameters;
-  entry.params.set(kParamCascadeEnabled, 1);
+  entry.ownParams = std::make_unique<ExpressionParams>(inv.parameters);
+  entry.ownParams->set(kParamCascadeEnabled, 1);
   const ExpressionConfig defaults;
   entry.expression = makeExpression(inv.type, buffer, inv.colors,
                                     defaults.intervalMin, defaults.intervalMax,
-                                    target, entry.params);
+                                    target, *entry.ownParams);
   return entry;
 }
 
@@ -405,7 +418,8 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   // A crowd of distinct senders would otherwise stack one transient pair per
   // sender, each a heap Expression plus its buffers.
-  if (transientExpressions_.size() + targetCount > kMaxTransients) {
+  if (transientExpressions_.size() + targetCount > kMaxTransients ||
+      !heapCanSpare(kTransientHeapBytes)) {
 #ifdef LAMP_DEBUG
     Serial.printf("[expr] transient drop %s (%u in flight)\n", inv.type.c_str(),
                   (unsigned)transientExpressions_.size());
@@ -519,12 +533,13 @@ std::vector<Color> ExpressionManager::getExpressionColors(const std::string& typ
   return {};
 }
 
-void ExpressionManager::upsertExpression(const ExpressionConfig& config, Compositor* compositor) {
+void ExpressionManager::upsertExpression(const ExpressionConfig& config, Compositor* compositor,
+                                         bool configBacked) {
   ExpressionTarget target = static_cast<ExpressionTarget>(config.target);
   removeExpression(config.type, target, compositor);
 
   size_t prevCount = expressions.size();
-  addExpression(config);
+  addExpression(config, configBacked);
 
   if (compositor) {
     for (size_t i = prevCount; i < expressions.size(); i++) {

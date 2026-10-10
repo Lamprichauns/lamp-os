@@ -112,10 +112,6 @@ class ShiftyExpression : public Expression {
   uint32_t currentShiftDurationMs = 0;
   uint32_t fadeStartMs = 0;
 
-  // Color buffers for smooth transitions
-  std::vector<Color> fadeStartColors;
-  std::vector<Color> fadeTargetColors;
-
   // Per-frame cache (perf): the factor from (elapsed, fadeDurationMs) is
   // identical for every pixel within a fade frame. Hoisted out of the
   // per-pixel hot path in draw(). Updated in onUpdate(); read-only in draw().

@@ -343,33 +343,54 @@ void test_unregistered_type_record_loads() {
   TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
 }
 
-// Worst-case NVS use at the caps, against the 20 KB partition: 5 pages, one
-// held free for garbage collection, 126 entries each. The system keys are
-// measured ceilings (PHY calibration is a 1904-byte blob; the WiFi driver's
-// namespace stays under 64 entries), and a rewrite needs room for a second
-// copy of the largest item before the old one is erased.
-void test_worst_case_config_fits_nvs_with_margin() {
-  InMemoryConfigStore store;
-  const Model m = worstCaseModel();
-  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
+// Worst-case NVS use against the 20 KB partition: 5 pages, one held free for
+// garbage collection, 126 entries each. The system keys are measured ceilings
+// (PHY calibration is a 1904-byte blob; the WiFi driver's namespace stays under
+// 64 entries), and a rewrite needs room for a second copy of the largest item
+// before the old one is erased.
+constexpr unsigned kUsableEntries = (5 - 1) * 126;
 
+size_t nvsEntriesNeeded(const Model& m, const char* label) {
+  InMemoryConfigStore store;
+  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
   const size_t cfgLen = store.read("cfg", "").size();
-  const size_t record = blobEntries(config_codec::kMaxExpressionRecordLen);
-  const size_t lampNs = kMaxExpressions * record + blobEntries(1) +
-                        blobEntries(255) + stringEntries(cfgLen) +
-                        stringEntries(16) +  // lampType
+  size_t records = 0;
+  uint8_t buf[config_codec::kMaxExpressionRecordLen];
+  for (const auto& e : m.expressions.expressions) {
+    records += blobEntries(config_codec::encodeExpression(e, buf));
+  }
+  const size_t lampNs = records + blobEntries(1) + blobEntries(255) +
+                        stringEntries(cfgLen) + stringEntries(16) /* lampType */ +
                         blobEntries(DispositionStore::kMaxBlobLen);
   const size_t system = 4 /* namespaces */ + blobEntries(1904) + blobEntries(6) +
                         1 /* phy cal_version */ + 64 /* nvs.net80211 */ +
                         blobEntries(64) /* crash record */;
   const size_t largest = std::max(stringEntries(cfgLen),
                                   blobEntries(DispositionStore::kMaxBlobLen));
-  const size_t usable = (5 - 1) * 126;
   const size_t needed = lampNs + system + largest;
-  printf("[budget] cfg=%zuB lamp=%zu system=%zu rewrite=%zu needed=%zu of %zu\n",
-         cfgLen, lampNs, system, largest, needed, usable);
+  printf("[budget] %s: %zu expressions in %zu entries, cfg=%zuB, lamp=%zu "
+         "system=%zu rewrite=%zu needed=%zu of %u\n",
+         label, m.expressions.expressions.size(), records, cfgLen, lampNs, system,
+         largest, needed, kUsableEntries);
   TEST_ASSERT_TRUE(cfgLen < 4000);  // one NVS string must fit one page
-  TEST_ASSERT_TRUE(needed + 32 <= usable);  // at least 1 KB spare
+  return needed;
+}
+
+void test_worst_case_config_fits_nvs_with_margin() {
+  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel(), "caps") + 32 <= kUsableEntries);
+}
+
+// The standard variant's real worst case: its six registered types at every
+// target, every expression full.
+void test_standard_variant_worst_case_fits_nvs() {
+  Model m = worstCaseModel();
+  m.expressions.expressions.clear();
+  for (const char* type : {"glitchy", "pulse", "breathing", "shifty", "spotty", "flicker"}) {
+    for (uint8_t target = 1; target <= 3; ++target) {
+      m.expressions.expressions.push_back(fullExpression(type, target));
+    }
+  }
+  TEST_ASSERT_TRUE(nvsEntriesNeeded(m, "standard") + 32 <= kUsableEntries);
 }
 
 int main(int, char**) {
@@ -382,6 +403,7 @@ int main(int, char**) {
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
   RUN_TEST(test_worst_case_config_fits_nvs_with_margin);
+  RUN_TEST(test_standard_variant_worst_case_fits_nvs);
   RUN_TEST(test_crash_mid_save_removing_an_entry_keeps_the_rest);
   RUN_TEST(test_crash_mid_save_adding_and_editing_keeps_the_rest);
   RUN_TEST(test_crash_mid_migration_keeps_the_legacy_config);

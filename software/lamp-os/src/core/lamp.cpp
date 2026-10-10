@@ -382,29 +382,32 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
                     (unsigned)cfg.target);
       return;
     }
-    if (!cfg.type.empty()) {
-      ::expressionManager.upsertExpression(cfg, &::compositor);
-      if (mutateConfig) {
-        // Mirror into config.expressions so the next settings_blob save
-        // persists the user's latest edits. expressionManager is the runtime
-        // animator; config is what gets serialized to NVS.
-        auto& exprs = ::config.expressions.expressions;
-        bool found = false;
-        for (auto& e : exprs) {
-          if (e.type == cfg.type && e.target == cfg.target) {
-            e = cfg;
-            found = true;
-            break;
-          }
+    // Mirror into config.expressions so the next save persists the user's
+    // latest edits; config is what gets serialized to NVS, expressionManager
+    // the runtime animator. A mirrored entry's parameters live only in config.
+    bool configBacked = false;
+    if (mutateConfig) {
+      auto& exprs = ::config.expressions.expressions;
+      auto it = std::find_if(exprs.begin(), exprs.end(), [&](const lamp::ExpressionConfig& e) {
+        return e.type == cfg.type && e.target == cfg.target;
+      });
+      if (it != exprs.end()) {
+        *it = cfg;
+        configBacked = true;
+      } else if (exprs.size() < lamp::kMaxExpressions) {
+        // Grow four entries at a time: doubling would reach 32 slots (4.5 KB,
+        // most empty) for a list capped at kMaxExpressions.
+        if (exprs.size() == exprs.capacity()) {
+          exprs.reserve(std::min(lamp::kMaxExpressions, exprs.capacity() + 4));
         }
-        if (!found && exprs.size() < lamp::kMaxExpressions) {
-          exprs.push_back(cfg);
-        } else if (!found) {
-          Serial.printf("[expr] config full; upsert type=%s not saved\n",
-                        cfg.type.c_str());
-        }
+        exprs.push_back(cfg);
+        configBacked = true;
+      } else {
+        Serial.printf("[expr] config full; upsert type=%s not saved\n",
+                      cfg.type.c_str());
       }
     }
+    ::expressionManager.upsertExpression(cfg, &::compositor, configBacked);
   } else if (op && strcmp(op, "remove") == 0) {
     const char* type = doc["type"].as<const char*>();
     int tgt = doc["target"] | 0;

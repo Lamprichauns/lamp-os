@@ -90,6 +90,13 @@ void initBehaviors(lamp::Features features, lamp::Lamp& self) {
   // Features::DefaultExpressions gates whether saved NVS expressions are
   // loaded on boot. Subclasses that replace the expression set skip this
   // so their own expressions aren't shadowed by stale NVS data.
+  expressionManager.setConfigParamsLookup(
+      [](const std::string& type, uint8_t target) -> const lamp::ExpressionParams* {
+        for (const auto& e : ::config.expressions.expressions) {
+          if (e.target == target && e.type == type) return &e.parameters;
+        }
+        return nullptr;
+      });
   if (lamp::any(features, lamp::Features::DefaultExpressions)) {
     expressionManager.loadFromConfig(config.expressions);
   }

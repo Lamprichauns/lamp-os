@@ -298,7 +298,7 @@ uint32_t getU32(const uint8_t*& p) {
   return v;
 }
 
-void recordKey(size_t i, char (&key)[4]) {
+void recordKey(size_t i, char (&key)[5]) {
   std::snprintf(key, sizeof(key), "x%u", static_cast<unsigned>(i));
 }
 
@@ -384,7 +384,7 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
   const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
   const uint8_t previous = readCount(store);
   uint8_t record[kMaxExpressionRecordLen];
-  char key[4];
+  char key[5];
   for (size_t i = 0; i < count; ++i) {
     const size_t len = encodeExpression(expressions.expressions[i], record);
     recordKey(i, key);
@@ -397,7 +397,7 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       base.knockoutPixels.size()) == 0) {
     return SaveResult::WriteFailed;
   }
-  for (size_t i = count; i < previous && i < kMaxExpressions; ++i) {
+  for (size_t i = count; i < previous; ++i) {
     recordKey(i, key);
     store.erase(key);
   }
@@ -425,7 +425,7 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
   expressions.expressions.clear();
   expressions.expressions.reserve(std::min<size_t>(n, kMaxExpressions));
   uint8_t record[kMaxExpressionRecordLen];
-  char key[4];
+  char key[5];
   for (size_t i = 0; i < n && i < kMaxExpressions; ++i) {
     recordKey(i, key);
     const size_t len = store.readBlob(key, record, sizeof(record));

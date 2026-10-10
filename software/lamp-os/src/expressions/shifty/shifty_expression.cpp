@@ -52,12 +52,6 @@ void ShiftyExpression::startShift() {
   // fallback branch needed here.
   shiftedColor = getRandomColor();
 
-  // For fade start, use current buffer state
-  fadeStartColors = fb->buffer;
-
-  // Set target to the shifted color for all pixels
-  fadeTargetColors.assign(fb->pixelCount, shiftedColor);
-
   // The whole shift cycle (fade + hold + fade, up to 2400 s) outruns any
   // frame budget; onUpdate ends each phase on millis() and concludes the
   // cycle by capping frames, so the counter never ends a phase itself.
@@ -78,11 +72,6 @@ void ShiftyExpression::startShift() {
 }
 
 void ShiftyExpression::startUnshift() {
-  // Set up fade back to original
-  // Start from the shifted color (what is currently showing)
-  fadeStartColors.assign(fb->pixelCount, shiftedColor);
-  fadeTargetColors = savedBuffer;
-
   fadeStartMs = millis();
   state = FADING_BACK;
 #ifdef LAMP_DEBUG
@@ -232,16 +221,22 @@ void ShiftyExpression::draw() {
   switch (state) {
     case FADING_TO_PALETTE:
     case FADING_BACK: {
+      // One end of every fade is the uniform shiftedColor; the other is the
+      // base snapshot in savedBuffer (taken at the trigger, refreshed through
+      // the hold), so no per-pixel fade buffers are kept.
+      const bool toPalette = state == FADING_TO_PALETTE;
+      auto fadeStart = [&](int i) { return toPalette ? savedBuffer[i] : shiftedColor; };
+      auto fadeTarget = [&](int i) { return toPalette ? shiftedColor : savedBuffer[i]; };
       if (fillMode_ == 0) {
         if (cachedFadeAtEnd_) {
           for (int i = zone_.posMin; i <= zone_.posMax; i++) {
             if (i >= fb->pixelCount) break;
-            fb->buffer[i] = mixColorWeight(fb->buffer[i], fadeTargetColors[i], wispWeight);
+            fb->buffer[i] = mixColorWeight(fb->buffer[i], fadeTarget(i), wispWeight);
           }
         } else {
           for (int i = zone_.posMin; i <= zone_.posMax; i++) {
             if (i >= fb->pixelCount) break;
-            const Color shifted = mixColorLinear(fadeStartColors[i], fadeTargetColors[i],
+            const Color shifted = mixColorLinear(fadeStart(i), fadeTarget(i),
                                                  cachedFadeFactor_);
             fb->buffer[i] = mixColorWeight(fb->buffer[i], shifted, wispWeight);
           }
@@ -254,14 +249,14 @@ void ShiftyExpression::draw() {
           const uint32_t offset = pixelStartOffsetMs_[static_cast<size_t>(i)];
           Color shifted;
           if (elapsed < offset) {
-            shifted = fadeStartColors[i];
+            shifted = fadeStart(i);
           } else {
             const uint32_t pixelElapsed = elapsed - offset;
             if (pixelElapsed >= perFade) {
-              shifted = fadeTargetColors[i];
+              shifted = fadeTarget(i);
             } else {
               shifted = mixColorLinear(
-                  fadeStartColors[i], fadeTargetColors[i],
+                  fadeStart(i), fadeTarget(i),
                   computeLinearFactor(easeStep(pixelElapsed, perFade, easing_), perFade));
             }
           }
