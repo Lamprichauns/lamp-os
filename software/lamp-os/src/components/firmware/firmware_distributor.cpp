@@ -565,9 +565,9 @@ void FirmwareDistributor::tick(uint32_t nowMs) {
 
   switch (s) {
     case State::Idle: {
-      // exitAtMs == 0 is the "no exit pending" sentinel; without the
-      // != 0 guard a tick during a live session would exitQuiet early and
-      // flicker the strip between the indicator and the base color.
+      // dueToExit needs a pending exit; without it a tick during a live session
+      // would exitQuiet early and flicker the strip between the indicator and
+      // the base color.
       if (quietHold_.dueToExit(nowMs)) {
         ::lamp::ota_quiet_mode::exitQuiet();
         quietHold_.release();

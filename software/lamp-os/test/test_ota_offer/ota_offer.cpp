@@ -107,13 +107,26 @@ void test_hold_is_inheritable_only_after_a_done_session() {
   TEST_ASSERT_FALSE(hold.inheritable());
   hold.sessionEnteredQuiet();
   TEST_ASSERT_FALSE(hold.inheritable());
+  TEST_ASSERT_FALSE(hold.dueToExit(100000));
   hold.sessionEnded(1000, /*done=*/true);
   TEST_ASSERT_TRUE(hold.inheritable());
   hold.offerArmed();
   TEST_ASSERT_FALSE(hold.inheritable());
+  TEST_ASSERT_FALSE(hold.dueToExit(100000));
   hold.sessionEnded(2000, /*done=*/false);
   TEST_ASSERT_FALSE(hold.inheritable());
   TEST_ASSERT_TRUE(hold.dueToExit(2000 + InterSessionQuietHold::kHoldMs));
+}
+
+void test_hold_expires_across_millis_wrap() {
+  InterSessionQuietHold hold;
+  hold.sessionEnteredQuiet();
+  const uint32_t endedAt = 0xFFFFFFFFu - InterSessionQuietHold::kHoldMs + 1;  // 2^32 - 10000
+  hold.sessionEnded(endedAt, /*done=*/true);
+  TEST_ASSERT_TRUE(hold.inheritable());
+  TEST_ASSERT_FALSE(hold.dueToExit(endedAt + InterSessionQuietHold::kHoldMs - 1));
+  TEST_ASSERT_TRUE(hold.dueToExit(endedAt + InterSessionQuietHold::kHoldMs));  // wraps to 0
+  TEST_ASSERT_TRUE(hold.dueToExit(5000));
 }
 
 void test_session_without_quiet_arms_no_hold() {
@@ -230,6 +243,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
   RUN_TEST(test_fs_walk_skipped_during_firmware_hold);
   RUN_TEST(test_hold_is_inheritable_only_after_a_done_session);
+  RUN_TEST(test_hold_expires_across_millis_wrap);
   RUN_TEST(test_session_without_quiet_arms_no_hold);
   RUN_TEST(test_failed_offers_inside_a_hold_let_quiet_end);
   RUN_TEST(test_failed_session_hold_takes_no_offer);
