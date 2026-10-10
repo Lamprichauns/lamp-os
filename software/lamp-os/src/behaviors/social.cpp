@@ -274,6 +274,7 @@ void SocialBehavior::control() {
   const bool greetingNowActive = (animationState != STOPPED);
   if (!greetingNowActive && greetingWasActive_) {
     greetedHasMac_ = false;
+    appGreeting_ = false;
     if (onGreetingChange_) onGreetingChange_();
   }
   greetingWasActive_ = greetingNowActive;
@@ -372,6 +373,7 @@ void SocialBehavior::cancelGreeting() {
   frame = 0;
   greetingWasActive_ = false;
   greetedHasMac_ = false;
+  appGreeting_ = false;
   if (onGreetingChange_) onGreetingChange_();
 }
 
@@ -389,6 +391,7 @@ void SocialBehavior::triggerGreeting(const PeerView& peer) {
   }
   applyTuning(tuning);
   lampRoster.acknowledge(peer.mac);
+  appGreeting_ = true;
   playOnce();
   greetingWasActive_ = true;
   if (onGreetingChange_) onGreetingChange_();

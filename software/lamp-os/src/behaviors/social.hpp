@@ -72,6 +72,7 @@ class SocialBehavior : public AnimatedBehavior, public Greetable {
   // Ends a greeting in progress: STOPPED, frame 0, and the app told it ended.
   // A no-op when none is playing.
   void cancelGreeting() override;
+  bool playsAppGreeting() const override { return appGreeting_; }
 
   void draw() override;
   void control() override;
@@ -146,6 +147,8 @@ class SocialBehavior : public AnimatedBehavior, public Greetable {
   std::function<void()> onGreetingChange_;
   // Tracks whether the animation was active last control() so stop-edge fires.
   bool greetingWasActive_ = false;
+  // The greeting playing came from triggerGreeting (the app's test button).
+  bool appGreeting_ = false;
 
   MeshLink* meshLink_ = nullptr;
   uint8_t   greetedMac_[6] = {0};

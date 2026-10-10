@@ -80,9 +80,27 @@ void test_cancel_without_greeting_is_noop() {
   TEST_ASSERT_EQUAL_INT(0, notifies);
 }
 
+// A greeting the app asked for is marked so home mode lets it play; the mark
+// clears when it ends or is cancelled.
+void test_app_greeting_is_marked_until_it_ends() {
+  SocialBehavior social(nullptr, 1200);
+  TEST_ASSERT_FALSE(social.playsAppGreeting());
+  social.triggerGreeting(peer());
+  TEST_ASSERT_TRUE(social.playsAppGreeting());
+
+  social.animationState = STOPPED;  // its pass ends
+  social.control();
+  TEST_ASSERT_FALSE(social.playsAppGreeting());
+
+  social.triggerGreeting(peer());
+  social.cancelGreeting();
+  TEST_ASSERT_FALSE(social.playsAppGreeting());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cancel_ends_greeting_and_tells_app_once);
   RUN_TEST(test_cancel_without_greeting_is_noop);
+  RUN_TEST(test_app_greeting_is_marked_until_it_ends);
   return UNITY_END();
 }

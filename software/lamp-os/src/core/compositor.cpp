@@ -278,7 +278,9 @@ void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string>
 }
 
 bool Compositor::homeModeSkips(AnimatedBehavior* b) const {
-  if (b->isSocialBehavior()) return homeSocialDisabled_;
+  if (b->isSocialBehavior()) {
+    return homeModeSkipsSocial(homeSocialDisabled_, b->playsAppGreeting());
+  }
   return homeModeExpressionSkips(b->homeModeExpressionId(), homeDisabledExprIds_);
 }
 

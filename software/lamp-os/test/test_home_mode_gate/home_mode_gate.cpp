@@ -83,6 +83,14 @@ void test_local_never_blocked() {
   TEST_ASSERT_FALSE(homeModeBlocksRemote(false, false, TransientSource::Local));
 }
 
+// Social off skips a social behavior unless it plays the app's own greeting.
+void test_social_skip_lets_app_greeting_play() {
+  TEST_ASSERT_TRUE(homeModeSkipsSocial(true, false));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(true, true));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(false, false));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(false, true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_null_id_not_skipped);
@@ -97,5 +105,6 @@ int main(int, char**) {
   RUN_TEST(test_received_cascade_home_on_disabled_type_dropped);
   RUN_TEST(test_remote_blocked_only_home_and_social_off);
   RUN_TEST(test_local_never_blocked);
+  RUN_TEST(test_social_skip_lets_app_greeting_play);
   return UNITY_END();
 }
