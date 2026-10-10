@@ -134,6 +134,20 @@ void test_worst_record_fits_the_bound() {
                     config_codec::encodeExpression(in, buf));
 }
 
+// A config can hold every key the table has; the record keeps only
+// kMaxExpressionParams of them, so it never outgrows its bound.
+void test_record_caps_parameters() {
+  ExpressionConfig e = fullExpression("pulse", 1);
+  for (size_t i = 0; i < kExpressionParamKeyCount; ++i) e.parameters.setIndex(i, 7);
+  TEST_ASSERT_TRUE(e.parameters.size() > kMaxExpressionParams);
+  uint8_t buf[config_codec::kMaxExpressionRecordLen + 64];
+  const size_t len = config_codec::encodeExpression(e, buf);
+  TEST_ASSERT_TRUE(len <= config_codec::kMaxExpressionRecordLen);
+  ExpressionConfig out;
+  TEST_ASSERT_TRUE(config_codec::decodeExpression(buf, len, out));
+  TEST_ASSERT_EQUAL(kMaxExpressionParams, out.parameters.size());
+}
+
 void test_truncated_record_rejected() {
   ExpressionConfig in = fullExpression("pulse", 1);
   uint8_t buf[config_codec::kMaxExpressionRecordLen];
@@ -467,17 +481,38 @@ void test_split_save_sweeps_records_past_its_count() {
   InMemoryConfigStore store;
   Model m;
   padToSplit(m);
+  padToSplit(m);  // 8 full expressions: every save below stays split
   save(store, m);
   Model grown = m;
   for (int i = 0; i < 4; ++i) grown.expressions.expressions.push_back(tagged("spotty", 1 + i % 3, i));
-  store.writesBeforeCrash = 6;  // records x0..x5 land, the count does not
+  store.writesBeforeCrash = 11;  // records x0..x10 land, x11 and the count do not
   save(store, grown);
   store.writesBeforeCrash = SIZE_MAX;
-  TEST_ASSERT_TRUE(store.has("x5"));
+  TEST_ASSERT_TRUE(store.has("x10"));
   Model shrunk = m;
   shrunk.expressions.expressions.pop_back();
   TEST_ASSERT_TRUE(save(store, shrunk) == SaveResult::Ok);
-  TEST_ASSERT_FALSE(store.has("x3") || store.has("x4") || store.has("x5"));
+  TEST_ASSERT_TRUE(store.has("xn"));
+  TEST_ASSERT_TRUE(store.has("x6"));
+  for (int i = 7; i <= 10; ++i) {
+    TEST_ASSERT_FALSE_MESSAGE(store.has(("x" + std::to_string(i)).c_str()),
+                              std::to_string(i).c_str());
+  }
+}
+
+// A record slot past every count this build writes (an earlier build's cap
+// was higher) is swept by a whole save and by a split save alike.
+void test_saves_sweep_record_slots_past_the_cap() {
+  const uint8_t junk[3] = {1, 2, 3};
+  for (bool split : {false, true}) {
+    InMemoryConfigStore store;
+    store.writeBlob("x25", junk, sizeof(junk));
+    Model m;
+    if (split) padToSplit(m);
+    TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
+    TEST_ASSERT_EQUAL(split, store.has("xn"));
+    TEST_ASSERT_FALSE(store.has("x25"));
+  }
 }
 
 // Deleting every expression saves whole with an empty expressions array; a
@@ -640,6 +675,7 @@ int main(int, char**) {
   RUN_TEST(test_record_round_trip);
   RUN_TEST(test_worst_record_fits_the_bound);
   RUN_TEST(test_truncated_record_rejected);
+  RUN_TEST(test_record_caps_parameters);
   RUN_TEST(test_save_load_round_trip);
   RUN_TEST(test_legacy_single_json_loads_and_small_config_stays_whole);
   RUN_TEST(test_split_then_whole_erases_split_keys);
@@ -648,6 +684,7 @@ int main(int, char**) {
   RUN_TEST(test_no_record_is_orphaned_by_a_reset);
   RUN_TEST(test_delete_all_survives_a_reset_before_the_record_erase);
   RUN_TEST(test_split_save_sweeps_records_past_its_count);
+  RUN_TEST(test_saves_sweep_record_slots_past_the_cap);
   RUN_TEST(test_over_long_fields_cannot_fail_every_save);
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
