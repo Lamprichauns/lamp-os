@@ -62,8 +62,9 @@ inline bool peerRunsNewerFirmware(const std::vector<MeshPeer>& peers, uint32_t o
 
 // Offers this lamp's firmware and filesystem image to stale peers once
 // startupComplete (the compositor's startup phase has ended). Runs every loop
-// on every variant, whatever the lamp's features, home mode or social mode:
-// offering an update is not a social behaviour.
+// on every variant, whatever the lamp's features, home mode or social mode.
+// Version updates outrank social preference: personality shapes the
+// greeting, never whether firmware propagates.
 void tickOtaOffers(uint32_t nowMs, bool startupComplete);
 
 }  // namespace lamp

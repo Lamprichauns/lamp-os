@@ -17,9 +17,8 @@ namespace {
 OtaOfferThrottle s_throttle;
 }  // namespace
 
-// Version updates outrank social preference: personality controls the
-// greeting, never whether firmware propagates. The distributor's per-peer
-// backoff makes a repeat considerPeerForOta on every scan safe.
+// The distributor's per-peer backoff makes a repeat considerPeerForOta on
+// every scan safe.
 //
 // Only ESP-NOW peers are walked, since firmwareVersion arrives on the ESP-NOW
 // HELLO and a BLE-only sighting carries none.
