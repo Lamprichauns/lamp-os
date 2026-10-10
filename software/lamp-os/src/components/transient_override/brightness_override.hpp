@@ -10,8 +10,8 @@
 // fadeDurationMs and only calls the registered onChange callback when
 // the integer-rounded value actually changes. This preserves the
 // existing event-driven brightness path (lamp.cpp's
-// applyEffectiveBrightness): no strip-level write lands every frame, only
-// when the user-visible level moves.
+// applyEffectiveBrightness): no setBrightness() gets pushed into the
+// strip every frame, only when the user-visible level moves.
 //
 // Source ownership identical to ColorOverride: a restore from a
 // different sourceKind (and not Any) is a no-op.
@@ -52,7 +52,7 @@ class BrightnessOverride {
   // The floored-multiplier output at nowMs (when active) or `baseline`
   // (when idle). Read-only; doesn't mutate state. Used by the caller's
   // effective-brightness path so a single source-of-truth value flows
-  // into setAllStripsBrightness. The factor eases toward its
+  // into the NeoPixel setBrightness call. The factor eases toward its
   // target; the multiplier stacks over the caller's live crowd-dim baseline.
   uint8_t effective(uint32_t nowMs, uint8_t baseline) const;
 

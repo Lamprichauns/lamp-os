@@ -5,7 +5,7 @@
 //                         Mutates config + seeds the micro-fade triple
 //                         for smooth slider drags + applies initial sample.
 //   brightnessToRender:   the app's CHAR_REMOTE_OP write (a preview).
-//                         Render-only: sets the strip level directly, NO
+//                         Render-only: applies setBrightness directly, NO
 //                         config mutation, NO fade triple. The preview is
 //                         transient; persisting it would contaminate
 //                         CHAR_COMMIT's next persistence sweep.
@@ -86,7 +86,7 @@ inline void brightnessToConfig(uint8_t level, bool isHomeMode, uint8_t maxBright
       ::lamp::calculateBrightnessLevel(maxBrightness, source));
 }
 
-// Remote-op brightness. Render-only: snap the strip level, no config
+// Remote-op brightness. Render-only: snap setBrightness, no config
 // mutation, no fade triple, so the preview lands instantly like the
 // shade/base colour previews.
 inline void brightnessToRender(uint8_t level, bool isHomeMode, uint8_t maxBrightness) {
