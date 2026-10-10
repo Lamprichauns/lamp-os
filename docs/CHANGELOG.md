@@ -25,7 +25,7 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 
 ### Fixed
 - **Breathing fades more smoothly.** Breathing blends at full precision instead
-  of stepping in whole percents, so a slow breath moves on every frame.
+  of stepping in whole percents, so a slow breath moves in finer steps.
 
 ## 1.2.8
 
