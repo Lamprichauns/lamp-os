@@ -18,6 +18,7 @@
 
 #include "../../src/util/color.cpp"
 #include "../../src/util/heap_guard.cpp"
+#include "../../src/util/json_writer.cpp"
 #include "../../src/config/config_codec.cpp"
 #include "../../src/expressions/expression_invocation.cpp"
 

@@ -16,6 +16,7 @@
 
 #include "../../src/util/color.cpp"
 #include "../../src/util/heap_guard.cpp"
+#include "../../src/util/json_writer.cpp"
 #include "../../src/config/config_codec.cpp"
 
 using namespace lamp;
@@ -80,8 +81,9 @@ Model worstCaseModel() {
 }
 
 SaveResult save(InMemoryConfigStore& store, const Model& m) {
+  static char cfg[config_codec::kMaxStoredCfgJsonLen + 1];
   return config_codec::saveConfig(store, m.lamp, m.base, m.shade, m.expressions,
-                                  m.homeMode);
+                                  m.homeMode, cfg, sizeof(cfg));
 }
 
 void load(InMemoryConfigStore& store, Model& m) {
@@ -310,6 +312,22 @@ void test_crash_mid_migration_keeps_the_legacy_config() {
 }
 
 // An unreadable record drops itself and nothing else.
+// A cfg JSON that outgrows the fixed save buffer fails the save and leaves
+// the stored cfg as it was.
+void test_cfg_json_over_the_buffer_fails_cleanly() {
+  InMemoryConfigStore store;
+  Model m;
+  m.lamp.name = "jacko";
+  save(store, m);
+  const std::string before = store.read("cfg", "");
+  char small[64];
+  m.lamp.name = "other";
+  TEST_ASSERT_TRUE(config_codec::saveConfig(store, m.lamp, m.base, m.shade, m.expressions,
+                                            m.homeMode, small, sizeof(small)) ==
+                   SaveResult::TooLarge);
+  TEST_ASSERT_EQUAL_STRING(before.c_str(), store.read("cfg", "").c_str());
+}
+
 void test_unreadable_record_drops_only_itself() {
   InMemoryConfigStore store;
   Model m;
@@ -372,7 +390,7 @@ size_t nvsEntriesNeeded(const Model& m, const char* label) {
          "system=%zu rewrite=%zu needed=%zu of %u\n",
          label, m.expressions.expressions.size(), records, cfgLen, lampNs, system,
          largest, needed, kUsableEntries);
-  TEST_ASSERT_TRUE(cfgLen < 4000);  // one NVS string must fit one page
+  TEST_ASSERT_TRUE(cfgLen <= config_codec::kMaxStoredCfgJsonLen);
   return needed;
 }
 
@@ -408,6 +426,7 @@ int main(int, char**) {
   RUN_TEST(test_crash_mid_save_adding_and_editing_keeps_the_rest);
   RUN_TEST(test_crash_mid_migration_keeps_the_legacy_config);
   RUN_TEST(test_unreadable_record_drops_only_itself);
+  RUN_TEST(test_cfg_json_over_the_buffer_fails_cleanly);
   RUN_TEST(test_unregistered_type_record_loads);
   return UNITY_END();
 }

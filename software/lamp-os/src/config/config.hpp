@@ -175,7 +175,6 @@ class Config {
   JsonDocument asLampJson();
   JsonDocument asBaseJson();
   JsonDocument asShadeJson();
-  JsonDocument asExpressionsJson();
   JsonDocument asHomeModeJson();
 
   // Per-section JSON cache. Each section caches its serialised JSON plus a
@@ -188,6 +187,11 @@ class Config {
   void shadeSectionJsonCached(std::string& out);
   void expressionsSectionJsonCached(std::string& out);
   void homeSectionJsonCached(std::string& out);
+
+  // Frees every section cache (they rebuild on the next read). For when no
+  // client can read them: a cache otherwise holds its heap, up to about 4 KB
+  // for the expressions section, for the rest of the uptime.
+  void releaseSectionCaches();
 
   // Rebuild a dirty section cache without the copy-out. For an off-BLE-path
   // caller (ble_control::tick) to warm the cache so the Core-0 read hits it

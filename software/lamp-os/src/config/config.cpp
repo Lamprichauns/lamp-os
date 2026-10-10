@@ -15,6 +15,7 @@
 #include "util/bd_addr.hpp"
 #include "util/color.hpp"
 #include "util/heap_guard.hpp"
+#include "util/json_writer.hpp"
 #include "version.hpp"
 
 #include <lampos/protocol/presence.hpp>
@@ -100,13 +101,15 @@ Config::Config(ConfigStore* inStore) {
   dispositions_.load();
 };
 
+// The "cfg" JSON is written here rather than on the heap, so a save never
+// waits for a large free block. Core 1 only (every save runs on the loop).
+static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
+
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
   const uint32_t now = millis();
-  const config_codec::SaveResult result =
-      heapCanSpare(kHeapHeadroom)
-          ? config_codec::saveConfig(*store_, lamp, base, shade, expressions, homeMode)
-          : config_codec::SaveResult::LowHeap;
+  const config_codec::SaveResult result = config_codec::saveConfig(
+      *store_, lamp, base, shade, expressions, homeMode, s_cfgJson, sizeof(s_cfgJson));
   if (result == config_codec::SaveResult::Ok) {
     persistRetry_.succeed();
 #ifdef LAMP_DEBUG
@@ -115,9 +118,8 @@ bool Config::persistConfig(const char* via) {
     return true;
   }
   persistRetry_.fail(now);
-  Serial.printf("[nvs] config save via=%s failed (%s, largest=%u); retry in %lus\n",
-                via, result == config_codec::SaveResult::LowHeap ? "low heap" : "write",
-                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+  Serial.printf("[nvs] config save via=%s failed (%s); retry in %lus\n", via,
+                result == config_codec::SaveResult::TooLarge ? "cfg json too large" : "write",
                 (unsigned long)(persistRetry_.waitMs() / 1000));
   return false;
 }
@@ -148,8 +150,8 @@ bool Config::persistRawJson(const char* json) {
   config_codec::fromJson(doc.as<JsonObject>(), rawLamp, rawBase, rawShade,
                          rawExpressions, rawHome);
   return config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade,
-                                  rawExpressions, rawHome) ==
-         config_codec::SaveResult::Ok;
+                                  rawExpressions, rawHome, s_cfgJson,
+                                  sizeof(s_cfgJson)) == config_codec::SaveResult::Ok;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }
@@ -348,15 +350,6 @@ JsonDocument Config::asShadeJson() {
   return doc;
 }
 
-JsonDocument Config::asExpressionsJson() {
-  JsonDocument doc;
-  JsonArray arr = doc.to<JsonArray>();
-  for (const auto& expr : expressions.expressions) {
-    config_codec::expressionToJson(arr.add<JsonObject>(), expr);
-  }
-  return doc;
-}
-
 JsonDocument Config::asHomeModeJson() {
   JsonDocument doc;
   doc["ssid"] = homeMode.ssid;
@@ -399,7 +392,7 @@ static void logSectionOom(const char* msg) {
     if (NAME##SectionDirty_) {                                             \
       size_t len = 0;                                                      \
       std::unique_ptr<char[]> json;                                        \
-      {                                                                    \
+      if (heapCanSpare(kHeapHeadroom)) {                                   \
         JsonDocument doc = BUILDER();                                      \
         json = serializeGuarded(doc, len);                                 \
       }                                                                    \
@@ -429,8 +422,59 @@ static void logSectionOom(const char* msg) {
 LAMP_DEFINE_SECTION_CACHED(lamp, asLampJson)
 LAMP_DEFINE_SECTION_CACHED(base, asBaseJson)
 LAMP_DEFINE_SECTION_CACHED(shade, asShadeJson)
-LAMP_DEFINE_SECTION_CACHED(expressions, asExpressionsJson)
 LAMP_DEFINE_SECTION_CACHED(home, asHomeModeJson)
+
+// The largest section (about 4 KB at the caps) is written straight into its
+// cache, measured first, so a rebuild takes one exactly-sized block and never
+// a document's worth of small ones.
+static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) {
+  w.beginArray();
+  for (const auto& expr : s.expressions) config_codec::writeExpressionJson(w, expr);
+  w.endArray();
+  w.finish();
+}
+
+void Config::expressionsSectionRebuildIfDirty() {
+  xSemaphoreTake(cacheMutex(), portMAX_DELAY);
+  if (expressionsSectionDirty_) {
+    JsonWriter measure(nullptr, 0);
+    writeExpressionsSection(measure, expressions);
+    const size_t len = measure.length();
+    if (expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) {
+      expressionsSectionJson_.resize(len);
+      JsonWriter w(expressionsSectionJson_.data(), len + 1);
+      writeExpressionsSection(w, expressions);
+      expressionsSectionDirty_ = false;
+    } else {
+      logSectionOom("expressions");
+    }
+  }
+  xSemaphoreGive(cacheMutex());
+}
+
+void Config::expressionsSectionJsonCached(std::string& out) {
+  expressionsSectionRebuildIfDirty();
+  xSemaphoreTake(cacheMutex(), portMAX_DELAY);
+  if (out.capacity() >= expressionsSectionJson_.size() ||
+      heapCanSpare(expressionsSectionJson_.size())) {
+    out = expressionsSectionJson_;
+  } else {
+    out.clear();
+    logSectionOom("expressions");
+  }
+  xSemaphoreGive(cacheMutex());
+}
+
+void Config::releaseSectionCaches() {
+  xSemaphoreTake(cacheMutex(), portMAX_DELAY);
+  for (auto* entry : {&lampSectionJson_, &baseSectionJson_, &shadeSectionJson_,
+                      &expressionsSectionJson_, &homeSectionJson_}) {
+    if (entry->capacity() > 15) std::string().swap(*entry);
+  }
+  lampSectionDirty_ = baseSectionDirty_ = shadeSectionDirty_ =
+      expressionsSectionDirty_ = homeSectionDirty_ = true;
+  xSemaphoreGive(cacheMutex());
+}
 
 #undef LAMP_DEFINE_SECTION_CACHED
 

@@ -6,6 +6,7 @@
 
 #include "util/color.hpp"
 #include "util/heap_guard.hpp"
+#include "util/json_writer.hpp"
 #include "util/str.hpp"
 
 namespace lamp {
@@ -234,6 +235,115 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
   }
 }
 
+void writeExpressionJson(JsonWriter& w, const ExpressionConfig& expr) {
+  w.beginObject();
+  w.key("type");
+  w.value(expr.type.c_str());
+  w.key("enabled");
+  w.value(expr.enabled);
+  w.key("intervalMin");
+  w.value(expr.intervalMin);
+  w.key("intervalMax");
+  w.value(expr.intervalMax);
+  w.key("target");
+  w.value(static_cast<uint32_t>(expr.target));
+  for (const auto& param : expr.parameters) {
+    w.key(param.first);
+    w.value(param.second);
+  }
+  w.key("colors");
+  w.beginArray();
+  for (const auto& color : expr.colors) w.value(colorToHexString(color).c_str());
+  w.endArray();
+  w.endObject();
+}
+
+static void writeSegmentsJson(JsonWriter& w, const std::vector<SegmentSettings>& segs) {
+  w.key("segments");
+  w.beginArray();
+  for (const auto& seg : segs) {
+    w.beginObject();
+    w.key("name");
+    w.value(seg.name.c_str());
+    w.key("px");
+    w.value(static_cast<uint32_t>(seg.px));
+    w.key("colors");
+    w.beginArray();
+    for (const auto& c : seg.colors) w.value(colorToHexString(c).c_str());
+    w.endArray();
+    w.endObject();
+  }
+  w.endArray();
+}
+
+void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
+                     const ShadeSettings& shade, const HomeModeSettings& homeMode) {
+  w.beginObject();
+  w.key("lamp");
+  w.beginObject();
+  w.key("name");
+  w.value(lamp.name.c_str());
+  w.key("brightness");
+  w.value(static_cast<uint32_t>(lamp.brightness));
+  if (!lamp.password.empty()) {
+    w.key("password");
+    w.value(lamp.password.c_str());
+  }
+  w.key("setup");
+  w.value(lamp.setup);
+  w.key("named");
+  w.value(lamp.named);
+  w.key("advancedEnabled");
+  w.value(lamp.advancedEnabled);
+  w.key("webappEnabled");
+  w.value(lamp.webappEnabled);
+  w.key("apBootMinutes");
+  w.value(static_cast<uint32_t>(lamp.apBootMinutes));
+  w.key("brightnessCeiling");
+  w.value(static_cast<uint32_t>(lamp.brightnessCeiling));
+  w.key("socialMode");
+  w.value(static_cast<uint32_t>(lamp.socialMode));
+  w.endObject();
+  w.key("base");
+  w.beginObject();
+  if (!base.byteOrder.empty()) {
+    w.key("byteOrder");
+    w.value(base.byteOrder.c_str());
+  }
+  w.key("colorsEditable");
+  w.value(base.colorsEditable);
+  writeSegmentsJson(w, base.segments);
+  w.endObject();
+  w.key("shade");
+  w.beginObject();
+  if (!shade.byteOrder.empty()) {
+    w.key("byteOrder");
+    w.value(shade.byteOrder.c_str());
+  }
+  w.key("colorsEditable");
+  w.value(shade.colorsEditable);
+  writeSegmentsJson(w, shade.segments);
+  w.endObject();
+  w.key("homeMode");
+  w.beginObject();
+  w.key("ssid");
+  w.value(homeMode.ssid.c_str());
+  w.key("brightness");
+  w.value(static_cast<uint32_t>(homeMode.brightness));
+  w.key("enabled");
+  w.value(homeMode.enabled);
+  w.key("networkBound");
+  w.value(homeMode.networkBound);
+  w.key("socialDisabled");
+  w.value(homeMode.socialDisabled);
+  w.key("disabledExpressionTypes");
+  w.beginArray();
+  for (const auto& t : homeMode.disabledExpressionTypes) w.value(t.c_str());
+  w.endArray();
+  w.endObject();
+  w.endObject();
+}
+
 void expressionToJson(JsonObject node, const ExpressionConfig& expr) {
   node["type"] = expr.type;
   node["enabled"] = expr.enabled;
@@ -380,7 +490,8 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out) {
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
-                      const HomeModeSettings& homeMode) {
+                      const HomeModeSettings& homeMode, char* cfgBuffer,
+                      size_t cfgBufferLen) {
   const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
   const uint8_t previous = readCount(store);
   uint8_t record[kMaxExpressionRecordLen];
@@ -402,13 +513,11 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
     store.erase(key);
   }
 
-  JsonDocument doc;
-  toStoredJson(doc.to<JsonObject>(), lamp, base, shade, homeMode);
-  size_t len = 0;
-  auto json = serializeGuarded(doc, len);
-  if (!json) return SaveResult::LowHeap;
-  return store.write("cfg", json.get()) > 0 ? SaveResult::Ok
-                                             : SaveResult::WriteFailed;
+  JsonWriter w(cfgBuffer, cfgBufferLen);
+  writeStoredJson(w, lamp, base, shade, homeMode);
+  w.finish();
+  if (!w.ok()) return SaveResult::TooLarge;
+  return store.write("cfg", cfgBuffer) > 0 ? SaveResult::Ok : SaveResult::WriteFailed;
 }
 
 LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,

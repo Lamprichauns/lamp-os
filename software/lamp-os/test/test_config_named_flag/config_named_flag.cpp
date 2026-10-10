@@ -22,6 +22,7 @@
 #include "../../src/util/color.cpp"
 #include "../../src/config/config_codec.cpp"
 #include "../../src/util/heap_guard.cpp"
+#include "../../src/util/json_writer.cpp"
 
 using namespace lamp;
 

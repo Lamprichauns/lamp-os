@@ -1196,7 +1196,9 @@ void tick() {
   if (s_clientConnected && !s_wasConnected) notifyStateChange();
   s_wasConnected = s_clientConnected;
 
-  if (s_clientConnected) {
+  if (!s_clientConnected) {
+    s_config->releaseSectionCaches();
+  } else {
     s_config->lampSectionRebuildIfDirty();
     s_config->baseSectionRebuildIfDirty();
     s_config->shadeSectionRebuildIfDirty();

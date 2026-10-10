@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "config_store.hpp"
+#include "util/json_writer.hpp"
 #include "config_types.hpp"
 
 // JSON codec for the persisted "cfg" blob. Pure functions over the config
@@ -35,6 +36,12 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
             const ShadeSettings& shade, const ExpressionSettings& expressions,
             const HomeModeSettings& homeMode);
 
+// The same shapes written with no heap, byte-identical to serializeJson of
+// expressionToJson / toStoredJson (pinned by test_json_writer).
+void writeExpressionJson(JsonWriter& w, const ExpressionConfig& expr);
+void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
+                     const ShadeSettings& shade, const HomeModeSettings& homeMode);
+
 // One expression's JSON object, the shape the BLE expressions section and the
 // webapp document both carry: type, enabled, the interval pair, target, each
 // parameter as its own key in key order, then colours.
@@ -56,17 +63,24 @@ constexpr size_t kMaxExpressionRecordLen =
 size_t encodeExpression(const ExpressionConfig& expr, uint8_t* out);
 bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 
-enum class SaveResult : uint8_t { Ok, LowHeap, WriteFailed };
+enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge };
+
+// Ceiling of the "cfg" JSON at the caps (about 1.85 KB measured by
+// test_config_records); saveConfig writes it into a buffer this long.
+constexpr size_t kMaxStoredCfgJsonLen = 2048;
 
 // Writes the model across NVS keys: each expression as its own record ("x0",
 // "x1", ...), the count in "xn", stale records erased, the knockout levels in
-// "ko", then the rest as the "cfg" JSON. No single value outgrows an NVS page, and an unchanged record is
+// "ko", then the rest as the "cfg" JSON, written into `cfgBuffer`
+// (kMaxStoredCfgJsonLen + 1 bytes) so a save needs no heap. TooLarge when the
+// JSON outgrows it. No single value outgrows an NVS page, and an unchanged record is
 // not rewritten (NVS skips identical writes). Stops at the first failed
 // write; the caller keeps its dirty state and retries.
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
-                      const HomeModeSettings& homeMode);
+                      const HomeModeSettings& homeMode, char* cfgBuffer,
+                      size_t cfgBufferLen);
 
 struct LoadedRecords {
   bool present = false;      // "xn" existed; the expressions came from records
