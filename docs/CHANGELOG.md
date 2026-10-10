@@ -81,11 +81,18 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   from your lamps until they dropped out and went back to their own colours.
 - **A Pulse on both base and shade is one pulse rising up the lamp.** It
   starts at the bottom of the base, climbs to its top and carries straight on
-  up through the shade, instead of two pulses running side by side. Pulse
-  speed is now the time to climb the whole lamp, and size is measured against
-  the whole lamp too, so at the slow end each pixel goes by faster than
-  before. A Region applies to each surface, and a Pulse on just the base or
-  just the shade looks exactly as it did.
+  up through the shade, instead of two pulses running side by side. At the
+  default speed it takes about as long as each half used to; at slower
+  settings Pulse speed is the time to climb the whole lamp, so each pixel goes
+  by faster than before. Size is measured against the whole lamp. A Region
+  applies to each surface, and a Pulse on just the base or just the shade
+  looks exactly as it did. On a lamp whose base and shade don't stack, the
+  pulse sweeps one and then the other. While lamps are partway through an
+  update, a lamp still on the old firmware shows a received both-surface
+  Pulse as two pulses side by side.
+- **Pulse has a Direction.** Up is the default. Down runs the other way: on
+  both surfaces it drips from the top of the shade down to the bottom of the
+  base.
 
 ## 1.2.7
 
