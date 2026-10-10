@@ -27,7 +27,8 @@ struct PendingSlotAggregate {
   PendingJsonSlot<kPendingJsonBase> baseColors;
   PendingJsonSlot<kPendingJsonBase> shadeColors;
 
-  // Op writes (CHAR_OP / mesh-relayed CONTROL_OP).
+  // JSON op slots: the app's BLE op writes, plus the wisp's status and config
+  // and any other control op from the mesh (inboundOp; wisp traffic only).
   PendingJsonSlot<kPendingJsonOp> expressionOp;
   PendingJsonSlot<kPendingJsonOp> wifiOp;
   PendingJsonSlot<kPendingJsonOp> testAction;

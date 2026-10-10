@@ -89,7 +89,7 @@ class Compositor {
   bool behaviorsComputed = false;
   unsigned long lastDrawTimeMs = 0;
   bool homeMode = false;
-  // Home mode is forced on by the app's Home Mode page, not by the lamp being home.
+  // True while home mode is on because the app is showing its Home Mode page.
   bool homePreview = false;
 
   Compositor();

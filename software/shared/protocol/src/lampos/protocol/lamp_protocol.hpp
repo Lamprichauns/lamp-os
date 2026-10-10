@@ -11,7 +11,7 @@
 //   header.hpp      the shared 6-byte frame header, MsgType registry,
 //                   version scheme, inspect()/writeHeader.
 //   presence.hpp    MSG_HELLO (0x01), lamp beacon.
-//   control_op.hpp  MSG_CONTROL_OP (0x03), forwarded BLE write.
+//   control_op.hpp  MSG_CONTROL_OP (0x03), wisp control traffic.
 //   wisp.hpp        MSG_WISP_HELLO (0x20), MSG_WISP_CLAIM (0x25),
 //                   MSG_WISP_PALETTE (0x26), MSG_WISP_PAINT (0x27),
 //                   MSG_WISP_STATE (0x28).

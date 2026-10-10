@@ -113,11 +113,10 @@ constexpr uint8_t PROTOCOL_VERSION = PROTOCOL_VERSION_EMIT;
 
 enum MsgType : uint8_t {
   MSG_HELLO               = 0x01,
-  // Forwarded BLE control write. Payload is JSON tagged with a `char` field
-  // naming the local control surface to invoke (brightness, shadeColors,
-  // baseColors, knockout, expressionOp, settings, ...). The local
-  // pending-slot post functions handle the routing; downstream drain in
-  // loop() runs unchanged.
+  // Wisp control: a lamp unicasts the app's wispOp to its display wisp, and
+  // the wisp broadcasts wispStatus / wispConfig. Payload is JSON tagged with a
+  // `char` field (or a sealed wispOp). Relayed by every lamp; a lamp takes
+  // only the wisp's status and config from it.
   MSG_CONTROL_OP          = 0x03,
   // --- Wisp + transient overrides + events ---
   MSG_WISP_HELLO          = 0x20,  // wisp presence beacon
