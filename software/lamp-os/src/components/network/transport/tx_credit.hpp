@@ -24,11 +24,12 @@ class TxCredit {
         refused_.fetch_add(1, std::memory_order_relaxed);
         return false;
       }
+      // The stall clock restarts with the first frame out after an idle
+      // spell, before that credit shows: another task that then sees it out
+      // must not read the idle spell as a stall.
+      if (cur == 0) advance(nowMs, true);
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
-        // The stall clock restarts with the first frame out after an idle
-        // spell.
-        if (cur == 0) advance(nowMs, true);
         return true;
       }
     }
