@@ -75,9 +75,9 @@ class ShimmerExpression : public Expression {
   uint32_t lastUpdateMs_ = 0;
   // Hidden burst params: `count` stars over `durationMax` ms, both > 0, make a
   // transient's trigger one short burst that completes; a colour in the
-  // invocation tints its stars (docs/dev/moments.md). A configured,
-  // auto-triggering instance runs continuously whatever it carries.
-  bool bursting() const { return burstMs_ > 0 && !autoTriggerEnabled; }
+  // invocation tints its stars (docs/dev/moments.md). A configured instance,
+  // enabled or not, runs continuously whatever it carries.
+  bool bursting() const { return burstMs_ > 0 && isTransient; }
   uint16_t burstCount_ = 0;
   uint32_t burstMs_ = 0;
   uint32_t burstStartMs_ = 0;

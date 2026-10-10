@@ -79,7 +79,7 @@ bool MomentDirector::eligible(MomentKind kind, uint32_t nowMs) const {
 
 void MomentDirector::tick(uint32_t nowMs) {
   if (!host_) return;
-  if (active()) {
+  if (active() || outbox_.pending) {
     if (const char* why = host_->suppressor()) {
       outbox_.pending = false;
       endMoment(why);
@@ -412,8 +412,7 @@ void MomentDirector::sampleHeartbeat(uint32_t nowMs) {
     moment_.faint = false;
   }
   if (moment_.settleBeat > 0) return;
-  const bool stale =
-      static_cast<int32_t>(nowMs - moment_.lastSightingMs) >= static_cast<int32_t>(kHeartbeatStaleMs);
+  const bool stale = !withinMs(moment_.lastSightingMs, nowMs, kHeartbeatStaleMs);
   const bool faded = moment_.faint && nowMs - moment_.faintSinceMs >= kHeartbeatStaleMs;
   const bool capped = nowMs - moment_.t0 >= kHeartbeatMaxMs;
   if (stale || faded || capped) {
@@ -523,20 +522,31 @@ bool MomentDirector::render(ExpressionInvocation& inv) {
 }
 
 void MomentDirector::addStandingOut(ExpressionInvocation& inv, Color c) {
-  const std::vector<Color>& own = host_->surfaceColors(/*base=*/true);
-  if (!own.empty() && colorDistance(c, own.front()) <= kBorrowSameColor) {
-    c = bloomWhiten(c, kBorrowWhiten);
+  const std::vector<Color>& base = host_->surfaceColors(/*base=*/true);
+  auto nearestStop = [&base](Color x) {
+    uint32_t nearest = UINT32_MAX;
+    for (const Color& stop : base) nearest = std::min(nearest, colorDistance(x, stop));
+    return nearest;
+  };
+  const uint32_t gap = nearestStop(c);
+  if (gap <= kBorrowSameColor) {
+    const Color whiter = bloomWhiten(c, kBorrowWhiten);
+    // On a near-white base whitening only closes the gap, so the colour stays.
+    if (nearestStop(whiter) > gap) c = whiter;
   }
   inv.colors.push_back(c);
 }
 
 void MomentDirector::addTintOrShade(ExpressionInvocation& inv) {
-  if (moment_.hasTint) {
+  if (moment_.hasTint && hasEnergy(moment_.tint)) {
     addStandingOut(inv, moment_.tint);
     return;
   }
   const std::vector<Color>& shade = host_->surfaceColors(/*base=*/false);
-  for (size_t i = 0; i < shade.size() && i < kBorrowedColors; ++i) addStandingOut(inv, shade[i]);
+  for (size_t i = 0; i < shade.size() && i < kBorrowedColors; ++i) {
+    if (hasEnergy(shade[i])) addStandingOut(inv, shade[i]);
+  }
+  if (inv.colors.empty()) addStandingOut(inv, Expression::kSafeFallbackColor);
 }
 
 void MomentDirector::renderBlink() {
@@ -610,8 +620,10 @@ void deliverEvent(const uint8_t* payload, size_t len, const uint8_t srcMac[6], u
   JsonDocument doc;
   if (deserializeJson(doc, payload, len) != DeserializationError::Ok) return;
   JsonObjectConst root = doc.as<JsonObjectConst>();
-  if (root["mo"].is<JsonObjectConst>()) {
-    director.onFrame(srcMac, root["mo"].as<JsonObjectConst>(), nowMs);
+  if (!root["mo"].isNull()) {
+    if (root["mo"].is<JsonObjectConst>()) {
+      director.onFrame(srcMac, root["mo"].as<JsonObjectConst>(), nowMs);
+    }
     return;
   }
   ExpressionInvocation inv;

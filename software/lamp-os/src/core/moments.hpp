@@ -176,9 +176,11 @@ class MomentDirector {
   bool seen(const uint8_t origin[6], uint32_t seed, MomentKind kind) const;
   void remember(const uint8_t origin[6], uint32_t seed, MomentKind kind);
 
-  // Appends `c` to the invocation, whitened when it sits too close to this
-  // lamp's own base colour to stand out on it.
+  // Appends `c` to the invocation, whitened when it sits too close to any of
+  // this lamp's base stops to stand out on them.
   void addStandingOut(ExpressionInvocation& inv, Color c);
+  // The tint when it carries light, else this lamp's shade colours that do,
+  // else white.
   void addTintOrShade(ExpressionInvocation& inv);
   void renderBlink();
   void renderGlow();
@@ -202,9 +204,10 @@ class MomentDirector {
 
 extern MomentDirector momentDirector;
 
-// The MSG_EVENT receive path. A payload carrying `mo` goes to `director` and
-// never reaches the expression mirror; any other invocation fans out to
-// `observers`. Malformed payloads are dropped.
+// The MSG_EVENT receive path. A payload carrying `mo` goes to `director`
+// (dropped when `mo` is not an object) and never reaches the expression
+// mirror; any other invocation fans out to `observers`. Malformed payloads are
+// dropped.
 void deliverEvent(const uint8_t* payload, size_t len, const uint8_t srcMac[6], uint32_t nowMs,
                   MomentDirector& director, ExpressionObserverRegistry& observers);
 

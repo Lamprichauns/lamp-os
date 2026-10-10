@@ -147,6 +147,10 @@ class Expression : public AnimatedBehavior {
   // chain-triggered firing still work. Listing's enabled toggle drives this.
   bool autoTriggerEnabled = true;
 
+  // A one-shot built by ExpressionManager::triggerInvocation, as opposed to a
+  // configured instance (enabled or not).
+  bool isTransient = false;
+
   // Floor this expression's per-pixel contribution dims to while the wisp is
   // fully present, in [0,1]. 1.0 (default) ignores the wisp and paints at full
   // regardless. A continuous color animation that would fight the wisp's hold

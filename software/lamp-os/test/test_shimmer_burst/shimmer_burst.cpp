@@ -51,6 +51,7 @@ void burstOn(ShimmerExpression& e, Surfaces& s, bool transient,
   e.configure(colors, 60, 900, TARGET_SHADE);
   e.configureFromParameters(
       {{"fire", 0}, {"count", kStars}, {"durationMax", kBurstMs}, {"opacity", 100}});
+  e.isTransient = transient;
   e.autoTriggerEnabled = !transient;
   e.setBehaviorContext(&s.ctx);
 }
@@ -160,6 +161,18 @@ void test_a_configured_flicker_ignores_a_tint() {
   TEST_ASSERT_EQUAL_UINT8(0, reach(e, s, 5 * kBurstMs).blue);
 }
 
+// A configured flicker the user disabled has its auto-trigger off like a
+// transient, yet a Test fire of it still runs continuously.
+void test_a_disabled_configured_flicker_never_bursts() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/false);
+  e.autoTriggerEnabled = false;
+  e.trigger();
+  for (uint32_t now = 1000; now < 1000 + 3 * kBurstMs; now += kFrameMs) frame(e, s, now);
+  TEST_ASSERT_FALSE(e.isAnimationComplete());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_a_transient_burst_completes_for_the_gc);
@@ -168,5 +181,6 @@ int main(int, char**) {
   RUN_TEST(test_a_burst_paints_its_tint);
   RUN_TEST(test_an_untinted_burst_paints_the_colour_under_it);
   RUN_TEST(test_a_configured_flicker_ignores_a_tint);
+  RUN_TEST(test_a_disabled_configured_flicker_never_bursts);
   return UNITY_END();
 }

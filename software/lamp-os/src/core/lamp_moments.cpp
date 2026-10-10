@@ -42,7 +42,7 @@ class LampMomentHost : public lamp::MomentHost {
     lamp::BehaviorContext& ctx = compositor.behaviorContext();
     return ctx.greeting && ctx.greeting->greetingState().active;
   }
-  bool canSend() override { return meshLink.txReady() && !meshLink.isOtaInProgress(); }
+  bool canSend() override { return meshLink.txReady(millis()) && !meshLink.isOtaInProgress(); }
   void send(const char* payload, size_t len) override {
     meshLink.sendEvent(reinterpret_cast<const uint8_t*>(payload), len);
   }
