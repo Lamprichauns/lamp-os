@@ -62,9 +62,10 @@ inline constexpr ExpressionDescriptor kPulseDescriptorData{
     .defHi = 900,
     .help  = kIntervalHelp,
   },
-  .hasZone      = true,
-  .zoneOptional = true,
-  .params       = kPulseParams,
+  .hasZone       = true,
+  .zoneOptional  = true,
+  .params        = kPulseParams,
+  .spansSurfaces = true,
 };
 
 /**
@@ -72,6 +73,8 @@ inline constexpr ExpressionDescriptor kPulseDescriptorData{
  *
  * Creates a smooth pulse effect that moves vertically, with configurable
  * speed and colors. The pulse blends with existing colors for a layered effect.
+ * Targeting both surfaces, one wave rises through the base and on up through
+ * the shade; both run their zone from pixel 0 upward.
  */
 class PulseExpression : public Expression {
  private:
@@ -86,7 +89,10 @@ class PulseExpression : public Expression {
   uint32_t pulseSpeedMs = 100;    // Time for wave to move one pixel (ms)
   uint32_t pulseWidth = 3;        // Fade radius in pixels on each side
   Color pulseColor;                // Current pulse color
-  Zone zone_;                      // Wave travel bounds
+  Zone zone_;                      // Wave travel bounds, in strip positions
+  FrameBuffer* above_ = nullptr;   // Shade continuing the strip past lowerEnd_
+  uint16_t lowerEnd_ = 0;          // Last strip position on fb
+  uint16_t aboveMin_ = 0;          // above_ pixel at strip position lowerEnd_ + 1
   bool loopContinuous_ = false;   // Ping-pong forever instead of ending on exit
   bool reachedFarEnd_ = false;    // Continuous wave has touched the far end; arms preview one-cycle stop
   bool firstEntranceDone_ = false;  // Continuous leg 0 enters off-strip; later legs ping-pong the visible edges
@@ -131,6 +137,7 @@ class PulseExpression : public Expression {
    * @param parameters Map containing expression-specific parameters
    */
   void configureFromParameters(const ExpressionParams& parameters) override;
+  void joinSurfaceAbove(FrameBuffer* above) override { above_ = above; }
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
 

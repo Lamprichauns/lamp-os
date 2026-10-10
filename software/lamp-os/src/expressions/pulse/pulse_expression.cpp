@@ -20,6 +20,12 @@ PulseExpression::PulseExpression(FrameBuffer* inBuffer, uint32_t inFrames)
 void PulseExpression::configureFromParameters(const ExpressionParams& parameters) {
   const uint16_t window = windowSize();
   zone_ = resolveZone(parameters, window);
+  lowerEnd_ = zone_.posMax;
+  if (above_ && above_->pixelCount > 0) {
+    const Zone upper = resolveZone(parameters, above_->pixelCount);
+    aboveMin_ = upper.posMin;
+    zone_.posMax = static_cast<uint16_t>(lowerEnd_ + upper.size());
+  }
 
   uint32_t pulseSpeed = getParam(parameters, "pulseSpeed");
   const uint16_t span = zone_.size() > 0 ? zone_.size() : window;
@@ -176,21 +182,26 @@ void PulseExpression::draw() {
     return;
   }
 
-  if (!shouldAffectBuffer()) {
+  const bool lowerLive = shouldAffectBuffer(fb);
+  const bool upperLive = above_ && zone_.posMax > lowerEnd_ && shouldAffectBuffer(above_);
+  if (!lowerLive && !upperLive) {
     return;
   }
 
   // blendFactor varies per pixel (distance to wave center), so no frame-level hoist.
-  const float wispWeight = wispDimScale();
-  for (int i = zone_.posMin; i <= zone_.posMax; i++) {
-    uint32_t blendFactor = calculateBlendFactor(i);
+  const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
+  const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
+  for (int pos = zone_.posMin; pos <= zone_.posMax; pos++) {
+    const bool upper = pos > lowerEnd_;
+    if (!(upper ? upperLive : lowerLive)) continue;
+    uint32_t blendFactor = calculateBlendFactor(pos);
     if (blendFactor == 0) continue;  // Skip pixels with no blend
+    Color& px = upper ? above_->buffer[aboveMin_ + (pos - lowerEnd_ - 1)] : fb->buffer[pos];
     const Color painted =
         (blendFactor >= 100)
             ? pulseColor
-            : mixColorLinear(fb->buffer[i], pulseColor,
-                             computeLinearFactor(blendFactor, 100u));
-    fb->buffer[i] = mixColorWeight(fb->buffer[i], painted, wispWeight);
+            : mixColorLinear(px, pulseColor, computeLinearFactor(blendFactor, 100u));
+    px = mixColorWeight(px, painted, upper ? upperWeight : lowerWeight);
   }
 
   // Transit time is wall-clock; a tiny zone with a slow, wide wave can take

@@ -190,7 +190,8 @@ class ExpressionManager {
   ExpressionRegistry registry_;
 
   // Build an Expression bound to `buffer` for `type` via the registry's
-  // descriptor. Folds descriptor defaults into `parameters` before
+  // descriptor, joining the shade `above` it when non-null (surfacePlan).
+  // Folds descriptor defaults into `parameters` before
   // configureFromParameters. Returns nullptr for a type absent from the
   // registry. Shared by addExpression + triggerInvocation.
   std::unique_ptr<Expression> makeExpression(
@@ -198,7 +199,8 @@ class ExpressionManager {
       const std::vector<Color>& colors,
       uint32_t intervalMin, uint32_t intervalMax,
       ExpressionTarget target,
-      const ExpressionParams& parameters);
+      const ExpressionParams& parameters,
+      FrameBuffer* above = nullptr);
 
  public:
   ExpressionRegistry& registry() { return registry_; }
