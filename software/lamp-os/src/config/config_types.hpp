@@ -212,9 +212,11 @@ constexpr size_t kMaxPasswordLen = 64;
 constexpr size_t kMaxSsidLen = 32;
 constexpr size_t kMaxDisabledExpressionTypes = 8;
 
-// Every parameter key an expression reads. Stored configs carry a key as its
-// index here, so the table is append-only: never reorder or remove an entry.
-// A key not listed has no reader and is dropped at parse.
+// Every parameter key an expression reads, in byte-wise order (the order the
+// wire JSON carries them). A split save's expression records carry a key as
+// its index here, so the table is append-only: never reorder or remove an
+// entry, and an appended key out of byte-wise order changes the wire's key
+// order. A key not listed has no reader and is dropped at parse.
 inline constexpr const char* kExpressionParamKeys[] = {
     "breathSpeed",  "cascadeEnabled",   "cascadeStaggerMs", "count",
     "durationMax",  "durationMin",      "easing",           "fadeDuration",
