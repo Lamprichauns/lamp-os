@@ -161,16 +161,20 @@ void setSurfaceFactor(Surface surface, uint8_t factor) {
 //      has enabled it AND has a saved SSID AND the most recent wifi scan
 //      saw that SSID nearby. The lamp never associates, just sniffs
 //      beacons. No password ever leaves the lamp.
-bool calculateEffectiveHomeMode() {
+// isClientConnected() flips on Core 0, so it is read once per decision.
+static lamp::HomeModeState currentHomeModeState() {
   if (ble_control::isClientConnected()) {
-    return ble_control::isHomeModePageActive();
+    return lamp::homeModeState(true, ble_control::isHomeModePageActive(), false);
   }
-  return lamp::effectiveHomeModeFromConfig(
-      config.homeMode.enabled,
-      config.homeMode.networkBound,
-      config.homeMode.ssid.empty(),
-      wifi::homeSsidVisible(config.homeMode.ssid));
+  return lamp::homeModeState(false, false,
+                             lamp::effectiveHomeModeFromConfig(
+                                 config.homeMode.enabled,
+                                 config.homeMode.networkBound,
+                                 config.homeMode.ssid.empty(),
+                                 wifi::homeSsidVisible(config.homeMode.ssid)));
 }
+
+bool calculateEffectiveHomeMode() { return currentHomeModeState().active; }
 
 // Single funnel for "home mode state may have changed". Keeps the
 // compositor's behavior gate and the strip brightness in lockstep so the
@@ -179,8 +183,8 @@ bool calculateEffectiveHomeMode() {
 void reapplyHomeModeState() {
   compositor.setHomeModePolicy(config.homeMode.socialDisabled,
                                config.homeMode.disabledExpressionTypes);
-  compositor.setHomeMode(calculateEffectiveHomeMode());
-  compositor.homePreview =
-      lamp::homeModePreview(ble_control::isClientConnected(), compositor.homeMode);
+  const lamp::HomeModeState state = currentHomeModeState();
+  compositor.setHomeMode(state.active);
+  compositor.homePreview = state.preview;
   lamp::applyEffectiveBrightness();
 }
