@@ -99,11 +99,23 @@ void test_a_local_broadcast_cascades_even_when_refused_here() {
   TEST_ASSERT_FALSE(cascadesFrom(false, true, TransientSource::Local));
 }
 
+// A type the lamp itself could not play waits a second before it is tried
+// again; another type does not.
+void test_a_refused_local_type_cools_down() {
+  LocalCooldown cooldown;
+  TEST_ASSERT_FALSE(cooldown.waiting("pulse", 100));
+  cooldown.refused("pulse", 100);
+  TEST_ASSERT_TRUE(cooldown.waiting("pulse", 100 + LocalCooldown::kMs - 1));
+  TEST_ASSERT_FALSE(cooldown.waiting("pulse", 100 + LocalCooldown::kMs));
+  TEST_ASSERT_FALSE(cooldown.waiting("shifty", 101));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cap_bounds_every_source);
   RUN_TEST(test_remote_cannot_starve_local);
   RUN_TEST(test_a_local_broadcast_cascades_even_when_refused_here);
+  RUN_TEST(test_a_refused_local_type_cools_down);
   RUN_TEST(test_heap_gate_refuses_any_source);
   RUN_TEST(test_admission_counts_live_sources);
   RUN_TEST(test_lookup_finds_only_the_matching_entry);

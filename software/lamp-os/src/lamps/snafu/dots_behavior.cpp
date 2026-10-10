@@ -114,9 +114,11 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
                                 const std::vector<Color>& shadeStops,
                                 uint32_t durationFrames) {
   if (baseStops.empty() && shadeStops.empty()) return;
+  if (context_ && context_->ignoresPeers()) return;
   borrowBase_     = baseStops;
   borrowShade_    = shadeStops;
   borrowActive_   = true;
+  drifting_       = false;
   borrowElapsed_  = 0;
   borrowDuration_ = durationFrames;
   sinceShuffle_   = 0;
@@ -129,8 +131,45 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
   frames = kBorrowSceneFrames;
 }
 
+void DotsBehavior::endDriftIfDone() {
+  if (!drifting_ || sceneChange_) return;
+  drifting_ = false;
+  driftMeltSpan_ = 0;
+  frames = kSceneFrames;
+}
+
 void DotsBehavior::control() {
   if (!fb || fb->buffer.empty()) return;
+  if (borrowActive_ && context_ && context_->ignoresPeers()) {
+    // Drift from what draw() would paint next back to the own palette: the
+    // scene (mid-crossfade included) crossfades to the own scene beneath the
+    // wisp mix, and a melt already under way keeps overlaying above it,
+    // easing out over the same frames.
+    std::vector<Color> shown = cur_.empty() ? buildScene() : cur_;
+    if (sceneChange_ && prev_.size() == shown.size()) {
+      for (size_t j = 0; j < shown.size(); ++j) shown[j] = fade(prev_[j], cur_[j], frames, frame);
+    }
+    drifting_ = true;
+    driftMeltSpan_ = 0;
+    if (borrowElapsed_ * 2 > borrowDuration_ && ownMelt_.size() == shown.size()) {
+      const uint32_t half = borrowDuration_ / 2;
+      driftMeltSpan_ = borrowDuration_ - half;
+      driftMeltPos_  = borrowElapsed_ - half;
+    }
+    borrowActive_ = false;
+    borrowBase_.clear();
+    borrowShade_.clear();
+    sinceShuffle_ = 0;
+    // A palette edited during the borrow lands in cur_ here; refresh the
+    // snapshot so the next pass does not read the edit as new and snap.
+    colorsChanged();
+    prev_ = std::move(shown);
+    cur_  = buildScene();
+    frame = 0;
+    sceneChange_ = true;
+    frames = kBorrowSceneFrames;
+    return;
+  }
   if (borrowActive_) {
     if (++borrowElapsed_ >= borrowDuration_) {
       borrowActive_ = false;
@@ -180,6 +219,7 @@ void DotsBehavior::control() {
 void DotsBehavior::draw() {
   if (!fb || fb->buffer.empty()) { nextFrame(); return; }
   if (cur_.empty()) { cur_ = buildScene(); prev_ = cur_; }
+  endDriftIfDone();
   // Yield the shade to the wisp by its eased presence: at w==1 the dots hand
   // fully to the already-composited wisp, at w==0 they own the shade, and the
   // ~500ms ease crossfades both take and release (fb->buffer holds the eased
@@ -204,6 +244,12 @@ void DotsBehavior::draw() {
     const uint32_t pos  = borrowElapsed_ - half;
     for (size_t j = 0; j < fb->buffer.size() && j < ownMelt_.size(); ++j) {
       fb->buffer[j] = fade(fb->buffer[j], ownMelt_[j], span, pos);
+    }
+  } else if (drifting_ && driftMeltSpan_ && frame < frames) {
+    const uint32_t pos = static_cast<uint32_t>(
+        static_cast<uint64_t>(driftMeltPos_) * (frames - frame) / frames);
+    for (size_t j = 0; j < fb->buffer.size() && j < ownMelt_.size(); ++j) {
+      fb->buffer[j] = fade(fb->buffer[j], ownMelt_[j], driftMeltSpan_, pos);
     }
   }
   nextFrame();

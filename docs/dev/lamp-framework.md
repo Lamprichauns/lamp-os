@@ -121,8 +121,98 @@ virtual queries on `AnimatedBehavior`: `isSocialBehavior()` (true on
 `Expression` subclasses, `nullptr` otherwise). The suppression policy is pushed
 by `reapplyHomeModeState()` via `Compositor::setHomeModePolicy()` and comes from
 `HomeModeSettings::socialDisabled` and `HomeModeSettings::disabledExpressionTypes`.
-The render rule is `!homeMode || !homeModeSkips(b)`; behaviors matching neither
-query always draw.
+The render rule is `homeModeTick` (`core/home_mode_gate.hpp`): Run, Skip (an
+expression of a home-disabled type) or Cancel (a social behavior while social
+is off and no app greeting plays); behaviors matching neither query run. The OTA offer scan (`tickOtaOffers`) runs in
+`Lamp::tick` outside the compositor, so home mode never stops a lamp offering
+updates.
+
+While home mode is active with `socialDisabled` set, the lamp also ignores what
+other lamps push onto it. One pure decision, `homeModeBlocksRemote(homeActive,
+socialDisabled, source)` in `core/home_mode_gate.hpp`, read through
+`Compositor::blocksRemote(source)`, gates every peer path. No lamp sends
+another lamp settings over `MSG_CONTROL_OP`, which carries only wisp traffic
+([`networking.md`](networking.md)), so that message needs no gate.
+
+- `ExpressionManager::triggerInvocation` refuses a `TransientSource::Remote`
+  invocation: a cascade (`MSG_COMMAND`, immediate or delayed) and an event
+  mirror (`MSG_EVENT` through `SocialEchoObserver`). Nothing is booked for
+  later either: while `ExpressionManager::ignoresPeers()` the command drain
+  queues no delayed cascade and `SocialEchoObserver` books no mirror (its
+  introvert cooldown untouched), so nothing fires once home mode or the
+  preview ends. A retiring transient does not coalesce its sender's next
+  invocation.
+- `ExpressionManager::gcTransients` retires a Remote transient already running
+  when home mode turns on: `Expression::retire()` ramps its contribution scale
+  to 0 over `Expression::kRetireFadeMs` (1 s), then it is reaped. A transient of
+  a home-disabled type, Local ones a peer caused included (the Lioness
+  greeting's glitch), is reaped at once, since the compositor skips it and it
+  would otherwise freeze and resume when home mode ends.
+- A Local transient a peer caused just before home mode began (a staff bloom
+  for a friend's arrival) is the lamp's own and plays out.
+- A delayed cascade or echo mirror booked before home mode began is dropped
+  when it begins, so nothing booked then fires after home mode ends.
+- `BehaviorContext::forEachArrival` hands no arrival to a greeting (snafu's,
+  the Lioness greeting), and `forEachNearby` visits no peer, so the room reads
+  as empty: the Lions ambient scene shows no neighbour palettes and sends no
+  colour queries, and the Loaf ring keeps its base speed. `crowd()` and
+  `crowdWeight()` report an empty room too.
+- `BehaviorContext::tickArrivals`, the framework arrival pass `Lamp::tick` runs
+  each loop, acknowledges every roster arrival (the ack `SocialBehavior`'s
+  own roster scan reads, on standard, loaf and staff) and marks the
+  `onArrival` notifier's fired set without firing it (the staff bloom,
+  `ArrivalPass::Silence`; the set has a slot for every roster peer, so any
+  crowd is marked whole). Leaving home therefore greets no peer that was near
+  all along, on every variant.
+- Crowd-dim lifts: `CrowdDim` (`core/crowd_dim_fade.hpp`) aims the factor at
+  1.0 and ramps there over 1 s (`kCrowdDimHomeFadeMs`) when the gate switches
+  on or off, against the 80 ms an ordinary deadband commit takes; a commit
+  while that ramp still runs keeps its remaining time.
+  `Lamp::tick` reapplies brightness on every pass of a ramp and the one after
+  it ends (`crowdDimFading()`), held off while the slider's own micro-fade runs
+  and in OTA quiet mode; the landing pass waits out either hold.
+
+The app's Home Mode page forces home mode on to preview it
+(`Compositor::homePreview`). The preview blocks the same paths, but
+`Compositor::discardsRemote(source)` is false during it: no arrival is
+consumed and no running transient retired, and the arrival notifier holds
+(`ArrivalPass::Hold`: departures re-arm, nothing is marked), so a peer that
+leaves and returns during the preview fires afterwards as usual. Nothing is
+booked for later either, so no peer effect lands once the app leaves the page.
+What the preview stops while it shows stays stopped: a `SocialBehavior`
+greeting it cuts off is cancelled and a snafu palette borrow ends, as at home.
+The app's own greet button still plays during the preview: `SocialBehavior`
+marks a `triggerGreeting` greeting (`playsAppGreeting()`) and
+`homeModeSkipsSocial` lets the compositor run it until it ends. When it ends,
+`SocialBehavior::control` picks and acknowledges no peer while `ignoresPeers()`,
+and neither greeting takes peer colour info meanwhile, so the app's greeting in
+the preview shows the peer's base colour without its palette, on standard and
+snafu alike. Peer transients
+already running are not faded during a preview.
+`homeModeState` (`core/home_mode_logic.hpp`) decides home mode and the preview
+from one read of the BLE client state: with the app connected, only its Home
+Mode page turns home mode on, and that is the preview. `reapplyHomeModeState`
+keeps that snapshot, and `calculateEffectiveHomeMode` (brightness, compositor
+boot) returns it, so the brightness and the gate always agree.
+`initBehaviors` runs `reapplyHomeModeState` right after `compositor.begin`, so
+the policy comes from config from the first pass.
+
+The lamp's own sources stay `TransientSource::Local` and always pass: the app's
+Test button and its remote op over BLE (`CHAR_REMOTE_OP`, applied only on the
+lamp it is written to). The wisp's paint, overrides and brightness are the
+owner's controller, not a peer, and pass too. `disabledExpressionTypes` keeps
+blocking its types from every source. A greeting already playing when home
+mode turns on is not faded: the compositor calls `cancelGreeting()` on a
+skipped `SocialBehavior` (STOPPED, frame 0, the app's greeting state told it
+ended), so it does not resume when home mode ends, and snafu's and the Lioness
+greetings finish their one pass. Snafu then borrows no peer palette: its dots
+refuse a borrow while `ignoresPeers()` and drift an active one back to the own
+palette from the scene on show: a re-scatter crossfade under way is resolved
+into the starting scene, and a melt under way stays an overlay above the wisp
+mix, as `draw()` paints it, easing out over the drift. Once the drift lands
+the ambient crossfade returns to its own length (`kSceneFrames`); the greeting takes no
+peer colour info meanwhile. A retiring glitch gives its
+background back to the live scene as it fades (`Expression::retireScale`).
 
 ## Brightness path and the power governor
 

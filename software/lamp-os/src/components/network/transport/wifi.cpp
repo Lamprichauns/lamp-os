@@ -169,7 +169,7 @@ void setWebappActiveGetter(WebappActiveGetter fn) {
 
 bool homeSsidVisible(const std::string& ssid) {
   if (ssid.empty()) return false;
-  // Called from Core 1 (reapplyHomeModeState → calculateEffectiveHomeMode).
+  // Called from Core 1 (reapplyHomeModeState → currentHomeModeState).
   // The writer is also Core 1 (wifi::tick), so this is single-core, but
   // the wrap stays because s_recentSsids is shared state and the cost is
   // negligible (string == is a no-alloc compare). The string compares run

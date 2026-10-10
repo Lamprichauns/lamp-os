@@ -2,7 +2,8 @@
 // Lamp::setup() boot wiring, Lamp::tick() orchestrator.
 //
 // Sibling TUs share file-scope state via core/lamp_internal.hpp:
-// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: cascade routing;
+// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: remote-op and inbound
+// control-op receive;
 // lamp_brightness.cpp: brightness/home-mode; lamp_behaviors.cpp: initBehaviors;
 // lamp_test_action.cpp: dispatchLampAction.
 
@@ -66,6 +67,7 @@
 #include <lampos/blended_identity.hpp>
 #include <lampos/led_power.hpp>
 #include "components/firmware/ota_quiet_mode.hpp"
+#include "components/firmware/ota_offer.hpp"
 #include "core/pending_json_slot.hpp"
 #include "core/pending_typed_slot.hpp"
 #include "core/pending_slot_aggregate.hpp"
@@ -122,9 +124,9 @@ volatile bool pendingFlushDispositionsRequested = false;
 PendingKnockoutUpdate pendingKnockout;
 
 // Pending triggerExpression invocations whose delayMs > 0, drained from the
-// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi-task
-// CONTROL_OP handler just posts JSON into lamp::pendingSlots.inboundOp, and
-// the drain that parses it into this queue runs on the loop task), so no mutex.
+// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi task
+// just posts a MSG_COMMAND into lamp::pendingSlots.command, and the drain that
+// parses it into this queue runs on the loop task), so no mutex.
 struct DelayedInvocation {
   lamp::ExpressionInvocation inv;
   uint32_t fireAtMs;
@@ -243,7 +245,7 @@ lamp::SocialEchoObserver socialEchoObserver(config, expressionManager, meshLink)
 // arrive via pendingFirmwareControl and are drained on Core 1.
 lamp::FirmwareReceiver    firmwareReceiver;
 // firmwareDistributor's global instance lives in firmware_distributor.cpp
-// (extern decl in firmware_distributor.hpp) so SocialBehavior can reference
+// (extern decl in firmware_distributor.hpp) so the offer scan can reference
 // it as `lamp::firmwareDistributor` from any TU.
 
 // Post-OTA "mark this app valid" state.
@@ -262,8 +264,8 @@ lamp::FirmwareReceiver    firmwareReceiver;
 bool g_pendingVerify = false;
 uint32_t g_markValidDeadlineMs = 0;
 
-// Local appliers for mesh-received ops, shared between the slot drains
-// (lamp_drains.cpp) and the cascade-receive router (lamp_remote_op.cpp):
+// Local appliers shared between the slot drains (lamp_drains.cpp) and the
+// remote-op receive (lamp_remote_op.cpp):
 // apply a JSON colors array / expression op to configurator + advert +
 // section cache in one shot.
 //
@@ -359,9 +361,9 @@ namespace lamp {
 // Internal helper for the apply_expressions.hpp split. mutateConfig=true is
 // the user-source path (BLE expressionOp drain): drives expressionManager
 // AND mirrors into config.expressions so persistConfig() captures it.
-// mutateConfig=false is the remote-source path (applyRemoteOpLocal for a
-// cascade-relayed CONTROL_OP): drives expressionManager only so the
-// cascade's transient state never becomes persistable.
+// mutateConfig=false is the remote-op path (applyLampOp for a CHAR_REMOTE_OP
+// write): drives expressionManager only so the preview never becomes
+// persistable.
 void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (doc.isNull()) return;
   const char* op = doc["op"].as<const char*>();
@@ -618,7 +620,7 @@ void lamp::Lamp::setup() {
   }
   // Seed the file-scope brightness cap from the variant's HwConfig narrowed by
   // the user ceiling so free functions (applyEffectiveBrightness,
-  // applyRemoteOpLocal) use the correct ceiling without importing a variant header.
+  // applyLampOp) use the correct ceiling without importing a variant header.
   recomputeEffectiveCeiling();
 
   // `config` as an unqualified name inside a Lamp member function resolves to
@@ -837,8 +839,8 @@ void lamp::Lamp::setup() {
   // that only one transport (mesh OR BLE) drives an active OTA at a time.
   ble_control::setFirmwareReceiver(&firmwareReceiver);
 
-  // Gossip OTA: the lamp can ALSO originate offers to peers it meets via the
-  // social system. Wire the distributor through the same
+  // Gossip OTA: the lamp can ALSO originate offers to the peers tickOtaOffers
+  // finds on the mesh. Wire the distributor through the same
   // EspNowFirmwareTransport (it emits MSG_FW_OFFER/CHUNK/DONE and listens for
   // ACCEPT/REQ/RESULT via mesh_link's dispatch ladder).
   lamp::firmwareDistributor.begin(&meshFwTransport);
@@ -1109,8 +1111,10 @@ void lamp::Lamp::tick() {
     // value; layering crowd-dim or OTA pulse mid-drag would make the slider
     // feel laggy and disconnected. Once the window elapses the next
     // applyEffectiveBrightness call reapplies both multipliers cleanly.
-    if (!lamp::overrides.brightness.isActive() && lamp::brightnessFadeSeeded() &&
-        lamp::brightnessFadeSource() != lamp::brightnessFadeTarget()) {
+    const bool userFading = !lamp::overrides.brightness.isActive() &&
+                            lamp::brightnessFadeSeeded() &&
+                            lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
+    if (userFading) {
       const uint8_t level = computeUserBrightnessNow(now);
       lamp::setAllStripsBrightness(
           lamp::calculateBrightnessLevel(s_hwMaxBrightness, level));
@@ -1123,12 +1127,19 @@ void lamp::Lamp::tick() {
     // reads a consistent post-fade view this tick. Cheap when nothing's
     // changed (1 Hz internal cadence). consumePendingApply() trips the
     // applyEffectiveBrightness pump when the crowd-dim factor crosses the
-    // deadband, or when SocialMode changes the dim regime.
+    // deadband, or when SocialMode changes the dim regime. The crowd-dim
+    // ramp then reapplies every pass until it lands; the slider's own
+    // micro-fade owns the strip while it runs, and OTA quiet mode holds it.
     lamp::personalityEngine.tick(now);
     if (lamp::personalityEngine.consumePendingApply()) {
       pendingApplyEffectiveBrightness = true;
     }
     lamp::momentDirector.tick(now);
+    // crowdDimFading() consumes the landing pass, so it is asked only when
+    // the reapply can run.
+    if (!userFading && !lamp::ota_quiet_mode::isQuiet() && lamp::crowdDimFading(now)) {
+      lamp::applyEffectiveBrightness();
+    }
   }
 
   // Fire any delayed triggerExpression invocations whose deadline has passed.
@@ -1137,6 +1148,8 @@ void lamp::Lamp::tick() {
   // arrives after a long-delayMs one, the long one fires first when its
   // deadline hits. Best-effort by design; the cascade UX tolerates the
   // jitter and avoiding a priority queue keeps the drain trivial.
+  // A delayed cascade booked before home mode began is dropped.
+  if (expressionManager.ignoresPeers()) pendingTriggers.clear();
   if (!pendingTriggers.empty()) {
     const uint32_t now = millis();
     for (auto it = pendingTriggers.begin(); it != pendingTriggers.end();) {
@@ -1150,7 +1163,7 @@ void lamp::Lamp::tick() {
   }
 
   socialEchoObserver.tick(millis());
-  arrivalNotifier.tick(millis(), lamp::lampRoster, LAMP_PRUNE_TIME_MS);
+  compositor.behaviorContext().tickArrivals(millis(), LAMP_PRUNE_TIME_MS);
 
   tickBootRecovery();
 
@@ -1164,6 +1177,7 @@ void lamp::Lamp::tick() {
   firmwareReceiver.tick(millis());
   lamp::firmwareDistributor.tick(millis());
   fs_ota::tick(millis());
+  lamp::tickOtaOffers(millis(), compositor.startupComplete);
   // Post-OTA self-health check. After 30 seconds of steady-state loop
   // iteration, if BLE is up and the loop has been iterating (trivially true
   // inside it), call mark_app_valid so the next OTA can succeed. If the lamp

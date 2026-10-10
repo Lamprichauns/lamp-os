@@ -14,7 +14,7 @@ source file is where the tag's format strings live.
 | Tag | Source | Prints |
 |---|---|---|
 | `[heap]` | `util/heap_probe.hpp`, `core/lamp.cpp` | Free + largest contiguous block at named checkpoints (`at=%s free=%u largest=%u`): boot, mesh, webapp, ble-connect/disconnect/pre/post, ota-stream, web-save; every 30 s in a debug build a `trend` checkpoint and `txstalls=.. txrefused=..`, the TX credit resets and the sends dropped for want of a credit |
-| `[loop]` | `core/lamp.cpp`, `core/lamp_drains.cpp` | Main-loop health: stack high-water mark, delayed-trigger queue eviction, knockout-drain pixel/brightness |
+| `[loop]` | `core/lamp.cpp`, `core/lamp_drains.cpp` | Main-loop health: stack high-water mark, delayed-trigger queue eviction, knockout-drain pixel/brightness; `settingsBlob: save deferred; reboot waits for it`, a settings blob that needs a reboot whose save failed, and `settingsBlob: save never landed; no reboot`, the wait given up after 5 minutes (every build) |
 | `[lamp]` | `core/lamp.cpp`, `main.cpp` | Boot: `FATAL` malformed HwConfig (halt), compiled vs NVS `lampType` |
 | `[gov]` | `core/lamp.cpp` | Power governor clamp / release (`clamp demand=.. budget=.. ceiling=..`, `release demand=..`) |
 | `[power]` | `core/lamp.cpp` | Brownout-reset warning (supply-budget constants may be mis-sized) |

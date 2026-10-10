@@ -5,7 +5,7 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
-## Unreleased
+## 1.2.8
 
 ### Added
 - **Moments.** Once in a long while a room of lamps that like each other
@@ -36,14 +36,52 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   venue network: Straylight's feed arrives over the cable, the wisp's WiFi
   stays off so the mesh keeps its radio, and the app shows the wisp's
   network address. A wisp with no module works exactly as before.
+- **Pulse has a Direction.** Up is the default. Down runs the other way: on
+  both surfaces it drips from the top of the shade down to the bottom of the
+  base.
 
 ### Fixed
+- **Home mode with social off now ignores other lamps completely.** Before,
+  another lamp could still make yours pulse, flicker or shift while it was
+  resting at home; only glitch was kept out. Now, while home mode is on with
+  social switched off, your lamp ignores every effect other lamps send it,
+  doesn't greet them and behaves as if it were alone in the room, whichever
+  kind of lamp it is: a Lioness's lions stop showing neighbours' colours and
+  a Loaf's ring stops speeding up for nearby loaves. Effects other lamps had
+  already sent fade out gently when home mode comes on, and when you leave
+  home your lamp doesn't greet the lamps that were there all along. It also
+  stops dimming itself for a crowd, easing back to its full home brightness
+  over about a second. Previewing home mode from the app shows what home mode
+  looks like without using up arrivals, so the lamps around it are greeted as
+  usual once you leave the page; a greeting or borrowed palette the preview
+  cuts off stays ended, and the app's greet button still plays a greeting
+  during the preview. Your own expressions, the app's Test button and your
+  wisp keep working, and your lamp still passes messages
+  along so the lamps around it keep talking.
+- **A staff lamp blooms for every friend in a big crowd.** With more than 16
+  lamps nearby, friends past the sixteenth used to arrive without a bloom.
+- **Crowd dimming follows the crowd right away.** When a lamp decided to dim
+  or brighten for a change in the crowd, the change could wait until the next
+  unrelated brightness change to show. It now eases in within a moment.
+- **Every lamp passes updates on.** A lamp at home with social turned off,
+  and snafu and lioness lamps at any time, never offered a firmware or web-UI
+  update to the lamps around them, so an update could stall at them. Every
+  lamp type now passes updates on in every mode.
+- **Lamps passing an update along stay on the update display.** A lamp
+  updating several neighbours in a row no longer flashes back to its normal
+  colours between one neighbour and the next. If an update to a neighbour
+  fails, the lamp goes back to its normal colours about ten seconds later, as
+  before.
+- **Shimmer's Candle and Campfire are calmer.** Candle is now a slow sway
+  with a soft flicker now and then instead of a fast buzz, and Campfire keeps
+  its gusts and flaring embers without looking hectic. Neither speeds up on a
+  lamp that runs faster.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run out
   of memory and restart, with or without the app open: saving settings or
   social dispositions on a crowded lamp could crash it outright, and a crowd's
   traffic piled up memory on its own. A save that can't go through now waits
-  and tries again a few seconds later instead of crashing, your stored
-  settings are untouched, and the lamp caps how much a crowd can make it hold
+  and tries again a few seconds later instead of crashing, keeping the
+  settings stored before it, and the lamp caps how much a crowd can make it hold
   at once: other lamps' effects can take at most half of its four effect
   slots, leaving the rest for its own Test and greetings while memory allows.
   When the lamp is too short of memory to show a Test itself, the Test still
@@ -76,8 +114,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   expressions with full colour lists) keeps its settings on an older
   release. A larger setup keeps only its name, password, brightness and
   setup state there; everything else comes up as defaults, and that release
-  may fail to save. Updating again brings the larger setup back unless the
-  older release saved over it.
+  may fail to save. Social dispositions reset there either way. Updating
+  again brings the larger setup back unless the older release saved over
+  it.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at
@@ -89,6 +128,13 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   loading instead of showing made-up values you could accidentally save.
 
 ### Changed
+- **Lamps no longer pass settings on to other lamps.** A lamp used to be able
+  to forward brightness, colour and expression changes it was handed to
+  another lamp across the mesh. No released app has ever used this, so
+  it is gone: a lamp only takes settings from the app connected to it. Lamps
+  still pass along everything your wisp sends and receives, so the wisp keeps
+  working everywhere it did, and lamps on older firmware keep talking to
+  newer ones.
 - **The wisp sends its settings on their own.** Its LED, brightness and drift
   settings now go out when they change or when the app asks, rather than only
   inside the status every lamp passes along every thirty seconds. For this
@@ -103,6 +149,20 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   only, joins only when it finds it there, and waits longer between tries (up
   to five minutes) when it doesn't. Searching for a network that was gone kept pulling the wisp away
   from your lamps until they dropped out and went back to their own colours.
+- **A Pulse on both base and shade is one pulse rising up the lamp.** It
+  starts at the bottom of the base, climbs to its top and carries straight on
+  up through the shade, instead of two pulses running side by side. At the
+  default speed it takes about as long as each half used to; at slower
+  settings Pulse speed is the time to climb the whole lamp, so each pixel goes
+  by faster than before. Size is measured against the whole lamp. A Region
+  applies to each surface, and a Pulse on just the shade looks exactly as it
+  did. On a lamp whose base and shade don't stack, the
+  pulse sweeps one and then the other. While lamps are partway through an
+  update, a lamp still on the old firmware shows a received both-surface
+  Pulse as two pulses side by side, ignores Down, and still runs a base-only
+  Pulse down the base.
+- **A Pulse on just the base rises.** It used to run down the base; Up now
+  climbs it from the bottom, like the shade, and Down runs it downward.
 
 ## 1.2.7
 

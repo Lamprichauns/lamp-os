@@ -5,7 +5,8 @@
 
 #include <lampos/protocol/header.hpp>
 
-// MSG_CONTROL_OP (0x03), a forwarded BLE control write.
+// MSG_CONTROL_OP (0x03), wisp control traffic (wispOp to the wisp, wispStatus /
+// wispConfig from it).
 // build: buildControlOp, parse: parseControlOp.
 //
 //   off  size  field

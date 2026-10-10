@@ -319,7 +319,13 @@ reboot, so the running config cannot overwrite it; the commit drain waits
 without retrying or logging, and a second web document is answered 409
 rather than written over it (`config/save_gate.hpp`). The reboot waits while
 OTA quiet mode is held, at most 10 minutes (`kRebootOtaWaitMaxMs`), after
-which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead.
+which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead. A
+settings blob from the app that needs a reboot, whose save was deferred
+(`[loop] settingsBlob: save deferred; reboot waits for it`), reboots once the
+save lands and no firmware is being received; after 5 minutes with the save
+still failing it gives up (`deferredReboot` in `config/save_gate.hpp`): no reboot,
+the change runs until the next one, logged as `[loop] settingsBlob: save
+never landed; no reboot`.
 
 A reset at any point of a save leaves a whole config, and so does a save that
 stops at a refused write. `test_config_records` cuts saves short at each of
@@ -363,15 +369,52 @@ save had it or as saved.
   `cfg` with no rest blob beside it sets the flag too: a split store has
   lost its rest. The dispositions JSON key wins over the blob unless it is
   corrupt, or empty while the blob has entries.
-- **A write that ran out of heap.** When `writeMultiPageBlob`'s 12-byte
-  `UsedPageNode` allocation fails, the chunk it had just written stays, named
-  by no index and erased by nobody until the next boot; a rewrite in the same
-  version family puts a second chunk at its position, and IDF then drops the
-  whole blob. `NvsConfigStore` so refuses every blob write to that key until
-  the next boot (`config/write_quarantine.hpp`, eight keys, then every key),
-  whose scan erases the orphan; the save fails and retries meanwhile, and the
-  config that loads is the one before (`PagedNvs` models the orphan,
-  `test_an_out_of_memory_rest_write_is_held_until_boot`).
+- **A write that ran out of heap.** Two allocations inside a blob write can
+  fail. The 12-byte `UsedPageNode` that records a chunk fails after the chunk
+  is written: that chunk stays, uncleaned and named by no index, in the
+  version the write was heading to. The 128-byte `HashListBlock` that
+  `Page::writeItem` allocates before writing an entry fails before it: a
+  chunk or the closing `BLOB_IDX` entry is not written, and the cleanup then
+  erases the chunks recorded so far by position, as for any failed rewrite
+  above (for the `BLOB_IDX`, every chunk). An orphan matters only if the key
+  is written to its version again: that write doubles the orphan's position
+  and IDF drops the whole blob at the next read or boot, while a boot with
+  nothing written there erases the orphan. So every key whose blob write
+  ran out of heap (`config/orphan_guard.hpp`, eight keys, then every key) is
+  written until the next boot as an empty throwaway version, which takes
+  the orphan's version, then the value, which lands in the other. The save
+  that hit the failure fails and retries, every save after it lands, and
+  the boot erases the orphans and loads the latest. A reset between the
+  throwaway and the value drops that key at boot, as a cut-short write of it
+  would. `NvsConfigStore` and the native suite's `PagedNvs` (whose erase of
+  a replaced version takes one chunk per position, as `eraseMultiPageBlob`
+  does) both write through `writeBlobPastOrphan`; `test_nvs_config_store`
+  runs the device store itself over the page model, and
+  `test_saves_after_an_out_of_memory_write_land_and_survive_the_boot` covers
+  a record, the knockout blob and the rest.
+
+Accepted risks. None stalls saves, and none touches the lamp section held in
+`cfg`:
+
+- A reset between a held key's throwaway and its value drops that key at
+  boot. For a rest key that is every setting outside the lamp section and the
+  expressions: they load as defaults, the load reports the store unreadable,
+  and the first-boot save is held off so the defaults are not written over it.
+  For a record, the knockout blob or `cfgl` it drops that record (logged at
+  load), the knockout levels, or the lamp section staged there.
+- The throwaway is a zero-length `nvs_set_blob`. `PagedNvs` accepts one; that
+  IDF 5.5 does, and reads it back as an empty blob, wants a bench check.
+- A record, `ko` or `disp` rewrite whose IDF cleanup takes the old copy (a
+  failed rewrite, above) leaves that value missing until the save's retry
+  writes it back from RAM; a reset before then loses it. Besides the two
+  allocations, the cleanup runs when NVS cannot place a chunk or the index
+  (`NOT_ENOUGH_SPACE`). The NVS budget above keeps that from happening at the
+  caps; it holds only while the system keys (bonds, PHY calibration) stay
+  inside the figures there.
+- Everything the native suite proves about NVS is proved against `PagedNvs`,
+  a model of IDF 5.5 (page placement, the 400-byte first-chunk rule,
+  collection, cleanup by position, the boot's blob checks), never against IDF
+  itself, so a divergence between the two goes unseen.
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
@@ -404,17 +447,18 @@ bytes (TLSF header plus light poisoning):
 | Type | Object | Buffers | Heap per instance |
 |---|---|---|---|
 | glitchy | 112 B | colours 32, saved pixels 152 | about 330 B |
-| pulse | 132 B | colours 32 | about 190 B |
+| pulse | 140 B | colours 32 | about 200 B |
 | breathing | 108 B | colours 32 | about 165 B |
 | shifty | 148 B | colours 32, saved pixels 152, fill offsets 152 (directional fills only) | about 390-540 B |
 | spotty | 112 B | colours 32, 5 spots 60 | about 240 B |
 | flicker (shimmer) | 176 B | colours 32, a cell per zone pixel 304 | about 550 B |
 
-A target-both expression is two instances. Each configured expression adds
+A target-both expression is two instances, except a Pulse, which runs both
+surfaces as one instance (`spansSurfaces`). Each configured expression adds
 its `Config::expressions` slot (140 B, grown four slots at a time) and colour
 list (about 44 B), and a 32-byte manager entry. The standard worst case (six
-types at every target: 18 configs, 24 instances) is about 8.1 KB of instances,
-2.7 KB of config, 0.8 KB of colours and 1 KB of entries: about 12.6 KB, against
+types at every target: 18 configs, 23 instances) is about 7.9 KB of instances,
+2.7 KB of config, 0.8 KB of colours and 1 KB of entries: about 12.4 KB, against
 about 18.4 KB before entries stopped copying parameters, the config vector
 stopped doubling and shifty dropped its two per-pixel fade buffers. Up to four
 transients come on top (a shifty pair is about 1 KB).
@@ -435,7 +479,10 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   a transient that starts can finish allocating. Under that, the lamp's own
   Test plays nothing here and logs `[expr] transient drop` (every build, at
   most every 5 s), but its cascade still goes out to the crowd
-  (`cascadesFrom`); a peer's invocation never re-sends. The vector is reserved at
+  (`cascadesFrom`), built from the invocation with no Expression made for
+  it; a peer's invocation never re-sends. That type then waits a second
+  (`LocalCooldown`) before the lamp tries it again, so a Test tapped over
+  and over while the lamp is short neither retries nor resends each tap. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Moments.** A Moment allocates only its transients, one at a time: a
@@ -472,24 +519,29 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   held and every broadcast failing. `TxCredit`
   (`components/network/transport/tx_credit.hpp`) bounds the frames handed to
   the driver and not yet reported by its send callback to 6: every submit
-  takes a credit, the callback returns it, a refused submit returns it at
-  once, and when credits are out and no completion has come back for 2 s
-  they are presumed lost and the count resets. Timestamps compare by signed
-  delta and never move backwards, since the WiFi task can stamp a completion
-  just after the loop read `millis()`. A send past the bound fails before it
-  reaches the driver and is counted. A reset logs `[espnow.tx] no tx
-  callback, credits reset` on every build (at most every 10 s); the running
-  counts show as `txstalls` (resets) and `txrefused` (sends dropped for want
-  of a credit, a mesh resend among them) in `heap.get` and the `[heap]` trend
-  line.
+  takes a credit, each send callback returns one, a refused submit returns it
+  at once, and when credits are out and no callback has come back for 2 s
+  they are presumed lost and the count resets. IDF documents no promise of
+  one callback per accepted send (`esp_now.h`; the driver is closed), so a
+  credit lost while other frames keep completing stays out until the link
+  goes quiet for 2 s. A reset can be wrong: frames whose callbacks are only
+  late may still sit in the driver, so after one the driver can hold up to
+  2 x 6 frames until the next moment none is out. Timestamps compare by
+  signed delta and never move
+  backwards, since the WiFi task can stamp a callback just after the loop
+  read `millis()`. A send past the bound fails before it reaches the driver
+  and is counted. A reset logs `[espnow.tx] no tx callback, credits reset`
+  on every build (at most every 10 s); the running counts show as `txstalls`
+  (resets) and `txrefused` (sends dropped for want of a credit, a mesh
+  resend among them) in `heap.get` and the `[heap]` trend line.
 - **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
   app's Test) reaches every mesh peer, closest first. `CascadeScheduler`
   (`expressions/cascade_scheduler.hpp`) holds up to two fan-outs (peers and one
   serialized invocation each, about 2.2 KB of .bss: 50 MACs and a 768-byte
   payload per fan-out, above the 536-byte worst case). The loop sends up to 6
   frames per pass (`kBatchSize`, held to the 6 TX credits), only while credits
-  remain (`TxCredit::available`, which applies the 2 s stall reset itself,
-  so credits lost on a quiet link never hold the drain; a frame with none
+  remain (`TxCredit::available`, which applies the 2 s reset itself, so
+  credits lost on a quiet link never hold the drain; a frame with none
   waits for a later pass), and passes are 100 ms
   apart, past a command's two resend copies
   40 ms apart, so a batch never overwrites the previous batch's resends in the

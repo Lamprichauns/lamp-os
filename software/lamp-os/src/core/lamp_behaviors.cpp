@@ -149,6 +149,9 @@ void initBehaviors(lamp::Features features, lamp::Lamp& self) {
     startupBehaviors.push_back(new lamp::FadeInBehavior(fb, STARTUP_ANIMATION_FRAMES));
   }
   compositor.begin(allBehaviors, allFbs, underlayBehaviors, startupBehaviors, calculateEffectiveHomeMode());
+  // The compositor's home-mode policy and preview flag come from config and
+  // the BLE state; without this the first passes gate peers on its defaults.
+  reapplyHomeModeState();
   // Bound the expression band so runtime-added transients land at its top
   // (addBehavior) and base scenes at its bottom (addBaseBehavior), keeping
   // "all expressions draw together" ordering. The band excludes the social

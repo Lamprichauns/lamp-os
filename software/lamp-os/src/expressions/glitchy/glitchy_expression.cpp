@@ -51,19 +51,32 @@ void GlitchyExpression::draw() {
   }
 
   if (painted_ && timeReached(millis(), glitchEndMs)) {
-    fb->buffer = savedBuffer;
+    restoreSaved_();
     // Cap the counter; nextFrame() flips PLAYING_ONCE to STOPPED and
     // onComplete may chain a follow-up glitch.
     frames = frame + 1;
   } else {
     // Repaint from the saved background each frame so the scatter re-rolls into
     // a steady density instead of accumulating.
-    fb->buffer = savedBuffer;
+    restoreSaved_();
     paintGlitch_(wispDimScale());
     painted_ = true;
   }
 
   nextFrame();
+}
+
+void GlitchyExpression::restoreSaved_() {
+  // While retiring, the snapshot taken at the trigger gives way to the live
+  // scene underneath along with the glitch itself.
+  const float keep = retireScale();
+  if (keep >= 1.0f || savedBuffer.size() != fb->buffer.size()) {
+    fb->buffer = savedBuffer;
+    return;
+  }
+  for (size_t i = 0; i < fb->buffer.size(); ++i) {
+    fb->buffer[i] = mixColorWeight(fb->buffer[i], savedBuffer[i], keep);
+  }
 }
 
 void GlitchyExpression::paintGlitch_(float wispWeight) {

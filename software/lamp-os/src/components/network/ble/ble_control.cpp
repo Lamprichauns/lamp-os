@@ -52,9 +52,8 @@ void postPendingTestActionJson(const char* data, size_t len);
 void postPendingRemoteOpJson(const char* data, size_t len);
 void postPendingSettingsBlobJson(const char* data, size_t len);
 void postPendingSocialDispositionsJson(const char* data, size_t len);
-// CHAR_WISP_OP. drain broadcasts as MSG_CONTROL_OP. Bypasses
-// applyRemoteOpLocal so a gossip-relayed wispOp is not re-applied on
-// every lamp; only the wisp(s) consume it.
+// CHAR_WISP_OP. drain unicasts it as MSG_CONTROL_OP to the display wisp;
+// lamps relay it and never apply it, only the wisp(s) consume it.
 void postPendingWispOpJson(const char* data, size_t len);
 void postPendingApplyEffectiveBrightness();
 // NVS commits cannot run on Core 0 (NimBLE host task). onDisconnect posts
@@ -717,13 +716,18 @@ class SocialDispositionsCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
+    // A map the heap could not build reads as "!", never "" or "{}": the app
+    // writes the whole map back, so an empty one would erase every entry.
     try {
-      c->setValue(s_config->asDispositionsJson());
+      const std::string json = s_config->asDispositionsJson();
+      if (!json.empty()) {
+        c->setValue(json);
+        return;
+      }
     } catch (const std::bad_alloc&) {
-      c->setValue("");
-      logBleSectionOom("dispositions");
-      return;
     }
+    c->setValue("!");
+    logBleSectionOom("dispositions");
   }
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
     if (!isAuthed(connInfo.getConnHandle())) return;

@@ -93,17 +93,13 @@ extern lamp::FadeOutBehavior shadeFadeOutBehavior;
 extern lamp::FadeOutBehavior baseFadeOutBehavior;
 extern lamp::KnockoutBehavior baseKnockoutBehavior;
 
-// Selects the transport-flavour branch inside applyRemoteOpRouted. The
-// BLE drain passes BLE so the router unwraps the targetMac envelope;
-// the ESP-NOW drain passes EspNow so the router dispatches directly
-// (the WiFi task already did the addressed-to-self / rebroadcast decision).
-enum class RemoteOpTransport { BLE, EspNow };
+// The app's CHAR_REMOTE_OP write, applied when it targets this lamp or
+// "broadcast". Defined in lamp_remote_op.cpp.
+void applyRemoteOp(const char* payloadJson, size_t len);
 
-// Unified cascade-receive router. See lamp.cpp definition for the
-// full BLE-vs-EspNow asymmetry note. Used by drainInboundOp / drainRemoteOp.
-void applyRemoteOpRouted(const char* payloadJson, size_t len,
-                         const uint8_t srcMac[6],
-                         RemoteOpTransport origin);
+// A CONTROL_OP delivered by the mesh, already relayed. Only the wisp's status
+// and config are taken. Defined in lamp_remote_op.cpp.
+void applyInboundControlOp(const char* payloadJson, size_t len, const uint8_t srcMac[6]);
 
 // Test-panel action dispatcher. drainTestAction calls this with a parsed
 // JsonDocument. Defined in lamp_test_action.cpp.
