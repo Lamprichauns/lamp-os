@@ -40,4 +40,20 @@ class SaveGate {
   bool frozen_ = false;
 };
 
+// A settings blob that needs a reboot, saved while its save was deferred,
+// reboots once the save lands (and no firmware is being received), so it
+// never comes up on a half-applied config. Past kDeferredRebootMaxMs with the
+// save still failing it gives up: no reboot, the change runs until the next
+// one, and the caller logs it. A save that has landed waits out a firmware
+// receive however long it takes.
+enum class DeferredReboot : unsigned char { Wait, Reboot, GiveUp };
+constexpr uint32_t kDeferredRebootMaxMs = 5u * 60u * 1000u;
+
+constexpr DeferredReboot deferredReboot(bool savePending, bool otaInProgress, uint32_t sinceMs,
+                                        uint32_t nowMs) {
+  return !savePending ? (otaInProgress ? DeferredReboot::Wait : DeferredReboot::Reboot)
+         : nowMs - sinceMs >= kDeferredRebootMaxMs ? DeferredReboot::GiveUp
+                                                  : DeferredReboot::Wait;
+}
+
 }  // namespace lamp

@@ -326,6 +326,48 @@ void test_a_failed_json_allocation_gives_the_lock_back() {
   TEST_ASSERT_EQUAL_STRING(entries, ds.asJson().c_str());
 }
 
+// An entry added on the other core between sizing the JSON and writing it
+// (the second take) makes the write wait for a correctly sized block.
+namespace {
+DispositionStore* g_growing = nullptr;
+int g_takes = 0;
+void growOnSecondTake() {
+  if (++g_takes != 2) return;
+  g_semaphoreTakeHook = nullptr;
+  const uint8_t mac[6] = {0xC4, 0xDD, 0x57, 0xEB, 0x64, 0x60};
+  g_growing->set(mac, 4, 0);
+}
+}  // namespace
+
+void test_an_entry_added_between_the_locks_is_included() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+  ds.set(mac, 1, 0);
+  g_growing = &ds;
+  g_takes = 0;
+  g_semaphoreTakeHook = growOnSecondTake;
+  const std::string json = ds.asJson();
+  g_semaphoreTakeHook = nullptr;
+  const std::string expected = "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}";
+  TEST_ASSERT_EQUAL(expected.size(), json.size());
+  TEST_ASSERT_TRUE(json == expected);
+}
+
+// A heap that cannot spare the JSON's block gets no JSON.
+void test_the_json_waits_for_the_heap() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+  ds.set(mac, 1, 0);
+  g_mock_largest_free_block = kHeapHeadroom;
+  const std::string json = ds.asJson();
+  g_mock_largest_free_block = 1 << 20;
+  TEST_ASSERT_TRUE(json.empty());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_unknown_peer_returns_default);
@@ -347,5 +389,7 @@ int main(int, char**) {
   RUN_TEST(test_full_store_matches_arduinojson_bytes);
   RUN_TEST(test_empty_store_serializes_empty_object);
   RUN_TEST(test_a_failed_json_allocation_gives_the_lock_back);
+  RUN_TEST(test_an_entry_added_between_the_locks_is_included);
+  RUN_TEST(test_the_json_waits_for_the_heap);
   return UNITY_END();
 }

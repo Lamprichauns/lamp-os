@@ -6,13 +6,11 @@
 namespace lamp {
 
 // Bounds the ESP-NOW frames handed to the WiFi driver and not yet reported
-// sent. Each queued frame holds a driver TX buffer from the heap until it
-// airs; past the driver's queue a send fails with ESP_ERR_ESPNOW_NO_MEM, and
-// a burst of those preceded the TX path wedging with its buffers held. A
-// send takes a credit before esp_now_send and the send callback returns it.
-// If credits are out and none has come back for kStallMs, the outstanding
-// ones are presumed lost (callbacks that never fire) and the count resets.
-// Lock-free: the loop and WiFi tasks both send, the WiFi task completes.
+// sent to kMaxInFlight (docs/dev/embedded-heap.md). A send takes a credit
+// before esp_now_send; each send callback returns one. While credits are out
+// and no callback has come back for kStallMs, the outstanding ones are
+// presumed lost and the count resets. Safe from the loop and WiFi tasks at
+// once.
 class TxCredit {
  public:
   static constexpr uint16_t kMaxInFlight = 6;
@@ -26,11 +24,12 @@ class TxCredit {
         refused_.fetch_add(1, std::memory_order_relaxed);
         return false;
       }
+      // The stall clock restarts with the first frame out after an idle
+      // spell, before that credit shows: another task that then sees it out
+      // must not read the idle spell as a stall.
+      if (cur == 0) advance(nowMs, true);
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
-        // The stall clock restarts with the first frame out after an idle
-        // spell.
-        if (cur == 0) advance(nowMs, true);
         return true;
       }
     }

@@ -34,6 +34,9 @@ class Dispositions extends _$Dispositions {
   // dispose and throws. The throw is swallowed silently by the
   // try/catch below, and the user's last slider edit vanishes.
   late final BleClient _ble;
+  // False until the lamp's map has been read: the write replaces the whole
+  // map, so writing one built over a failed read would erase the lamp's.
+  bool _readOk = false;
 
   @override
   Future<Map<String, int>> build(String lampId) async {
@@ -55,16 +58,24 @@ class Dispositions extends _$Dispositions {
         BleUuids.controlService,
         BleUuids.socialDispositions,
       );
+      // An empty read (unauthenticated, or an older firmware short of
+      // memory) and "!" (a lamp that cannot build the map) leave it unread,
+      // as does anything else that is not a JSON object or null; null is
+      // how released firmware sends an empty map.
       if (bytes.isEmpty) {
         _local = {};
         return _local;
       }
       final parsed = jsonDecode(utf8.decode(bytes));
-      if (parsed is Map<String, dynamic>) {
+      if (parsed == null) {
+        _local = {};
+        _readOk = true;
+      } else if (parsed is Map<String, dynamic>) {
         _local = {
           for (final entry in parsed.entries)
             entry.key: (entry.value as num).toInt().clamp(1, 5),
         };
+        _readOk = true;
       } else {
         _local = {};
       }
@@ -97,6 +108,7 @@ class Dispositions extends _$Dispositions {
   }
 
   Future<void> _flush() async {
+    if (!_readOk) return;
     final json = jsonEncode(_local);
     try {
       await _ble.write(
