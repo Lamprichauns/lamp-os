@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "expressions/param_utils.hpp"
+#include "util/eased_scalar.hpp"
 
 namespace lamp {
 
@@ -43,6 +44,12 @@ inline uint32_t edgeTaper(uint16_t idx, uint16_t size, uint16_t taperWidth,
   const uint32_t ramp = (distFromEnd + 1u) * 100u / (taperWidth + 1u);
   if (curve == TaperCurve::Linear) return ramp;
   return 100u - (100u - ramp) * (100u - ramp) / 100u;
+}
+
+// Blend weight for a 0..1 level under an edgeTaper percent, unquantized so a
+// slow fade toward dark moves in every frame.
+inline float taperedWeight(float level, uint32_t taperPct) {
+  return clamp01(level) * static_cast<float>(taperPct) / 100.0f;
 }
 
 // Keeps a frame counter from exhausting while wall-clock state still owns the
