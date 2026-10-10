@@ -133,8 +133,12 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
 void DotsBehavior::control() {
   if (!fb || fb->buffer.empty()) return;
   if (borrowActive_ && context_ && context_->ignoresPeers()) {
-    // Drift from the scene on show back to the own palette.
+    // Drift from the scene on show back to the own palette: the scene draw()
+    // would paint next, mid-crossfade and mid-melt included.
     std::vector<Color> shown = cur_.empty() ? buildScene() : cur_;
+    if (sceneChange_ && prev_.size() == shown.size()) {
+      for (size_t j = 0; j < shown.size(); ++j) shown[j] = fade(prev_[j], cur_[j], frames, frame);
+    }
     if (borrowElapsed_ * 2 > borrowDuration_ && ownMelt_.size() == shown.size()) {
       const uint32_t half = borrowDuration_ / 2;
       for (size_t j = 0; j < shown.size(); ++j) {
