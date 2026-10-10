@@ -18,7 +18,8 @@ static constexpr uint32_t kStallLogMs = 10000;
 static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_t& err) {
   const uint32_t now = millis();
   const uint32_t stallsBefore = EspNowLink::s_txCredit.stalls();
-  const bool credited = EspNowLink::s_txCredit.tryAcquire(now);
+  err = submitWithCredit(EspNowLink::s_txCredit, now, ESP_ERR_ESPNOW_NO_MEM,
+                         [&] { return esp_now_send(mac, data, len); });
   if (EspNowLink::s_txCredit.stalls() != stallsBefore) {
     static uint32_t s_lastLogMs = 0;
     if (s_lastLogMs == 0 || now - s_lastLogMs >= kStallLogMs) {
@@ -28,12 +29,6 @@ static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_
                     (unsigned long)EspNowLink::s_txCredit.stalls());
     }
   }
-  if (!credited) {
-    err = ESP_ERR_ESPNOW_NO_MEM;
-    return false;
-  }
-  err = esp_now_send(mac, data, len);
-  if (err != ESP_OK) EspNowLink::s_txCredit.cancel();
   return err == ESP_OK;
 }
 

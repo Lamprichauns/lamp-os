@@ -133,7 +133,9 @@ class Config {
   // Saves a caller-supplied whole-config JSON document (the webapp's
   // whole-document PUT path) in the stored shape, for the next boot to load.
   // Keeps the namespace/key contract here rather than letting callers open
-  // NVS themselves. Returns true when every key landed.
+  // NVS themselves. Returns true when every key landed; from then on
+  // persistConfig declines (and any pending retry is dropped) until the
+  // reboot that loads it. Loop task only.
   bool persistRawJson(const char* json);
 
   // Wipe persisted state (factory reset). Returns true on success. The caller
@@ -271,6 +273,7 @@ class Config {
  private:
   DispositionStore dispositions_{kDispositionFlushIdleMs};
   RetryBackoff persistRetry_{kPersistRetryBaseMs, kPersistRetryMaxMs};
+  bool savesFrozen_ = false;
 
   // All dirty=true initially so the first cached() call computes and
   // populates the string. After that, mutations on Core 1 must call

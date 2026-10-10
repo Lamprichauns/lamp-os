@@ -635,6 +635,15 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
   return result;
 }
 
+LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings& lamp,
+                               BaseSettings& base, ShadeSettings& shade,
+                               ExpressionSettings& expressions,
+                               HomeModeSettings& homeMode, bool& withinCaps) {
+  withinCaps = fromJson(root, lamp, base, shade, expressions, homeMode);
+  return loadRecords(store, base, expressions, root["base"]["knockout"].is<JsonArray>(),
+                     root["expressions"].is<JsonArray>());
+}
+
 bool configBlobPersistable(const char* json) {
   if (json == nullptr) return false;
   JsonDocument doc;

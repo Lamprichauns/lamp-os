@@ -77,14 +77,10 @@ Config::Config(ConfigStore* inStore) {
     return;  // use class defaults
   }
 
-  if (!config_codec::fromJson(doc.as<JsonObject>(), lamp, base, shade,
-                              expressions, homeMode)) {
-    Serial.println("[cfg] stored expressions over caps; truncated on load");
-  }
-  const config_codec::LoadedRecords records =
-      config_codec::loadRecords(*store_, base, expressions,
-                                doc["base"]["knockout"].is<JsonArray>(),
-                                doc["expressions"].is<JsonArray>());
+  bool withinCaps = true;
+  const config_codec::LoadedRecords records = config_codec::loadStoredConfig(
+      *store_, doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode, withinCaps);
+  if (!withinCaps) Serial.println("[cfg] stored expressions over caps; truncated on load");
   for (size_t i = 0; i < kMaxExpressions; ++i) {
     if (records.droppedMask & (1u << i)) {
       Serial.printf("[cfg] expression record x%u unreadable; dropped\n", (unsigned)i);
@@ -110,6 +106,10 @@ static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
 
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
+  if (savesFrozen_) {
+    Serial.printf("[nvs] config save via=%s skipped: a web save awaits its reboot\n", via);
+    return false;
+  }
   const uint32_t now = millis();
   const config_codec::SaveResult result = config_codec::saveConfig(
       *store_, lamp, base, shade, expressions, homeMode, s_cfgJson, sizeof(s_cfgJson));
@@ -152,9 +152,17 @@ bool Config::persistRawJson(const char* json) {
   HomeModeSettings rawHome;
   config_codec::fromJson(doc.as<JsonObject>(), rawLamp, rawBase, rawShade,
                          rawExpressions, rawHome);
-  return config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade,
-                                  rawExpressions, rawHome, s_cfgJson,
-                                  sizeof(s_cfgJson)) == config_codec::SaveResult::Ok;
+  if (config_codec::saveConfig(*store_, rawLamp, rawBase, rawShade, rawExpressions,
+                               rawHome, s_cfgJson, sizeof(s_cfgJson)) !=
+      config_codec::SaveResult::Ok) {
+    return false;
+  }
+  // The stored config is now the web document, which the reboot loads; a
+  // pending retry or a later in-memory save would overwrite it with the
+  // running config first.
+  persistRetry_.succeed();
+  savesFrozen_ = true;
+  return true;
 }
 
 bool Config::factoryReset() { return store_ ? store_->clear() : false; }

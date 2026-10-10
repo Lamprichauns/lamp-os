@@ -29,4 +29,16 @@ constexpr bool admitTransient(size_t liveTotal, size_t liveRemote, size_t target
          liveRemote + targets <= TransientSlots::kMaxRemote;
 }
 
+// admitTransient over the live transients themselves (anything with a
+// `source` member), so the call site passes only what it knows.
+template <class Transients>
+bool admitTransientAmong(const Transients& live, size_t targets, TransientSource source,
+                         bool heapOk) {
+  size_t remote = 0;
+  for (const auto& t : live) {
+    if (t.source == TransientSource::Remote) ++remote;
+  }
+  return admitTransient(live.size(), remote, targets, source, heapOk);
+}
+
 }  // namespace lamp

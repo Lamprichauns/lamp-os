@@ -73,4 +73,15 @@ class TxCredit {
   std::atomic<uint32_t> stalls_{0};
 };
 
+// One submit under a credit: `send()` hands the frame to the driver and
+// returns 0 on success or its error; a refused submit returns the credit.
+// `noCredit` is the error reported when no credit is free.
+template <class Send>
+int submitWithCredit(TxCredit& credit, uint32_t nowMs, int noCredit, Send&& send) {
+  if (!credit.tryAcquire(nowMs)) return noCredit;
+  const int err = send();
+  if (err != 0) credit.cancel();
+  return err;
+}
+
 }  // namespace lamp

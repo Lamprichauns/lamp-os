@@ -120,6 +120,14 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
                           ExpressionSettings& expressions, bool cfgHasKnockout,
                           bool cfgHasExpressions);
 
+// Loads a stored config: the parsed "cfg" JSON (`root`) through fromJson,
+// then loadRecords with the cfg JSON's own expressions and knockout as the
+// authority. `withinCaps` reports fromJson's result.
+LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings& lamp,
+                               BaseSettings& base, ShadeSettings& shade,
+                               ExpressionSettings& expressions,
+                               HomeModeSettings& homeMode, bool& withinCaps);
+
 // True when `json` is a whole config document safe to persist: it parses and
 // carries a `lamp` object. persistRawJson gates on this so a truncated or
 // unparseable blob (Arduino String silently truncates on a fragmented-heap

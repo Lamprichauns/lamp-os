@@ -82,6 +82,25 @@ void test_extra_completions_never_underflow() {
   TEST_ASSERT_EQUAL_UINT16(0, c.inFlight());
 }
 
+// The submit path EspNowLink runs: a credit per accepted frame, returned at
+// once when the driver refuses, and no driver call without one.
+void test_submit_takes_and_returns_credits() {
+  TxCredit c;
+  int calls = 0;
+  TEST_ASSERT_EQUAL(0, lamp::submitWithCredit(c, 0, 99, [&] { ++calls; return 0; }));
+  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
+  TEST_ASSERT_EQUAL(7, lamp::submitWithCredit(c, 0, 99, [&] { ++calls; return 7; }));
+  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
+  for (uint16_t i = 1; i < TxCredit::kMaxInFlight; ++i) {
+    lamp::submitWithCredit(c, 0, 99, [&] { ++calls; return 0; });
+  }
+  const int before = calls;
+  TEST_ASSERT_EQUAL(99, lamp::submitWithCredit(c, 0, 99, [&] { ++calls; return 0; }));
+  TEST_ASSERT_EQUAL(before, calls);
+  c.complete(1);
+  TEST_ASSERT_EQUAL(0, lamp::submitWithCredit(c, 1, 99, [&] { ++calls; return 0; }));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_bound_holds_until_a_frame_completes);
@@ -89,6 +108,7 @@ int main(int, char**) {
   RUN_TEST(test_lost_completions_reset_after_the_stall_window);
   RUN_TEST(test_extra_completions_never_underflow);
   RUN_TEST(test_partial_leak_resets);
+  RUN_TEST(test_submit_takes_and_returns_credits);
   RUN_TEST(test_a_completion_stamped_ahead_is_not_a_stall);
   RUN_TEST(test_first_frame_after_idle_is_not_a_stall);
   return UNITY_END();

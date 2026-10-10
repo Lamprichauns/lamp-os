@@ -68,6 +68,17 @@ class CascadeScheduler {
     return sent;
   }
 
+  // tick() for a sender that never refuses, gated on `ready()`: a frame waits
+  // for a later pass while the driver has no room.
+  template <class Ready, class Send>
+  size_t tickGated(uint32_t nowMs, Ready&& ready, Send&& send) {
+    return tick(nowMs, [&](const uint8_t* mac, const char* payload, size_t len) {
+      if (!ready()) return false;
+      send(mac, payload, len);
+      return true;
+    });
+  }
+
   // The delay peer `index` carries when its frame leaves `elapsedMs` after the
   // original fire: the intended (index + 1) x stagger, capped, less elapsed,
   // never negative.

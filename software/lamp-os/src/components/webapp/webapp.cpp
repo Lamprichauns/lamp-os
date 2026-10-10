@@ -154,36 +154,80 @@ static void handlePutDispositions(AsyncWebServerRequest* req,
   req->send(200, "application/json", "{\"ok\":true}");
 }
 
-// A web save handed from the AsyncTCP task to the loop. One in flight; the
-// handler waits on s_webSaveDone for the loop's result.
-static char* s_webSaveBody = nullptr;
-static bool s_webSaveOk = false;
+// A web save handed from the AsyncTCP task to the loop. Each hand-off carries
+// a sequence number and the loop publishes (seq, ok) for it, so a waiter only
+// takes its own result. A waiter that times out withdraws its body if the
+// loop has not taken it (nothing is saved); once taken, the save finishes and
+// arms the reboot on its own.
+struct WebSave {
+  char* body = nullptr;
+  uint32_t seq = 0;
+};
+static WebSave s_webSavePending;
+static uint32_t s_webSaveSeq = 0;
+static uint32_t s_webSaveDoneSeq = 0;
+static bool s_webSaveDoneOk = false;
 static portMUX_TYPE s_webSaveMux = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t s_webSaveDone = nullptr;
 static constexpr uint32_t kWebSaveWaitMs = 3000;
+static constexpr uint32_t kRebootDelayMs = 1500;
 
-static bool saveOnLoop(std::unique_ptr<char[]> body) {
-  if (!s_webSaveDone) return false;
-  xSemaphoreTake(s_webSaveDone, 0);  // drop a result a timed-out request left
+enum class WebSaveResult { Saved, Failed, Withdrawn, StillSaving };
+
+static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
+  if (!s_webSaveDone) return WebSaveResult::Failed;
   char* raw = body.release();
   portENTER_CRITICAL(&s_webSaveMux);
-  char* stale = s_webSaveBody;
-  s_webSaveBody = raw;
+  const uint32_t seq = ++s_webSaveSeq;
+  char* stale = s_webSavePending.body;
+  s_webSavePending = {raw, seq};
   portEXIT_CRITICAL(&s_webSaveMux);
   delete[] stale;
-  return xSemaphoreTake(s_webSaveDone, pdMS_TO_TICKS(kWebSaveWaitMs)) == pdTRUE &&
-         s_webSaveOk;
+
+  const uint32_t deadline = millis() + kWebSaveWaitMs;
+  while (true) {
+    const int32_t left = static_cast<int32_t>(deadline - millis());
+    if (left > 0 && xSemaphoreTake(s_webSaveDone, pdMS_TO_TICKS(left)) == pdTRUE) {
+      portENTER_CRITICAL(&s_webSaveMux);
+      const bool mine = s_webSaveDoneSeq == seq;
+      const bool ok = s_webSaveDoneOk;
+      portEXIT_CRITICAL(&s_webSaveMux);
+      if (mine) return ok ? WebSaveResult::Saved : WebSaveResult::Failed;
+      continue;  // an earlier hand-off's result
+    }
+    portENTER_CRITICAL(&s_webSaveMux);
+    char* withdrawn = nullptr;
+    if (s_webSavePending.seq == seq) {
+      withdrawn = s_webSavePending.body;
+      s_webSavePending = {};
+    }
+    portEXIT_CRITICAL(&s_webSaveMux);
+    if (withdrawn) {
+      delete[] withdrawn;
+      return WebSaveResult::Withdrawn;
+    }
+    return WebSaveResult::StillSaving;
+  }
 }
 
-// Loop task: runs a pending web save.
+// Loop task: runs a pending web save and, when it lands, arms the reboot that
+// loads it.
 static void drainWebSave() {
   portENTER_CRITICAL(&s_webSaveMux);
-  char* raw = s_webSaveBody;
-  s_webSaveBody = nullptr;
+  const WebSave save = s_webSavePending;
+  s_webSavePending = {};
   portEXIT_CRITICAL(&s_webSaveMux);
-  if (!raw) return;
-  s_webSaveOk = s_config->persistRawJson(raw);
-  delete[] raw;
+  if (!save.body) return;
+  const bool ok = s_config->persistRawJson(save.body);
+  delete[] save.body;
+  if (ok) {
+    s_fadeOnReboot = true;
+    s_rebootAtMs = millis() + kRebootDelayMs;
+  }
+  portENTER_CRITICAL(&s_webSaveMux);
+  s_webSaveDoneSeq = save.seq;
+  s_webSaveDoneOk = ok;
+  portEXIT_CRITICAL(&s_webSaveMux);
   xSemaphoreGive(s_webSaveDone);
 }
 
@@ -232,19 +276,25 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
     return;
   }
   serializeJson(json, body.get(), need + 1);
-  if (!saveOnLoop(std::move(body))) {
-    req->send(500, "application/json", "{\"ok\":false}");
-    return;
+  // A landed save arms its own reboot (drainWebSave): the constructor
+  // re-parses the new config on boot, and drain-level side-effects in
+  // apply::settingsBlobLocal() do not run inline for web saves. The 1.5 s
+  // delay lets the HTTP response flush.
+  switch (saveOnLoop(std::move(body))) {
+    case WebSaveResult::Saved:
+      lamp::logHeap("web-save");
+      req->send(200, "application/json", "{\"ok\":true}");
+      return;
+    case WebSaveResult::StillSaving:
+      // Taken by the loop but not done in time: it lands, and reboots, on
+      // its own.
+      req->send(202, "application/json", "{\"ok\":true,\"pending\":true}");
+      return;
+    case WebSaveResult::Failed:
+    case WebSaveResult::Withdrawn:
+      req->send(500, "application/json", "{\"ok\":false}");
+      return;
   }
-  lamp::logHeap("web-save");
-  // Reboot re-applies settings via the constructor; drain-level side-effects
-  // in apply::settingsBlobLocal() do not run inline for web saves.
-  // 1.5s delay so the HTTP response flushes AND any lamp.name change picks up
-  // on the BLE advert (set once at bluetooth.cpp:147). The constructor
-  // re-parses the new blob on boot.
-  s_fadeOnReboot = true;
-  s_rebootAtMs = millis() + 1500;
-  req->send(200, "application/json", "{\"ok\":true}");
 }
 
 // Server-verified password gate. Releases the stored plaintext only on a

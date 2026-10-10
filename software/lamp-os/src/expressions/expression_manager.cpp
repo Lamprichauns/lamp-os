@@ -232,11 +232,11 @@ void ExpressionManager::tickCascade(uint32_t nowMs) {
   const uint32_t overflowBefore = cascade_.overflowDrops();
   // A frame the driver has no room for waits for a later pass rather than
   // failing in esp_now_send.
-  cascade_.tick(nowMs, [this](const uint8_t* mac, const char* payload, size_t len) {
-    if (!meshLink_->txReady()) return false;
-    meshLink_->sendCommand(mac, reinterpret_cast<const uint8_t*>(payload), len);
-    return true;
-  });
+  cascade_.tickGated(
+      nowMs, [this] { return meshLink_->txReady(); },
+      [this](const uint8_t* mac, const char* payload, size_t len) {
+        meshLink_->sendCommand(mac, reinterpret_cast<const uint8_t*>(payload), len);
+      });
   if (cascade_.overflowDrops() != overflowBefore) {
     Serial.printf("[cascade] ERR %u frames dropped: delay rewrite over %uB\n",
                   (unsigned)(cascade_.overflowDrops() - overflowBefore),
@@ -436,12 +436,8 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   // A crowd of distinct senders would otherwise stack one transient pair per
   // sender, each a heap Expression plus its buffers.
-  size_t liveRemote = 0;
-  for (const auto& t : transientExpressions_) {
-    if (t.source == TransientSource::Remote) ++liveRemote;
-  }
-  if (!admitTransient(transientExpressions_.size(), liveRemote, targetCount, source,
-                      heapCanSpare(kTransientHeapBytes * targetCount))) {
+  if (!admitTransientAmong(transientExpressions_, targetCount, source,
+                           heapCanSpare(kTransientHeapBytes * targetCount))) {
     static uint32_t s_lastDropLogMs = 0;
     const uint32_t now = millis();
     if (s_lastDropLogMs == 0 || now - s_lastDropLogMs >= kTransientDropLogMs) {

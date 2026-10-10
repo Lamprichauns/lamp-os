@@ -142,6 +142,27 @@ void test_refused_send_is_retried() {
   for (size_t i = 0; i < sent.size(); ++i) TEST_ASSERT_EQUAL_UINT8(i, sent[i].peer);
 }
 
+// The loop's form: frames go out only while the driver reports room, and a
+// frame held back is the next one sent.
+void test_gated_tick_holds_frames_while_the_driver_is_full() {
+  CascadeScheduler s;
+  beginWith(s, sampleInvocation(), 5, 0, 0);
+  std::vector<Sent> sent;
+  size_t room = 2;
+  auto ready = [&] { return room > 0; };
+  auto send = [&](const uint8_t* mac, const char* payload, size_t len) {
+    --room;
+    sent.push_back({mac[5], std::string(payload, len)});
+  };
+  TEST_ASSERT_EQUAL(2, s.tickGated(0, ready, send));
+  TEST_ASSERT_EQUAL(3, s.pending());
+  room = 0;
+  TEST_ASSERT_EQUAL(0, s.tickGated(CascadeScheduler::kBatchGapMs, ready, send));
+  room = 8;
+  TEST_ASSERT_EQUAL(3, s.tickGated(2 * CascadeScheduler::kBatchGapMs, ready, send));
+  for (size_t i = 0; i < sent.size(); ++i) TEST_ASSERT_EQUAL_UINT8(i, sent[i].peer);
+}
+
 void test_cancel_stops_the_drain() {
   CascadeScheduler s;
   beginWith(s, sampleInvocation(), 20, 0, 0);
@@ -188,6 +209,7 @@ int main(int, char**) {
   RUN_TEST(test_every_peer_is_reached_in_bounded_batches);
   RUN_TEST(test_cascades_queue_behind_the_drain);
   RUN_TEST(test_refused_send_is_retried);
+  RUN_TEST(test_gated_tick_holds_frames_while_the_driver_is_full);
   RUN_TEST(test_cancel_stops_the_drain);
   RUN_TEST(test_oversize_payload_is_refused);
   RUN_TEST(test_worst_case_invocation_fits);

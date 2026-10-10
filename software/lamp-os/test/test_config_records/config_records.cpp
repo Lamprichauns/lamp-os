@@ -87,14 +87,13 @@ SaveResult save(InMemoryConfigStore& store, const Model& m) {
                                   m.homeMode, cfg, sizeof(cfg));
 }
 
+// The same load Config's constructor runs.
 void load(InMemoryConfigStore& store, Model& m) {
   JsonDocument doc;
   deserializeJson(doc, store.read("cfg", "{}"));
-  config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
-                         m.expressions, m.homeMode);
-  config_codec::loadRecords(store, m.base, m.expressions,
-                            doc["base"]["knockout"].is<JsonArray>(),
-                            doc["expressions"].is<JsonArray>());
+  bool withinCaps = true;
+  config_codec::loadStoredConfig(store, doc.as<JsonObject>(), m.lamp, m.base, m.shade,
+                                 m.expressions, m.homeMode, withinCaps);
 }
 
 // Adds full expressions until the whole config cannot fit one cfg JSON, so the
@@ -481,6 +480,27 @@ void test_split_save_sweeps_records_past_its_count() {
   TEST_ASSERT_FALSE(store.has("x3") || store.has("x4") || store.has("x5"));
 }
 
+// Deleting every expression saves whole with an empty expressions array; a
+// reset before the old records are erased must still load none, never the
+// records the delete removed.
+void test_delete_all_survives_a_reset_before_the_record_erase() {
+  Model before;
+  padToSplit(before);
+  Model none;
+  for (size_t crashAt = 1; crashAt < 40; ++crashAt) {
+    InMemoryConfigStore store;
+    save(store, before);
+    store.writesBeforeCrash = crashAt;
+    const bool finished = save(store, none) == SaveResult::Ok;
+    store.writesBeforeCrash = SIZE_MAX;
+    TEST_ASSERT_TRUE(store.read("cfg", "").find("\"expressions\":[]") != std::string::npos);
+    Model back;
+    load(store, back);
+    TEST_ASSERT_EQUAL(0, back.expressions.expressions.size());
+    if (finished) return;
+  }
+}
+
 // An unreadable record drops only itself.
 void test_unreadable_record_drops_only_itself() {
   InMemoryConfigStore store;
@@ -626,6 +646,7 @@ int main(int, char**) {
   RUN_TEST(test_config_saved_by_older_firmware_wins_over_stale_records);
   RUN_TEST(test_too_large_writes_nothing);
   RUN_TEST(test_no_record_is_orphaned_by_a_reset);
+  RUN_TEST(test_delete_all_survives_a_reset_before_the_record_erase);
   RUN_TEST(test_split_save_sweeps_records_past_its_count);
   RUN_TEST(test_over_long_fields_cannot_fail_every_save);
   RUN_TEST(test_removed_expressions_erase_stale_records);

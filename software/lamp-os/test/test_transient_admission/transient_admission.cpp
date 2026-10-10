@@ -5,6 +5,8 @@
 
 #include <unity.h>
 
+#include <vector>
+
 #include "config/config_codec.hpp"
 #include "expressions/transient_admission.hpp"
 
@@ -35,6 +37,19 @@ void test_remote_cannot_starve_local() {
 void test_heap_gate_refuses_any_source() {
   TEST_ASSERT_FALSE(admitTransient(0, 0, 1, TransientSource::Local, false));
   TEST_ASSERT_FALSE(admitTransient(0, 0, 1, TransientSource::Remote, false));
+}
+
+// The call-site form counts sources from the live transients themselves.
+void test_admission_counts_live_sources() {
+  struct Live {
+    TransientSource source;
+  };
+  std::vector<Live> live = {{TransientSource::Remote}, {TransientSource::Remote}};
+  TEST_ASSERT_FALSE(admitTransientAmong(live, 1, TransientSource::Remote, true));
+  TEST_ASSERT_TRUE(admitTransientAmong(live, 2, TransientSource::Local, true));
+  live.push_back({TransientSource::Local});
+  live.push_back({TransientSource::Local});
+  TEST_ASSERT_FALSE(admitTransientAmong(live, 1, TransientSource::Local, true));
 }
 
 void test_lookup_finds_only_the_matching_entry() {
@@ -79,6 +94,7 @@ int main(int, char**) {
   RUN_TEST(test_cap_bounds_every_source);
   RUN_TEST(test_remote_cannot_starve_local);
   RUN_TEST(test_heap_gate_refuses_any_source);
+  RUN_TEST(test_admission_counts_live_sources);
   RUN_TEST(test_lookup_finds_only_the_matching_entry);
   RUN_TEST(test_mirror_replaces_appends_and_refuses_when_full);
   return UNITY_END();
