@@ -367,7 +367,7 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (op && strcmp(op, "upsert") == 0 && doc["entry"].is<JsonObject>()) {
     lamp::ExpressionConfig cfg;
     if (!lamp::config_codec::parseExpression(doc["entry"].as<JsonObject>(), cfg, true)) {
-      Serial.printf("[expr] upsert type=%s over caps; extra colours/params dropped\n",
+      Serial.printf("[expr] upsert %s over caps, extras dropped\n",
                     cfg.type.c_str());
     }
     // A type this variant does not register never renders; storing it only
@@ -1038,7 +1038,8 @@ void lamp::Lamp::tick() {
   // has been idle for kDispositionFlushIdleMs (5s). Cheap when nothing is
   // dirty (single bool check + uint32_t subtraction).
   config.maybeFlushDispositions(millis());
-  config.maybeRetryPersist(millis());
+  // Like the drains, no NVS save runs while firmware chunks are being written.
+  if (!firmwareReceiver.isInProgress()) config.maybeRetryPersist(millis());
   if (pendingFlushDispositionsRequested) {
     // Phone disconnected (set on Core 0 in ble_control's onDisconnect).
     // Force-commit so the user's final slider value survives even if

@@ -215,7 +215,7 @@ void Lamp::drainSettingsBlob() {
   lamp::Config& config = ::config;
   // A blob that needed a reboot whose save was deferred reboots once the
   // retry lands, so it never comes up on a half-applied config.
-  if (rebootWhenSaved && !config.persistPending()) {
+  if (rebootWhenSaved && !config.persistPending() && !firmwareReceiver.isInProgress()) {
     rebootWhenSaved = false;
     lamp::fadeOutRebootRequested = true;
   }

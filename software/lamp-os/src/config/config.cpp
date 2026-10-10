@@ -107,7 +107,7 @@ static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
 bool Config::persistConfig(const char* via) {
   if (!store_) return false;
   if (savesFrozen_) {
-    Serial.printf("[nvs] config save via=%s skipped: a web save awaits its reboot\n", via);
+    Serial.printf("[nvs] save via=%s held for web-save reboot\n", via);
     return false;
   }
   const uint32_t now = millis();
@@ -121,8 +121,8 @@ bool Config::persistConfig(const char* via) {
     return true;
   }
   persistRetry_.fail(now);
-  Serial.printf("[nvs] config save via=%s failed (%s); retry in %lus\n", via,
-                result == config_codec::SaveResult::TooLarge ? "cfg json too large" : "write",
+  Serial.printf("[nvs] save via=%s failed (%s), retry %lus\n", via,
+                result == config_codec::SaveResult::TooLarge ? "too large" : "write",
                 (unsigned long)(persistRetry_.waitMs() / 1000));
   return false;
 }
@@ -391,15 +391,6 @@ static bool assignNoThrow(std::string& dst, const char* src, size_t len) {
   }
 }
 
-static bool resizeNoThrow(std::string& dst, size_t len) {
-  try {
-    dst.resize(len);
-    return true;
-  } catch (const std::bad_alloc&) {
-    return false;
-  }
-}
-
 // A field OOM must stay visible without spamming: warn on the degrade path
 // on every channel, throttled to one line per LAMP_SECTION_OOM_MIN_MS.
 static void logSectionOom(const char* msg) {
@@ -461,7 +452,6 @@ static void writeExpressionsSection(JsonWriter& w, const ExpressionSettings& s) 
   w.beginArray();
   for (const auto& expr : s.expressions) config_codec::writeExpressionJson(w, expr);
   w.endArray();
-  w.finish();
 }
 
 void Config::expressionsSectionRebuildIfDirty() {
@@ -471,9 +461,8 @@ void Config::expressionsSectionRebuildIfDirty() {
     writeExpressionsSection(measure, expressions);
     const size_t len = measure.length();
     if ((expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) &&
-        resizeNoThrow(expressionsSectionJson_, len)) {
-      JsonWriter w(expressionsSectionJson_.data(), len + 1);
-      writeExpressionsSection(w, expressions);
+        writeExactly(expressionsSectionJson_, len,
+                     [this](JsonWriter& w) { writeExpressionsSection(w, expressions); })) {
       expressionsSectionDirty_ = false;
     } else {
       logSectionOom("expressions");

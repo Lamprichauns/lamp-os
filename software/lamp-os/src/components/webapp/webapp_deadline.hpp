@@ -20,4 +20,10 @@ inline bool webappShouldRestoreBle(uint32_t now, uint32_t deadlineMs,
   return bleDown && static_cast<int32_t>(now - deadlineMs) >= 0;
 }
 
+// An armed reboot (0 = none) is due once its time passes, whether or not the
+// AP is still up, and waits while an OTA holds quiet mode.
+inline bool webappRebootDue(uint32_t now, uint32_t rebootAtMs, bool otaQuiet) {
+  return rebootAtMs != 0 && static_cast<int32_t>(now - rebootAtMs) >= 0 && !otaQuiet;
+}
+
 }  // namespace webapp

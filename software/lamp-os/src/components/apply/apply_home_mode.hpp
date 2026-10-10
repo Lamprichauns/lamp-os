@@ -28,9 +28,12 @@ namespace apply {
 inline void homeModeLocal(JsonObject obj, uint8_t maxBrightness) {
   if (obj.isNull()) return;
   // An SSID is at most 32 bytes; a longer one names no network.
-  if (obj["ssid"].is<const char*>() &&
-      std::strlen(obj["ssid"].as<const char*>()) <= kMaxSsidLen) {
-    ::config.homeMode.ssid = obj["ssid"].as<const char*>();
+  if (obj["ssid"].is<const char*>()) {
+    if (std::strlen(obj["ssid"].as<const char*>()) <= kMaxSsidLen) {
+      ::config.homeMode.ssid = obj["ssid"].as<const char*>();
+    } else {
+      Serial.println("[cfg] home SSID over 32 bytes refused");
+    }
   }
   if (obj["enabled"].is<bool>()) {
     ::config.homeMode.enabled = obj["enabled"].as<bool>();

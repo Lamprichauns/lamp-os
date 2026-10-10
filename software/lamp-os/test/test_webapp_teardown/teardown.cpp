@@ -45,11 +45,21 @@ void test_restore_ble_reboots_once_idle_regardless_of_station() {
   TEST_ASSERT_FALSE(webappShouldRestoreBle(200000, 100000, false));
 }
 
+// A web save's reboot fires once due; only an OTA in progress holds it.
+void test_armed_reboot_waits_for_ota_only() {
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(1000, 0, false));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(999, 1000, false));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(1000, 1000, false));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(5000, 1000, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(0x00000010u, 0xFFFFFFF0u, false));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_never_expire_always_false);
   RUN_TEST(test_finite_deadline_before_and_after);
   RUN_TEST(test_wrap_safe_finite);
   RUN_TEST(test_restore_ble_reboots_once_idle_regardless_of_station);
+  RUN_TEST(test_armed_reboot_waits_for_ota_only);
   return UNITY_END();
 }

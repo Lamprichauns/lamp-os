@@ -220,6 +220,9 @@ static void drainWebSave() {
   if (!save.body) return;
   const bool ok = s_config->persistRawJson(save.body);
   delete[] save.body;
+  // Every build: a handler that already answered 202 has no other way to
+  // surface the failure.
+  if (!ok) Serial.printf("[webapp] pending save failed (seq %lu)\n", (unsigned long)save.seq);
   if (ok) {
     s_fadeOnReboot = true;
     s_rebootAtMs = millis() + kRebootDelayMs;
@@ -261,8 +264,10 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   // adoption flag so boot's applyDefaults never reverts the name to a default.
   const char* nm = obj["lamp"]["name"] | "";
   if (nm[0] != '\0') obj["lamp"]["named"] = true;
-  // A longer password could never be typed back, so the save is refused.
-  if (std::strlen(obj["lamp"]["password"] | "") > lamp::kMaxPasswordLen) {
+  // A longer password could never be typed back, and a longer SSID names no
+  // network, so the save is refused.
+  if (std::strlen(obj["lamp"]["password"] | "") > lamp::kMaxPasswordLen ||
+      std::strlen(obj["homeMode"]["ssid"] | "") > lamp::kMaxSsidLen) {
     req->send(400, "application/json", "{\"ok\":false}");
     return;
   }
@@ -504,8 +509,16 @@ static void rebootNow() {
 
 void tick() {
   drainWebSave();
-  if (!s_apUp) return;
   const uint32_t now = millis();
+  // An armed reboot fires even after the AP went down (an OTA's
+  // shutdownForOta): a landed web save freezes config saves until it. It
+  // waits out an OTA in progress, whose own reboot loads the save too; a
+  // failed OTA leaves quiet mode and this reboot follows.
+  if (webappRebootDue(now, s_rebootAtMs, lamp::ota_quiet_mode::isQuiet())) {
+    rebootNow();  // save path; restart frees the server, never delete s_server
+    return;
+  }
+  if (!s_apUp) return;
 
   // A BLE client's connect proves no station is associated (association takes
   // BLE down), so the heavy server cannot be up and stopAp() has no server to
@@ -523,11 +536,6 @@ void tick() {
   if (s_rebootAtMs == 0 &&
       webappShouldRestoreBle(now, s_deadlineMs, ble_control::isDownForWebapp())) {
     s_rebootAtMs = now;  // idle (browser closed) -> reboot
-  }
-
-  if (s_rebootAtMs != 0 && static_cast<int32_t>(now - s_rebootAtMs) >= 0) {
-    rebootNow();  // save path; restart frees the server, never delete s_server
-    return;
   }
 
   // A connected station blocks expiry indefinitely; never reboot someone still
