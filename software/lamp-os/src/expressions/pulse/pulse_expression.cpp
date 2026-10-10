@@ -201,8 +201,11 @@ void PulseExpression::draw() {
   // blendFactor varies per pixel (distance to wave center), so no frame-level hoist.
   const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
   const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
+  // Base logical 0 is its top, so a base-only pulse walks its zone mirrored to
+  // rise; the joined walk maps the base half itself.
+  const bool mirrored = down_ != (!above_ && target == TARGET_BASE);
   for (int pos = zone_.posMin; pos <= zone_.posMax; pos++) {
-    const int at = down_ ? zone_.posMin + zone_.posMax - pos : pos;
+    const int at = mirrored ? zone_.posMin + zone_.posMax - pos : pos;
     const bool upper = at > lowerEnd_;
     if (!(upper ? upperLive : lowerLive)) continue;
     uint32_t blendFactor = calculateBlendFactor(pos);

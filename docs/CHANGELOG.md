@@ -85,14 +85,16 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   default speed it takes about as long as each half used to; at slower
   settings Pulse speed is the time to climb the whole lamp, so each pixel goes
   by faster than before. Size is measured against the whole lamp. A Region
-  applies to each surface, and a Pulse on just the base or just the shade
-  looks exactly as it did. On a lamp whose base and shade don't stack, the
+  applies to each surface, and a Pulse on just the shade looks exactly as it
+  did. On a lamp whose base and shade don't stack, the
   pulse sweeps one and then the other. While lamps are partway through an
   update, a lamp still on the old firmware shows a received both-surface
   Pulse as two pulses side by side.
 - **Pulse has a Direction.** Up is the default. Down runs the other way: on
   both surfaces it drips from the top of the shade down to the bottom of the
   base.
+- **A Pulse on just the base rises.** It used to run down the base; Up now
+  climbs it from the bottom, like the shade, and Down runs it downward.
 
 ## 1.2.7
 

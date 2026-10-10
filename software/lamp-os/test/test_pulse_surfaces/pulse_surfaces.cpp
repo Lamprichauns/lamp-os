@@ -181,7 +181,8 @@ void ExpressionManager::onExpressionFired(Expression*) { ++g_fired; }
 void setUp() {}
 void tearDown() {}
 
-// Golden hashes pin single-surface output byte for byte.
+// Golden hashes pin single-surface output byte for byte. The base pin is the
+// rising walk.
 void test_shade_only_unchanged() {
   Rig rig;
   PulseExpression p(&rig.shade);
@@ -191,13 +192,13 @@ void test_shade_only_unchanged() {
   TEST_ASSERT_EQUAL_HEX32(0xAC8B11CAu, r.hash);
 }
 
-void test_base_only_unchanged() {
+void test_base_only_pinned() {
   Rig rig;
   PulseExpression p(&rig.base);
   build(rig, p, TARGET_BASE, {{"pulseSpeed", 2}, {"size", 9}, {"easing", 1}});
   const RunResult r = run(rig, p, 5000);
   TEST_ASSERT_EQUAL_UINT32(514u, r.frames);
-  TEST_ASSERT_EQUAL_HEX32(0xEA15BAEDu, r.hash);
+  TEST_ASSERT_EQUAL_HEX32(0x7356AE4Du, r.hash);
 }
 
 void test_shade_region_continuous_unchanged() {
@@ -421,24 +422,27 @@ void test_both_down_drips_shade_top_to_base_bottom() {
   assertSweep(peakTrail(rig, *p), kBasePx + kShadePx - 1, 0);
 }
 
-// A single-surface pulse runs its logical order Up and the reverse Down.
-void test_single_surface_down_reverses() {
-  const int shadeBottom = kBasePx;
-  const int shadeTop = kBasePx + kShadePx - 1;
+// A shade-only pulse rises Up and falls Down.
+void test_shade_only_up_rises_down_falls() {
   for (uint32_t travel : {0u, 1u}) {
     Rig rig;
     PulseExpression shade(&rig.shade);
     build(rig, shade, TARGET_SHADE, {{"pulseSpeed", 6}, {"size", 1}, {"travel", travel}});
     const std::vector<int> trail = peakTrail(rig, shade);
-    if (travel == 0) assertSweep(trail, shadeBottom, shadeTop);
-    else assertSweep(trail, shadeTop, shadeBottom);
+    if (travel == 0) assertSweep(trail, kBasePx, kBasePx + kShadePx - 1);
+    else assertSweep(trail, kBasePx + kShadePx - 1, kBasePx);
+  }
+}
 
-    Rig baseRig;
-    PulseExpression base(&baseRig.base);
-    build(baseRig, base, TARGET_BASE, {{"pulseSpeed", 6}, {"size", 1}, {"travel", travel}});
-    const std::vector<int> baseTrail = peakTrail(baseRig, base);
-    if (travel == 0) assertSweep(baseTrail, kBasePx - 1, 0);
-    else assertSweep(baseTrail, 0, kBasePx - 1);
+// A base-only pulse rises Up and falls Down.
+void test_base_only_up_rises_down_falls() {
+  for (uint32_t travel : {0u, 1u}) {
+    Rig rig;
+    PulseExpression base(&rig.base);
+    build(rig, base, TARGET_BASE, {{"pulseSpeed", 6}, {"size", 1}, {"travel", travel}});
+    const std::vector<int> trail = peakTrail(rig, base);
+    if (travel == 0) assertSweep(trail, 0, kBasePx - 1);
+    else assertSweep(trail, kBasePx - 1, 0);
   }
 }
 
@@ -454,7 +458,7 @@ void test_plan_base_without_pixels_plans_per_surface() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_shade_only_unchanged);
-  RUN_TEST(test_base_only_unchanged);
+  RUN_TEST(test_base_only_pinned);
   RUN_TEST(test_shade_region_continuous_unchanged);
   RUN_TEST(test_plan_both_spanning_type_builds_one_base_instance);
   RUN_TEST(test_plan_both_other_type_builds_one_per_surface);
@@ -468,7 +472,8 @@ int main(int, char**) {
   RUN_TEST(test_both_fires_with_base_editor_open);
   RUN_TEST(test_both_editors_open_refuses_trigger);
   RUN_TEST(test_both_down_drips_shade_top_to_base_bottom);
-  RUN_TEST(test_single_surface_down_reverses);
+  RUN_TEST(test_shade_only_up_rises_down_falls);
+  RUN_TEST(test_base_only_up_rises_down_falls);
   RUN_TEST(test_plan_base_without_pixels_plans_per_surface);
   return UNITY_END();
 }
