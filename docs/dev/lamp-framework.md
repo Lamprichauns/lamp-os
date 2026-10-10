@@ -124,6 +124,31 @@ by `reapplyHomeModeState()` via `Compositor::setHomeModePolicy()` and comes from
 The render rule is `!homeMode || !homeModeSkips(b)`; behaviors matching neither
 query always draw.
 
+While home mode is active with `socialDisabled` set, the lamp also ignores what
+other lamps push onto it. One pure decision, `homeModeBlocksRemote(homeActive,
+socialDisabled, source)` in `core/home_mode_gate.hpp`, read through
+`Compositor::blocksRemote(source)`, gates every peer path:
+
+- `ExpressionManager::triggerInvocation` refuses a `TransientSource::Remote`
+  invocation: a cascade (`MSG_COMMAND`, immediate or delayed) and an event
+  mirror (`MSG_EVENT` through `SocialEchoObserver`).
+- `ExpressionManager::gcTransients` retires a Remote transient already running
+  when home mode turns on: `Expression::retire()` ramps its contribution scale
+  to 0 over `Expression::kRetireFadeMs` (1 s), then it is reaped.
+- `BehaviorContext::forEachArrival` and `onArrival` consume an arrival without
+  calling back (`BehaviorContext::ignoresPeers()`), so snafu's greeting, the
+  Lioness greeting and the staff bloom stay quiet alongside the skipped
+  `SocialBehavior`, and leaving home does not greet peers that were already near.
+- A `MSG_CONTROL_OP` from the mesh is still relayed and its `wispStatus` /
+  `wispConfig` still cached, but its `brightness`, colours, `knockout` and
+  `expressionOp` are not applied.
+
+The lamp's own sources stay `TransientSource::Local` and always pass: the app's
+Test button and its remote op over BLE. The
+wisp's paint, overrides and brightness are the owner's controller, not a peer,
+and pass too. Crowd-dim still applies. `disabledExpressionTypes` keeps blocking
+its types from every source.
+
 ## Brightness path and the power governor
 
 Every brightness writer funnels through `lamp::setAllStripsBrightness`:

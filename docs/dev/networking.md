@@ -192,6 +192,8 @@ header(6) + targetMac(6) + sourceMac(6) + payloadLen(2 LE) + payload(N)
 
 CONTROL_OP does not carry `triggerExpression`; directed expression triggers ride MSG_COMMAND.
 
+While home mode is active with social off, a lamp still relays every CONTROL_OP and caches `wispStatus` / `wispConfig`, but applies none of a mesh-received op's render payloads (`brightness`, `shadeColors`, `baseColors`, `knockout`, `expressionOp`); see [`lamp-framework.md`](lamp-framework.md#home-mode).
+
 The unacked broadcast types (`MSG_CONTROL_OP`, `MSG_COMMAND`, `MSG_COLOR_QUERY`, `MSG_COLOR_INFO`) have no per-frame retry, so each send buffers the identical frame (same seq) in a per-type `ResendRing` and `MeshLink::tick()` re-broadcasts it `kResends` more times, `kResendGapMs` (40 ms) apart — spaced so the copies fall in different RX-scan gaps rather than one hole. The gap must exceed the ~15 ms scan window, which only holds because the lamp runs a uniform continuous 1.5% BLE scan with no periodic high-duty burst to black out RX. The rings are per-type (not one shared ring) so a command fan-out's replays don't crowd out a control-op's; a command's ring holds one slot per fan-out target so every peer's frame stays in flight, and a command frame with a payload larger than the ring's 358 B budget sends once. `MSG_COMMAND` is how a cascade reaches each nearby lamp, so this is what makes a triggered-expression wave survive coex loss. The receiver's per-type `DedupRing` collapses the copies to one apply; receive-side state, no wire change.
 
 **Wisp envelopes** (plaintext JSON, broadcast):

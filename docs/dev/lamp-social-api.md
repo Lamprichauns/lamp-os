@@ -108,6 +108,11 @@ un-acked and retriable**. Underneath, `forEachArrival` calls
 directly only when you need a custom `accept` predicate; otherwise prefer the
 visitor, which keeps the ack coupled to the greet.
 
+While home mode is active with social off, `forEachArrival` and `onArrival`
+consume each arrival without calling back (`ignoresPeers()` reports it), so a
+custom greeting stays quiet with no home-mode check of its own
+([`lamp-framework.md`](lamp-framework.md#home-mode)).
+
 `forEachNearby` is the read-only sibling: it visits currently-near peers,
 closest first, never acks, and stops early when the visitor returns `true`.
 
