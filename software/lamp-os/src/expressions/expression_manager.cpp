@@ -396,17 +396,20 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
                                           TransientSource source) {
   if (!shadeBuffer || !baseBuffer) return false;
 
+  if (compositor_ && compositor_->blocksRemote(source)) return false;
+
   ExpressionTarget invTarget = static_cast<ExpressionTarget>(inv.target);
 
   // Coalesce: if a transient with the same (sender, type) is still
   // animating, drop this incoming cascade. Prevents pile-up from one
   // chatty sender (e.g. spam-tapping Test on the originator) while still
   // letting concurrent cascades from DIFFERENT senders both land; each
-  // sender contributes one in-flight transient.
+  // sender contributes one in-flight transient. A retiring transient is on its
+  // way out and does not hold the sender's place.
   for (const auto& t : transientExpressions_) {
     if (t.type == inv.type && t.expression &&
         std::memcmp(t.srcMac, srcMac, 6) == 0 &&
-        !t.expression->isAnimationComplete()) {
+        !t.expression->isAnimationComplete() && !t.expression->retiring()) {
 #ifdef LAMP_DEBUG
       Serial.printf("[expr] coalesce %s from %02X:%02X:%02X:%02X:%02X:%02X (in flight)\n",
                     inv.type.c_str(),
@@ -517,6 +520,10 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
   return triggered;
 }
 
+bool ExpressionManager::ignoresPeers() const {
+  return compositor_ && compositor_->blocksRemote(TransientSource::Remote);
+}
+
 // Evict a one-shot cascade even when isAnimationComplete() never fires; a
 // stuck completion signal would otherwise latch it on the compositor forever.
 static constexpr uint32_t kTransientMaxLifetimeMs = 180000;
@@ -525,7 +532,18 @@ void ExpressionManager::gcTransients() {
   if (transientExpressions_.empty()) return;
   const uint32_t nowMs = millis();
   for (auto it = transientExpressions_.begin(); it != transientExpressions_.end();) {
-    const bool complete = it->expression && it->expression->isAnimationComplete();
+    if (it->expression && compositor_ && compositor_->discardsRemote(it->source)) {
+      it->expression->retire();
+    }
+    // A transient home mode skips by type would freeze mid-animation and
+    // resume when home mode ends; while home mode discards peers it is
+    // reaped instead.
+    const bool skippedAtHome = compositor_ &&
+                               compositor_->discardsRemote(TransientSource::Remote) &&
+                               compositor_->homeModeSkipsType(it->type);
+    const bool complete = skippedAtHome ||
+                          (it->expression && (it->expression->isAnimationComplete() ||
+                                              it->expression->retired()));
     const bool expired = nowMs - it->createdMs >= kTransientMaxLifetimeMs;
     if (complete || expired) {
       if (expired && !complete) {

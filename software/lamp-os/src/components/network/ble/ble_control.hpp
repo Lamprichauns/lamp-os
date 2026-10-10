@@ -59,8 +59,8 @@ constexpr const char* CHAR_WIFI_STATE      = "5f64f4db-d6d9-4a44-9b3f-3a8d6f7e6b
 // streams host→lamp (write), pagination streams lamp→host (read).
 constexpr const char* CHAR_PAGE_CTRL       = "5f64f4dc-d6d9-4a44-9b3f-3a8d6f7e6b40";
 constexpr const char* CHAR_PAGE_DATA       = "5f64f4dd-d6d9-4a44-9b3f-3a8d6f7e6b40";
-// remote_op (write-with-response, encrypted): forward a BLE control write
-// to a far lamp via ESP-NOW.
+// remote_op (write-with-response, encrypted): a render-only control write
+// applied on this lamp when its targetMac is this lamp or "broadcast".
 constexpr const char* CHAR_REMOTE_OP       = "5f64f4e4-d6d9-4a44-9b3f-3a8d6f7e6b40";
 // home_mode_focus (write-without-response): single u8 bool. The app
 // writes 1 while the user is on the Home Mode setup page and 0 when

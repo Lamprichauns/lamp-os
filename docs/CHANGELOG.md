@@ -25,6 +25,28 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   base.
 
 ### Fixed
+- **Home mode with social off now ignores other lamps completely.** Before,
+  another lamp could still make yours pulse, flicker or shift while it was
+  resting at home; only glitch was kept out. Now, while home mode is on with
+  social switched off, your lamp ignores every effect other lamps send it,
+  doesn't greet them and behaves as if it were alone in the room, whichever
+  kind of lamp it is: a Lioness's lions stop showing neighbours' colours and
+  a Loaf's ring stops speeding up for nearby loaves. Effects other lamps had
+  already sent fade out gently when home mode comes on, and when you leave
+  home your lamp doesn't greet the lamps that were there all along. It also
+  stops dimming itself for a crowd, easing back to its full home brightness
+  over about a second. Previewing home mode from the app shows what home mode
+  looks like without using up arrivals, so the lamps around it are greeted as
+  usual once you leave the page; a greeting or borrowed palette the preview
+  cuts off stays ended, and the app's greet button still plays a greeting
+  during the preview. Your own expressions, the app's Test button and your
+  wisp keep working, and your lamp still passes messages
+  along so the lamps around it keep talking.
+- **A staff lamp blooms for every friend in a big crowd.** With more than 16
+  lamps nearby, friends past the sixteenth used to arrive without a bloom.
+- **Crowd dimming follows the crowd right away.** When a lamp decided to dim
+  or brighten for a change in the crowd, the change could wait until the next
+  unrelated brightness change to show. It now eases in within a moment.
 - **Every lamp passes updates on.** A lamp at home with social turned off,
   and snafu and lioness lamps at any time, never offered a firmware or web-UI
   update to the lamps around them, so an update could stall at them. Every
@@ -90,6 +112,13 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   loading instead of showing made-up values you could accidentally save.
 
 ### Changed
+- **Lamps no longer pass settings on to other lamps.** A lamp used to be able
+  to forward brightness, colour and expression changes it was handed to
+  another lamp across the mesh. No released app has ever used this, so
+  it is gone: a lamp only takes settings from the app connected to it. Lamps
+  still pass along everything your wisp sends and receives, so the wisp keeps
+  working everywhere it did, and lamps on older firmware keep talking to
+  newer ones.
 - **The wisp sends its settings on their own.** Its LED, brightness and drift
   settings now go out when they change or when the app asks, rather than only
   inside the status every lamp passes along every thirty seconds. For this

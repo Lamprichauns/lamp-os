@@ -73,16 +73,34 @@ bool Expression::shouldAffectBuffer(FrameBuffer* surface) {
   }
 }
 
+float Expression::retireScale() const {
+  if (!retiring_) return 1.0f;
+  const uint32_t elapsed = millis() - retireStartMs_;
+  return elapsed >= kRetireFadeMs ? 0.0f
+                                  : 1.0f - static_cast<float>(elapsed) / kRetireFadeMs;
+}
+
 float Expression::wispDimScale(FrameBuffer* surface) {
+  const float retireScale = this->retireScale();
   if (!context_ || !context_->compositor ||
       context_->expressionFrameBuffers.size() < 2) {
-    return 1.0f;
+    return retireScale;
   }
   const bool isBase = surface == context_->expressionFrameBuffers[1];
   const bool isShade = surface == context_->expressionFrameBuffers[0];
-  if (!isBase && !isShade) return 1.0f;
+  if (!isBase && !isShade) return retireScale;
   const float w = context_->compositor->wispPresence(isBase);
-  return opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
+  return retireScale * opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
+}
+
+void Expression::retire() {
+  if (retiring_) return;
+  retiring_ = true;
+  retireStartMs_ = millis();
+}
+
+bool Expression::retired() const {
+  return retiring_ && millis() - retireStartMs_ >= kRetireFadeMs;
 }
 
 void Expression::configureOpacity(const ExpressionParams& parameters) {

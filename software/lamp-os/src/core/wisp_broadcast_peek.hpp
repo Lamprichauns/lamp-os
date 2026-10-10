@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include <ArduinoJson.h>
+
 namespace lamp {
 
 enum class WispBroadcast { None, Status, Config };
@@ -11,8 +13,8 @@ enum class WispBroadcast { None, Status, Config };
 // Classify an inbound CONTROL_OP payload on the WiFi task so the wisp's
 // status and config broadcasts land in their own pending slots and never
 // displace another op from the single inbound slot. The wisp serializes
-// "char" first; a payload that starts any other way takes the general path,
-// which still handles both.
+// "char" first; a payload that starts any other way takes the inbound slot,
+// whose drain classifies it with wispBroadcastTag.
 inline WispBroadcast peekWispBroadcast(const uint8_t* payload, size_t len) {
   static constexpr char kStatus[] = R"({"char":"wispStatus")";
   static constexpr char kConfig[] = R"({"char":"wispConfig")";
@@ -22,6 +24,24 @@ inline WispBroadcast peekWispBroadcast(const uint8_t* payload, size_t len) {
   if (startsWith(kStatus, sizeof(kStatus) - 1)) return WispBroadcast::Status;
   if (startsWith(kConfig, sizeof(kConfig) - 1)) return WispBroadcast::Config;
   return WispBroadcast::None;
+}
+
+// Classify a parsed CONTROL_OP "char" tag. The wisp's status and config are
+// the only control ops a lamp takes from the mesh; every other tag is
+// relayed and dropped.
+inline WispBroadcast wispBroadcastTag(const char* tag) {
+  if (!tag) return WispBroadcast::None;
+  if (std::strcmp(tag, "wispStatus") == 0) return WispBroadcast::Status;
+  if (std::strcmp(tag, "wispConfig") == 0) return WispBroadcast::Config;
+  return WispBroadcast::None;
+}
+
+// Classify a whole inbound CONTROL_OP payload by its parsed "char" tag; a
+// payload that does not parse is None.
+inline WispBroadcast inboundControlOpKind(const char* json, size_t len) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json, len) != DeserializationError::Ok) return WispBroadcast::None;
+  return wispBroadcastTag(doc["char"].as<const char*>());
 }
 
 }  // namespace lamp

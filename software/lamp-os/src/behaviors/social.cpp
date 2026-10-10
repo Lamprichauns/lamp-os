@@ -179,6 +179,7 @@ void SocialBehavior::control() {
   const bool greetingNowActive = (animationState != STOPPED);
   if (!greetingNowActive && greetingWasActive_) {
     greetedHasMac_ = false;
+    appGreeting_ = false;
     if (onGreetingChange_) onGreetingChange_();
   }
   greetingWasActive_ = greetingNowActive;
@@ -186,6 +187,10 @@ void SocialBehavior::control() {
   // Greeting / cooldown logic below only runs after the previous
   // greeting animation finishes.
   if (animationState != STOPPED) return;
+
+  // An app greeting can run while home mode ignores peers (the preview); once
+  // it ends, no peer is picked or acknowledged.
+  if (context_ && context_->ignoresPeers()) return;
 
   if (lamp::overrides.shade.operatorEditing()) return;
 
@@ -271,6 +276,16 @@ void SocialBehavior::control() {
   if (onGreetingChange_) onGreetingChange_();
 };
 
+void SocialBehavior::cancelGreeting() {
+  if (animationState == STOPPED && !greetingWasActive_) return;
+  animationState = STOPPED;
+  frame = 0;
+  greetingWasActive_ = false;
+  greetedHasMac_ = false;
+  appGreeting_ = false;
+  if (onGreetingChange_) onGreetingChange_();
+}
+
 void SocialBehavior::triggerGreeting(const PeerView& peer) {
   const uint32_t now = millis();
   const GreetingTuning tuning = personalityEngine.greetingFor(peer.mac);
@@ -285,6 +300,7 @@ void SocialBehavior::triggerGreeting(const PeerView& peer) {
   }
   applyTuning(tuning);
   lampRoster.acknowledge(peer.mac);
+  appGreeting_ = true;
   playOnce();
   greetingWasActive_ = true;
   if (onGreetingChange_) onGreetingChange_();
@@ -295,6 +311,7 @@ void SocialBehavior::onColorInfo(const uint8_t srcMac[6],
                                  const std::vector<Color>& baseStops,
                                  const std::vector<Color>& /*shadeStops*/) {
   if (animationState == STOPPED) return;
+  if (context_ && context_->ignoresPeers()) return;
   if (!greetedHasMac_ || std::memcmp(srcMac, greetedMac_, 6) != 0) return;
   if (baseStops.empty()) return;
   greetedBaseStops_ = baseStops;

@@ -69,6 +69,7 @@ class GlitchyExpression : public Expression {
   uint16_t scatter_ = kGlitchScatterMax;
 
   void paintGlitch_(float wispWeight);
+  void restoreSaved_();
 
  public:
   using Expression::Expression;

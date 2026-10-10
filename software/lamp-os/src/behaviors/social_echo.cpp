@@ -12,6 +12,7 @@ namespace lamp {
 
 void SocialEchoObserver::onPeerExpression(const uint8_t sourceMac[6],
                                           const ExpressionInvocation& inv) {
+  if (manager_.ignoresPeers()) return;
   if (mesh_.isOtaInProgress()) return;
   if (manager_.isAnyTestActive()) return;
 
@@ -41,6 +42,11 @@ void SocialEchoObserver::onPeerExpression(const uint8_t sourceMac[6],
 }
 
 void SocialEchoObserver::tick(uint32_t nowMs) {
+  // A mirror booked before home mode began is dropped.
+  if (manager_.ignoresPeers()) {
+    for (auto& p : pending_) p.used = false;
+    return;
+  }
   for (auto& p : pending_) {
     if (!p.used) continue;
     if (static_cast<int32_t>(nowMs - p.fireAt) < 0) continue;

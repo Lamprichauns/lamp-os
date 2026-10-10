@@ -38,9 +38,6 @@ class Compositor {
   bool homeSocialDisabled_ = true;
   std::vector<std::string> homeDisabledExprIds_ = {"glitchy"};
 
-  // Returns true if `b` should be skipped during a home-mode tick.
-  bool homeModeSkips(AnimatedBehavior* b) const;
-
   // true once a quiet-mode frame has painted; the next false->true edge on
   // ota_quiet_mode::isQuiet() signals ota_indicator::paint() to (re)init its
   // base-surface settle.
@@ -89,6 +86,8 @@ class Compositor {
   bool behaviorsComputed = false;
   unsigned long lastDrawTimeMs = 0;
   bool homeMode = false;
+  // True while home mode is on because the app is showing its Home Mode page.
+  bool homePreview = false;
 
   Compositor();
 
@@ -142,7 +141,28 @@ class Compositor {
    * a home-disabled cascade at receipt instead of creating a squatting
    * transient the render gate then refuses to draw.
    */
-  bool homeModeSkipsType(const std::string& type) const;
+  bool homeModeSkipsType(const std::string& type) const {
+    return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
+  }
+
+  // homeModeTick for `b` under this compositor's home state and policy.
+  HomeModeTick homeModeTickFor(AnimatedBehavior* b) const {
+    return homeModeTick(homeMode, homeSocialDisabled_, b->isSocialBehavior(),
+                        b->playsAppGreeting(),
+                        homeModeExpressionSkips(b->homeModeExpressionId(), homeDisabledExprIds_));
+  }
+
+  // homeModeBlocksRemote over this compositor's live home state and policy.
+  bool blocksRemote(TransientSource source) const {
+    return homeModeBlocksRemote(homeMode, homeSocialDisabled_, source);
+  }
+
+  // True while blocksRemote(source) and outside the app's Home Mode preview:
+  // only then is a blocked arrival consumed or a running peer transient
+  // retired, so previewing home mode changes nothing that outlasts it.
+  bool discardsRemote(TransientSource source) const {
+    return blocksRemote(source) && !homePreview;
+  }
 
   /**
    * Mark the expression band bounds [start, end) within the

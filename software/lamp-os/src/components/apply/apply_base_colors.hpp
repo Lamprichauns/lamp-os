@@ -4,7 +4,7 @@
 //   baseColorsToConfig: user-direct BLE write. Mutates config.base.colors
 //                       so a later CHAR_COMMIT can persist the user's
 //                       choice. Then calls the existing render path.
-//   baseColorsToRender: mesh-relayed cascade. Render-only. Matches
+//   baseColorsToRender: the app's CHAR_REMOTE_OP write. Render-only. Matches
 //                       applyBaseColorsLocal behavior exactly.
 
 #pragma once
@@ -46,8 +46,8 @@ inline void baseColorsToConfig(JsonArray arr) {
   ::lamp::renderBaseColors(arr);
 }
 
-// Cascade-source variant. Render-only.
-// Does NOT mutate config so cascade transients cannot contaminate a
+// Remote-op variant. Render-only.
+// Does NOT mutate config so a preview cannot contaminate a
 // subsequent CHAR_COMMIT persistence sweep.
 inline void baseColorsToRender(JsonArray arr) {
   ::lamp::renderBaseColors(arr);

@@ -321,12 +321,20 @@ class ExpressionManager {
    */
   void onExpressionFired(Expression* e);
 
+  // True while home mode ignores other lamps (Compositor::blocksRemote): a
+  // peer's invocation is neither started nor booked for later.
+  bool ignoresPeers() const;
+
   /**
    * Garbage-collect transient one-shot expressions created by
-   * triggerInvocation whose animation has finished. Unregisters them
-   * from the compositor and destroys the instance. Cheap; safe to
-   * call every loop tick. Call AFTER compositor.tick() so the final
-   * frame of the animation gets drawn before removal.
+   * triggerInvocation whose animation has finished, whose retire fade has
+   * ended, or that outlived the lifetime cap. Unregisters them from the
+   * compositor and destroys the instance. While home mode discards peers
+   * (Compositor::discardsRemote, outside the app's preview) it first retires
+   * every Remote transient still running, so a peer's effect fades out over
+   * Expression::kRetireFadeMs and is reaped here. Cheap; safe to call every
+   * loop tick. Call AFTER compositor.tick() so the final frame of the
+   * animation gets drawn before removal.
    */
   void gcTransients();
 
