@@ -302,7 +302,10 @@ void runSerialCommand(char* line, size_t len) {
   if (strcmp(line, "expr.get") == 0) {
     std::string out;
     config.expressionsSectionJsonCached(out);
-    Serial.printf("[cmd] ok %s\n", out.c_str());
+    // write() streams the JSON; printf would malloc the whole line first.
+    Serial.print("[cmd] ok ");
+    Serial.write(reinterpret_cast<const uint8_t*>(out.data()), out.size());
+    Serial.println();
     return;
   }
 

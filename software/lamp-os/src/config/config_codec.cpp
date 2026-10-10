@@ -411,15 +411,17 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                                              : SaveResult::WriteFailed;
 }
 
-bool loadRecords(ConfigStore& store, BaseSettings& base,
-                 ExpressionSettings& expressions) {
+LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
+                          ExpressionSettings& expressions) {
+  LoadedRecords result;
   uint8_t knockout[255];
   const size_t knockoutLen = store.readBlob(kKnockoutKey, knockout, sizeof(knockout));
   for (size_t i = 0; i < knockoutLen && i < base.knockoutPixels.size(); ++i) {
     base.knockoutPixels[i] = knockout[i];
   }
   uint8_t n = 0;
-  if (store.readBlob(kCountKey, &n, 1) != 1) return false;
+  if (store.readBlob(kCountKey, &n, 1) != 1) return result;
+  result.present = true;
   expressions.expressions.clear();
   expressions.expressions.reserve(std::min<size_t>(n, kMaxExpressions));
   uint8_t record[kMaxExpressionRecordLen];
@@ -428,10 +430,24 @@ bool loadRecords(ConfigStore& store, BaseSettings& base,
     recordKey(i, key);
     const size_t len = store.readBlob(key, record, sizeof(record));
     ExpressionConfig expr;
-    if (len == 0 || !decodeExpression(record, len, expr)) continue;
+    if (len == 0 || !decodeExpression(record, len, expr)) {
+      result.droppedMask |= 1u << i;
+      continue;
+    }
+    // A save interrupted mid-shift (a remove moves later records down one
+    // slot) leaves the moved record in two slots; the first is the live one.
+    const bool duplicate = std::any_of(
+        expressions.expressions.begin(), expressions.expressions.end(),
+        [&](const ExpressionConfig& e) {
+          return e.type == expr.type && e.target == expr.target;
+        });
+    if (duplicate) {
+      ++result.duplicates;
+      continue;
+    }
     expressions.expressions.push_back(std::move(expr));
   }
-  return true;
+  return result;
 }
 
 bool configBlobPersistable(const char* json) {

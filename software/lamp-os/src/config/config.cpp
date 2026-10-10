@@ -54,13 +54,8 @@ Config::Config(ConfigStore* inStore) {
     const char* loadedName = doc["lamp"]["name"] | "<unset>";
     const char* pwField = doc["lamp"]["password"] | "";
     const bool hasPassword = pwField != nullptr && pwField[0] != '\0';
-    const int exprCount = doc["expressions"].is<JsonArray>()
-                              ? (int)doc["expressions"].as<JsonArray>().size()
-                              : 0;
-    Serial.printf(
-        "[cfg] loaded name=%s pw=%s expressions=%d nvs_bytes=%u\n",
-        loadedName, hasPassword ? "set" : "unset", exprCount,
-        (unsigned)json.length());
+    Serial.printf("[cfg] loaded name=%s pw=%s cfg_bytes=%u\n", loadedName,
+                  hasPassword ? "set" : "unset", (unsigned)json.length());
   } else {
     Serial.printf("[cfg] loaded nvs_bytes=%u (parse failed; full dump suppressed)\n",
                   (unsigned)json.length());
@@ -85,7 +80,20 @@ Config::Config(ConfigStore* inStore) {
                               expressions, homeMode)) {
     Serial.println("[cfg] stored expressions over caps; truncated on load");
   }
-  config_codec::loadRecords(*store_, base, expressions);
+  const config_codec::LoadedRecords records =
+      config_codec::loadRecords(*store_, base, expressions);
+  for (size_t i = 0; i < kMaxExpressions; ++i) {
+    if (records.droppedMask & (1u << i)) {
+      Serial.printf("[cfg] expression record x%u unreadable; dropped\n", (unsigned)i);
+    }
+  }
+  if (records.duplicates) {
+    Serial.printf("[cfg] %u repeated expression records skipped\n",
+                  (unsigned)records.duplicates);
+  }
+  Serial.printf("[cfg] expressions=%u from %s\n",
+                (unsigned)expressions.expressions.size(),
+                records.present ? "records" : "cfg json");
   namedKeyPresent_ = doc["lamp"]["named"].is<bool>();
 
   // Per-peer dispositions live in a separate NVS key.
@@ -244,7 +252,7 @@ static void emitLastCrash(JsonDocument& doc, const crash_record::Record& rec) {
   }
 }
 
-String Config::asLampJson() {
+JsonDocument Config::asLampJson() {
   JsonDocument doc;
   doc["name"] = lamp.name;
   doc["brightness"] = lamp.brightness;
@@ -286,9 +294,7 @@ String Config::asLampJson() {
   }
   doc["resetReason"] = static_cast<uint8_t>(esp_reset_reason());
   emitLastCrash(doc, crash_record::last());
-  String out;
-  serializeJson(doc, out);
-  return out;
+  return doc;
 }
 
 // Role sections advertise topology: a role-level `px` = Σ segment px (the
@@ -309,7 +315,7 @@ static void emitRoleTopology(JsonDocument& doc,
   }
 }
 
-String Config::asBaseJson() {
+JsonDocument Config::asBaseJson() {
   JsonDocument doc;
   emitRoleTopology(doc, base.segments);
   doc["byteOrder"] = base.byteOrder;
@@ -328,12 +334,10 @@ String Config::asBaseJson() {
   doc["colorsEditable"] = base.colorsEditable;
   doc["drawIdleMa"] = drawIdleMa_;
   doc["drawFullMa"] = drawFullMa_;
-  String out;
-  serializeJson(doc, out);
-  return out;
+  return doc;
 }
 
-String Config::asShadeJson() {
+JsonDocument Config::asShadeJson() {
   JsonDocument doc;
   emitRoleTopology(doc, shade.segments);
   doc["byteOrder"] = shade.byteOrder;
@@ -341,23 +345,19 @@ String Config::asShadeJson() {
   // Emitted so the app can hide the color picker for surfaces the subclass
   // has opted out of (e.g. SnafuLamp shade).
   doc["colorsEditable"] = shade.colorsEditable;
-  String out;
-  serializeJson(doc, out);
-  return out;
+  return doc;
 }
 
-String Config::asExpressionsJson() {
+JsonDocument Config::asExpressionsJson() {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& expr : expressions.expressions) {
     config_codec::expressionToJson(arr.add<JsonObject>(), expr);
   }
-  String out;
-  serializeJson(doc, out);
-  return out;
+  return doc;
 }
 
-String Config::asHomeModeJson() {
+JsonDocument Config::asHomeModeJson() {
   JsonDocument doc;
   doc["ssid"] = homeMode.ssid;
   doc["brightness"] = homeMode.brightness;
@@ -366,9 +366,7 @@ String Config::asHomeModeJson() {
   doc["socialDisabled"] = homeMode.socialDisabled;
   JsonArray disArr = doc["disabledExpressionTypes"].to<JsonArray>();
   for (const auto& s : homeMode.disabledExpressionTypes) disArr.add(s);
-  String out;
-  serializeJson(doc, out);
-  return out;
+  return doc;
 }
 
 // Per-section JSON cache accessors. Rebuild-if-dirty and the reader's
@@ -390,20 +388,26 @@ static void logSectionOom(const char* msg) {
   Serial.printf("[cfg] %s section OOM; serving stale\n", msg);
 }
 
-// A web/BLE section read must never panic the lamp: under a fragmented heap
-// the rebuild's string alloc can throw bad_alloc. On failure keep the
-// last-good cache, leave the dirty flag set so it retries when heap recovers,
-// and serve the stale (or empty) bytes. Catch only bad_alloc so a genuine
-// logic exception propagates instead of degrading to stale JSON.
+// A web/BLE section read must never panic the lamp or serve a truncated
+// section. The rebuild serializes into one guarded buffer (an Arduino String
+// grown on a fragmented heap silently stops appending and would cache a cut-off
+// JSON as valid). On failure keep the last-good cache, leave the dirty flag
+// set so it retries when heap recovers, and serve the stale (or empty) bytes.
 #define LAMP_DEFINE_SECTION_CACHED(NAME, BUILDER)                          \
   void Config::NAME##SectionRebuildIfDirty() {                             \
     xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
     if (NAME##SectionDirty_) {                                             \
-      try {                                                                \
-        String s = BUILDER();                                             \
-        NAME##SectionJson_.assign(s.c_str(), s.length());                 \
+      size_t len = 0;                                                      \
+      std::unique_ptr<char[]> json;                                        \
+      {                                                                    \
+        JsonDocument doc = BUILDER();                                      \
+        json = serializeGuarded(doc, len);                                 \
+      }                                                                    \
+      if (json && (NAME##SectionJson_.capacity() >= len ||                 \
+                   heapCanSpare(len))) {                                   \
+        NAME##SectionJson_.assign(json.get(), len);                        \
         NAME##SectionDirty_ = false;                                       \
-      } catch (const std::bad_alloc&) {                                    \
+      } else {                                                             \
         logSectionOom(#NAME);                                              \
       }                                                                    \
     }                                                                      \
@@ -412,9 +416,10 @@ static void logSectionOom(const char* msg) {
   void Config::NAME##SectionJsonCached(std::string& out) {                 \
     NAME##SectionRebuildIfDirty();                                         \
     xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    try {                                                                  \
+    if (out.capacity() >= NAME##SectionJson_.size() ||                     \
+        heapCanSpare(NAME##SectionJson_.size())) {                         \
       out = NAME##SectionJson_;                                            \
-    } catch (const std::bad_alloc&) {                                      \
+    } else {                                                               \
       out.clear();                                                         \
       logSectionOom(#NAME);                                                \
     }                                                                      \

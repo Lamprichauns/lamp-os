@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -168,14 +169,14 @@ class Config {
   // since the OFFER/stream bursts starve BLE connect.
   bool isOtaDistributing() const;
 
-  // Per-section serializers, each returning a String of just the JSON for
-  // that section. Internal helpers backing the *JsonCached() accessors
-  // below; the BLE onRead path always goes through the cache.
-  String asLampJson();
-  String asBaseJson();
-  String asShadeJson();
-  String asExpressionsJson();
-  String asHomeModeJson();
+  // Per-section documents, each holding just that section. Internal helpers
+  // backing the *JsonCached() accessors below; the BLE onRead path always
+  // goes through the cache.
+  JsonDocument asLampJson();
+  JsonDocument asBaseJson();
+  JsonDocument asShadeJson();
+  JsonDocument asExpressionsJson();
+  JsonDocument asHomeModeJson();
 
   // Per-section JSON cache. Each section caches its serialised JSON plus a
   // dirty flag; the accessor rebuilds if dirty and copies the JSON into out,

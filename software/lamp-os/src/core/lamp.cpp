@@ -369,6 +369,13 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
       Serial.printf("[expr] upsert type=%s over caps; extra colours/params dropped\n",
                     cfg.type.c_str());
     }
+    // A type this variant does not register never renders; storing it only
+    // spends a record and NVS.
+    if (!::expressionManager.registry().find(cfg.type.c_str())) {
+      Serial.printf("[expr] upsert type=%s rejected: not on this lamp\n",
+                    cfg.type.c_str());
+      return;
+    }
     if (cfg.target < lamp::kExpressionTargetMin ||
         cfg.target > lamp::kExpressionTargetMax) {
       Serial.printf("[expr] upsert type=%s target=%u rejected\n", cfg.type.c_str(),

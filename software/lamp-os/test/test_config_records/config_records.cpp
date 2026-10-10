@@ -7,7 +7,9 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "config/config_codec.hpp"
 #include "config/disposition_store.hpp"
@@ -200,6 +202,147 @@ void test_failed_write_reports_and_keeps_the_old_config() {
   TEST_ASSERT_EQUAL_STRING("jacko", back.lamp.name.c_str());
 }
 
+namespace {
+
+std::vector<std::pair<std::string, uint8_t>> keysOf(const ExpressionSettings& s) {
+  std::vector<std::pair<std::string, uint8_t>> keys;
+  for (const auto& e : s.expressions) keys.push_back({e.type, e.target});
+  std::sort(keys.begin(), keys.end());
+  return keys;
+}
+
+ExpressionConfig tagged(const char* type, uint8_t target, uint32_t size) {
+  ExpressionConfig e;
+  e.type = type;
+  e.target = target;
+  e.colors = {Color(1, 2, 3, 4)};
+  e.setParameter("size", size);
+  return e;
+}
+
+// Saves `before`, then saves `after` with the store reset partway through,
+// at every possible write; each load must be a whole config: every entry is
+// one `before` or `after` held (same type, target and contents), every entry
+// both hold is present, and nothing from neither appears.
+void assertCrashSafe(const Model& before, const Model& after) {
+  for (size_t crashAt = 0; crashAt < 64; ++crashAt) {
+    InMemoryConfigStore store;
+    save(store, before);
+    store.writesBeforeCrash = crashAt;
+    const bool finished = save(store, after) == SaveResult::Ok;
+    store.writesBeforeCrash = SIZE_MAX;
+    Model back;
+    load(store, back);
+    auto keys = keysOf(back.expressions);
+    TEST_ASSERT_TRUE_MESSAGE(std::adjacent_find(keys.begin(), keys.end()) == keys.end(),
+                             "an expression loaded twice");
+    for (const auto& e : back.expressions.expressions) {
+      auto matches = [&](const Model& m) {
+        for (const auto& o : m.expressions.expressions) {
+          if (o.type == e.type && o.target == e.target && o.parameters == e.parameters) return true;
+        }
+        return false;
+      };
+      TEST_ASSERT_TRUE_MESSAGE(matches(before) || matches(after), e.type.c_str());
+    }
+    for (const auto& o : before.expressions.expressions) {
+      bool inAfter = false;
+      for (const auto& a : after.expressions.expressions) {
+        inAfter |= a.type == o.type && a.target == o.target;
+      }
+      if (!inAfter) continue;
+      bool loaded = false;
+      for (const auto& e : back.expressions.expressions) {
+        loaded |= e.type == o.type && e.target == o.target;
+      }
+      TEST_ASSERT_TRUE_MESSAGE(loaded, o.type.c_str());
+    }
+    if (finished) {
+      TEST_ASSERT_TRUE(keysOf(back.expressions) == keysOf(after.expressions));
+      return;
+    }
+  }
+  TEST_FAIL_MESSAGE("save never finished");
+}
+
+}  // namespace
+
+void test_crash_mid_save_removing_an_entry_keeps_the_rest() {
+  Model before;
+  before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2),
+                                    tagged("spotty", 3, 3), tagged("glitchy", 1, 4)};
+  Model after = before;
+  after.expressions.expressions.erase(after.expressions.expressions.begin());
+  assertCrashSafe(before, after);
+}
+
+void test_crash_mid_save_adding_and_editing_keeps_the_rest() {
+  Model before;
+  before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2)};
+  Model after = before;
+  after.expressions.expressions[1] = tagged("shifty", 2, 9);
+  after.expressions.expressions.push_back(tagged("spotty", 3, 3));
+  assertCrashSafe(before, after);
+}
+
+// A reset during the first save after an update leaves the single-JSON form
+// readable: the records only take over once their count is written, and the
+// legacy JSON is rewritten last.
+void test_crash_mid_migration_keeps_the_legacy_config() {
+  for (size_t crashAt = 0; crashAt < 64; ++crashAt) {
+    InMemoryConfigStore store;
+    store.write("cfg",
+                "{\"lamp\":{\"name\":\"jacko\"},\"expressions\":["
+                "{\"type\":\"pulse\",\"enabled\":true,\"target\":1,\"size\":4},"
+                "{\"type\":\"shifty\",\"enabled\":true,\"target\":2}]}");
+    Model m;
+    load(store, m);
+    store.writesBeforeCrash = crashAt;
+    const bool finished = save(store, m) == SaveResult::Ok;
+    store.writesBeforeCrash = SIZE_MAX;
+    Model back;
+    load(store, back);
+    TEST_ASSERT_EQUAL_STRING("jacko", back.lamp.name.c_str());
+    TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
+    if (finished) return;
+  }
+  TEST_FAIL_MESSAGE("save never finished");
+}
+
+// An unreadable record drops itself and nothing else.
+void test_unreadable_record_drops_only_itself() {
+  InMemoryConfigStore store;
+  Model m;
+  m.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2),
+                               tagged("spotty", 3, 3)};
+  save(store, m);
+  const uint8_t junk[3] = {9, 9, 9};
+  store.writeBlob("x1", junk, sizeof(junk));
+  Model back;
+  JsonDocument doc;
+  deserializeJson(doc, store.read("cfg", "{}"));
+  config_codec::fromJson(doc.as<JsonObject>(), back.lamp, back.base, back.shade,
+                         back.expressions, back.homeMode);
+  const auto loaded = config_codec::loadRecords(store, back.base, back.expressions);
+  TEST_ASSERT_TRUE(loaded.present);
+  TEST_ASSERT_EQUAL_UINT32(1u << 1, loaded.droppedMask);
+  TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_STRING("pulse", back.expressions.expressions[0].type.c_str());
+  TEST_ASSERT_EQUAL_STRING("spotty", back.expressions.expressions[1].type.c_str());
+}
+
+// A type the running variant does not register still loads: it may belong to
+// the variant the lamp is flashed back to, and dropping it would lose it.
+void test_unregistered_type_record_loads() {
+  InMemoryConfigStore store;
+  Model m;
+  m.expressions.expressions = {tagged("bloom", 3, 1), tagged("pulse", 1, 2)};
+  save(store, m);
+  Model back;
+  load(store, back);
+  TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
+}
+
 // Worst-case NVS use at the caps, against the 20 KB partition: 5 pages, one
 // held free for garbage collection, 126 entries each. The system keys are
 // measured ceilings (PHY calibration is a 1904-byte blob; the WiFi driver's
@@ -239,5 +382,10 @@ int main(int, char**) {
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
   RUN_TEST(test_worst_case_config_fits_nvs_with_margin);
+  RUN_TEST(test_crash_mid_save_removing_an_entry_keeps_the_rest);
+  RUN_TEST(test_crash_mid_save_adding_and_editing_keeps_the_rest);
+  RUN_TEST(test_crash_mid_migration_keeps_the_legacy_config);
+  RUN_TEST(test_unreadable_record_drops_only_itself);
+  RUN_TEST(test_unregistered_type_record_loads);
   return UNITY_END();
 }

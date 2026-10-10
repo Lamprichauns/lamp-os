@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
@@ -33,11 +34,13 @@ class ConfigStore {
 // In-memory ConfigStore for the native suite (no Arduino/flash). The second
 // implementation that makes ConfigStore a test seam rather than speculative
 // indirection (see docs/dev/code-smells.md). `failWrites` makes every write
-// return 0, the way a full NVS does.
+// return 0, the way a full NVS does; `writesBeforeCrash` lets that many writes
+// and erases land and fails the rest, the way a reset mid-save leaves NVS.
 class InMemoryConfigStore : public ConfigStore {
  public:
   bool failWrites = false;
   size_t writeCount = 0;
+  size_t writesBeforeCrash = SIZE_MAX;
 
   std::string read(const char* key, const char* defaultValue) override {
     auto it = map_.find(key);
@@ -53,13 +56,14 @@ class InMemoryConfigStore : public ConfigStore {
     return it->second.size();
   }
   size_t writeBlob(const char* key, const void* data, size_t len) override {
+    if (crashed()) return 0;
     ++writeCount;
     if (failWrites) return 0;
     map_[key].assign(static_cast<const char*>(data), len);
     return len;
   }
   bool erase(const char* key) override {
-    if (failWrites) return false;
+    if (crashed() || failWrites) return false;
     map_.erase(key);
     return true;
   }
@@ -70,6 +74,11 @@ class InMemoryConfigStore : public ConfigStore {
   bool has(const char* key) const { return map_.count(key) != 0; }
 
  private:
+  bool crashed() {
+    if (writesBeforeCrash == 0) return true;
+    if (writesBeforeCrash != SIZE_MAX) --writesBeforeCrash;
+    return false;
+  }
   std::map<std::string, std::string> map_;
 };
 

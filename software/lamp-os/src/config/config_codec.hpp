@@ -68,13 +68,21 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const ExpressionSettings& expressions,
                       const HomeModeSettings& homeMode);
 
+struct LoadedRecords {
+  bool present = false;      // "xn" existed; the expressions came from records
+  uint32_t droppedMask = 0;  // bit i: record "x<i>" missing or unreadable
+  uint8_t duplicates = 0;    // records skipped as a repeat (type, target)
+};
+
 // Overlays what saveConfig keeps outside the "cfg" JSON: the knockout levels
 // ("ko", one byte per pixel) onto `base`, and the expressions from their
-// records when "xn" is present. Returns false, leaving the expressions as the
-// "cfg" JSON loaded them, for a store written before records existed; the
-// next save migrates it. Call after fromJson, which sizes the knockout.
-bool loadRecords(ConfigStore& store, BaseSettings& base,
-                 ExpressionSettings& expressions);
+// records when "xn" is present. A record that fails to read drops only itself
+// (reported in droppedMask); a repeat (type, target) keeps its first record.
+// With no "xn" the expressions stay as the "cfg" JSON loaded them, for a store
+// written before records existed; the next save migrates it. Call after
+// fromJson, which sizes the knockout.
+LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
+                          ExpressionSettings& expressions);
 
 // True when `json` is a whole config document safe to persist: it parses and
 // carries a `lamp` object. persistRawJson gates on this so a truncated or
