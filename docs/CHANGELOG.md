@@ -5,7 +5,7 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
-## 1.2.8
+## Unreleased
 
 ### Added
 - **Moments.** Once in a long while a room of lamps that like each other
@@ -17,13 +17,15 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   **Whisper**: a soft glow in the starting lamp's colour travels across a base
   and is handed on, lamp to lamp for up to eight hops, each time to the
   closest lamp (strongest signal) it is fond of or smitten with that hasn't
-  had it yet. **Heartbeat**: a lamp's base beats gently in the colour of a
-  lamp it is smitten with when that lamp comes close, quickening as it nears
-  and settling when it leaves. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
+  had it yet. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
   more it takes part (back to normal after a restart), Extroverts start them
   more often and Introverts less, and nothing happens during an update, while
   the wisp is painting, while you preview in the app, or in home mode with
   social off. Lamps on older firmware just ignore them.
+
+## 1.2.8
+
+### Added
 - **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
   source in the app and choose which of Straylight's palettes to follow —
   Primary, Secondary, Tertiary or Fill. The wisp takes it over USB or the

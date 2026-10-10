@@ -1,8 +1,8 @@
 # Moments
 
 Rare crowd-level expressions driven by dispositions: a room of lamps that like
-each other sometimes sparkles together, passes a glow from lamp to lamp, or
-beats with a heart for a favourite that comes close. Always on, no setting.
+each other sometimes sparkles together or passes a glow from lamp to lamp.
+Always on, no setting.
 Part of the social system ([`social.md`](social.md)). **The code wins ties**;
 update this doc when it doesn't.
 
@@ -37,13 +37,10 @@ renders in the base's own colours, so each stands out there.
 |---|---|---|---|
 | Fireflies (one beat) | `flicker`, Twinkle burst | this lamp's shade colours (up to 4, one per beat) | `fire=0`, `count` = 25% of the base's pixels **(T)**, `durationMax=700` ms **(T)**, `opacity` per envelope (10 to 25) **(T)** |
 | Whisper (one glow) | `pulse` | the origin's base colour; the origin itself glows in its shade colours | `loop=0`, `fullStrip=1`, `pulseSpeed=3`, `size=6`, `easing=1`, `opacity=30` **(T)** |
-| Heartbeat lub | `flicker`, Twinkle burst | the Smitten peer's base colour | `fire=0`, every cell, `durationMax=160` ms, `opacity=60` **(T)** |
-| Heartbeat dub | `flicker`, Twinkle burst | as the lub | as the lub, `durationMax=140` ms, `opacity=35`, 260 ms after the lub's onset **(T)** |
 
 **Why flicker.** Fireflies is many soft points: each lamp's beat fires a short,
 faint Twinkle burst of stars, so a crowd sparkles together on the shared
-rhythm. Heartbeat is a whole-surface swell: a burst that lights every cell
-reads as a soft throb in the loved peer's colour. Glitchy is not used.
+rhythm. Glitchy is not used.
 Breathing clamps to at least 8 s a cycle and pulse to at least 100 ms a pixel,
 too slow for a beat; spotty runs independent random lifecycles that cannot
 land on a shared beat.
@@ -76,9 +73,7 @@ so the app, `exprcat` and `test_builtin_descriptors` are unchanged:
   `test/test_shimmer_math/`; the real expression driven to completion:
   `test/test_shimmer_burst/`.
 
-**Colours.** Heartbeat takes the peer's base colour as the near view carries it
-(from its BLE advert or HELLO); no wider palette is cached for a peer, since
-colour info is fetched on demand by snafu's greeting alone. Whisper's origin
+**Colours.** Whisper's origin
 colour rides the frame as `c`, so a hop far from the origin still has it. Any
 colour within 48 (`colorDistance`) of this lamp's first base colour is whitened
 40% with `bloomWhiten`, so it still shows.
@@ -96,7 +91,7 @@ top-level `mo` object:
 
 | Key | Meaning |
 |---|---|
-| `k` | Kind: 1 Fireflies, 2 Whisper. Heartbeat sends nothing. Any other `k` is ignored whole, so later kinds stay additive. |
+| `k` | Kind: 1 Fireflies, 2 Whisper. Any other `k` is ignored whole, so later kinds stay additive. |
 | `s` | uint32 seed, also the Moment id. |
 | `a` | Age in ms since the sender's reference instant, 0 to 2000: the Fireflies `t0`, or the Whisper sender's glow. A receiver recovers that instant as `arrival - a`. |
 | `h` | Whisper: lamps visited so far, 1 to 8. |
@@ -130,7 +125,7 @@ fresh `a`; the director's dedup ring collapses the copy. A send waits for
 Fireflies start whose first copy never went out ends the Moment, and the
 initiator's growth still applies.
 
-**Airtime.** Fireflies 2 frames a Moment, Whisper 2 a hop (16 at most), Heartbeat none.
+**Airtime.** Fireflies 2 frames a Moment, Whisper 2 a hop (16 at most).
 
 ## Pacing
 
@@ -140,7 +135,6 @@ All in RAM, reset on reboot, nothing in NVS. Per kind:
 |---|---|---|---|---|---|
 | Fireflies | 20 to 60 min | +30 min both ends | 6 steps (200 to 240) **(T)** | 45 min **(T)** | U(0, 90 s) **(T)** |
 | Whisper | 8 to 20 min **(T)** | +10 min **(T)** | 6 steps (68 to 80) **(T)** | 10 min **(T)** | U(0, 30 s) **(T)** |
-| Heartbeat | 20 to 60 min | +30 min | 6 steps | none (local only) | none |
 
 - **Wait.** At boot and after each participation:
   `U(lo + step*g, hi + step*g) * mode`, with `g` capped and mode Introvert 1.5,
@@ -169,8 +163,7 @@ All in RAM, reset on reboot, nothing in NVS. Per kind:
   start together split the room: each hearer joins the first start it hears.
 
 Rough rates: a room sees a Fireflies every 45 to 60 min early in a session,
-slowing as ranges grow; a Whisper every 10 to 15 min per radio neighbourhood; a
-Heartbeat at most every 20 to 60 min per lamp.
+slowing as ranges grow; a Whisper every 10 to 15 min per radio neighbourhood.
 
 ## Kinds
 
@@ -250,25 +243,6 @@ on `(v[0], s)` stops a lamp glowing twice for one Whisper, a resent copy
 included; `h <= 8` bounds a chain at 8 hops (the origin plus 8 lamps glow),
 16 frames, and the payload.
 
-### Heartbeat
-
-Local only; sends nothing. **Initiate** when eligible, unsuppressed, no
-greeting active, and a fresh peer is Smitten at -65 dBm or better **(T)**; the
-strongest is recorded. The peer's arrival also starts its greeting, so the
-heartbeat follows it.
-
-**Beat.** A lub, then a dub 260 ms after the lub's onset. The period
-`P = lerp(1500 ms at -75 dBm, 700 ms at -45 dBm)` **(T)**, clamped, over an EMA
-(alpha 0.2) of the peer's RSSI, re-read at each beat, so the beat quickens as
-the peer comes closer. The EMA samples at 1 Hz and only on a new BLE sighting,
-so a reading a HELLO keeps alive cannot hold the beat. The lub's burst ends before the dub
-fires, so the same-sender, same-type coalesce in `triggerInvocation` never
-drops the dub.
-
-**Settle** when the peer's last BLE sighting is 10 s old, or its EMA has been
-under -80 dBm for 10 s, or 180 s have passed **(T)**. Over 6 beats the period
-eases to 1600 ms and the opacity steps down to 10, then the Moment ends.
-
 ## Suppressors
 
 No Moment initiates, joins or accepts while one holds; one arising mid-Moment
@@ -287,11 +261,11 @@ Crowd-dim multiplies the whole frame, so Moments dim with the lamp.
 
 ## State and footprint
 
-`MomentDirector` is one global; all its state is members, fixed size: three
+`MomentDirector` is one global; all its state is members, fixed size: two
 kind states, the liked fingerprint, one active Moment (with an 8-entry visited
 list), one outbound frame, and an 8-entry dedup ring of `{origin, seed, kind}`.
 Heap is the transients only: a flicker burst (about 8 B a cell plus the
-Expression) for 140 to 700 ms, a pulse for about 6 s, one at a time. A
+Expression) for 700 ms, a pulse for about 6 s, one at a time. A
 Fireflies churns about 120 same-size alloc/free pairs over 2.6 min, under 1 Hz,
 off the hot path. Building an invocation allocates its type string and colour
 vector, at no more than a few per second. The roster's BLE stamp adds 4 bytes
@@ -299,15 +273,14 @@ a peer (`RosterEntry` 112 B, `NearbyCopy` 64 B).
 
 ## Debug (LAMP_DEBUG builds)
 
-- `{"a":"moment","k":"fireflies|whisper|heartbeat","seed":N}` starts a kind
+- `{"a":"moment","k":"fireflies|whisper","seed":N}` starts a kind
   now, past eligibility, conditions and the cooldown, never past a suppressor
   or a running Moment. `seed` 0 or absent rolls one.
 - `{"a":"moment_state"}` (debug builds only, like every test action) prints each kind's growth, wait, cooldown and backoff,
   the liked count and stillness, and any running Moment.
 - `inject_nearby` takes `"mac"` per peer, so its disposition is stored under
   that MAC; an injected peer reads as seen (and BLE-sighted) at injection and
-  goes stale after 15 s, so re-send it to keep Whisper or Heartbeat candidates
-  fresh.
+  goes stale after 15 s, so re-send it to keep Whisper candidates fresh.
 - `[moment]` lines carry kind, seed, role, hop and the reason for any skip;
   dev builds also log each Fireflies beat as `[moment] ff k=<beat> d=<ms>`.
 
@@ -319,8 +292,6 @@ a peer (`RosterEntry` 112 B, `NearbyCopy` 64 B).
   fixed seed; the `ff` lines' `d` must match the native vectors for those MACs.
 - **Whisper chain**: 4 or more real lamps on a Fond chain; force at one end,
   read hop order and timing across the tapped logs.
-- **Heartbeat**: carry a Smitten-disposed lamp toward and away; the beat
-  quickens and settles.
 - **Load**: the wisp's crowd sim with events while Fireflies runs; watch
   `[heap]` `largest`, `txrefused`, `[expr] transient drop`, and that each
   burst logs `transient reaped type=flicker (complete)`, never `expired`.

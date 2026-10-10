@@ -28,7 +28,7 @@ subsystem below.
 |---|---|---|---|
 | **Greetings** | A one-shot waveform on the shade when the lamp meets a peer — fade to their color, hold, fade back. Shape varies by SocialMode × Disposition. | `behaviors/social.cpp` (renderer), `core/personality_engine.cpp` (timing source) | [`personality-greetings.md`](personality-greetings.md) |
 | **Crowd-dim** | Continuous brightness damping as the room fills with peers, weighted by disposition and floored per mode. Introverts hide harder; Extroverts never dim. | `core/personality_engine.cpp` | [`personality-signals.md`](personality-signals.md) |
-| **Moments** | Rare crowd-level expressions: Fireflies (liked lamps sparkle in sync), Whisper (a glow handed lamp to lamp along friendly peers), Heartbeat (a beat for a Smitten peer close by). Always on, paced to grow rarer with each one. | `core/moments.cpp`, `core/moment_math.cpp` | [`moments.md`](moments.md) |
+| **Moments** | Rare crowd-level expressions: Fireflies (liked lamps sparkle in sync), Whisper (a glow handed lamp to lamp along friendly peers). Always on, paced to grow rarer with each one. | `core/moments.cpp`, `core/moment_math.cpp` | [`moments.md`](moments.md) |
 
 ### Greetings
 

@@ -74,7 +74,7 @@ it back upstream, see [Contributing](../../README.md#contributing).
 - [`personality-greetings.md`](personality-greetings.md), disposition-driven
   greeting animations (how lamps acknowledge peers they meet on the mesh).
 - [`moments.md`](moments.md), the rare crowd-level expressions (Fireflies,
-  Whisper, Heartbeat): pacing, the `mo` wire object, suppressors, bench steps.
+  Whisper): pacing, the `mo` wire object, suppressors, bench steps.
 - [`personality-signals.md`](personality-signals.md), the signals a custom
   lamp can react to (crowd weight/composition, presence, time, etc.).
 - [`utilities.md`](utilities.md), the mechanical helper toolbox

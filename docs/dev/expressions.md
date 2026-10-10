@@ -241,7 +241,7 @@ Moments ([`moments.md`](moments.md)) render only through existing types fired
 with `triggerInvocation(inv, selfMac, /*broadcast=*/false, TransientSource::Remote)`:
 they never cascade or announce, and take only the two peer transient slots.
 All of them render on the base, in a colour that is not the base's own:
-Fireflies and Heartbeat fire tinted `flicker` bursts; Whisper fires a `pulse`.
+Fireflies fires tinted `flicker` bursts; Whisper fires a `pulse`.
 
 **The flicker burst.** `flicker` reads two keys outside its descriptor, so the
 app and `exprcat` never offer them: on a transient (auto-trigger off) with both
@@ -283,7 +283,7 @@ Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` 
 - `test/test_transient_lifetime/transient_lifetime.cpp`, transient GC backstop + never-started-transient rejection
 - `test/test_shimmer_math/shimmer_math.cpp`, flicker heat/warmth math and the burst (spark band, the anchor-neutral paint threshold, a spark lit mid-burst and dark at completion)
 - `test/test_shimmer_burst/shimmer_burst.cpp`, the real `ShimmerExpression` on stub frame buffers: a transient burst completes for the GC, only sparked cells paint, a configured flicker with the burst keys stays continuous
-- `test/test_moments/moments.cpp`, Moments: pacing, cooldown, the 50-lamp herd, the Fireflies timeline, Whisper hops, Heartbeat, the `mo` codec, render routing, the mirror bypass
+- `test/test_moments/moments.cpp`, Moments: pacing, cooldown, the 50-lamp herd, the Fireflies timeline, Whisper hops, the `mo` codec, render routing, the mirror bypass
 - `test/test_social_echo/social_echo.cpp`, expression-mirror rate grid, disp<4 early-out, introvert cooldown, replay scheduling window + fire, emitEvent continuous-gate
 
 To add a host-side test for a new expression: instantiate it with a stub `FrameBuffer` (see the personality-engine suite for the pattern), call the public `trigger()` to fire `onTrigger()`, then call `draw()` per frame and assert on the buffer's pixel state. You don't need a real Compositor — `Expression::control()` (the auto-cadence driver) is the only thing that requires one.
