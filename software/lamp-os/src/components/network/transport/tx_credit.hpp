@@ -6,13 +6,11 @@
 namespace lamp {
 
 // Bounds the ESP-NOW frames handed to the WiFi driver and not yet reported
-// sent. Each queued frame holds a driver TX buffer from the heap until it
-// airs; past the driver's queue a send fails with ESP_ERR_ESPNOW_NO_MEM, and
-// a burst of those preceded the TX path wedging with its buffers held. A
-// send takes a credit before esp_now_send and the send callback returns it.
-// If credits are out and none has come back for kStallMs, the outstanding
-// ones are presumed lost (callbacks that never fire) and the count resets.
-// Lock-free: the loop and WiFi tasks both send, the WiFi task completes.
+// sent to kMaxInFlight (docs/dev/embedded-heap.md). A send takes a credit
+// before esp_now_send; each send callback returns one. While credits are out
+// and no callback has come back for kStallMs, the outstanding ones are
+// presumed lost and the count resets. Safe from the loop and WiFi tasks at
+// once.
 class TxCredit {
  public:
   static constexpr uint16_t kMaxInFlight = 6;
@@ -20,23 +18,18 @@ class TxCredit {
 
   // True, with a credit taken, when a frame may be submitted.
   bool tryAcquire(uint32_t nowMs) {
-    uint16_t cur = inFlight_.load(std::memory_order_relaxed);
-    if (cur > 0 && elapsedSince(lastProgressMs_.load(std::memory_order_relaxed), nowMs) >=
-                       static_cast<int32_t>(kStallMs)) {
-      stalls_.fetch_add(1, std::memory_order_relaxed);
-      inFlight_.store(0, std::memory_order_relaxed);
-      cur = 0;
-    }
+    uint16_t cur = resetIfStalled(nowMs);
     while (true) {
       if (cur >= kMaxInFlight) {
         refused_.fetch_add(1, std::memory_order_relaxed);
         return false;
       }
+      // The stall clock restarts with the first frame out after an idle
+      // spell, before that credit shows: another task that then sees it out
+      // must not read the idle spell as a stall.
+      if (cur == 0) advance(nowMs, true);
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
-        // The stall clock restarts with the first frame out after an idle
-        // spell.
-        if (cur == 0) advance(nowMs, true);
         return true;
       }
     }
@@ -50,6 +43,10 @@ class TxCredit {
   }
 
   uint16_t inFlight() const { return inFlight_.load(std::memory_order_relaxed); }
+  // True when a frame may be submitted now, with the stall reset applied
+  // first, so a caller that waits for a credit before submitting is never
+  // held by credits lost on a quiet link.
+  bool available(uint32_t nowMs) { return resetIfStalled(nowMs) < kMaxInFlight; }
   // Times the count was presumed lost and reset.
   uint32_t stalls() const { return stalls_.load(std::memory_order_relaxed); }
   // Sends refused for want of a credit: a mesh resend or any other send that
@@ -57,6 +54,18 @@ class TxCredit {
   uint32_t refused() const { return refused_.load(std::memory_order_relaxed); }
 
  private:
+  // The credits out, after presuming them lost when none has come back for
+  // kStallMs.
+  uint16_t resetIfStalled(uint32_t nowMs) {
+    const uint16_t cur = inFlight_.load(std::memory_order_relaxed);
+    if (cur > 0 && elapsedSince(lastProgressMs_.load(std::memory_order_relaxed), nowMs) >=
+                       static_cast<int32_t>(kStallMs)) {
+      stalls_.fetch_add(1, std::memory_order_relaxed);
+      inFlight_.store(0, std::memory_order_relaxed);
+      return 0;
+    }
+    return cur;
+  }
   static int32_t elapsedSince(uint32_t thenMs, uint32_t nowMs) {
     return static_cast<int32_t>(nowMs - thenMs);
   }

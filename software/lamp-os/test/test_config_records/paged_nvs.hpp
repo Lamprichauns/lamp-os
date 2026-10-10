@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "config/config_store.hpp"
+#include "config/orphan_guard.hpp"
 
 namespace lamp {
 
@@ -29,7 +30,12 @@ namespace lamp {
 // the first chunk numbered by its position (0, 1, ...) rather than by the new
 // version's offset, so it can take the old version's chunk instead of its own.
 // failBlobKey forces that failure on the next write of that lamp key, as
-// requestNewPage failing after its first chunk is recorded. Erasing a blob takes its index and that version's
+// requestNewPage failing after its first chunk is recorded. outOfMemoryKey
+// forces the other: the 12-byte bookkeeping allocation failing after a chunk
+// is written, which leaves that chunk unrecorded, uncleaned and named by no
+// index. Blob writes go through writeBlobPastOrphan as NvsConfigStore's do,
+// and boot() forgets the orphans it erases. Reads and boot()
+// clean up as IDF does (readBlob, boot). Erasing a blob takes its index and that version's
 // chunks; chunks of another version stay until IDF's boot scan. Keys of other
 // namespaces are written with putSystem.
 class PagedNvs : public ConfigStore {
@@ -40,7 +46,9 @@ class PagedNvs : public ConfigStore {
   static constexpr size_t kChunkMax = kEntrySize * (kEntries - 1);
 
   size_t failedWrites = 0;
-  std::string failBlobKey;  // a lamp key; cleared once the failure fires
+  std::string failBlobKey;     // a lamp key; cleared once the failure fires
+  std::string outOfMemoryKey;  // likewise
+  bool pastOrphans = true;     // as NvsConfigStore; off to show what it prevents
 
   PagedNvs() {
     for (size_t i = 0; i < kPages; ++i) free_.push_back(i);
@@ -65,14 +73,32 @@ class PagedNvs : public ConfigStore {
     return findLive(k, Kind::String) || findLive(k, Kind::Primitive) ||
            findLive(k, Kind::BlobIndex);
   }
+  // nvs_get_blob: the size comes from the index alone, so a blob over `cap`
+  // fails before any chunk is read. Reading a chunk whose data fails its CRC
+  // erases that chunk and fails; reading a blob with a chunk missing erases
+  // the blob and fails (readMultiPageBlob).
   size_t readBlob(const char* key, void* out, size_t cap) override {
+    const std::string k = ns(key);
+    const Item* index = findLive(k, Kind::BlobIndex);
+    if (!index || index->data.size() > cap) return 0;
     std::string value;
-    if (!blobValue(ns(key), value) || value.size() > cap) return 0;
+    if (!blobValue(k, value)) {
+      if (!killCorruptChunk(k)) eraseKey(k);
+      return 0;
+    }
     std::memcpy(out, value.data(), value.size());
     return value.size();
   }
   size_t writeBlob(const char* key, const void* data, size_t len) override {
-    return putBlob(ns(key), std::string(static_cast<const char*>(data), len)) ? len : 0;
+    auto raw = [this](const char* k, const void* d, size_t n) { return rawWriteBlob(k, d, n); };
+    if (!pastOrphans) return raw(key, data, len) == BlobWrite::Ok ? len : 0;
+    return writeBlobPastOrphan(orphans_, key, data, len, raw) ? len : 0;
+  }
+  // nvs_set_blob alone, as the native NVS stub serves it to NvsConfigStore.
+  BlobWrite rawWriteBlob(const char* key, const void* data, size_t len) {
+    outOfMemory_ = false;
+    if (putBlob(ns(key), std::string(static_cast<const char*>(data), len))) return BlobWrite::Ok;
+    return outOfMemory_ ? BlobWrite::OutOfMemory : BlobWrite::Failed;
   }
   bool erase(const char* key) override {
     eraseKey(ns(key));
@@ -98,6 +124,51 @@ class PagedNvs : public ConfigStore {
 
   void eraseSystem(const std::string& key) { eraseKey(key); }
 
+  // A data chunk of the lamp key's blob fails its CRC from now on.
+  void corruptBlob(const char* key) {
+    for (auto& page : pages_) {
+      for (auto& item : page.items) {
+        if (item.live && item.key == ns(key) && item.kind == Kind::BlobData) item.crcBad = true;
+      }
+    }
+  }
+
+  // Storage::init after a reset: eraseMismatchedBlobIndexes drops an index
+  // whose chunks are missing, and eraseOrphanDataBlobs every chunk no index
+  // names. Not modelled: IDF counts every chunk of the index's version family
+  // (up to the next version's offset) and compares the summed data size with
+  // the index; this counts the index's own range only, which no save here can
+  // tell apart.
+  void boot() {
+    orphans_ = OrphanKeys{};
+    for (auto& page : pages_) {
+      for (auto& index : page.items) {
+        if (!index.live || index.kind != Kind::BlobIndex) continue;
+        uint8_t found = 0;
+        for (const auto& p : pages_) {
+          for (const auto& item : p.items) {
+            found += item.live && item.key == index.key && item.kind == Kind::BlobData &&
+                     item.chunk >= index.chunk && item.chunk < index.chunk + index.chunkCount;
+          }
+        }
+        if (found != index.chunkCount) kill(page, index);
+      }
+    }
+    for (auto& page : pages_) {
+      for (auto& item : page.items) {
+        if (!item.live || item.kind != Kind::BlobData) continue;
+        bool named = false;
+        for (const auto& p : pages_) {
+          for (const auto& index : p.items) {
+            named |= index.live && index.kind == Kind::BlobIndex && index.key == item.key &&
+                     item.chunk >= index.chunk && item.chunk < index.chunk + index.chunkCount;
+          }
+        }
+        if (!named) kill(page, item);
+      }
+    }
+  }
+
   size_t liveEntries() const {
     size_t n = 0;
     for (const auto& page : pages_) n += page.used;
@@ -115,6 +186,7 @@ class PagedNvs : public ConfigStore {
     size_t span;
     std::string data;
     bool live;
+    bool crcBad = false;
   };
   struct Page {
     State state = State::Free;
@@ -210,6 +282,7 @@ class PagedNvs : public ConfigStore {
         for (const auto& item : page.items) {
           if (!found && item.live && item.key == key && item.kind == Kind::BlobData &&
               item.chunk == index->chunk + c) {
+            if (item.crcBad) return false;
             out += item.data;
             found = true;
           }
@@ -218,6 +291,30 @@ class PagedNvs : public ConfigStore {
       if (!found) return false;
     }
     return true;
+  }
+
+  void killFirstChunk(const std::string& key, uint8_t chunk) {
+    for (auto& page : pages_) {
+      for (auto& item : page.items) {
+        if (item.live && item.key == key && item.kind == Kind::BlobData && item.chunk == chunk) {
+          kill(page, item);
+          return;
+        }
+      }
+    }
+  }
+
+  // Page::readVariableLengthItemData on a chunk that fails its CRC erases it.
+  bool killCorruptChunk(const std::string& key) {
+    for (auto& page : pages_) {
+      for (auto& item : page.items) {
+        if (item.live && item.key == key && item.kind == Kind::BlobData && item.crcBad) {
+          kill(page, item);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Every live item under `key` that `match` picks.
@@ -283,6 +380,9 @@ class PagedNvs : public ConfigStore {
     std::string existing;
     if (old && blobValue(key, existing) && existing == data) return true;
     const uint8_t start = old && old->chunk == 0 ? 128 : 0;
+    const bool hadIndex = old != nullptr;
+    const uint8_t oldStart = old ? old->chunk : 0;
+    const uint8_t oldCount = old ? old->chunkCount : 0;
     if (data.size() > (kPages - 1) * kChunkMax) return fail();
 
     std::vector<size_t> usedPages;  // the page of each chunk recorded
@@ -307,6 +407,12 @@ class PagedNvs : public ConfigStore {
       const size_t len = std::min(data.size() - offset, tail);
       pageWrite(page, Item{key, Kind::BlobData, static_cast<uint8_t>(start + chunks), 0,
                            spanOf(Kind::BlobData, len), data.substr(offset, len), true});
+      if (key == ns(outOfMemoryKey.c_str())) {
+        outOfMemoryKey.clear();
+        outOfMemory_ = true;
+        ok = false;
+        break;
+      }
       usedPages.push_back(list_.back());
       if (key == ns(failBlobKey.c_str())) {
         failBlobKey.clear();
@@ -323,7 +429,8 @@ class PagedNvs : public ConfigStore {
         }
       }
       if (offset == data.size()) {
-        pageWrite(current(), Item{key, Kind::BlobIndex, start, chunks, 1, std::string(), true});
+        pageWrite(current(), Item{key, Kind::BlobIndex, start, chunks, 1,
+                                  std::string(data.size(), '\0'), true});
         break;
       }
     }
@@ -339,14 +446,24 @@ class PagedNvs : public ConfigStore {
       }
       return fail();
     }
-    eraseWhere(key, [&](const Item& item) {
-      if (item.kind == Kind::BlobIndex) return item.chunk != start;
-      if (item.kind == Kind::BlobData) return item.chunk < start || item.chunk >= start + 128;
-      return true;
+    // The previous version goes as eraseMultiPageBlob with its offset named
+    // erases it: its index, then for each position its index counts, the
+    // first chunk found there, so an orphan at a counted position may go in
+    // the chunk's place. A value of another type under the key goes too.
+    if (hadIndex) {
+      eraseWhere(key, [&](const Item& item) {
+        return item.kind == Kind::BlobIndex && item.chunk == oldStart;
+      });
+      for (uint8_t c = oldStart; c < oldStart + oldCount; ++c) killFirstChunk(key, c);
+    }
+    eraseWhere(key, [](const Item& item) {
+      return item.kind == Kind::String || item.kind == Kind::Primitive;
     });
     return true;
   }
 
+  OrphanKeys orphans_;
+  bool outOfMemory_ = false;
   std::array<Page, kPages> pages_;
   std::deque<size_t> list_;
   std::deque<size_t> free_;

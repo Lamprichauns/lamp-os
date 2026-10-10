@@ -1,8 +1,8 @@
 // Native pin for SocialBehavior::cancelGreeting, which the compositor calls on
 // a SocialBehavior home mode skips: a greeting in progress ends (STOPPED,
 // frame 0) and the app is told once; with none playing it does nothing.
-// Links the shipped social.cpp; its OTA, roster and render dependencies are
-// link stubs this test never reaches.
+// Links the shipped social.cpp; its personality and mesh dependencies are
+// link stubs.
 
 #include <unity.h>
 
@@ -15,27 +15,17 @@
 #include "../../src/util/gradient.cpp"
 #include "../../src/core/frame_buffer.cpp"
 
-lamp::FirmwareReceiver firmwareReceiver;
 
 static bool g_ignore = false;
 
 namespace lamp {
 OverrideAggregate overrides;
 PersonalityEngine personalityEngine;
-FirmwareDistributor firmwareDistributor;
 GreetingTuning PersonalityEngine::greetingFor(const uint8_t*) const { return {}; }
-bool FirmwareDistributor::isInProgress() const { return false; }
-void FirmwareDistributor::considerPeerForOta(const uint8_t*, uint32_t, uint8_t, uint32_t,
-                                             const char*, uint16_t, int8_t, bool) {}
 bool MeshLink::sendColorQuery(const uint8_t*) { return true; }
 bool BehaviorContext::ignoresPeers() const { return g_ignore; }
 }  // namespace lamp
 
-namespace fs_ota {
-bool fsPathBusy() { return false; }
-void considerPeer(const uint8_t*, uint32_t, uint8_t, uint32_t, const char*, const uint8_t*,
-                  bool, bool, int8_t) {}
-}  // namespace fs_ota
 
 using namespace lamp;
 

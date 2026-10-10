@@ -78,10 +78,13 @@ custom lamp can react to (`crowdDimFactor()`, `smoothedCrowdWeight()`,
   along. The app's Home Mode preview blocks the same peer paths but consumes
   no arrival and leaves peer effects already running to finish.
   Detail in [`lamp-framework.md`](lamp-framework.md#home-mode).
-- **OTA outranks personality.** Firmware propagation is gated separately
-  from the visual greeting; a lamp distributes/receives OTA regardless of
-  social mode. The greeting's appearance is personality's department, not
-  whether bytes move. (See the OTA notes in the firmware components.)
+- **OTA outranks personality.** Offering an update is not a social
+  behaviour. The offer scan (`tickOtaOffers`, `components/firmware/ota_offer.cpp`)
+  runs in the framework loop on every variant, so a lamp distributes and
+  receives OTA whatever its social mode, mid-greeting, in home mode with
+  social off, and on variants built without `SocialBehavior` (snafu,
+  lioness). The greeting's appearance is personality's department, not
+  whether bytes move.
 
 ## Code map
 

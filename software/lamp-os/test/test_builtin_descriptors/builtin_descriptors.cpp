@@ -391,6 +391,22 @@ void test_pulse_loop_param() {
   TEST_ASSERT_EQUAL_STRING("Continuous", opts[1]["label"].as<const char*>());
 }
 
+void test_pulse_direction_param() {
+  JsonObject e = findById("pulse");
+  JsonObject travel;
+  for (JsonObject p : e["params"].as<JsonArray>()) {
+    if (std::string(p["key"].as<const char*>()) == "travel") { travel = p; break; }
+  }
+  TEST_ASSERT_FALSE(travel.isNull());
+  TEST_ASSERT_EQUAL_STRING("enum", travel["type"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Direction", travel["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_INT(0, travel["default"].as<int>());
+  auto opts = travel["options"].as<JsonArray>();
+  TEST_ASSERT_EQUAL_size_t(2, opts.size());
+  TEST_ASSERT_EQUAL_STRING("Up", opts[0]["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Down", opts[1]["label"].as<const char*>());
+}
+
 static bool hasOpacity(const ExpressionDescriptor& d) {
   for (const auto& p : d.params)
     if (std::strcmp(p.key, "opacity") == 0)
@@ -531,6 +547,7 @@ int main(int, char**) {
   RUN_TEST(test_shifty_easing_param_defaults_linear);
   RUN_TEST(test_breathing_easing_param_defaults_smooth);
   RUN_TEST(test_pulse_loop_param);
+  RUN_TEST(test_pulse_direction_param);
   RUN_TEST(test_all_types_expose_opacity);
   RUN_TEST(test_shimmer_is_continuous_and_zoneable);
   RUN_TEST(test_shimmer_is_not_advanced);

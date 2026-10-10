@@ -51,21 +51,24 @@ class Expression : public AnimatedBehavior {
   void saveBufferState();
 
   /**
-   * Check if this expression should affect current buffer.
+   * Check if this expression should affect current buffer, or `surface`.
+   * trigger() gates on the no-argument form.
    */
-  bool shouldAffectBuffer();
+  virtual bool shouldAffectBuffer() { return shouldAffectBuffer(fb); }
+  bool shouldAffectBuffer(FrameBuffer* surface);
 
   /**
    * Per-pixel contribution scale in [0,1] for a yielding expression drawing
-   * on this fb's surface: opacityPct_/100 capped further by the compositor's
-   * wisp presence `w`, lerping toward wispDimFloor() as w rises. Opacity 100
-   * with no wisp present (or a type that doesn't yield) returns 1.0. Reads
-   * the same `w` that composites the wisp, so on release the expression
-   * returns to its opacity cap in lockstep with the wisp fade. Per-surface:
-   * base presence for a base fb, shade presence for a shade fb. A retired
-   * expression's scale also ramps to 0 over kRetireFadeMs.
+   * on this fb's surface (or `surface`): opacityPct_/100 capped further by
+   * the compositor's wisp presence `w`, lerping toward wispDimFloor() as w
+   * rises. Opacity 100 with no wisp present (or a type that doesn't yield)
+   * returns 1.0. Reads the same `w` that composites the wisp, so on release
+   * the expression returns to its opacity cap in lockstep with the wisp fade.
+   * Per-surface: base presence for a base fb, shade presence for a shade fb.
+   * A retired expression's scale also ramps to 0 over kRetireFadeMs.
    */
-  float wispDimScale();
+  float wispDimScale() { return wispDimScale(fb); }
+  float wispDimScale(FrameBuffer* surface);
 
   // The retire fade alone: 1.0 until retire(), then ramping to 0 over
   // kRetireFadeMs.
@@ -101,6 +104,10 @@ class Expression : public AnimatedBehavior {
 
   // Surfaces the expression id string for the compositor home-mode gate.
   const char* homeModeExpressionId() const override { return descriptor().id; }
+
+  // Hands a spansSurfaces type the shade above its base fb. The manager calls
+  // it on the one TARGET_BOTH instance, before configureFromParameters.
+  virtual void joinSurfaceAbove(FrameBuffer* above) { (void)above; }
 
   // Apply expression-specific tuning params keyed as in descriptor().params.
   virtual void configureFromParameters(

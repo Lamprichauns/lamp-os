@@ -150,8 +150,9 @@ void Config::maybeRetryPersist(uint32_t nowMs) {
 config_codec::SaveResult Config::persistRawJson(const char* json) {
   if (!store_) return config_codec::SaveResult::WriteFailed;
   const config_codec::SaveResult result =
-      saveGate_.allows() ? config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson))
-                         : config_codec::SaveResult::Held;
+      saveGate_.allows()
+          ? config_codec::saveRawJson(*store_, json, s_cfgJson, sizeof(s_cfgJson), lamp.password)
+          : config_codec::SaveResult::Held;
   saveGate_.rawFinished(result, millis());
   if (result != config_codec::SaveResult::Ok) {
     Serial.printf("[nvs] web save failed (%s)\n", saveFailure(result));

@@ -22,12 +22,13 @@ class CascadeScheduler {
   static constexpr size_t kMaxPeers = 50;        // LampRoster::kCapacity, asserted where both are seen
   static constexpr size_t kMaxDrains = 2;        // fan-outs held at once
   // Frames sent per pass at most: the TX credits (TxCredit::kMaxInFlight,
-  // asserted in expression_manager.cpp), so a pass never asks the driver for
-  // more than it can hold.
+  // asserted below), so a pass never asks the driver for more than it can
+  // hold.
   static constexpr size_t kBatchSize = 6;
   // Outlasts a command's resend copies (MeshLink: 2 more, 40 ms apart), so
   // one batch never overwrites the previous batch's pending resends in the
-  // 10-slot resend ring.
+  // 10-slot resend ring. Kept between fan-outs too: the next one's first
+  // batch waits it out after the last batch of the one before.
   static constexpr uint32_t kBatchGapMs = 100;
   static constexpr size_t kMaxPayloadLen = 768;  // a worst-case invocation fits
 
@@ -53,8 +54,8 @@ class CascadeScheduler {
   template <class Send>
   size_t tick(uint32_t nowMs, Send&& send) {
     if (!active()) return 0;
+    if (batched_ && nowMs - lastBatchMs_ < kBatchGapMs) return 0;
     Drain& d = drains_[head_];
-    if (d.batchesSent > 0 && nowMs - d.lastBatchMs < kBatchGapMs) return 0;
     size_t sent = 0;
     while (sent < kBatchSize && d.next < d.count) {
       if (!setDelay(d, delayFor(d.next, d.staggerMs, nowMs - d.startMs))) {
@@ -66,8 +67,8 @@ class CascadeScheduler {
       ++sent;
       ++d.next;
     }
-    ++d.batchesSent;
-    d.lastBatchMs = nowMs;
+    batched_ = true;
+    lastBatchMs_ = nowMs;
     if (d.next >= d.count) pop();
     return sent;
   }
@@ -99,8 +100,6 @@ class CascadeScheduler {
     size_t next = 0;
     uint32_t staggerMs = 0;
     uint32_t startMs = 0;
-    uint32_t lastBatchMs = 0;
-    uint32_t batchesSent = 0;
   };
   // Rewrites the delay digits in place; false if the payload would overflow.
   static bool setDelay(Drain& d, uint32_t delayMs);
@@ -112,6 +111,8 @@ class CascadeScheduler {
   size_t filling_ = 0;  // the fan-out addPeer feeds
   bool fillingValid_ = false;
   uint32_t overflowDrops_ = 0;
+  bool batched_ = false;  // a batch has gone, at lastBatchMs_
+  uint32_t lastBatchMs_ = 0;
 };
 
 static_assert(CascadeScheduler::kBatchSize <= TxCredit::kMaxInFlight,

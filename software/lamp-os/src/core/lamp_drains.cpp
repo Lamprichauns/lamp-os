@@ -38,6 +38,7 @@ namespace {
 // Loop-task state for drainCommit and drainSettingsBlob.
 bool      commitDirty = false;
 bool      rebootWhenSaved = false;  // drainSettingsBlob: a deferred save owes a reboot
+uint32_t  rebootWhenSavedSinceMs = 0;
 uint32_t  lastCommitSignalMs = 0;
 constexpr uint32_t kCommitFlushIdleMs = 2500;
 
@@ -213,11 +214,20 @@ void Lamp::drainCommit() {
 // Runs after drainExpressionOp. OTA-in-progress guard discards the write.
 void Lamp::drainSettingsBlob() {
   lamp::Config& config = ::config;
-  // A blob that needed a reboot whose save was deferred reboots once the
-  // retry lands, so it never comes up on a half-applied config.
-  if (rebootWhenSaved && !config.persistPending() && !firmwareReceiver.isInProgress()) {
-    rebootWhenSaved = false;
-    lamp::fadeOutRebootRequested = true;
+  if (rebootWhenSaved) {
+    switch (lamp::deferredReboot(config.persistPending(), firmwareReceiver.isInProgress(),
+                                 rebootWhenSavedSinceMs, millis())) {
+      case lamp::DeferredReboot::Reboot:
+        rebootWhenSaved = false;
+        lamp::fadeOutRebootRequested = true;
+        break;
+      case lamp::DeferredReboot::GiveUp:
+        rebootWhenSaved = false;
+        Serial.println("[loop] settingsBlob: save never landed; no reboot");
+        break;
+      case lamp::DeferredReboot::Wait:
+        break;
+    }
   }
   if (lamp::pendingSlots.settingsBlob.valid) {
     // static: 2 KB is too big for the loop-task stack; this drain is the
@@ -272,6 +282,7 @@ void Lamp::drainSettingsBlob() {
       } else if (wantsReboot && !persisted) {
         Serial.println("[loop] settingsBlob: save deferred; reboot waits for it");
         rebootWhenSaved = true;
+        rebootWhenSavedSinceMs = millis();
       }
     }
   }

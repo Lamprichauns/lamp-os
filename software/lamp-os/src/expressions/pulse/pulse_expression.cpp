@@ -13,6 +13,10 @@ constexpr ExpressionDescriptor kPulseDescriptor =
     withMake(kPulseDescriptorData, &makeExpr<PulseExpression>);
 }  // namespace
 
+bool PulseExpression::shouldAffectBuffer() {
+  return shouldAffectBuffer(fb) || (above_ && shouldAffectBuffer(above_));
+}
+
 PulseExpression::PulseExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {
 }
@@ -20,10 +24,22 @@ PulseExpression::PulseExpression(FrameBuffer* inBuffer, uint32_t inFrames)
 void PulseExpression::configureFromParameters(const ExpressionParams& parameters) {
   const uint16_t window = windowSize();
   zone_ = resolveZone(parameters, window);
+  lowerEnd_ = zone_.posMax;
+  if (above_ && above_->pixelCount > 0) {
+    const Zone upper = resolveZone(parameters, above_->pixelCount);
+    aboveMin_ = upper.posMin;
+    zone_.posMax = static_cast<uint16_t>(lowerEnd_ + upper.size());
+  }
+  down_ = getParam(parameters, "travel", 0) != 0;
 
   uint32_t pulseSpeed = getParam(parameters, "pulseSpeed");
   const uint16_t span = zone_.size() > 0 ? zone_.size() : window;
-  pulseSpeedMs = std::max<uint32_t>(100, (pulseSpeed * kMsPerSecond) / span);
+  // The speed floor is per surface: a joined strip crosses at the floor in the
+  // time its longer surface takes alone.
+  const uint16_t lowerSpan = static_cast<uint16_t>(lowerEnd_ + 1 - zone_.posMin);
+  const uint32_t floorSpan = std::max<uint32_t>(lowerSpan, span - lowerSpan);
+  pulseSpeedMs = std::max<uint32_t>(kPulseFloorMsPerPx * floorSpan / span,
+                                    (pulseSpeed * kMsPerSecond) / span);
 
   const uint16_t sizePercent = pulseSizePercentFromStep(getParam(parameters, "size", 4));
   pulseWidth = pulseWidthFromPercent(sizePercent, span);
@@ -176,21 +192,33 @@ void PulseExpression::draw() {
     return;
   }
 
-  if (!shouldAffectBuffer()) {
+  const bool lowerLive = shouldAffectBuffer(fb);
+  const bool upperLive = above_ && zone_.posMax > lowerEnd_ && shouldAffectBuffer(above_);
+  if (!lowerLive && !upperLive) {
     return;
   }
 
   // blendFactor varies per pixel (distance to wave center), so no frame-level hoist.
-  const float wispWeight = wispDimScale();
-  for (int i = zone_.posMin; i <= zone_.posMax; i++) {
-    uint32_t blendFactor = calculateBlendFactor(i);
+  // Per-surface weights differ only once Pulse yields to the wisp (wispDimFloor < 1).
+  const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
+  const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
+  // Base logical 0 is its top, so a base-only pulse walks its zone mirrored to
+  // rise; the joined walk maps the base half itself.
+  const bool mirrored = down_ != (!above_ && target == TARGET_BASE);
+  for (int pos = zone_.posMin; pos <= zone_.posMax; pos++) {
+    const int at = mirrored ? zone_.posMin + zone_.posMax - pos : pos;
+    const bool upper = at > lowerEnd_;
+    if (!(upper ? upperLive : lowerLive)) continue;
+    uint32_t blendFactor = calculateBlendFactor(pos);
     if (blendFactor == 0) continue;  // Skip pixels with no blend
+    Color& px = !above_ ? fb->buffer[at]
+                : upper  ? above_->buffer[aboveMin_ + (at - lowerEnd_ - 1)]
+                         : fb->buffer[zone_.posMin + lowerEnd_ - at];
     const Color painted =
         (blendFactor >= 100)
             ? pulseColor
-            : mixColorLinear(fb->buffer[i], pulseColor,
-                             computeLinearFactor(blendFactor, 100u));
-    fb->buffer[i] = mixColorWeight(fb->buffer[i], painted, wispWeight);
+            : mixColorLinear(px, pulseColor, computeLinearFactor(blendFactor, 100u));
+    px = mixColorWeight(px, painted, upper ? upperWeight : lowerWeight);
   }
 
   // Transit time is wall-clock; a tiny zone with a slow, wide wave can take

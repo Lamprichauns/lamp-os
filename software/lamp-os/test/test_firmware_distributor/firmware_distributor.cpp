@@ -209,7 +209,7 @@ struct DistAlgo {
     reqCountThisSession_ = 0;
   }
 
-  // Event-driven targeting — caller (SocialBehavior) supplies a peer
+  // Event-driven targeting — caller (tickOtaOffers) supplies a peer
   // observed via ESP-NOW HELLO. Idempotent on non-Idle. peerMaxChunk mirrors
   // the peer's HELLO FW_MAX_CHUNK TLV (0 = not advertised).
   bool considerPeerForOta(const uint8_t peerMac[6], uint32_t peerVersion,
@@ -475,10 +475,10 @@ void setUp(void) {}
 void tearDown(void) {}
 
 // =============================================================================
-// peerBeingServed derivation (mirror of SocialBehavior::control's roster scan)
+// peerBeingServed derivation (mirror of tickOtaOffers' roster scan)
 // =============================================================================
 //
-// The distributor takes a bool; the caller (social.cpp) derives it from the
+// The distributor takes a bool; the caller (ota_offer.cpp) derives it from the
 // roster where the roster is in scope. This mirrors that derivation: skip a
 // peer another lamp already owns.
 

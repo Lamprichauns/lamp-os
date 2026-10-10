@@ -47,14 +47,14 @@ ColorOverride* surfaceOverrideFor(BehaviorContext* ctx, FrameBuffer* fb) {
 }
 }  // namespace
 
-bool Expression::shouldAffectBuffer() {
+bool Expression::shouldAffectBuffer(FrameBuffer* surface) {
   // Context is wired by Compositor::addBehavior at register time (or by
   // ExpressionManager::setCompositor for transients). Until both are wired
   // and ExpressionManager::begin() has published the buffer list, treat as
   // not-yet-routable and skip.
   if (!context_ || context_->expressionFrameBuffers.size() < 2) return false;
 
-  ColorOverride* ov = surfaceOverrideFor(context_, fb);
+  ColorOverride* ov = surfaceOverrideFor(context_, surface);
 
   // While the operator has this surface's color editor open, pause all
   // expressions on it so the color being picked reads clean instead of
@@ -63,9 +63,9 @@ bool Expression::shouldAffectBuffer() {
 
   switch (target) {
     case TARGET_SHADE:
-      return fb == context_->expressionFrameBuffers[0];
+      return surface == context_->expressionFrameBuffers[0];
     case TARGET_BASE:
-      return fb == context_->expressionFrameBuffers[1];
+      return surface == context_->expressionFrameBuffers[1];
     case TARGET_BOTH:
       return true;
     default:
@@ -80,14 +80,14 @@ float Expression::retireScale() const {
                                   : 1.0f - static_cast<float>(elapsed) / kRetireFadeMs;
 }
 
-float Expression::wispDimScale() {
+float Expression::wispDimScale(FrameBuffer* surface) {
   const float retireScale = this->retireScale();
   if (!context_ || !context_->compositor ||
       context_->expressionFrameBuffers.size() < 2) {
     return retireScale;
   }
-  const bool isBase = fb == context_->expressionFrameBuffers[1];
-  const bool isShade = fb == context_->expressionFrameBuffers[0];
+  const bool isBase = surface == context_->expressionFrameBuffers[1];
+  const bool isShade = surface == context_->expressionFrameBuffers[0];
   if (!isBase && !isShade) return retireScale;
   const float w = context_->compositor->wispPresence(isBase);
   return retireScale * opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
