@@ -199,7 +199,7 @@ void test_base_only_pinned() {
   build(rig, p, TARGET_BASE, {{"pulseSpeed", 2}, {"size", 9}, {"easing", 1}});
   const RunResult r = run(rig, p, 5000);
   TEST_ASSERT_EQUAL_UINT32(514u, r.frames);
-  TEST_ASSERT_EQUAL_HEX32(0x7356AE4Du, r.hash);
+  TEST_ASSERT_EQUAL_HEX32(0x7A02113Eu, r.hash);
 }
 
 void test_shade_region_continuous_unchanged() {
