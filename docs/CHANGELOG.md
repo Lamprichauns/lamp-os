@@ -79,6 +79,13 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   only, joins only when it finds it there, and waits longer between tries (up
   to five minutes) when it doesn't. Searching for a network that was gone kept pulling the wisp away
   from your lamps until they dropped out and went back to their own colours.
+- **A Pulse on both base and shade is one pulse rising up the lamp.** It
+  starts at the bottom of the base, climbs to its top and carries straight on
+  up through the shade, instead of two pulses running side by side. Pulse
+  speed is now the time to climb the whole lamp, and size is measured against
+  the whole lamp too, so at the slow end each pixel goes by faster than
+  before. A Region applies to each surface, and a Pulse on just the base or
+  just the shade looks exactly as it did.
 
 ## 1.2.7
 
