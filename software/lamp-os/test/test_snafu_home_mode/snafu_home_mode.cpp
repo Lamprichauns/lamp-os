@@ -99,13 +99,31 @@ struct Continuity {
   int atHomeEntry = 0;
   int duringBorrow = 0;
   int duringDrift = 0;  // the drift-back and the ambient re-scatter after it
+  // Once the drift has landed: the own scene, wisp-mixed, with no melt left.
+  bool landedOnOwnScene = false;
 };
+
+const std::vector<Color> kOwnPalette = {Color(0x80, 0, 0, 0), Color(0, 0, 0x80, 0),
+                                        Color(0x40, 0x40, 0, 0)};
+
+// The landed buffer holds exactly the own gradient's pixels (in the scatter's
+// order), each mixed with the wisp's paint at its presence.
+bool isOwnSceneUnderWisp(const std::vector<Color>& buffer, float wisp, Color wispPaint) {
+  std::vector<Color> want = buildGradientWithStops(16, kOwnPalette);
+  for (Color& c : want) c = mixColorWeight(c, wispPaint, wisp);
+  std::vector<Color> got = buffer;
+  auto key = [](const Color& c) { return (c.r << 24) | (c.g << 16) | (c.b << 8) | c.w; };
+  auto byKey = [&](const Color& a, const Color& b) { return key(a) < key(b); };
+  std::sort(want.begin(), want.end(), byKey);
+  std::sort(got.begin(), got.end(), byKey);
+  return want.size() == got.size() && std::equal(want.begin(), want.end(), got.begin());
+}
 
 // With `wisp` > 0 the wisp holds that share of the shade: the buffer holds the
 // wisp's paint before each draw, as compositeWisp() leaves it.
 Continuity homeEntryStep(uint32_t passes, float wisp = 0.0f) {
   ShadeSettings cfg;
-  cfg.segments = {{"a", 16, {Color(0x80, 0, 0, 0), Color(0, 0, 0x80, 0), Color(0x40, 0x40, 0, 0)}}};
+  cfg.segments = {{"a", 16, kOwnPalette}};
   FrameBuffer fb;
   fb.begin({}, std::vector<StripSegment>{{&neo0, "a", 0, 16}});
   g_wisp = wisp;
@@ -148,6 +166,9 @@ Continuity homeEntryStep(uint32_t passes, float wisp = 0.0f) {
     paintWisp();
     dots.draw();
     c.duringDrift = std::max(c.duringDrift, largestStep(last, fb.buffer));
+    if (i == DotsBehavior::kBorrowSceneFrames + 5) {
+      c.landedOnOwnScene = isOwnSceneUnderWisp(fb.buffer, wisp, wispPaint);
+    }
   }
   g_wisp = 0.0f;
   return c;
@@ -252,6 +273,7 @@ void test_drift_back_is_continuous_mid_crossfade() {
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
+  TEST_ASSERT_TRUE(c.landedOnOwnScene);
 }
 
 // Past the borrow's midpoint (pass 1000) the dots melt toward the own
@@ -261,6 +283,7 @@ void test_drift_back_is_continuous_mid_melt() {
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
+  TEST_ASSERT_TRUE(c.landedOnOwnScene);
 }
 
 // With the wisp holding half the shade the melt paints above the wisp mix;
@@ -270,6 +293,56 @@ void test_drift_back_is_continuous_mid_melt_under_wisp() {
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringBorrow);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.atHomeEntry);
   TEST_ASSERT_LESS_OR_EQUAL_INT(5, c.duringDrift);
+  TEST_ASSERT_TRUE(c.landedOnOwnScene);
+}
+
+// The drift-back crossfades at the borrow's pace; once it lands, snafu's own
+// ambient re-scatter crossfades at its usual length again.
+void test_ambient_crossfade_length_restored_after_drift() {
+  ShadeSettings cfg = ownConfig();
+  cfg.segments = {{"a", 4, {kOwn, Color(0, 0, 0x40, 0)}}};
+  FrameBuffer fb = makeFb();
+  BehaviorContext ctx;
+  DotsBehavior dots(&fb, cfg);
+  dots.setBehaviorContext(&ctx);
+  dots.control();
+  dots.draw();
+  TEST_ASSERT_EQUAL_UINT32(DotsBehavior::kSceneFrames, dots.frames);
+  dots.borrowColors({kPeer}, {kPeer}, 2000);
+  for (int i = 0; i < 50; ++i) { dots.control(); dots.draw(); }
+
+  g_ignore = true;
+  for (uint32_t i = 0;
+       i < DotsBehavior::kBorrowSceneFrames + DotsBehavior::kAmbientHoldFrames + 10; ++i) {
+    dots.control();
+    dots.draw();
+  }
+  TEST_ASSERT_EQUAL_UINT32(DotsBehavior::kSceneFrames, dots.frames);
+}
+
+// A borrow starting mid-drift (home mode ended, a greeting followed) ends the
+// drift: the borrow keeps its own crossfade length, and the melt the drift was
+// easing out does not paint over the new borrow.
+void test_borrow_mid_drift_keeps_its_crossfade_length() {
+  ShadeSettings cfg = ownConfig();
+  FrameBuffer fb = makeFb();
+  BehaviorContext ctx;
+  DotsBehavior dots(&fb, cfg);
+  dots.setBehaviorContext(&ctx);
+  dots.control();
+  dots.draw();
+  dots.borrowColors({kPeer}, {kPeer}, 2000);
+  for (int i = 0; i < 1900; ++i) { dots.control(); dots.draw(); }  // deep in the melt
+
+  g_ignore = true;
+  for (int i = 0; i < 20; ++i) { dots.control(); dots.draw(); }
+  g_ignore = false;
+  dots.borrowColors({kPeer}, {kPeer}, 2000);
+  for (int i = 0; i < 5; ++i) { dots.control(); dots.draw(); }
+  TEST_ASSERT_EQUAL_UINT32(DotsBehavior::kBorrowSceneFrames, dots.frames);
+  // A solid borrow jitters each dot a few levels; the cut-off melt would pull
+  // them most of the way to the own red.
+  for (const Color& c : fb.buffer) TEST_ASSERT_LESS_OR_EQUAL_UINT8(8, c.r);
 }
 
 int main(int, char**) {
@@ -280,6 +353,8 @@ int main(int, char**) {
   RUN_TEST(test_drift_back_is_continuous_mid_crossfade);
   RUN_TEST(test_drift_back_is_continuous_mid_melt);
   RUN_TEST(test_drift_back_is_continuous_mid_melt_under_wisp);
+  RUN_TEST(test_ambient_crossfade_length_restored_after_drift);
+  RUN_TEST(test_borrow_mid_drift_keeps_its_crossfade_length);
   RUN_TEST(test_greeting_takes_colour_info_outside_home_mode);
   RUN_TEST(test_greeting_takes_no_colour_info_while_ignoring_peers);
   return UNITY_END();

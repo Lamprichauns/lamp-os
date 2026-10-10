@@ -118,7 +118,7 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
   borrowBase_     = baseStops;
   borrowShade_    = shadeStops;
   borrowActive_   = true;
-  driftMeltSpan_  = 0;
+  drifting_       = false;
   borrowElapsed_  = 0;
   borrowDuration_ = durationFrames;
   sinceShuffle_   = 0;
@@ -131,8 +131,16 @@ void DotsBehavior::borrowColors(const std::vector<Color>& baseStops,
   frames = kBorrowSceneFrames;
 }
 
+void DotsBehavior::endDriftIfDone() {
+  if (!drifting_ || sceneChange_) return;
+  drifting_ = false;
+  driftMeltSpan_ = 0;
+  frames = kSceneFrames;
+}
+
 void DotsBehavior::control() {
   if (!fb || fb->buffer.empty()) return;
+  endDriftIfDone();
   if (borrowActive_ && context_ && context_->ignoresPeers()) {
     // Drift from what draw() would paint next back to the own palette: the
     // scene (mid-crossfade included) crossfades to the own scene beneath the
@@ -142,6 +150,7 @@ void DotsBehavior::control() {
     if (sceneChange_ && prev_.size() == shown.size()) {
       for (size_t j = 0; j < shown.size(); ++j) shown[j] = fade(prev_[j], cur_[j], frames, frame);
     }
+    drifting_ = true;
     driftMeltSpan_ = 0;
     if (borrowElapsed_ * 2 > borrowDuration_ && ownMelt_.size() == shown.size()) {
       const uint32_t half = borrowDuration_ / 2;
@@ -208,7 +217,7 @@ void DotsBehavior::control() {
 void DotsBehavior::draw() {
   if (!fb || fb->buffer.empty()) { nextFrame(); return; }
   if (cur_.empty()) { cur_ = buildScene(); prev_ = cur_; }
-  if (!sceneChange_) driftMeltSpan_ = 0;  // the drift-back crossfade has ended
+  endDriftIfDone();
   // Yield the shade to the wisp by its eased presence: at w==1 the dots hand
   // fully to the already-composited wisp, at w==0 they own the shade, and the
   // ~500ms ease crossfades both take and release (fb->buffer holds the eased
@@ -234,7 +243,7 @@ void DotsBehavior::draw() {
     for (size_t j = 0; j < fb->buffer.size() && j < ownMelt_.size(); ++j) {
       fb->buffer[j] = fade(fb->buffer[j], ownMelt_[j], span, pos);
     }
-  } else if (driftMeltSpan_ && sceneChange_ && frame < frames) {
+  } else if (drifting_ && driftMeltSpan_ && frame < frames) {
     const uint32_t pos = static_cast<uint32_t>(
         static_cast<uint64_t>(driftMeltPos_) * (frames - frame) / frames);
     for (size_t j = 0; j < fb->buffer.size() && j < ownMelt_.size(); ++j) {
