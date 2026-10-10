@@ -315,6 +315,8 @@ void test_raw_save_heap_figures_stay_inside_the_gate() {
   docs.push_back(values + "]}");
   docs.push_back(keys + "}}");
   docs.push_back("{\"lamp\":{\"name\":\"" + std::string(maxBody - 24, 'n') + "\"}}");
+  // Just past a doubling of the string being built.
+  docs.push_back("{\"lamp\":{\"name\":\"" + std::string(8193, 'n') + "\"}}");
   bool inside = true;
   for (const auto& json : docs) {
     const Measured m = measure(json);
@@ -326,6 +328,55 @@ void test_raw_save_heap_figures_stay_inside_the_gate() {
     inside &= m.peak <= shape.heapBytes() && m.largest <= shape.largestBlock();
   }
   TEST_ASSERT_TRUE(inside);
+}
+
+// ArduinoJson also reads single-quoted strings and unquoted keys, which the
+// gate's scan would not measure: each such document is refused before the
+// parse, as the web UI only sends strict JSON. The same shapes with every
+// string double-quoted pass the scan.
+void test_lenient_json_is_refused_before_the_parse() {
+  const size_t maxBody = kMaxSettingsBodyForTest;
+  char name[8];
+  std::string singleValues = "{\"lamp\":{},\"x\":[";
+  std::string bareKeys = "{\"lamp\":{},\"x\":{";
+  for (unsigned i = 0; singleValues.size() < maxBody - 10; ++i) {
+    std::snprintf(name, sizeof(name), "%04x", i & 0xffff);
+    singleValues += std::string(i ? "," : "") + "'" + name + "'";
+  }
+  for (unsigned i = 0; bareKeys.size() < maxBody - 12; ++i) {
+    std::snprintf(name, sizeof(name), "k%04x", i & 0xffff);
+    bareKeys += std::string(i ? "," : "") + name + ":0";
+  }
+  const std::string probes[] = {
+      "{\"lamp\":{\"name\":'" + std::string(maxBody - 24, 'n') + "'}}",
+      "{lamp:{name:\"" + std::string(maxBody - 24, 'n') + "\"}}",
+      singleValues + "]}",
+      bareKeys + "}}",
+      "{\"lamp\":{},\"x\":{" + std::string(maxBody - 24, '1') + ":0}}",
+      "{\"lamp\":{\"name\":nullnull}}",
+  };
+  for (const auto& probe : probes) {
+    TEST_ASSERT_FALSE(config_codec::scanRawJson(probe.c_str()).strict);
+    InMemoryConfigStore s;
+    TEST_ASSERT_TRUE(persist(s, probe.c_str()) == SaveResult::Invalid);
+    TEST_ASSERT_EQUAL(0, s.writeCount);
+  }
+  for (const char* strict :
+       {R"({"lamp":{"name":"x","named":true,"brightness":-1.5e+2,"password":null}})",
+        R"( { "lamp" : { } , "x" : [ 1 , "a" , false , { } ] } )"}) {
+    TEST_ASSERT_TRUE(config_codec::scanRawJson(strict).strict);
+  }
+  TEST_ASSERT_TRUE(config_codec::scanRawJson(document(10).c_str()).strict);
+}
+
+// A parse that runs out of memory all the same is a heap failure (500), and
+// any other parse error an invalid body (400).
+void test_a_parse_out_of_memory_is_no_heap() {
+  TEST_ASSERT_TRUE(config_codec::rawParseResult(DeserializationError::NoMemory) ==
+                   SaveResult::NoHeap);
+  TEST_ASSERT_TRUE(config_codec::rawParseResult(DeserializationError::InvalidInput) ==
+                   SaveResult::Invalid);
+  TEST_ASSERT_TRUE(config_codec::rawParseResult(DeserializationError::Ok) == SaveResult::Ok);
 }
 
 // A typical 5 KB document, and the standard variant's 18 full expressions,
@@ -354,5 +405,7 @@ int main(int, char**) {
   RUN_TEST(test_raw_save_heap_figures_stay_inside_the_gate);
   RUN_TEST(test_typical_documents_pass_at_the_documented_heap);
   RUN_TEST(test_web_document_fixups);
+  RUN_TEST(test_lenient_json_is_refused_before_the_parse);
+  RUN_TEST(test_a_parse_out_of_memory_is_no_heap);
   return UNITY_END();
 }

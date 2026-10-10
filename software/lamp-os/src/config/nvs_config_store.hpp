@@ -3,13 +3,16 @@
 #include <string>
 
 #include "config_store.hpp"
+#include "write_quarantine.hpp"
 
 namespace lamp {
 
 // NVS-backed ConfigStore: all keys live in the "lamp" namespace. Talks to the
 // nvs_* API directly: Preferences logs its own failures through a path that
 // faults on a fragmented heap, and a full NVS must come back as a returned 0.
-// Each failure logs one line. Must be driven from the loop task.
+// Each failure logs one line. A key whose blob write failed for want of heap
+// takes no blob write until the next boot (WriteQuarantine). Must be driven
+// from the loop task.
 class NvsConfigStore : public ConfigStore {
  public:
   std::string read(const char* key, const char* defaultValue) override;
@@ -29,6 +32,7 @@ class NvsConfigStore : public ConfigStore {
 
  private:
   static void reclaimWifiNamespace();
+  WriteQuarantine quarantine_;
 };
 
 }  // namespace lamp

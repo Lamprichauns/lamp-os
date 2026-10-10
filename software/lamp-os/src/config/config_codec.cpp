@@ -813,7 +813,9 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
           }
         }
       }
-    } else if (live.slot >= 0) {
+    } else if (live.slot >= 0 || root["lamp"].is<JsonObject>()) {
+      // A rest blob that did not parse, or none beside a lamp-only cfg
+      // string: a split store has lost its rest.
       unreadable = true;
     }
   }
@@ -827,6 +829,19 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
   return loaded;
 }
 
+// The literal `lit` at `c`, followed by the end of a value: an ArduinoJson
+// unquoted string that starts with a literal's letters is no literal.
+static size_t literalAt(const char* c) {
+  for (const char* lit : {"true", "false", "null"}) {
+    const size_t n = std::strlen(lit);
+    if (std::strncmp(c, lit, n) != 0) continue;
+    const char* q = c + n;
+    while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') ++q;
+    if (*q == '\0' || *q == ',' || *q == ']' || *q == '}') return n;
+  }
+  return 0;
+}
+
 RawJsonShape scanRawJson(const char* json) {
   // The last kSeen short strings, compared byte for byte: a string seen
   // there is one ArduinoJson already holds and costs no new block. Raw bytes
@@ -835,15 +850,45 @@ RawJsonShape scanRawJson(const char* json) {
   constexpr size_t kSeenLen = 15;
   char seen[kSeen][kSeenLen + 1] = {};
   size_t nextSeen = 0;
+  // ArduinoJson also takes single-quoted and unquoted strings, which this
+  // scan does not measure, so outside double quotes only strict JSON passes:
+  // structure, numbers and the three literals, with every key quoted.
+  constexpr size_t kMaxDepth = 32;
+  bool inObject[kMaxDepth] = {};
+  size_t depth = 0;
+  bool expectKey = false;
   RawJsonShape shape;
   bool inString = false;
   const char* start = nullptr;
   for (const char* c = json; *c; ++c, ++shape.len) {
     if (*c == '{' || *c == '[' || *c == ':' || *c == ',') ++shape.tokens;
     if (!inString) {
-      if (*c == '"') {
+      const char ch = *c;
+      if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') continue;
+      if (expectKey && ch != '"' && ch != '}') shape.strict = false;
+      expectKey = false;
+      if (ch == '"') {
         inString = true;
         start = c + 1;
+      } else if (ch == '{' || ch == '[') {
+        if (depth == kMaxDepth) {
+          shape.strict = false;
+        } else {
+          inObject[depth++] = ch == '{';
+        }
+        expectKey = ch == '{';
+      } else if (ch == '}' || ch == ']') {
+        if (depth > 0) --depth;
+      } else if (ch == ',') {
+        expectKey = depth > 0 && inObject[depth - 1];
+      } else if (ch == ':' || ch == '-' || ch == '+' || ch == '.' || (ch >= '0' && ch <= '9')) {
+      } else if ((ch == 'e' || ch == 'E') && c > json &&
+                 ((c[-1] >= '0' && c[-1] <= '9') || c[-1] == '.')) {
+      } else if (const size_t n = literalAt(c)) {
+        c += n - 1;
+        shape.len += n - 1;
+      } else {
+        shape.strict = false;
       }
       continue;
     }
@@ -875,6 +920,11 @@ RawJsonShape scanRawJson(const char* json) {
   return shape;
 }
 
+SaveResult rawParseResult(DeserializationError error) {
+  if (error == DeserializationError::Ok) return SaveResult::Ok;
+  return error == DeserializationError::NoMemory ? SaveResult::NoHeap : SaveResult::Invalid;
+}
+
 size_t RawJsonShape::heapBytes() const {
   return kRawSlotBytes * (tokens + 1) + len + kRawStringBytes * distinct +
          kRawLongestPerByte * longest + kRawModelBytes;
@@ -888,14 +938,14 @@ SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
                        size_t cfgBufferLen, const std::string& keptPassword) {
   if (json == nullptr) return SaveResult::Invalid;
   const RawJsonShape shape = scanRawJson(json);
+  if (!shape.strict) return SaveResult::Invalid;
   if (!heapHasFree(shape.heapBytes()) || !heapCanSpare(shape.largestBlock())) {
     return SaveResult::NoHeap;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, json, shape.len) != DeserializationError::Ok ||
-      !doc["lamp"].is<JsonObject>()) {
-    return SaveResult::Invalid;
-  }
+  const SaveResult parsed = rawParseResult(deserializeJson(doc, json, shape.len));
+  if (parsed != SaveResult::Ok) return parsed;
+  if (!doc["lamp"].is<JsonObject>()) return SaveResult::Invalid;
   // A longer password could never be typed back, and a longer SSID names no
   // network, so the save is refused rather than stored truncated.
   if (std::strlen(doc["lamp"]["password"] | "") > kMaxPasswordLen ||

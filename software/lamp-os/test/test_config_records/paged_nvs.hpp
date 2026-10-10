@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "config/config_store.hpp"
+#include "config/write_quarantine.hpp"
 
 namespace lamp {
 
@@ -29,7 +30,11 @@ namespace lamp {
 // the first chunk numbered by its position (0, 1, ...) rather than by the new
 // version's offset, so it can take the old version's chunk instead of its own.
 // failBlobKey forces that failure on the next write of that lamp key, as
-// requestNewPage failing after its first chunk is recorded. Reads and boot()
+// requestNewPage failing after its first chunk is recorded. outOfMemoryKey
+// forces the other: the 12-byte bookkeeping allocation failing after a chunk
+// is written, which leaves that chunk unrecorded, uncleaned and named by no
+// index. Writes go through a WriteQuarantine as NvsConfigStore's do, and
+// boot() clears it. Reads and boot()
 // clean up as IDF does (readBlob, boot). Erasing a blob takes its index and that version's
 // chunks; chunks of another version stay until IDF's boot scan. Keys of other
 // namespaces are written with putSystem.
@@ -41,7 +46,9 @@ class PagedNvs : public ConfigStore {
   static constexpr size_t kChunkMax = kEntrySize * (kEntries - 1);
 
   size_t failedWrites = 0;
-  std::string failBlobKey;  // a lamp key; cleared once the failure fires
+  std::string failBlobKey;     // a lamp key; cleared once the failure fires
+  std::string outOfMemoryKey;  // likewise
+  bool quarantine = true;      // as NvsConfigStore; off to show what it prevents
 
   PagedNvs() {
     for (size_t i = 0; i < kPages; ++i) free_.push_back(i);
@@ -83,7 +90,11 @@ class PagedNvs : public ConfigStore {
     return value.size();
   }
   size_t writeBlob(const char* key, const void* data, size_t len) override {
-    return putBlob(ns(key), std::string(static_cast<const char*>(data), len)) ? len : 0;
+    if (quarantine && quarantine_.holds(key)) return 0;
+    outOfMemory_ = false;
+    const bool ok = putBlob(ns(key), std::string(static_cast<const char*>(data), len));
+    if (outOfMemory_) quarantine_.add(key);
+    return ok ? len : 0;
   }
   bool erase(const char* key) override {
     eraseKey(ns(key));
@@ -125,6 +136,7 @@ class PagedNvs : public ConfigStore {
   // the index; this counts the index's own range only, which no save here can
   // tell apart.
   void boot() {
+    quarantine_ = WriteQuarantine{};
     for (auto& page : pages_) {
       for (auto& index : page.items) {
         if (!index.live || index.kind != Kind::BlobIndex) continue;
@@ -377,6 +389,12 @@ class PagedNvs : public ConfigStore {
       const size_t len = std::min(data.size() - offset, tail);
       pageWrite(page, Item{key, Kind::BlobData, static_cast<uint8_t>(start + chunks), 0,
                            spanOf(Kind::BlobData, len), data.substr(offset, len), true});
+      if (key == ns(outOfMemoryKey.c_str())) {
+        outOfMemoryKey.clear();
+        outOfMemory_ = true;
+        ok = false;
+        break;
+      }
       usedPages.push_back(list_.back());
       if (key == ns(failBlobKey.c_str())) {
         failBlobKey.clear();
@@ -421,6 +439,8 @@ class PagedNvs : public ConfigStore {
     return true;
   }
 
+  WriteQuarantine quarantine_;
+  bool outOfMemory_ = false;
   std::array<Page, kPages> pages_;
   std::deque<size_t> list_;
   std::deque<size_t> free_;

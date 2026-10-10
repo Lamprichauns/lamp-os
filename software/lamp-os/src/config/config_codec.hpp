@@ -104,10 +104,11 @@ static_assert(kMaxWholeCfgLen <= kMaxStoredCfgJsonLen, "the save buffer holds a 
 // rest blob first, and the other keys are erased once it is authoritative.
 // A larger config splits: each expression as a record ("x0", "x1", ...), the
 // knockout levels in "ko", the count in "xn" (a decimal string), record slots
-// past the count erased, the rest but the lamp section as a rest blob (a
-// generation byte, then the JSON, in "cfgb" and "cfgc" by turns so a rewrite
-// never touches the live copy), and last the lamp section alone as the "cfg"
-// string, staged in "cfgl" while "cfg" is replaced. The JSON is checked
+// past the count erased, the rest but the lamp section as a rest blob (JSON,
+// in "cfgb" and "cfgc" by turns, the one not live erased and then written, so
+// a rewrite never touches the live copy; with both present "cfgb" is live),
+// and last the lamp section alone as the "cfg" string, staged in "cfgl" while
+// "cfg" is replaced. The JSON is checked
 // before any write, so TooLarge leaves the store untouched; an unchanged key
 // is not rewritten (NVS skips identical writes). A save takes no
 // config-sized heap: the JSON goes into `cfgBuffer` and records come off the
@@ -124,7 +125,9 @@ struct LoadedRecords {
   bool present = false;      // the expressions came from records
   uint32_t droppedMask = 0;  // bit i: record "x<i>" missing or unreadable
   uint8_t duplicates = 0;    // records skipped as a repeat (type, target)
-  bool unreadable = false;   // a stored rest or lamp blob did not read
+  // A stored rest or lamp blob did not read, or a split store has no rest:
+  // Config then serves defaults without saving them over the store.
+  bool unreadable = false;
 };
 
 // Overlays what a split save keeps outside the stored JSON. The JSON wins
@@ -139,10 +142,11 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
                           bool cfgHasExpressions);
 
 // Loads a stored config from the parsed "cfg" string (`root`): whole when it
-// carries an expressions array (the authority over every other key), else
-// from "cfgb", whole when it carries one and otherwise the rest beside the
-// records, the knockout blob and the cfg string's lamp section. `withinCaps`
-// reports fromJson's result.
+// carries an expressions array (the authority over every other key; any rest
+// or lamp blob beside it is erased), else from the live rest blob, whole when
+// it carries one and otherwise the rest beside the records, the knockout blob
+// and the lamp section from the cfg string or "cfgl". `withinCaps` reports
+// fromJson's result.
 LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings& lamp,
                                BaseSettings& base, ShadeSettings& shade,
                                ExpressionSettings& expressions,
@@ -155,13 +159,14 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
 // most kRawSlotBytes per structural token (`{`, `[`, `:`, `,`), a byte per
 // document byte, kRawStringBytes per distinct string (ArduinoJson stores each
 // distinct key or value once), kRawLongestPerByte per byte of the longest
-// string (grown while it is parsed, kept, and copied into the model) and
+// string (grown by doubling while it is parsed, so up to twice it, then kept
+// and copied into the model) and
 // kRawModelBytes for the model at the caps, which carries some slack. The
 // largest single block is a pool of slots, at most kRawPoolBytes, or the
 // longest string's growth, at most twice it plus kRawStringSlack.
 constexpr size_t kRawSlotBytes = 15;
 constexpr size_t kRawStringBytes = 24;
-constexpr size_t kRawLongestPerByte = 3;
+constexpr size_t kRawLongestPerByte = 4;
 constexpr size_t kRawModelBytes = 4096;
 constexpr size_t kRawPoolBytes = 4096;
 constexpr size_t kRawStringSlack = 128;
@@ -172,19 +177,26 @@ struct RawJsonShape {
   size_t tokens = 0;    // structural characters, counted inside strings too
   size_t longest = 0;   // the longest string's raw length
   size_t distinct = 0;  // strings, keys included, not seen just before
+  // Strict JSON: no single-quoted string, no unquoted key or value, which
+  // ArduinoJson would parse into strings the counts above miss.
+  bool strict = true;
   size_t heapBytes() const;
   size_t largestBlock() const;
 };
 RawJsonShape scanRawJson(const char* json);
+// A parse's error as a save's: Ok, NoHeap for want of memory, else Invalid.
+SaveResult rawParseResult(DeserializationError error);
 
 // Saves a whole config document (the webapp's whole-document PUT) through
 // fromJson and saveConfig, for the next boot to load, parsing it once.
-// Invalid when it does not parse, carries no `lamp` object (so a truncated
-// body cannot replace a good config), or carries a password or SSID over its
-// cap; NoHeap when the free heap cannot hold the parse and the model, or the
-// largest free block their largest single block, so no allocation on the way
-// can throw. A document with no password keeps `keptPassword`, the GET
-// document having redacted it, and one with a name is marked named.
+// Invalid when it is not strict JSON, does not parse, carries no `lamp`
+// object (so a truncated body cannot replace a good config), or carries a
+// password or SSID over its cap; NoHeap when the free heap cannot hold the
+// parse and the model, or the largest free block their largest single
+// block, so no allocation on the way can throw, and when the parse runs out
+// of memory all the same. A document with no password keeps `keptPassword`,
+// the GET document having redacted it, and one naming the lamp marks it
+// named.
 SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
                        size_t cfgBufferLen, const std::string& keptPassword);
 

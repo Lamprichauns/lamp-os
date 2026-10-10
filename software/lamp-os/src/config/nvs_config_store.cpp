@@ -89,14 +89,19 @@ size_t NvsConfigStore::readBlob(const char* key, void* out, size_t cap) {
 }
 
 size_t NvsConfigStore::writeBlob(const char* key, const void* data, size_t len) {
+  if (quarantine_.holds(key)) {
+    logFailure("set_blob (held until reboot)", key, ESP_ERR_NO_MEM);
+    return 0;
+  }
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &h);
   if (err != ESP_OK) {
     logFailure("open", key, err);
     return 0;
   }
-  return commitOrZero(h, nvs_set_blob(h, key, data, len), "set_blob", key,
-                      len);
+  err = nvs_set_blob(h, key, data, len);
+  if (err == ESP_ERR_NO_MEM) quarantine_.add(key);
+  return commitOrZero(h, err, "set_blob", key, len);
 }
 
 bool NvsConfigStore::erase(const char* key) {
