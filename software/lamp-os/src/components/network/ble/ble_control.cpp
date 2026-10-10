@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
-#include <Preferences.h>
 #include <esp_bt.h>
 #include <esp_heap_caps.h>
 
@@ -718,13 +717,18 @@ class SocialDispositionsCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
+    // A map the heap could not build reads as "!", never "" or "{}": the app
+    // writes the whole map back, so an empty one would erase every entry.
     try {
-      c->setValue(s_config->asDispositionsJson().c_str());
+      const std::string json = s_config->asDispositionsJson();
+      if (!json.empty()) {
+        c->setValue(json);
+        return;
+      }
     } catch (const std::bad_alloc&) {
-      c->setValue("");
-      logBleSectionOom("dispositions");
-      return;
     }
+    c->setValue("!");
+    logBleSectionOom("dispositions");
   }
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
     if (!isAuthed(connInfo.getConnHandle())) return;
@@ -1188,12 +1192,24 @@ void tick() {
   }
 
   // Proactively rebuild dirty section caches on Core 1 so the BLE host
-  // task (Core 0) rarely serialises JSON inside a NimBLE callback.
-  s_config->lampSectionRebuildIfDirty();
-  s_config->baseSectionRebuildIfDirty();
-  s_config->shadeSectionRebuildIfDirty();
-  s_config->expressionsSectionRebuildIfDirty();
-  s_config->homeSectionRebuildIfDirty();
+  // task (Core 0) rarely serialises JSON inside a NimBLE callback. Only while
+  // a client holds the link: a mesh cascade dirties the expressions section
+  // with no reader, and a rebuild per cascade is pure heap churn.
+  // notifyStateChange skips with no client, so the characteristic may hold a
+  // stale greeting; refresh it once on connect.
+  static bool s_wasConnected = false;
+  if (s_clientConnected && !s_wasConnected) notifyStateChange();
+  s_wasConnected = s_clientConnected;
+
+  if (!s_clientConnected) {
+    s_config->releaseSectionCaches();
+  } else {
+    s_config->lampSectionRebuildIfDirty();
+    s_config->baseSectionRebuildIfDirty();
+    s_config->shadeSectionRebuildIfDirty();
+    s_config->expressionsSectionRebuildIfDirty();
+    s_config->homeSectionRebuildIfDirty();
+  }
   maintainNearbyJson();
 }
 
@@ -1202,7 +1218,9 @@ void setGreetingStateProvider(std::function<lamp::GreetingState()> fn) {
 }
 
 void notifyStateChange() {
-  if (!s_stateNotify) return;
+  // A greeting edge fires this with no phone attached; the payload has no
+  // reader then, and a connecting client reads the state fresh.
+  if (!s_stateNotify || !s_clientConnected) return;
   const bool preview = ::expressionManager.isAnyTestActive();
   std::string payload = "{\"previewActive\":";
   payload += preview ? "true" : "false";
@@ -1240,8 +1258,10 @@ void start(lamp::Config* config) {
 
   s_config = config;
 
-  if (!NimBLEDevice::isInitialized()) {
-    NimBLEDevice::init(config->lamp.name.substr(0, 12));
+  if (!NimBLEDevice::isInitialized() &&
+      !NimBLEDevice::init(config->lamp.name.substr(0, 12))) {
+    Serial.println("[ble_control] NimBLE init failed; GATT service not started");
+    return;
   }
   disableBtModemSleep();
 
@@ -1461,8 +1481,10 @@ void pauseRadioForOta() {
   // Stop both adv and scan so the IDF coex arbiter stops gating WiFi RX
   // during BLE windows. Phone app loses connection briefly; reconnects
   // on resumeRadioAfterOta or after the OTA-driven reboot.
-  NimBLEDevice::getAdvertising()->stop();
-  NimBLEDevice::getScan()->stop();
+  if (NimBLEDevice::isInitialized()) {
+    NimBLEDevice::getAdvertising()->stop();
+    NimBLEDevice::getScan()->stop();
+  }
   // Also tear down the boot-window SoftAP webapp. AP beacons fire every
   // ~100 ms and contend with the ESP-NOW chunk stream for WiFi airtime;
   // shutting the AP off frees the band for the OTA. The webapp is a
@@ -1511,6 +1533,7 @@ void resumeRadioAfterOta() {
   s_otaRadioPaused = false;
   // Two independent scan-pause flags: OTA and active GATT client. Only
   // restart if the client flag isn't also holding the scan down.
+  if (!NimBLEDevice::isInitialized()) return;
   if (!s_scanPausedForGattClient) {
     NimBLEDevice::getScan()->start(0);
   }

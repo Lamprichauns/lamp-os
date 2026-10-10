@@ -132,11 +132,11 @@ class ScanCallbacks : public NimBLEScanCallbacks {
                       ? Color(data[5], data[6], data[7], 0)
                       : Color(0, 0, 0, 0);
 
-    // NimBLEAddress::toString() is lowercase colon-hex; the roster parses
-    // it case-insensitively and stores address bytes.
-    lampRoster.addOrUpdateFromBle(advertisedDevice->getName(),
-                                   advertisedDevice->getAddress().toString(),
-                                   base, shade,
+    // NimBLE holds the address least significant byte first.
+    const uint8_t* le = advertisedDevice->getAddress().getVal();
+    const uint8_t addr[6] = {le[5], le[4], le[3], le[2], le[1], le[0]};
+    const std::string name = advertisedDevice->getName();
+    lampRoster.addOrUpdateFromBle(name.c_str(), addr, base, shade,
                                    static_cast<int8_t>(advertisedDevice->getRSSI()));
   };
 
@@ -163,7 +163,12 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Bluetooth Async Client\n");
 #endif
-  NimBLEDevice::init(name.substr(0, 12));
+  // A failed init (NVS or controller) leaves NimBLE's host unusable; every
+  // later BLE call is gated on isInitialized() so the lamp runs on without it.
+  if (!NimBLEDevice::init(name.substr(0, 12))) {
+    Serial.println("[ble] NimBLE init failed; running without Bluetooth");
+    return;
+  }
   ble_control::disableBtModemSleep();
   NimBLEDevice::setPower(BLE_POWER_LEVEL);
 
@@ -306,6 +311,7 @@ void BluetoothComponent::tickAdvertising() {
 }
 
 void BluetoothComponent::activateGattServices(Config* cfg) {
+  if (!NimBLEDevice::isInitialized()) return;
   // NimBLE's ble_gatts_mutable() returns false if any GAP procedure is
   // active, and ble_gatts_add_svcs() silently drops services if so. Pause
   // the central scan while registering services + starting advertising.

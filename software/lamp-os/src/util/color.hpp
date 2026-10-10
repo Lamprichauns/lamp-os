@@ -52,8 +52,10 @@ std::string colorsToPackedHex(const std::vector<Color>& colors);
  * Parse the packed form back into `out` (replaced, not appended).
  * Returns false, with `out` left empty, if the length is not a multiple
  * of 8 or any char is not a hex digit. Empty input parses to an empty list.
+ * Parses at most `maxColors`; colours past it are ignored.
  */
-bool packedHexToColors(const char* s, std::vector<Color>& out);
+bool packedHexToColors(const char* s, std::vector<Color>& out,
+                       size_t maxColors = SIZE_MAX);
 
 uint32_t colorDistance(Color c1, Color c2);
 

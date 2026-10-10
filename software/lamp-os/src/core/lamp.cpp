@@ -38,6 +38,7 @@
 #include "components/network/mesh/lamp_roster.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
+#include "components/network/transport/espnow_link.hpp"
 #if LAMP_WEBAPP_ENABLED
 #include "components/webapp/webapp.hpp"
 #endif
@@ -52,6 +53,7 @@
 #include "behaviors/social.hpp"
 #include "behaviors/social_echo.hpp"
 #include "config/config.hpp"
+#include "config/config_codec.hpp"
 #include "config/config_types.hpp"
 #include "config/nvs_config_store.hpp"
 #include "core/compositor.hpp"
@@ -199,11 +201,10 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
 #endif
     pendingTriggers.erase(pendingTriggers.begin());
   }
-  DelayedInvocation d;
+  DelayedInvocation& d = pendingTriggers.emplace_back();
   d.inv = inv;
   d.fireAtMs = millis() + delayMs;
   std::memcpy(d.srcMac, srcMac, 6);
-  pendingTriggers.push_back(d);
 }
 }  // namespace lamp
 
@@ -364,51 +365,35 @@ void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (doc.isNull()) return;
   const char* op = doc["op"].as<const char*>();
   if (op && strcmp(op, "upsert") == 0 && doc["entry"].is<JsonObject>()) {
-    JsonObject entry = doc["entry"].as<JsonObject>();
     lamp::ExpressionConfig cfg;
-    cfg.type = std::string(entry["type"] | "");
-    cfg.enabled = entry["enabled"] | true;
-    cfg.intervalMin = entry["intervalMin"] | 60;
-    cfg.intervalMax = entry["intervalMax"] | 900;
-    cfg.target = entry["target"] | 3;
-    for (JsonPair kv : entry) {
-      std::string key(kv.key().c_str());
-      // `disabledDuringWispOverride` is tolerated from older app payloads
-      // but ignored: it's a pure type-property on the Expression subclass,
-      // not config-driven.
-      if (key == "type" || key == "enabled" ||
-          key == "disabledDuringWispOverride" ||
-          key == "intervalMin" || key == "intervalMax" ||
-          key == "target" || key == "colors") continue;
-      JsonVariant v = kv.value();
-      if (v.is<uint32_t>()) cfg.setParameter(key, v.as<uint32_t>());
-      else if (v.is<int>()) cfg.setParameter(key, static_cast<uint32_t>(v.as<int>()));
+    if (!lamp::config_codec::parseExpression(doc["entry"].as<JsonObject>(), cfg, true)) {
+      Serial.printf("[expr] upsert %s over caps, extras dropped\n",
+                    cfg.type.c_str());
     }
-    // Store the JsonArray in a local so iteration doesn't reference a
-    // temporary destroyed at the end of the full expression (ArduinoJson
-    // 7.4.x tightened lifetime semantics on chained calls).
-    JsonArray colorsArr = entry["colors"].as<JsonArray>();
-    for (JsonVariant cv : colorsArr) {
-      cfg.colors.push_back(lamp::hexStringToColor(cv));
+    // A type this variant does not register never renders; storing it only
+    // spends a record and NVS.
+    if (!::expressionManager.registry().find(cfg.type.c_str())) {
+      Serial.printf("[expr] upsert type=%s rejected: not on this lamp\n",
+                    cfg.type.c_str());
+      return;
     }
-    if (!cfg.type.empty()) {
-      ::expressionManager.upsertExpression(cfg, &::compositor);
-      if (mutateConfig) {
-        // Mirror into config.expressions so the next settings_blob save
-        // persists the user's latest edits. expressionManager is the runtime
-        // animator; config is what gets serialized to NVS.
-        auto& exprs = ::config.expressions.expressions;
-        bool found = false;
-        for (auto& e : exprs) {
-          if (e.type == cfg.type && e.target == cfg.target) {
-            e = cfg;
-            found = true;
-            break;
-          }
-        }
-        if (!found) exprs.push_back(cfg);
+    if (cfg.target < lamp::kExpressionTargetMin ||
+        cfg.target > lamp::kExpressionTargetMax) {
+      Serial.printf("[expr] upsert type=%s target=%u rejected\n", cfg.type.c_str(),
+                    (unsigned)cfg.target);
+      return;
+    }
+    // Mirror into config.expressions so the next save persists the user's
+    // latest edits; config is what gets serialized to NVS, expressionManager
+    // the runtime animator. A mirrored entry's parameters live only in config.
+    bool configBacked = false;
+    if (mutateConfig) {
+      configBacked = lamp::config_codec::mirrorUpsert(::config.expressions, cfg);
+      if (!configBacked) {
+        Serial.printf("[expr] config full; upsert type=%s not saved\n", cfg.type.c_str());
       }
     }
+    ::expressionManager.upsertExpression(cfg, &::compositor, configBacked);
   } else if (op && strcmp(op, "remove") == 0) {
     const char* type = doc["type"].as<const char*>();
     int tgt = doc["target"] | 0;
@@ -449,6 +434,7 @@ void updateAdvertisedDeviceName(const char* newName) {
   // GATT connections are unaffected (advertising and connections are
   // separate state machines in NimBLE). The brief gap (~50ms, well under the
   // advertising interval) is below human perception.
+  if (!NimBLEDevice::isInitialized()) return;
   NimBLEDevice::setDeviceName(newName);
   auto* adv = NimBLEDevice::getAdvertising();
   if (adv != nullptr) {
@@ -1017,6 +1003,9 @@ void lamp::Lamp::tick() {
     if (static_cast<int32_t>(nowMs - s_nextHeapLogMs) >= 0) {
       s_nextHeapLogMs = nowMs + 30000;
       lamp::logHeap("trend");
+      Serial.printf("[heap] txstalls=%lu txrefused=%lu\n",
+                    (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                    (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     }
   }
 #endif
@@ -1050,6 +1039,8 @@ void lamp::Lamp::tick() {
   // has been idle for kDispositionFlushIdleMs (5s). Cheap when nothing is
   // dirty (single bool check + uint32_t subtraction).
   config.maybeFlushDispositions(millis());
+  // Like the drains, no NVS save runs while firmware chunks are being written.
+  if (!firmwareReceiver.isInProgress()) config.maybeRetryPersist(millis());
   if (pendingFlushDispositionsRequested) {
     // Phone disconnected (set on Core 0 in ble_control's onDisconnect).
     // Force-commit so the user's final slider value survives even if
@@ -1240,6 +1231,7 @@ void lamp::Lamp::tick() {
   // a remote cascade arrived) whose animations have finished. AFTER tick so
   // the final frame of the animation is drawn before removal.
   expressionManager.gcTransients();
+  expressionManager.tickCascade(millis());
 
   // Reap the active-test set (entries fired via dispatchLampAction
   // "test_expression"). When the last one transitions to STOPPED, flip

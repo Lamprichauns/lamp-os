@@ -108,13 +108,14 @@ std::string colorsToPackedHex(const std::vector<Color>& colors) {
   return out;
 }
 
-bool packedHexToColors(const char* s, std::vector<Color>& out) {
+bool packedHexToColors(const char* s, std::vector<Color>& out, size_t maxColors) {
   out.clear();
   if (!s) return false;
   const size_t len = std::strlen(s);
   if (len % 8 != 0) return false;
-  out.reserve(len / 8);
-  for (size_t i = 0; i < len; i += 8) {
+  const size_t count = std::min(len / 8, maxColors);
+  out.reserve(count);
+  for (size_t i = 0; i < count * 8; i += 8) {
     uint8_t r, g, b, w;
     if (!parseHexByte(s + i, r) || !parseHexByte(s + i + 2, g) ||
         !parseHexByte(s + i + 4, b) || !parseHexByte(s + i + 6, w)) {

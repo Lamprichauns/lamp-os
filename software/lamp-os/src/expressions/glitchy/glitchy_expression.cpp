@@ -22,7 +22,7 @@ GlitchyExpression::GlitchyExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {
 }
 
-void GlitchyExpression::configureFromParameters(const std::map<std::string, uint32_t>& parameters) {
+void GlitchyExpression::configureFromParameters(const ExpressionParams& parameters) {
   const uint32_t durMin = static_cast<uint32_t>(kGlitchyDescriptorData.duration->min);
   const uint32_t durMax = static_cast<uint32_t>(kGlitchyDescriptorData.duration->max);
   glitchDurationMinMs = std::clamp(getParam(parameters, "durationMin"), durMin, durMax);

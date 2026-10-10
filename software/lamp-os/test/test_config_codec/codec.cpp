@@ -15,6 +15,8 @@
 // color dependency) into this TU, same pattern as test_firmware_signature.
 #include "../../src/util/color.cpp"
 #include "../../src/config/config_codec.cpp"
+#include "../../src/util/heap_guard.cpp"
+#include "../../src/util/json_writer.cpp"
 
 using namespace lamp;
 
@@ -30,11 +32,23 @@ struct Model {
   HomeModeSettings homeMode;
 };
 
-void parseInto(const char* json, Model& m) {
+bool parseInto(const char* json, Model& m) {
   JsonDocument doc;
   deserializeJson(doc, json);
-  config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
-                         m.expressions, m.homeMode);
+  return config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
+                                m.expressions, m.homeMode);
+}
+
+std::string expressionEntry(const char* type, int target, int colors, int params) {
+  std::string e = std::string("{\"type\":\"") + type +
+                  "\",\"enabled\":true,\"target\":" + std::to_string(target);
+  for (int i = 0; i < params; ++i) {
+    e += std::string(",\"") + kExpressionParamKeys[i % kExpressionParamKeyCount] +
+         "\":" + std::to_string(i);
+  }
+  e += ",\"colors\":[";
+  for (int i = 0; i < colors; ++i) e += std::string(i ? "," : "") + "\"#ff000000\"";
+  return e + "]}";
 }
 }  // namespace
 
@@ -197,6 +211,76 @@ void test_round_trip_preserves_fields() {
   TEST_ASSERT_EQUAL_UINT(1, b.expressions.expressions[0].colors.size());
 }
 
+void test_expressions_within_caps_load_whole() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" +
+                     expressionEntry("pulse", 1, 8, static_cast<int>(kMaxExpressionParams)) + "]}";
+  Model m;
+  TEST_ASSERT_TRUE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT(8, m.expressions.expressions[0].colors.size());
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressionParams, m.expressions.expressions[0].parameters.size());
+}
+
+// An over-cap stored config loads truncated (colours, parameters, entries)
+// and reports it, so the lamp boots with a bounded config instead of growing
+// it forever.
+void test_over_cap_stored_expressions_truncate_on_load() {
+  std::string json = "{\"lamp\":{},\"expressions\":[";
+  for (size_t i = 0; i < kMaxExpressions + 5; ++i) {
+    json += (i ? "," : "") +
+            expressionEntry(("type" + std::to_string(i)).c_str(), 1, 60, 40);
+  }
+  json += "]}";
+  Model m;
+  TEST_ASSERT_FALSE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressions, m.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressionColors,
+                         m.expressions.expressions[0].colors.size());
+  TEST_ASSERT_EQUAL_UINT(kMaxExpressionParams,
+                         m.expressions.expressions[0].parameters.size());
+}
+
+// A repeated (type, target) loads once, the first kept.
+void test_repeated_expression_loads_once() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" + expressionEntry("pulse", 1, 1, 0) +
+                     "," + expressionEntry("pulse", 1, 2, 0) + "," +
+                     expressionEntry("pulse", 2, 1, 0) + "]}";
+  Model m;
+  parseInto(json.c_str(), m);
+  TEST_ASSERT_EQUAL_UINT(2, m.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT(1, m.expressions.expressions[0].colors.size());
+}
+
+// A key no expression reads is dropped at parse, so it never costs RAM or NVS.
+void test_unknown_param_keys_dropped() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"type\":\"pulse\",\"size\":3,\"bogusKey\":9}");
+  ExpressionConfig cfg;
+  TEST_ASSERT_TRUE(config_codec::parseExpression(doc.as<JsonObject>(), cfg, true));
+  TEST_ASSERT_EQUAL_UINT(1, cfg.parameters.size());
+  TEST_ASSERT_EQUAL_UINT32(3, cfg.getParameter("size", 0));
+}
+
+// A stored entry with an out-of-range target keeps its target: remove matches
+// it exactly, so the user can still delete it.
+void test_stored_out_of_range_target_kept() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" +
+                     expressionEntry("pulse", 7, 1, 0) + "]}";
+  Model m;
+  TEST_ASSERT_TRUE(parseInto(json.c_str(), m));
+  TEST_ASSERT_EQUAL_UINT8(7, m.expressions.expressions[0].target);
+}
+
+void test_parse_expression_upsert_defaults_enabled() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"type\":\"pulse\"}");
+  ExpressionConfig cfg;
+  TEST_ASSERT_TRUE(config_codec::parseExpression(doc.as<JsonObject>(), cfg, true));
+  TEST_ASSERT_TRUE(cfg.enabled);
+  TEST_ASSERT_EQUAL_UINT8(3, cfg.target);
+  TEST_ASSERT_EQUAL_UINT32(60, cfg.intervalMin);
+  TEST_ASSERT_TRUE(cfg.parameters.empty());
+}
+
 // Migration: old blobs (pre-7eca586f) had flat colors[]/px at the role level,
 // no segments array. The codec must migrate them to a single segment so custom
 // colors survive a firmware upgrade.
@@ -310,6 +394,17 @@ void test_disabled_expr_types_empty_array_preserved() {
   TEST_ASSERT_EQUAL_UINT(0, m.homeMode.disabledExpressionTypes.size());
 }
 
+// A home-mode type that is not a type id (quotes, backslashes, too long) is
+// dropped, so it never needs escaping in the stored config.
+void test_disabled_expr_types_keep_only_ids() {
+  Model m;
+  parseInto("{\"homeMode\":{\"disabledExpressionTypes\":[\"gl\\\"itchy\",\"pulse\","
+            "\"a\\\\b\",\"aaaaaaaaaaaaaaaa\"]}}",
+            m);
+  TEST_ASSERT_EQUAL_UINT(1, m.homeMode.disabledExpressionTypes.size());
+  TEST_ASSERT_EQUAL_STRING("pulse", m.homeMode.disabledExpressionTypes[0].c_str());
+}
+
 void test_social_disabled_absent_defaults_true() {
   Model m;
   parseInto("{\"homeMode\":{\"ssid\":\"net\"}}", m);
@@ -358,6 +453,12 @@ int main(int, char**) {
   RUN_TEST(test_sum_px_clamped_to_255);
   RUN_TEST(test_homemode_enabled_migration);
   RUN_TEST(test_round_trip_preserves_fields);
+  RUN_TEST(test_expressions_within_caps_load_whole);
+  RUN_TEST(test_over_cap_stored_expressions_truncate_on_load);
+  RUN_TEST(test_stored_out_of_range_target_kept);
+  RUN_TEST(test_unknown_param_keys_dropped);
+  RUN_TEST(test_repeated_expression_loads_once);
+  RUN_TEST(test_parse_expression_upsert_defaults_enabled);
   RUN_TEST(test_old_format_base_colors_migrated);
   RUN_TEST(test_old_format_shade_colors_migrated);
   RUN_TEST(test_old_format_no_colors_uses_class_default);
@@ -369,6 +470,7 @@ int main(int, char**) {
   RUN_TEST(test_disabled_expr_types_absent_defaults_to_glitchy);
   RUN_TEST(test_disabled_expr_types_explicit);
   RUN_TEST(test_disabled_expr_types_empty_array_preserved);
+  RUN_TEST(test_disabled_expr_types_keep_only_ids);
   RUN_TEST(test_social_disabled_absent_defaults_true);
   RUN_TEST(test_social_disabled_explicit_false);
   RUN_TEST(test_homemode_round_trip_new_fields);

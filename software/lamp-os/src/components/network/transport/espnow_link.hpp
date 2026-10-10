@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstring>
 
+#include "tx_credit.hpp"
+
 namespace lamp {
 
 // Callback signature for received ESP-NOW frames. Fires from the Wi-Fi task.
@@ -41,8 +43,10 @@ class EspNowLink {
   // ensure begin() has run.
   void getMac(uint8_t out[6]);
 
-  // Public so the C trampoline in the .cpp can reach it without a friend.
+  // Public so the C trampolines in the .cpp can reach them without a friend.
   static EspNowRecvFn s_recv;
+  // Frames queued in the driver; every send goes through it (tx_credit.hpp).
+  static TxCredit s_txCredit;
 
  private:
   uint8_t peerMac_[6] = {0};

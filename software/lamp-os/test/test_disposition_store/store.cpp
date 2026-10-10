@@ -6,6 +6,9 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <new>
 
 #include "config/config_store.hpp"
 #include "config/disposition_store.hpp"
@@ -13,6 +16,18 @@
 
 // Native tests don't build src/, so compile the real implementation in.
 #include "../../src/config/disposition_store.cpp"
+#include "../../src/util/heap_guard.cpp"
+
+// Allocations fail while set, the way a fragmented heap refuses one.
+static bool g_failAllocations = false;
+void* operator new(size_t size) {
+  if (g_failAllocations) throw std::bad_alloc();
+  void* p = std::malloc(size ? size : 1);
+  if (!p) throw std::bad_alloc();
+  return p;
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete(void* p, size_t) noexcept { std::free(p); }
 
 using namespace lamp;
 
@@ -86,9 +101,9 @@ void test_debounced_persist_and_reload_round_trip() {
 
   setMac(ds, "AA:BB:CC:DD:EE:01", 4, 1000);
   ds.maybeFlush(1050);  // within window → no write yet
-  TEST_ASSERT_EQUAL_STRING("MISS", backing.read("dispositions", "MISS").c_str());
+  TEST_ASSERT_FALSE(backing.has(DispositionStore::kBlobKey));
   ds.maybeFlush(1100);  // window elapsed → writes
-  TEST_ASSERT_TRUE(backing.read("dispositions", "MISS") != "MISS");
+  TEST_ASSERT_TRUE(backing.has(DispositionStore::kBlobKey));
 
   // A fresh store over the same backing loads the persisted value.
   DispositionStore reloaded(100);
@@ -102,8 +117,8 @@ void test_flush_now_writes_immediately() {
   DispositionStore ds(100000);  // long window; only flushNow should write
   ds.attachStore(&backing);
   setMac(ds, "AA:BB:CC:DD:EE:09", 3, 0);
-  ds.flushNow();
-  TEST_ASSERT_TRUE(backing.read("dispositions", "MISS") != "MISS");
+  ds.flushNow(0);
+  TEST_ASSERT_TRUE(backing.has(DispositionStore::kBlobKey));
 }
 
 // The on-disk JSON must stay byte-identical across the byte-key packing:
@@ -136,6 +151,223 @@ void test_loads_existing_persisted_blob() {
       "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}", ds.asJson().c_str());
 }
 
+// A full NVS keeps the entries dirty and backs off 5 s doubling to 60 s, so a
+// failing flush can never retry at loop rate.
+void test_failed_write_backs_off_then_lands() {
+  InMemoryConfigStore backing;
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  setMac(ds, "AA:BB:CC:DD:EE:01", 5, 0);
+  backing.failWrites = true;
+  for (uint32_t t = 100; t < 4900; t += 10) ds.maybeFlush(t);
+  TEST_ASSERT_EQUAL_UINT(1, backing.writeCount);
+  ds.maybeFlush(5100);  // first retry, 5 s after the failure
+  TEST_ASSERT_EQUAL_UINT(2, backing.writeCount);
+  for (uint32_t t = 5110; t < 15100; t += 10) ds.maybeFlush(t);
+  TEST_ASSERT_EQUAL_UINT(2, backing.writeCount);  // second wait is 10 s
+  ds.flushNow(15000);  // a disconnect flush is held to the backoff too
+  TEST_ASSERT_EQUAL_UINT(2, backing.writeCount);
+  backing.failWrites = false;
+  ds.maybeFlush(15100);
+  TEST_ASSERT_EQUAL_UINT(3, backing.writeCount);
+  TEST_ASSERT_TRUE(backing.has(DispositionStore::kBlobKey));
+  ds.maybeFlush(200000);  // clean after the success
+  TEST_ASSERT_EQUAL_UINT(3, backing.writeCount);
+}
+
+// A lamp updating from the JSON form keeps its dispositions; the first flush
+// writes the blob and erases the JSON key.
+void test_legacy_json_migrates_on_first_flush() {
+  InMemoryConfigStore backing;
+  backing.write("dispositions", "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}");
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  ds.load();
+  setMac(ds, "AA:BB:CC:DD:EE:01", 2, 0);
+  ds.maybeFlush(100);
+  TEST_ASSERT_FALSE(backing.has("dispositions"));
+  DispositionStore reloaded(100);
+  reloaded.attachStore(&backing);
+  reloaded.load();
+  TEST_ASSERT_EQUAL_UINT8(1, getMac(reloaded, "11:22:33:44:55:66"));
+  TEST_ASSERT_EQUAL_UINT8(4, getMac(reloaded, "C4:DD:57:EB:64:60"));
+  TEST_ASSERT_EQUAL_UINT8(2, getMac(reloaded, "AA:BB:CC:DD:EE:01"));
+}
+
+// The legacy JSON migrates at load, blob first: a reset between the two
+// writes still leaves a readable copy, and the JSON's space comes back on the
+// first boot.
+void test_legacy_json_migrates_at_load_blob_first() {
+  for (size_t crashAt = 0; crashAt < 3; ++crashAt) {
+    InMemoryConfigStore backing;
+    backing.write("dispositions", "{\"11:22:33:44:55:66\":1}");
+    backing.writesBeforeCrash = crashAt;
+    DispositionStore ds(100);
+    ds.attachStore(&backing);
+    ds.load();
+    backing.writesBeforeCrash = SIZE_MAX;
+    DispositionStore reloaded(100);
+    reloaded.attachStore(&backing);
+    reloaded.load();
+    TEST_ASSERT_EQUAL_UINT8(1, getMac(reloaded, "11:22:33:44:55:66"));
+  }
+  InMemoryConfigStore backing;
+  backing.write("dispositions", "{\"11:22:33:44:55:66\":1}");
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  ds.load();
+  TEST_ASSERT_FALSE(backing.has("dispositions"));
+  TEST_ASSERT_TRUE(backing.has(DispositionStore::kBlobKey));
+}
+
+// After a downgrade an older firmware writes the JSON key again; flashed
+// forward, that newer copy wins over the stale blob.
+void test_json_written_after_a_downgrade_wins() {
+  InMemoryConfigStore backing;
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  setMac(ds, "11:22:33:44:55:66", 1, 0);
+  ds.flushNow(0);
+  backing.write("dispositions", "{\"11:22:33:44:55:66\":5}");
+  DispositionStore reloaded(100);
+  reloaded.attachStore(&backing);
+  reloaded.load();
+  TEST_ASSERT_EQUAL_UINT8(5, getMac(reloaded, "11:22:33:44:55:66"));
+}
+
+// A corrupt or empty legacy JSON never replaces a blob that holds entries.
+void test_corrupt_or_empty_json_keeps_the_blob() {
+  for (const char* bad : {"{\"11:22", "{}"}) {
+    InMemoryConfigStore backing;
+    DispositionStore ds(100);
+    ds.attachStore(&backing);
+    setMac(ds, "11:22:33:44:55:66", 4, 0);
+    ds.flushNow(0);
+    backing.write("dispositions", bad);
+    DispositionStore reloaded(100);
+    reloaded.attachStore(&backing);
+    reloaded.load();
+    TEST_ASSERT_EQUAL_UINT8(4, getMac(reloaded, "11:22:33:44:55:66"));
+    DispositionStore again(100);
+    again.attachStore(&backing);
+    again.load();
+    TEST_ASSERT_EQUAL_UINT8(4, getMac(again, "11:22:33:44:55:66"));
+    TEST_ASSERT_FALSE(backing.has("dispositions"));
+  }
+}
+
+void test_asjson_sized_to_the_entries() {
+  DispositionStore ds(100);
+  setMac(ds, "AA:BB:CC:DD:EE:01", 2, 0);
+  const std::string json = ds.asJson();
+  TEST_ASSERT_EQUAL_STRING("{\"AA:BB:CC:DD:EE:01\":2}", json.c_str());
+}
+
+// A full store round-trips through the blob at its 701-byte ceiling.
+void test_full_store_blob_round_trip() {
+  InMemoryConfigStore backing;
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  for (unsigned i = 0; i < DispositionStore::kMax; ++i) {
+    const uint8_t m[6] = {1, 2, 3, 4, 0, static_cast<uint8_t>(i)};
+    ds.set(m, static_cast<uint8_t>(1 + i % 5), 0);
+  }
+  ds.flushNow(0);
+  TEST_ASSERT_EQUAL(DispositionStore::kMaxBlobLen,
+                    backing.read(DispositionStore::kBlobKey, "").size());
+  DispositionStore reloaded(100);
+  reloaded.attachStore(&backing);
+  reloaded.load();
+  TEST_ASSERT_EQUAL_STRING(ds.asJson().c_str(), reloaded.asJson().c_str());
+}
+
+// The direct writer emits exactly what ArduinoJson serialized for the same
+// object, at full capacity, so a stored blob reads back unchanged.
+void test_full_store_matches_arduinojson_bytes() {
+  DispositionStore ds(100);
+  JsonDocument doc;
+  char key[18];
+  for (unsigned i = 0; i < DispositionStore::kMax; ++i) {
+    const uint8_t m[6] = {0x10, 0x20, 0x30, 0x40, static_cast<uint8_t>(i >> 8),
+                          static_cast<uint8_t>(i)};
+    const uint8_t v = static_cast<uint8_t>(1 + i % 5);
+    ds.set(m, v, 0);
+    formatBdAddr(m, key);
+    doc[key] = v;
+  }
+  std::string expected;
+  serializeJson(doc, expected);
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), ds.asJson().c_str());
+}
+
+void test_empty_store_serializes_empty_object() {
+  DispositionStore ds(100);
+  TEST_ASSERT_EQUAL_STRING("{}", ds.asJson().c_str());
+}
+
+// A failed allocation for the JSON leaves no lock held: the next caller on
+// either core can still take it.
+void test_a_failed_json_allocation_gives_the_lock_back() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const char* entries = "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}";
+  TEST_ASSERT_TRUE(ds.setFromJson(entries, std::strlen(entries), 0));
+  const int heldBefore = g_semaphoresHeld;
+  std::string json = "x";
+  g_failAllocations = true;
+  try {
+    json = ds.asJson();
+  } catch (const std::bad_alloc&) {
+  }
+  g_failAllocations = false;
+  TEST_ASSERT_EQUAL(heldBefore, g_semaphoresHeld);
+  TEST_ASSERT_TRUE(json.empty());
+  TEST_ASSERT_EQUAL_STRING(entries, ds.asJson().c_str());
+}
+
+// An entry added on the other core between sizing the JSON and writing it
+// (the second take) makes the write wait for a correctly sized block.
+namespace {
+DispositionStore* g_growing = nullptr;
+int g_takes = 0;
+void growOnSecondTake() {
+  if (++g_takes != 2) return;
+  g_semaphoreTakeHook = nullptr;
+  const uint8_t mac[6] = {0xC4, 0xDD, 0x57, 0xEB, 0x64, 0x60};
+  g_growing->set(mac, 4, 0);
+}
+}  // namespace
+
+void test_an_entry_added_between_the_locks_is_included() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+  ds.set(mac, 1, 0);
+  g_growing = &ds;
+  g_takes = 0;
+  g_semaphoreTakeHook = growOnSecondTake;
+  const std::string json = ds.asJson();
+  g_semaphoreTakeHook = nullptr;
+  const std::string expected = "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}";
+  TEST_ASSERT_EQUAL(expected.size(), json.size());
+  TEST_ASSERT_TRUE(json == expected);
+}
+
+// A heap that cannot spare the JSON's block gets no JSON.
+void test_the_json_waits_for_the_heap() {
+  InMemoryConfigStore store;
+  DispositionStore ds(100);
+  ds.attachStore(&store);
+  const uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+  ds.set(mac, 1, 0);
+  g_mock_largest_free_block = kHeapHeadroom;
+  const std::string json = ds.asJson();
+  g_mock_largest_free_block = 1 << 20;
+  TEST_ASSERT_TRUE(json.empty());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_unknown_peer_returns_default);
@@ -147,5 +379,17 @@ int main(int, char**) {
   RUN_TEST(test_flush_now_writes_immediately);
   RUN_TEST(test_asjson_is_sorted_canonical_colon_hex);
   RUN_TEST(test_loads_existing_persisted_blob);
+  RUN_TEST(test_failed_write_backs_off_then_lands);
+  RUN_TEST(test_legacy_json_migrates_on_first_flush);
+  RUN_TEST(test_full_store_blob_round_trip);
+  RUN_TEST(test_legacy_json_migrates_at_load_blob_first);
+  RUN_TEST(test_json_written_after_a_downgrade_wins);
+  RUN_TEST(test_asjson_sized_to_the_entries);
+  RUN_TEST(test_corrupt_or_empty_json_keeps_the_blob);
+  RUN_TEST(test_full_store_matches_arduinojson_bytes);
+  RUN_TEST(test_empty_store_serializes_empty_object);
+  RUN_TEST(test_a_failed_json_allocation_gives_the_lock_back);
+  RUN_TEST(test_an_entry_added_between_the_locks_is_included);
+  RUN_TEST(test_the_json_waits_for_the_heap);
   return UNITY_END();
 }

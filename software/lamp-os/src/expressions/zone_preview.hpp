@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <string>
 #include <vector>
 
@@ -18,8 +17,7 @@ inline std::vector<Color> buildZonePreviewBuffer(uint16_t pixelCount,
                                                  uint32_t posMax, Color color) {
   std::vector<Color> buf(pixelCount, Color());
   if (pixelCount == 0) return buf;
-  const std::map<std::string, uint32_t> p = {{"posMin", posMin},
-                                             {"posMax", posMax}};
+  const ExpressionParams p = {{"posMin", posMin}, {"posMax", posMax}};
   const Zone z = Zone::fromParameters(p, pixelCount);
   for (uint16_t i = z.posMin; i <= z.posMax && i < pixelCount; ++i) {
     buf[i] = color;

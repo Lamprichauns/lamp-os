@@ -12,6 +12,9 @@
 #include "expressions/pulse/pulse_expression.hpp"
 #include "expressions/shifty/shifty_expression.hpp"
 #include "expressions/spotty/spotty_expression.hpp"
+#include "expressions/bloom/bloom_expression.hpp"
+#include "config/config_types.hpp"
+#include "expressions/expression_invocation.hpp"
 
 #include "../../src/expressions/expression_registry.cpp"
 
@@ -434,8 +437,71 @@ void test_shimmer_has_no_colors_and_has_opacity() {
   TEST_ASSERT_TRUE(hasOpacity(kShimmerDescriptorData));
 }
 
+static void assertKeyStored(const char* key) {
+  if (!key || !std::strcmp(key, "intervalMin") || !std::strcmp(key, "intervalMax")) return;
+  TEST_ASSERT_TRUE_MESSAGE(expressionParamKeyIndex(key) >= 0, key);
+}
+
+// Stored configs carry a parameter as its index in kExpressionParamKeys, and
+// a key missing from it is dropped at parse. Every key a descriptor offers
+// the app has to be in the table.
+void test_every_descriptor_key_has_a_stored_index() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) {
+    for (const ParamSpec& p : d->params) assertKeyStored(p.key);
+    for (const auto* r : {&d->interval, &d->duration}) {
+      if (!r->has_value()) continue;
+      assertKeyStored((*r)->minKey);
+      assertKeyStored((*r)->maxKey);
+    }
+  }
+  TEST_ASSERT_TRUE(expressionParamKeyIndex("posMin") >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex("posMax") >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kParamCascadeEnabled) >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kParamCascadeStaggerMs) >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kLoopParamKey) >= 0);
+}
+
+// The stored and wire parameter cap holds every key a type can carry: its
+// params, its duration range keys, the three zone keys and the two cascade
+// keys.
+void test_every_type_fits_the_parameter_cap() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) {
+    size_t keys = d->params.size() + 2;
+    if (d->duration.has_value() && d->duration->minKey) keys += 2;
+    if (d->hasZone) keys += 3;
+    TEST_ASSERT_TRUE_MESSAGE(keys <= kMaxExpressionParams, d->id);
+  }
+}
+
+// The table is append-only: an index already written to a lamp's NVS must
+// keep naming the same key.
+void test_param_key_table_prefix_is_pinned() {
+  const char* pinned[] = {
+      "breathSpeed",  "cascadeEnabled",   "cascadeStaggerMs", "count",
+      "durationMax",  "durationMin",      "easing",           "fadeDuration",
+      "fillMode",     "fire",             "fullStrip",        "loop",
+      "opacity",      "posMax",           "posMin",           "pulseSpeed",
+      "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
+      "spotSpeed"};
+  TEST_ASSERT_TRUE(kExpressionParamKeyCount >= sizeof(pinned) / sizeof(pinned[0]));
+  for (size_t i = 0; i < sizeof(pinned) / sizeof(pinned[0]); ++i) {
+    TEST_ASSERT_EQUAL_STRING(pinned[i], kExpressionParamKeys[i]);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_every_descriptor_key_has_a_stored_index);
+  RUN_TEST(test_param_key_table_prefix_is_pinned);
+  RUN_TEST(test_every_type_fits_the_parameter_cap);
   RUN_TEST(test_all_five_ids_present);
   RUN_TEST(test_continuous_flags);
   RUN_TEST(test_glitchy_zone_optional);

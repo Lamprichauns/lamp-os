@@ -45,7 +45,7 @@ static constexpr EnumOption kOpts2[] = {
 };
 
 static constexpr ParamSpec kParams2[] = {
-  { .key = "style", .kind = ParamKind::Enum, .label = "Style",
+  { .key = "fillMode", .kind = ParamKind::Enum, .label = "Style",
     .min = 0, .max = 1, .step = 1, .def = 0,
     .options = kOpts2 },
 };
@@ -83,7 +83,7 @@ static constexpr ExpressionDescriptor kDesc3{
 static constexpr ParamSpec kParams4[] = {
   { .key = "size", .kind = ParamKind::Int, .label = "Size",
     .min = 0, .max = Bound::pixels(), .step = 1, .def = Bound::pixels() },
-  { .key = "cap", .kind = ParamKind::Int, .label = "Cap",
+  { .key = "posMax", .kind = ParamKind::Int, .label = "Cap",
     .min = 0, .max = Bound::pixels(), .step = 1, .def = Bound::pixels(10) },
 };
 
@@ -129,42 +129,43 @@ void test_add_replaces_existing_id() {
 
 void test_apply_defaults_fills_missing_and_preserves_present() {
   ExpressionRegistry reg;
-  std::map<std::string, uint32_t> params;
-  params["count"] = 99;  // already present — must not be overwritten
+  ExpressionParams params;
+  params.set("count", 99);  // already present, so applyDefaults keeps it
 
   reg.applyDefaults(kDesc1, params, 30);
-  TEST_ASSERT_EQUAL_UINT32(99, params["count"]);  // untouched
-  // interval range folds into its minKey/maxKey
-  TEST_ASSERT_EQUAL_UINT32(5,  params["intervalMin"]);
-  TEST_ASSERT_EQUAL_UINT32(15, params["intervalMax"]);
+  TEST_ASSERT_EQUAL_UINT32(99, params.get("count", 0));  // untouched
+  // The interval pair is an ExpressionConfig field with no parameter slot,
+  // so its fold stores nothing.
+  TEST_ASSERT_FALSE(params.contains("intervalMin"));
+  TEST_ASSERT_FALSE(params.contains("intervalMax"));
 
-  // kDesc2 has "style" with def=0
+  // kDesc2 has "fillMode" with def=0
   reg.applyDefaults(kDesc2, params, 30);
-  TEST_ASSERT_TRUE(params.count("style") > 0);
-  TEST_ASSERT_EQUAL_UINT32(0, params["style"]);
+  TEST_ASSERT_TRUE(params.contains("fillMode"));
+  TEST_ASSERT_EQUAL_UINT32(0, params.get("fillMode", 0));
 }
 
 void test_apply_defaults_resolves_bounds_and_folds_ranges() {
   ExpressionRegistry reg;
 
-  std::map<std::string, uint32_t> params;
+  ExpressionParams params;
   reg.applyDefaults(kDesc4, params, 24);
-  TEST_ASSERT_EQUAL_UINT32(24, params["size"]);         // pixels → window
-  TEST_ASSERT_EQUAL_UINT32(10, params["cap"]);          // pixels(10), window > cap
-  TEST_ASSERT_EQUAL_UINT32(3,  params["durationMin"]);  // duration range fold
-  TEST_ASSERT_EQUAL_UINT32(20, params["durationMax"]);
+  TEST_ASSERT_EQUAL_UINT32(24, params.get("size", 0));         // pixels → window
+  TEST_ASSERT_EQUAL_UINT32(10, params.get("posMax", 0));          // pixels(10), window > cap
+  TEST_ASSERT_EQUAL_UINT32(3,  params.get("durationMin", 0));  // duration range fold
+  TEST_ASSERT_EQUAL_UINT32(20, params.get("durationMax", 0));
 
-  std::map<std::string, uint32_t> small;
+  ExpressionParams small;
   reg.applyDefaults(kDesc4, small, 6);
-  TEST_ASSERT_EQUAL_UINT32(6, small["size"]);           // pixels → window
-  TEST_ASSERT_EQUAL_UINT32(6, small["cap"]);            // min(window, 10)
+  TEST_ASSERT_EQUAL_UINT32(6, small.get("size", 0));           // pixels → window
+  TEST_ASSERT_EQUAL_UINT32(6, small.get("posMax", 0));            // min(window, 10)
 
-  std::map<std::string, uint32_t> preset;
-  preset["size"] = 99;
-  preset["durationMin"] = 42;
+  ExpressionParams preset;
+  preset.set("size", 99);
+  preset.set("durationMin", 42);
   reg.applyDefaults(kDesc4, preset, 24);
-  TEST_ASSERT_EQUAL_UINT32(99, preset["size"]);         // present key never overwritten
-  TEST_ASSERT_EQUAL_UINT32(42, preset["durationMin"]);
+  TEST_ASSERT_EQUAL_UINT32(99, preset.get("size", 0));         // present key never overwritten
+  TEST_ASSERT_EQUAL_UINT32(42, preset.get("durationMin", 0));
 }
 
 void test_serialize_catalog_schema_version_and_count() {
@@ -451,7 +452,7 @@ void test_serialize_interval_unit_and_label() {
 
 void test_apply_defaults_negative_literal_clamps_to_zero() {
   static constexpr ParamSpec kNegParam[] = {
-    { .key = "neg", .kind = ParamKind::Int, .label = "Neg",
+    { .key = "scatter", .kind = ParamKind::Int, .label = "Neg",
       .def = Bound(-3) },
   };
   static constexpr ExpressionDescriptor kNegDesc{
@@ -461,17 +462,17 @@ void test_apply_defaults_negative_literal_clamps_to_zero() {
     .params = kNegParam,
   };
   ExpressionRegistry reg;
-  std::map<std::string, uint32_t> params;
+  ExpressionParams params;
   reg.applyDefaults(kNegDesc, params, 20);
-  TEST_ASSERT_EQUAL_UINT32(0, params["neg"]);
+  TEST_ASSERT_EQUAL_UINT32(0, params.get("scatter", 0));
 }
 
 void test_apply_defaults_does_not_overwrite_duration_max_key() {
   ExpressionRegistry reg;
-  std::map<std::string, uint32_t> params;
-  params["durationMax"] = 99;
+  ExpressionParams params;
+  params.set("durationMax", 99);
   reg.applyDefaults(kDesc4, params, 24);
-  TEST_ASSERT_EQUAL_UINT32(99, params["durationMax"]);
+  TEST_ASSERT_EQUAL_UINT32(99, params.get("durationMax", 0));
 }
 
 void test_advanced_field_serializes_only_when_set() {

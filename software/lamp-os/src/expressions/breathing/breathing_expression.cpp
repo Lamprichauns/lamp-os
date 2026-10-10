@@ -25,7 +25,7 @@ BreathingExpression::BreathingExpression(FrameBuffer* inBuffer, uint32_t inFrame
     : Expression(inBuffer, inFrames) {
 }
 
-void BreathingExpression::configureFromParameters(const std::map<std::string, uint32_t>& parameters) {
+void BreathingExpression::configureFromParameters(const ExpressionParams& parameters) {
   uint32_t breathSpeed = getParam(parameters, "breathSpeed");
   if (breathSpeed < 8) breathSpeed = 8;
   breathSpeedMs = breathSpeed * kMsPerSecond;

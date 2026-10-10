@@ -39,6 +39,11 @@ void Compositor::begin(std::vector<AnimatedBehavior*> inBehaviors,
     startupBehaviors.push_back(b);
   }
 
+  // Cascade transients and live expression upserts join after boot; reserve
+  // their slots now so a crowd's cascades never regrow the list mid-show.
+  constexpr size_t kRuntimeBehaviorSlots = 16;
+  behaviors.reserve(inBehaviors.size() + kRuntimeBehaviorSlots);
+
   // append all of the non critical behaviors
   for (size_t i = 0; i < inBehaviors.size(); i++) {
     inBehaviors[i]->setBehaviorContext(&context_);

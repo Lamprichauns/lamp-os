@@ -35,20 +35,12 @@ namespace lamp {
 
 namespace {
 
-// Local state for drainCommit only.
+// Loop-task state for drainCommit and drainSettingsBlob.
 bool      commitDirty = false;
+bool      rebootWhenSaved = false;  // drainSettingsBlob: a deferred save owes a reboot
+uint32_t  rebootWhenSavedSinceMs = 0;
 uint32_t  lastCommitSignalMs = 0;
-uint32_t  lastPersistedHash = 0;  // FNV-1a of last successfully persisted serialized JSON
 constexpr uint32_t kCommitFlushIdleMs = 2500;
-
-uint32_t fnv1aHash(const String& s) {
-  uint32_t h = 2166136261u;
-  for (size_t i = 0; i < s.length(); ++i) {
-    h ^= static_cast<uint8_t>(s[i]);
-    h *= 16777619u;
-  }
-  return h;
-}
 
 }  // namespace
 
@@ -182,7 +174,7 @@ void Lamp::drainExpressionOp() {
   }
 }
 
-// Debounced 2500 ms; hash-dedup skips redundant NVS writes.
+// Debounced 2500 ms; NVS skips rewriting unchanged keys.
 // Force-flush path on BLE disconnect. Runs after live-preview drains.
 void Lamp::drainCommit() {
   lamp::Config& config = ::config;
@@ -207,35 +199,12 @@ void Lamp::drainCommit() {
       Serial.println("[loop] commit drain: OTA in progress, deferred");
 #endif
     } else {
-      JsonDocument doc = config.asJsonDocument();
-      String serialized;
-      // Reserve up front; growing by doubling would momentarily need ~2x the
-      // final size contiguous on a heap this fragmented, tipping into
-      // bad_alloc.
-      serialized.reserve(measureJson(doc));
-      try {
-        serializeJson(doc, serialized);
-        uint32_t hash = fnv1aHash(serialized);
-        if (hash == lastPersistedHash) {
-#ifdef LAMP_DEBUG
-          Serial.println("[loop] commit drain: hash-dedup skip");
-#endif
-          commitDirty = false;
-        } else {
-          bool persisted = config.persistConfig("commit");
-          if (persisted) {
-            lastPersistedHash = hash;
-            config.invalidateAllSections();
-            lamp::refreshDefaultScene();
-            commitDirty = false;
-          }
-          // Persist failure leaves commitDirty set; next tick retries.
-        }
-      } catch (const std::bad_alloc&) {
-#ifdef LAMP_DEBUG
-        Serial.println("[loop] commit drain: OOM during dedup hash, deferred");
-#endif
-        // commitDirty stays set; next tick retries.
+      // A failed save backs off inside Config; commitDirty stays set until a
+      // retry lands, and an unchanged config is a no-op write in NVS.
+      if (config.persistDue(millis()) && config.persistConfig("commit")) {
+        config.invalidateAllSections();
+        lamp::refreshDefaultScene();
+        commitDirty = false;
       }
     }
   }
@@ -245,6 +214,21 @@ void Lamp::drainCommit() {
 // Runs after drainExpressionOp. OTA-in-progress guard discards the write.
 void Lamp::drainSettingsBlob() {
   lamp::Config& config = ::config;
+  if (rebootWhenSaved) {
+    switch (lamp::deferredReboot(config.persistPending(), firmwareReceiver.isInProgress(),
+                                 rebootWhenSavedSinceMs, millis())) {
+      case lamp::DeferredReboot::Reboot:
+        rebootWhenSaved = false;
+        lamp::fadeOutRebootRequested = true;
+        break;
+      case lamp::DeferredReboot::GiveUp:
+        rebootWhenSaved = false;
+        Serial.println("[loop] settingsBlob: save never landed; no reboot");
+        break;
+      case lamp::DeferredReboot::Wait:
+        break;
+    }
+  }
   if (lamp::pendingSlots.settingsBlob.valid) {
     // static: 2 KB is too big for the loop-task stack; this drain is the
     // slot's only consumer and runs only on Core 1.
@@ -296,11 +280,9 @@ void Lamp::drainSettingsBlob() {
       if (wantsReboot && persisted) {
         lamp::fadeOutRebootRequested = true;
       } else if (wantsReboot && !persisted) {
-#ifdef LAMP_DEBUG
-        Serial.println(
-            "[loop] settingsBlob: persist failed; skipping reboot to avoid "
-            "rebooting into a half-applied config");
-#endif
+        Serial.println("[loop] settingsBlob: save deferred; reboot waits for it");
+        rebootWhenSaved = true;
+        rebootWhenSavedSinceMs = millis();
       }
     }
   }

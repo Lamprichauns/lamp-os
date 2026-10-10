@@ -5,6 +5,7 @@
 // cross-variant reflash), overwrites it. Compile error if the compiled variant is unknown.
 
 #include <Arduino.h>
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -28,8 +29,18 @@ void setup() {
   Serial.setRxBufferSize(2048);
 #endif
   Serial.begin(115200);
+  // The UART VFS driver creates its write lock on the first stdout write, and
+  // newlib aborts if that allocation fails. Every lamp log goes through
+  // Serial, so the first stdout write is otherwise an IDF driver's error line
+  // (the WiFi/coex timer task) on a starved heap. Write once now, while the
+  // heap is whole.
+  fputs("\n", stdout);
   // Small delay so the boot log isn't lost while the host opens the port.
   delay(50);
+
+  // Before anything opens NVS: a partition that reports itself unusable is
+  // erased so the lamp still boots with Bluetooth.
+  lamp::NvsConfigStore::initFlash();
 
   // Attach the store to the file-scope Config so loadLampType / setLampType
   // can hit NVS during the variant-resolution chain below. Lamp::setup()

@@ -11,6 +11,8 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+
 #include <vector>
 
 #include "config/config.hpp"
@@ -35,8 +37,9 @@ namespace apply {
 inline void baseColorsToConfig(JsonArray arr) {
   if (arr.isNull() || arr.size() == 0) return;
   std::vector<Color> next;
-  next.reserve(arr.size());
+  next.reserve(std::min(arr.size(), kMaxSurfaceColors));
   for (JsonVariant v : arr) {
+    if (next.size() == kMaxSurfaceColors) break;
     next.push_back(hexStringToColor(v));
   }
   ::config.base.broadcastColors() = next;

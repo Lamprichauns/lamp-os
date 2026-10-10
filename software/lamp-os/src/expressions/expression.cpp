@@ -85,12 +85,12 @@ float Expression::wispDimScale() {
   return opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
 }
 
-void Expression::configureOpacity(const std::map<std::string, uint32_t>& parameters) {
+void Expression::configureOpacity(const ExpressionParams& parameters) {
   opacityPct_ = static_cast<uint8_t>(
       std::clamp<uint32_t>(getParam(parameters, "opacity", 100), 10, 100));
 }
 
-void Expression::configureEasing(const std::map<std::string, uint32_t>& parameters, uint32_t defVal) {
+void Expression::configureEasing(const ExpressionParams& parameters, uint32_t defVal) {
   easingRaw_ = getParam(parameters, "easing", defVal);
   easing_ = (easingRaw_ == static_cast<uint32_t>(Easing::Random))
                 ? randomEasing(rng)

@@ -1,12 +1,13 @@
-// Native-test stub for mbedtls/md.h.
+// Native-test stub for mbedtls/sha256.h, shared by every native test that
+// compiles code calling mbedtls_sha256_{init,starts,update,finish,free}
+// (firmware and FS signatures, the distributor, command_auth's HMAC). The
+// device build takes the header from the IDF mbedtls component; the native
+// env has no mbedtls, so test/native_stubs (on the native include path)
+// carries this self-contained SHA-256 behind the same API subset.
 //
-// command_auth.cpp uses mbedtls_md_hmac(SHA256, ...) on device (IDF mbedtls
-// component). The host (PIO `native`) env has no mbedtls install, so this
-// directory is added to the include path and ships the HMAC-SHA256 subset the
-// production code touches: mbedtls_md_info_from_type, mbedtls_md_get_type,
-// mbedtls_md_hmac. The SHA-256 core is the same public-domain FIPS 180-4 §6.2
-// implementation used by the other crypto test shims; HMAC is the RFC 2104
-// construction over it.
+// The SHA-256 implementation is byte-for-byte equivalent to FIPS 180-4 §6.2,
+// derived from the public-domain "sha256.c" reference by Brad Conte:
+//   https://github.com/B-Con/crypto-algorithms/blob/master/sha256.c
 
 #pragma once
 
@@ -14,23 +15,15 @@
 #include <cstdint>
 #include <cstring>
 
-typedef enum {
-  MBEDTLS_MD_NONE = 0,
-  MBEDTLS_MD_SHA256,
-} mbedtls_md_type_t;
-
-typedef struct {
-  mbedtls_md_type_t type;
-} mbedtls_md_info_t;
-
-namespace mbedtls_md_stub_detail {
-
+// mbedtls's API shape, limited to the entry points the firmware calls.
 typedef struct {
   uint8_t  data[64];
   uint32_t datalen;
   uint64_t bitlen;
   uint32_t state[8];
-} sha256_ctx;
+} mbedtls_sha256_context;
+
+namespace mbedtls_sha256_stub_detail {
 
 constexpr uint32_t kInitState[8] = {
     0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
@@ -55,7 +48,7 @@ inline uint32_t rotr(uint32_t x, uint32_t n) {
   return (x >> n) | (x << (32u - n));
 }
 
-inline void transform(sha256_ctx* ctx, const uint8_t data[64]) {
+inline void transform(mbedtls_sha256_context* ctx, const uint8_t data[64]) {
   uint32_t w[64];
   for (uint32_t i = 0, j = 0; i < 16; ++i, j += 4) {
     w[i] = (uint32_t(data[j]) << 24) | (uint32_t(data[j + 1]) << 16) |
@@ -67,8 +60,14 @@ inline void transform(sha256_ctx* ctx, const uint8_t data[64]) {
     w[i] = w[i - 16] + s0 + w[i - 7] + s1;
   }
 
-  uint32_t a = ctx->state[0], b = ctx->state[1], c = ctx->state[2], d = ctx->state[3];
-  uint32_t e = ctx->state[4], f = ctx->state[5], g = ctx->state[6], h = ctx->state[7];
+  uint32_t a = ctx->state[0];
+  uint32_t b = ctx->state[1];
+  uint32_t c = ctx->state[2];
+  uint32_t d = ctx->state[3];
+  uint32_t e = ctx->state[4];
+  uint32_t f = ctx->state[5];
+  uint32_t g = ctx->state[6];
+  uint32_t h = ctx->state[7];
 
   for (uint32_t i = 0; i < 64; ++i) {
     const uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
@@ -77,98 +76,87 @@ inline void transform(sha256_ctx* ctx, const uint8_t data[64]) {
     const uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
     const uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
     const uint32_t temp2 = S0 + maj;
-    h = g; g = f; f = e; e = d + temp1;
-    d = c; c = b; b = a; a = temp1 + temp2;
+    h = g;
+    g = f;
+    f = e;
+    e = d + temp1;
+    d = c;
+    c = b;
+    b = a;
+    a = temp1 + temp2;
   }
 
-  ctx->state[0] += a; ctx->state[1] += b; ctx->state[2] += c; ctx->state[3] += d;
-  ctx->state[4] += e; ctx->state[5] += f; ctx->state[6] += g; ctx->state[7] += h;
+  ctx->state[0] += a;
+  ctx->state[1] += b;
+  ctx->state[2] += c;
+  ctx->state[3] += d;
+  ctx->state[4] += e;
+  ctx->state[5] += f;
+  ctx->state[6] += g;
+  ctx->state[7] += h;
 }
 
-inline void sha256_init(sha256_ctx* ctx) {
+}  // namespace mbedtls_sha256_stub_detail
+
+inline void mbedtls_sha256_init(mbedtls_sha256_context* ctx) {
+  std::memset(ctx, 0, sizeof(*ctx));
+}
+
+inline void mbedtls_sha256_free(mbedtls_sha256_context* ctx) {
+  if (ctx) std::memset(ctx, 0, sizeof(*ctx));
+}
+
+inline int mbedtls_sha256_starts(mbedtls_sha256_context* ctx, int is224) {
+  if (is224) return -1;  // production only uses SHA-256
   ctx->datalen = 0;
   ctx->bitlen = 0;
-  for (int i = 0; i < 8; ++i) ctx->state[i] = kInitState[i];
+  for (int i = 0; i < 8; ++i)
+    ctx->state[i] = mbedtls_sha256_stub_detail::kInitState[i];
+  return 0;
 }
 
-inline void sha256_update(sha256_ctx* ctx, const uint8_t* data, size_t len) {
+inline int mbedtls_sha256_update(mbedtls_sha256_context* ctx,
+                                 const uint8_t* data, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     ctx->data[ctx->datalen++] = data[i];
     if (ctx->datalen == 64) {
-      transform(ctx, ctx->data);
+      mbedtls_sha256_stub_detail::transform(ctx, ctx->data);
       ctx->bitlen += 512;
       ctx->datalen = 0;
     }
   }
+  return 0;
 }
 
-inline void sha256_finish(sha256_ctx* ctx, uint8_t out[32]) {
+inline int mbedtls_sha256_finish(mbedtls_sha256_context* ctx, uint8_t out[32]) {
   uint32_t i = ctx->datalen;
+  // Pad whatever data is left in the buffer.
   if (ctx->datalen < 56) {
     ctx->data[i++] = 0x80;
     while (i < 56) ctx->data[i++] = 0x00;
   } else {
     ctx->data[i++] = 0x80;
     while (i < 64) ctx->data[i++] = 0x00;
-    transform(ctx, ctx->data);
+    mbedtls_sha256_stub_detail::transform(ctx, ctx->data);
     std::memset(ctx->data, 0, 56);
   }
+  // Append total bit length as 64-bit big-endian.
   ctx->bitlen += static_cast<uint64_t>(ctx->datalen) * 8u;
-  for (int b = 0; b < 8; ++b)
-    ctx->data[63 - b] = static_cast<uint8_t>(ctx->bitlen >> (8 * b));
-  transform(ctx, ctx->data);
+  ctx->data[63] = static_cast<uint8_t>(ctx->bitlen);
+  ctx->data[62] = static_cast<uint8_t>(ctx->bitlen >> 8);
+  ctx->data[61] = static_cast<uint8_t>(ctx->bitlen >> 16);
+  ctx->data[60] = static_cast<uint8_t>(ctx->bitlen >> 24);
+  ctx->data[59] = static_cast<uint8_t>(ctx->bitlen >> 32);
+  ctx->data[58] = static_cast<uint8_t>(ctx->bitlen >> 40);
+  ctx->data[57] = static_cast<uint8_t>(ctx->bitlen >> 48);
+  ctx->data[56] = static_cast<uint8_t>(ctx->bitlen >> 56);
+  mbedtls_sha256_stub_detail::transform(ctx, ctx->data);
+  // Emit big-endian 32-byte digest.
   for (uint32_t w = 0; w < 8; ++w) {
     out[w * 4 + 0] = static_cast<uint8_t>(ctx->state[w] >> 24);
     out[w * 4 + 1] = static_cast<uint8_t>(ctx->state[w] >> 16);
     out[w * 4 + 2] = static_cast<uint8_t>(ctx->state[w] >> 8);
     out[w * 4 + 3] = static_cast<uint8_t>(ctx->state[w]);
   }
-}
-
-inline void sha256(const uint8_t* in, size_t len, uint8_t out[32]) {
-  sha256_ctx ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, in, len);
-  sha256_finish(&ctx, out);
-}
-
-}  // namespace mbedtls_md_stub_detail
-
-inline const mbedtls_md_info_t* mbedtls_md_info_from_type(mbedtls_md_type_t t) {
-  static const mbedtls_md_info_t sha256_info{MBEDTLS_MD_SHA256};
-  return t == MBEDTLS_MD_SHA256 ? &sha256_info : nullptr;
-}
-
-inline int mbedtls_md_hmac(const mbedtls_md_info_t* info,
-                           const uint8_t* key, size_t keylen,
-                           const uint8_t* input, size_t ilen,
-                           uint8_t* output) {
-  namespace d = mbedtls_md_stub_detail;
-  if (!info || info->type != MBEDTLS_MD_SHA256) return -1;
-
-  uint8_t k[64] = {};
-  if (keylen > 64) {
-    d::sha256(key, keylen, k);
-  } else {
-    std::memcpy(k, key, keylen);
-  }
-
-  uint8_t ipad[64], opad[64];
-  for (int i = 0; i < 64; ++i) {
-    ipad[i] = k[i] ^ 0x36;
-    opad[i] = k[i] ^ 0x5c;
-  }
-
-  uint8_t inner[32];
-  d::sha256_ctx ctx;
-  d::sha256_init(&ctx);
-  d::sha256_update(&ctx, ipad, 64);
-  d::sha256_update(&ctx, input, ilen);
-  d::sha256_finish(&ctx, inner);
-
-  d::sha256_init(&ctx);
-  d::sha256_update(&ctx, opad, 64);
-  d::sha256_update(&ctx, inner, 32);
-  d::sha256_finish(&ctx, output);
   return 0;
 }

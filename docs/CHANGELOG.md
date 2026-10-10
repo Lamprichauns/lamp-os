@@ -22,6 +22,47 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   network address. A wisp with no module works exactly as before.
 
 ### Fixed
+- **Lamps hold up in big crowds.** A lamp among dozens of others could run out
+  of memory and restart, with or without the app open: saving settings or
+  social dispositions on a crowded lamp could crash it outright, and a crowd's
+  traffic piled up memory on its own. A save that can't go through now waits
+  and tries again a few seconds later instead of crashing, keeping the
+  settings stored before it, and the lamp caps how much a crowd can make it hold
+  at once: other lamps' effects can take at most half of its four effect
+  slots, leaving the rest for its own Test and greetings while memory allows.
+  When the lamp is too short of memory to show a Test itself, the Test still
+  goes out to the lamps around it. A cascade still reaches every lamp around,
+  sent in waves rather than all at once, so in a crowd of 50 the farthest
+  lamps can fire up to about a second after their usual moment, nearly two
+  seconds when two cascades go off together, and later still on a busy mesh.
+  Expressions keep at most 8 colours each, and a stored setup beyond the app's
+  limits is trimmed back to them when the lamp updates.
+- **Big setups keep saving.** A lamp with many expressions could run out of
+  room to store its settings and quietly stop saving changes, and a full
+  store could leave a lamp unable to start Bluetooth until it was
+  reflashed. Settings are now stored compactly and in pieces the storage can
+  always place, so every expression the app allows fits with room to spare,
+  and a lamp whose storage is already full frees space on its first start.
+  Your existing settings carry over on update. If the lamp's storage reports
+  itself unusable at startup it is cleared so the lamp still comes up and
+  can be set up again from the app. A big setup saved from the web page now
+  fits more often, since the lamp reads the page's settings once instead of
+  twice. A setup near the limits may still be refused by the web page when
+  the lamp is short of memory; save it from the app instead. A second save
+  from the web page while the first waits for its restart is refused, so the
+  first one is kept.
+- **Settings the lamp can't keep are refused up front.** A control password
+  longer than 64 characters, or a home network name longer than 32, is
+  refused from the app and from the web page, instead of being stored in a
+  form that could never work. An expression type the lamp doesn't have is
+  refused instead of being saved and never showing.
+- **Going back to an older firmware.** A lamp with a small setup (about two
+  expressions with full colour lists) keeps its settings on an older
+  release. A larger setup keeps only its name, password, brightness and
+  setup state there; everything else comes up as defaults, and that release
+  may fail to save. Social dispositions reset there either way. Updating
+  again brings the larger setup back unless the older release saved over
+  it.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at

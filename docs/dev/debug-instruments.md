@@ -13,8 +13,8 @@ source file is where the tag's format strings live.
 
 | Tag | Source | Prints |
 |---|---|---|
-| `[heap]` | `util/heap_probe.hpp` | Free + largest contiguous block at named checkpoints (`at=%s free=%u largest=%u`): boot, mesh, webapp, ble-connect/disconnect/pre/post, ota-stream, web-save |
-| `[loop]` | `core/lamp.cpp`, `core/lamp_drains.cpp` | Main-loop health: stack high-water mark, delayed-trigger queue eviction, knockout-drain pixel/brightness |
+| `[heap]` | `util/heap_probe.hpp`, `core/lamp.cpp` | Free + largest contiguous block at named checkpoints (`at=%s free=%u largest=%u`): boot, mesh, webapp, ble-connect/disconnect/pre/post, ota-stream, web-save; every 30 s in a debug build a `trend` checkpoint and `txstalls=.. txrefused=..`, the TX credit resets and the sends dropped for want of a credit |
+| `[loop]` | `core/lamp.cpp`, `core/lamp_drains.cpp` | Main-loop health: stack high-water mark, delayed-trigger queue eviction, knockout-drain pixel/brightness; `settingsBlob: save deferred; reboot waits for it`, a settings blob that needs a reboot whose save failed, and `settingsBlob: save never landed; no reboot`, the wait given up after 5 minutes (every build) |
 | `[lamp]` | `core/lamp.cpp`, `main.cpp` | Boot: `FATAL` malformed HwConfig (halt), compiled vs NVS `lampType` |
 | `[gov]` | `core/lamp.cpp` | Power governor clamp / release (`clamp demand=.. budget=.. ceiling=..`, `release demand=..`) |
 | `[power]` | `core/lamp.cpp` | Brownout-reset warning (supply-budget constants may be mis-sized) |
@@ -31,6 +31,7 @@ source file is where the tag's format strings live.
 | `[wispcoex]` | `components/network/mesh/mesh_link.cpp` | Wisp-frame coex reception meter (`recv=.. maxgap=..ms`) |
 | `[wispdirect]` | `components/network/mesh/mesh_link.cpp` | Direct wisp-paint receive (srcMac) |
 | `[espnow]` | `components/network/transport/espnow_link.cpp` | ESP-NOW transport init / peer-add / reject-len |
+| `[espnow.tx]` | `components/network/transport/espnow_link.cpp` | `no tx callback, credits reset n=..`: TX credits presumed lost after 2 s with no send callback and reset, with the running count (every build, at most every 10 s) |
 | `[wifi]` | `components/network/transport/wifi.cpp` | WiFi state machine (softAP up/failed with `auth=wpa2\|open`, scan) |
 | `[recovery]` | `core/lamp.cpp` | BOOT-hold cleared the control password (5s hold, first minute of uptime) |
 | `[roster]` | `components/network/mesh/lamp_roster.cpp` | Roster update dropped on mutex contention |
@@ -39,18 +40,18 @@ source file is where the tag's format strings live.
 | `[ble]` | `components/network/ble/bluetooth.cpp`, `ble_control.cpp` | Advertising config (adv colors, central scan stop/restart) + brightness recv |
 | `[ble_control]` | `components/network/ble/ble_control.cpp` | GATT client connect / disconnect / auth, edit-session, home-mode focus, knockout write, settings_blob write, page CTRL/DATA, GATT binding + service start/stop, OTA pause/resume |
 | `[wisp_state]` | `components/network/ble/ble_control.cpp`, `core/lamp_behaviors.cpp` | Wisp-state notify to app (controllingBase/Shade, preview) + provider active toggle |
-| `[nvs]` | `config/config.cpp`, `core/lamp_drains.cpp` | `persistConfig` write (bytes, OOM, zero-byte) |
-| `[cfg]` | `config/config.cpp` | Config load / parse-failure (serving defaults) |
+| `[nvs]` | `config/config.cpp`, `config/disposition_store.cpp`, `config/nvs_config_store.cpp` | Config save (`via=`); a failed config save or dispositions flush with its cause and retry wait; a failed web document save with its cause (`invalid`, `no heap`, `too large`, `write`, `held for web-save reboot`); a save held for a web save's reboot; a failed NVS open/set/commit with its error code; an NVS init failure and whether the partition was erased (failures log on every build) |
+| `[cfg]` | `config/config.cpp` | Config load (`cfg_bytes` is the "cfg" string alone) / parse-failure (serving defaults); `expressions=N from records|cfg json`, the loaded count, every build; an unreadable expression record dropped; stored expressions truncated to the caps on load; `STORED CONFIG BLOB UNREADABLE`, a rest or lamp blob that exists but does not read (every build) |
 | `[drain]` | `core/lamp_drains.cpp` | Core 0→1 drain of brightness / colors / edit-session |
-| `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed, with the AP's `auth=` and boot window |
+| `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed, with the AP's `auth=` and boot window; `pending save failed (seq N)`, a web save that failed after its handler answered 202 (every build); `reboot after 10 min OTA wait`, a web save's reboot that stopped waiting on OTA quiet mode (every build) |
 | `[fwdist]` | `components/firmware/firmware_distributor.cpp` | Firmware OTA distribution state (disabled reasons, offer/serve) |
 | `[fsdist]` | `components/firmware/firmware_distributor.cpp` | Filesystem-image OTA distribution (disabled reasons) |
 | `[fw_receiver]` | `components/firmware/firmware_receiver.cpp` | Mesh OTA receive: OFFER accept/decline, chunk recv/drop, upfront-erase, verify, signature/digest, type-gate, set_boot_partition |
 | `[fw_sig]` | `components/firmware/firmware_signature.cpp` | Signature-verify detail (imageLen / signed-region len, footer + computed sha256 + pubkey hex dumps) |
 | `[ota_ind]` | `components/firmware/ota_indicator.cpp` | OTA progress-indicator state (`rxInProgress`, rxTotal, done/total whole/frac) |
 | `[fs_ota]` | `components/firmware/fs_ota.cpp` | Filesystem-image OTA apply / online (spiffs bytes, digestReady, version; no-spiffs disable) |
-| `[expr]` | `expressions/expression_manager.cpp`, `expressions/expression_observer.cpp` | Expression fired / coalesce-in-flight / home-mode drop |
-| `[cascade]` | `expressions/expression_manager.cpp` | Cascade fan-out skip reasons (not-enabled / continuous / dedup) |
+| `[expr]` | `expressions/expression_manager.cpp`, `expressions/expression_observer.cpp` | Expression fired / coalesce-in-flight / home-mode drop; a dropped transient (local or remote, every build, at most every 5 s); upsert over caps, a rejected target or an unregistered type (`core/lamp.cpp`) |
+| `[cascade]` | `expressions/expression_manager.cpp` | Cascade fan-out skip reasons (not-enabled / continuous / dedup), start, a waiting cascade replaced, an over-cap payload or delay rewrite dropped, a drain stopped for OTA |
 | `[trigger]` | `expressions/expression_manager.cpp` | Named trigger fired (matched type/target) |
 | `[invocation]` | `expressions/expression_invocation.cpp` | Invocation dropping bad colors |
 | `[param]` | `expressions/param_utils.hpp` | Descriptor key absent after `applyDefaults` (schema bug) |

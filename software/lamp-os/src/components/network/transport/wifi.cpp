@@ -79,6 +79,9 @@ void begin() {
   // calls WiFi.mode(WIFI_OFF) on its way out, so STA mode has to be
   // (re-)enabled AFTER any disconnect call. Otherwise WiFi.scanNetworks
   // returns 0 (no STA to scan from).
+  // The lamp never reconnects from stored credentials, so the WiFi driver
+  // keeps its config in RAM and stops writing the shared NVS partition.
+  WiFi.persistent(false);
   WiFi.disconnect(true, true);   // wipe any stale SDK creds from a previous boot
   WiFi.mode(WIFI_STA);            // enable STA so scanNetworks works
   // ESP-NOW is unbuffered, so a wisp/HELLO/OTA frame arriving during a modem

@@ -1,11 +1,15 @@
 #include "config/disposition_store.hpp"
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 
 #include <algorithm>
 #include <array>
+#include <new>
+#include <string>
 
 #include "util/bd_addr.hpp"
+#include "util/heap_guard.hpp"
 
 namespace lamp {
 
@@ -56,6 +60,24 @@ bool parseEntries(const char* json, size_t len, std::vector<Entry>& out) {
   out.erase(last, out.end());
   return true;
 }
+// Binary form: a format byte, then [mac:6][value:1] per entry, in key order.
+bool parseBlob(const uint8_t* data, size_t len, std::vector<Entry>& out) {
+  if (data[0] != DispositionStore::kBlobFormat) return false;
+  if ((len - 1) % DispositionStore::kBlobEntryLen != 0) return false;
+  const size_t count = (len - 1) / DispositionStore::kBlobEntryLen;
+  if (count > DispositionStore::kMax) return false;
+  out.clear();
+  out.reserve(DispositionStore::kMax);
+  for (size_t i = 0; i < count; ++i) {
+    const uint8_t* e = data + 1 + i * DispositionStore::kBlobEntryLen;
+    MacKey mac;
+    std::copy(e, e + 6, mac.begin());
+    out.emplace_back(mac, std::clamp<uint8_t>(e[6], 1, 5));
+  }
+  std::sort(out.begin(), out.end(),
+            [](const Entry& a, const Entry& b) { return a.first < b.first; });
+  return true;
+}
 }  // namespace
 
 DispositionStore::DispositionStore(uint32_t flushIdleMs)
@@ -65,13 +87,31 @@ DispositionStore::DispositionStore(uint32_t flushIdleMs)
 
 void DispositionStore::load() {
   if (!store_) return;
-  std::string json = store_->read("dispositions", "{}");
-
   std::vector<Entry> next;
-  if (!parseEntries(json.c_str(), json.size(), next)) return;
+  // The legacy JSON key exists only before the first migration, or after an
+  // older firmware rewrote it following a downgrade; either way it is the
+  // newest copy, so it wins over a stale blob.
+  std::vector<Entry> fromBlob;
+  std::array<uint8_t, kMaxBlobLen> blob;
+  const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
+  const bool blobOk = n > 0 && parseBlob(blob.data(), n, fromBlob);
+  const std::string json = store_->read(kLegacyJsonKey, "");
+  // A JSON that does not parse, or parses to nothing while the blob holds
+  // entries, never replaces the blob; it is dropped by the migration below.
+  bool fromJson = !json.empty() && parseEntries(json.c_str(), json.size(), next) &&
+                  !(next.empty() && blobOk && !fromBlob.empty());
+  if (!fromJson) {
+    if (!json.empty()) store_->erase(kLegacyJsonKey);
+    if (!blobOk) return;
+    next = std::move(fromBlob);
+  }
   xSemaphoreTake(mutex_, portMAX_DELAY);
   entries_ = std::move(next);
   xSemaphoreGive(mutex_);
+  // Migrate at load: the JSON is about three times the blob, and a lamp
+  // whose NVS is full gets that space back on this boot. The blob lands before the JSON goes, so a reset between
+  // them keeps a readable copy.
+  if (fromJson && !persist_()) debouncer_.markDirty(0);
 }
 
 uint8_t DispositionStore::get(const uint8_t mac[6]) const {
@@ -112,23 +152,52 @@ void DispositionStore::set(const uint8_t mac[6], uint8_t value,
   debouncer_.markDirty(nowMs);
 }
 
-std::string DispositionStore::asJson() const {
-  xSemaphoreTake(mutex_, portMAX_DELAY);
-  std::vector<Entry> snapshot = entries_;
-  xSemaphoreGive(mutex_);
-  // Sorted-vector iteration yields keys in ascending byte (== colon-hex)
-  // order, a stable on-disk shape. Format each MAC back to canonical
-  // colon-hex only here, at serialize time. ArduinoJson copies the char[]
-  // key, so the reused buffer is safe.
-  JsonDocument doc;
-  char keyBuf[18];
-  for (const auto& kv : snapshot) {
-    formatBdAddr(kv.first.data(), keyBuf);
-    doc[keyBuf] = kv.second;
+size_t DispositionStore::jsonLen(size_t entries) {
+  return 2 + entries * (kBdAddrLen + 4) + (entries ? entries - 1 : 0);
+}
+
+void DispositionStore::writeJsonLocked_(char* out) const {
+  // The compact shape ArduinoJson emits for the same object, written
+  // directly. Sorted-vector order is ascending byte order, which is
+  // canonical colon-hex order.
+  char* p = out;
+  *p++ = '{';
+  for (size_t i = 0; i < entries_.size(); ++i) {
+    if (i) *p++ = ',';
+    *p++ = '"';
+    formatBdAddr(entries_[i].first.data(), p);
+    p += kBdAddrLen;
+    *p++ = '"';
+    *p++ = ':';
+    *p++ = static_cast<char>('0' + entries_[i].second);
   }
+  *p++ = '}';
+  *p = '\0';
+}
+
+std::string DispositionStore::asJson() const {
+  // Sized from the entry count, allocated outside the lock so a failed
+  // allocation never leaves it held, and only when the heap can spare it
+  // (this runs on the NimBLE host task); written once the count is seen
+  // unchanged under the lock.
   std::string out;
-  serializeJson(doc, out);
-  return out;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+    const size_t len = jsonLen(entries_.size());
+    xSemaphoreGive(mutex_);
+    if (!heapCanSpare(len + 1)) return std::string();
+    try {
+      out.resize(len);
+    } catch (const std::bad_alloc&) {
+      return std::string();
+    }
+    xSemaphoreTake(mutex_, portMAX_DELAY);
+    const bool unchanged = jsonLen(entries_.size()) == len;
+    if (unchanged) writeJsonLocked_(out.data());
+    xSemaphoreGive(mutex_);
+    if (unchanged) return out;
+  }
+  return std::string();
 }
 
 bool DispositionStore::setFromJson(const char* json, size_t len,
@@ -144,24 +213,40 @@ bool DispositionStore::setFromJson(const char* json, size_t len,
 
 bool DispositionStore::persist_() {
   if (!store_) return false;
-  std::string out = asJson();
-  // A 0-byte write means NVS is full or corrupt; leave the dirty flag set so
-  // the next flush retries.
-  return store_->write("dispositions", out.c_str()) > 0;
+  // At most 701 bytes, so the stack holds it and a flush touches no heap.
+  std::array<uint8_t, kMaxBlobLen> blob;
+  blob[0] = kBlobFormat;
+  size_t len = 1;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  for (const auto& e : entries_) {
+    std::copy(e.first.begin(), e.first.end(), blob.data() + len);
+    blob[len + 6] = e.second;
+    len += kBlobEntryLen;
+  }
+  xSemaphoreGive(mutex_);
+  if (store_->writeBlob(kBlobKey, blob.data(), len) == 0) return false;
+  store_->erase(kLegacyJsonKey);
+  return true;
+}
+
+void DispositionStore::flushIfDue_(uint32_t nowMs) {
+  if (!retry_.due(nowMs)) return;
+  if (persist_()) {
+    debouncer_.clear();
+    retry_.succeed();
+  } else {
+    retry_.fail(nowMs);
+    Serial.printf("[nvs] dispositions flush failed; retry in %lus\n",
+                  (unsigned long)(retry_.waitMs() / 1000));
+  }
 }
 
 void DispositionStore::maybeFlush(uint32_t nowMs) {
-  if (!debouncer_.shouldFlush(nowMs)) return;
-  if (persist_()) {
-    debouncer_.clear();
-  }
+  if (debouncer_.shouldFlush(nowMs)) flushIfDue_(nowMs);
 }
 
-void DispositionStore::flushNow() {
-  if (!debouncer_.dirty()) return;
-  if (persist_()) {
-    debouncer_.clear();
-  }
+void DispositionStore::flushNow(uint32_t nowMs) {
+  if (debouncer_.dirty()) flushIfDue_(nowMs);
 }
 
 }  // namespace lamp

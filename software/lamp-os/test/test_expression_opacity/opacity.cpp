@@ -17,14 +17,14 @@ class Probe : public Expression {
  public:
   using Expression::Expression;
   const ExpressionDescriptor& descriptor() const override { return d_; }
-  void configureFromParameters(const std::map<std::string, uint32_t>& p) override {
+  void configureFromParameters(const ExpressionParams& p) override {
     configureOpacity(p);
   }
   uint8_t opacity() const { return opacityPct_; }
   void draw() override {}
 
   // Forward to the base easing helpers under test.
-  void configureEasingParam(const std::map<std::string, uint32_t>& p) { configureEasing(p, 0); }
+  void configureEasingParam(const ExpressionParams& p) { configureEasing(p, 0); }
   Easing currentEasing() const { return easing_; }
   void rollEasing() { if (easingRaw_ == (uint32_t)Easing::Random) easing_ = randomEasing(rng); }
  protected:

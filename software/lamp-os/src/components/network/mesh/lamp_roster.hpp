@@ -193,6 +193,13 @@ class LampRoster {
 
   LampRoster();
 
+  // `bleAddr` is the six address bytes in display order (most significant
+  // first). Called per lamp advertisement on the NimBLE host task, so it
+  // builds no string.
+  void addOrUpdateFromBle(const char* name, const uint8_t bleAddr[6],
+                          const Color& base, const Color& shade,
+                          int8_t rssi = -127);
+  // Colon-hex form of the above; an unparseable address is ignored.
   void addOrUpdateFromBle(const std::string& name,
                           const std::string& bleAddr,
                           const Color& base, const Color& shade,

@@ -13,6 +13,7 @@
 #include <ArduinoJson.h>
 
 #include "esp_heap_caps.h"
+#include "components/network/transport/espnow_link.hpp"
 #include "esp_system.h"
 
 #include <cstdint>
@@ -129,15 +130,15 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
         inv.target = static_cast<uint8_t>(target);
         inv.colors = std::move(payloadColors);
         for (JsonPairConst kv : doc["parameters"].as<JsonObjectConst>()) {
-          inv.parameters[std::string(kv.key().c_str())] =
-              kv.value().as<uint32_t>();
+          inv.parameters.set(kv.key().c_str(), kv.value().as<uint32_t>());
         }
 #ifdef LAMP_DEBUG
         Serial.printf("[test] transient pulse colors=%zu type=%s target=%d\n",
                       inv.colors.size(), inv.type.c_str(),
                       static_cast<int>(target));
 #endif
-        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true);
+        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true,
+                                            lamp::TransientSource::Local);
         expressionManager.markTestActive(type.c_str(), target);
       } else {
         // No colors payload → trigger an already-configured expression by name.
@@ -293,17 +294,22 @@ void runSerialCommand(char* line, size_t len) {
   }
 
   if (strcmp(line, "heap.get") == 0) {
-    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u\n",
+    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u txstalls=%lu txrefused=%lu\n",
                   (unsigned)esp_get_free_heap_size(),
                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
-                  (unsigned)esp_get_minimum_free_heap_size());
+                  (unsigned)esp_get_minimum_free_heap_size(),
+                  (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                  (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     return;
   }
 
   if (strcmp(line, "expr.get") == 0) {
     std::string out;
     config.expressionsSectionJsonCached(out);
-    Serial.printf("[cmd] ok %s\n", out.c_str());
+    // write() streams the JSON; printf would malloc the whole line first.
+    Serial.print("[cmd] ok ");
+    Serial.write(reinterpret_cast<const uint8_t*>(out.data()), out.size());
+    Serial.println();
     return;
   }
 

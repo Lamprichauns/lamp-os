@@ -22,7 +22,7 @@ const ExpressionDescriptor& SpottyExpression::descriptor() const {
 SpottyExpression::SpottyExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {}
 
-void SpottyExpression::configureFromParameters(const std::map<std::string, uint32_t>& parameters) {
+void SpottyExpression::configureFromParameters(const ExpressionParams& parameters) {
   const uint16_t window = windowSize();
   zone_ = resolveZone(parameters, window);
   // Persisted params can exceed the descriptor caps; clamp on load.

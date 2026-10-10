@@ -10,6 +10,8 @@
 
 #include <ArduinoJson.h>
 
+#include <cstring>
+
 #include "config/config.hpp"
 #include "components/apply/apply_brightness.hpp"
 
@@ -25,8 +27,13 @@ namespace apply {
 // partial-merge by design; caller omits what it doesn't want to touch).
 inline void homeModeLocal(JsonObject obj, uint8_t maxBrightness) {
   if (obj.isNull()) return;
+  // An SSID is at most 32 bytes; a longer one names no network.
   if (obj["ssid"].is<const char*>()) {
-    ::config.homeMode.ssid = obj["ssid"].as<const char*>();
+    if (std::strlen(obj["ssid"].as<const char*>()) <= kMaxSsidLen) {
+      ::config.homeMode.ssid = obj["ssid"].as<const char*>();
+    } else {
+      Serial.println("[cfg] home SSID over 32 bytes refused");
+    }
   }
   if (obj["enabled"].is<bool>()) {
     ::config.homeMode.enabled = obj["enabled"].as<bool>();
@@ -37,8 +44,12 @@ inline void homeModeLocal(JsonObject obj, uint8_t maxBrightness) {
     ::config.homeMode.socialDisabled = obj["socialDisabled"].as<bool>();
   if (obj["disabledExpressionTypes"].is<JsonArray>()) {
     ::config.homeMode.disabledExpressionTypes.clear();
-    for (JsonVariant v : obj["disabledExpressionTypes"].as<JsonArray>())
-      ::config.homeMode.disabledExpressionTypes.push_back(std::string(v.as<const char*>()));
+    for (JsonVariant v : obj["disabledExpressionTypes"].as<JsonArray>()) {
+      const char* type = v.as<const char*>();
+      if (!isExpressionTypeId(type)) continue;
+      if (::config.homeMode.disabledExpressionTypes.size() == kMaxDisabledExpressionTypes) break;
+      ::config.homeMode.disabledExpressionTypes.push_back(type);
+    }
   }
   if (obj["brightness"].is<int>()) {
     int level = obj["brightness"].as<int>();

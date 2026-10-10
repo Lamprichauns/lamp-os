@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "config_store.hpp"
 #include "config_types.hpp"
 #include "disposition_store.hpp"
+#include "save_gate.hpp"
 
 namespace lamp {
 
@@ -84,7 +86,8 @@ class Config {
   // user-saved values are authoritative.
   void applyDefaults(const Defaults& d);
 
-  // True when NVS held a non-empty config blob that failed to deserialize.
+  // True when NVS held a non-empty config, or a blob holding part of it, that
+  // failed to read or deserialize.
   // The lamp served defaults for this boot; callers must NOT overwrite NVS,
   // the stored blob may be recoverable.
   bool loadFailedWithData() const { return loadFailedWithData_; }
@@ -108,21 +111,38 @@ class Config {
    * fade-out-and-reboot. The runtime state has already been applied by
    * the caller; this just writes the canonical JSON to NVS.
    *
-   * Returns true iff the store wrote > 0 bytes. On failure the in-memory
-   * state is unchanged; the next call may succeed.
+   * Returns true when every key landed. Never throws and takes no
+   * config-sized heap (config_codec::saveConfig): when
+   * NVS refuses a write it returns false, logs, and backs off (5 s doubling
+   * to 60 s); maybeRetryPersist() runs the retry. After persistRawJson has
+   * stored a web document it declines, logging, until the reboot that loads
+   * it. In-memory state is unchanged.
    *
    * `via`: short tag like "commit" / "settings_blob" / "expressionOp"
-   * included in the success log to disambiguate which path triggered the write.
+   * included in the log to disambiguate which path triggered the write.
    * Pass a constant string literal.
    */
   bool persistConfig(const char* via);
 
-  // Writes a caller-supplied whole-config JSON string straight to the NVS
-  // "cfg" blob (the webapp's whole-document PUT path; the constructor
-  // re-parses it on the next boot). Keeps the namespace/key contract here
-  // rather than letting callers open Preferences("lamp") themselves.
-  // Returns true iff the store wrote > 0 bytes.
-  bool persistRawJson(const char* json);
+  // False while a failed save is backing off, or while a stored web document
+  // holds every save; a caller with its own retry loop (the commit drain)
+  // waits on it.
+  bool persistDue(uint32_t nowMs) const;
+  // True while a failed save waits for its retry.
+  bool persistPending() const { return saveGate_.pending(); }
+  // Core 1 loop drain: re-runs a failed persistConfig once its backoff ends.
+  void maybeRetryPersist(uint32_t nowMs);
+  static constexpr uint32_t kPersistRetryBaseMs = 5000;
+  static constexpr uint32_t kPersistRetryMaxMs = 60000;
+
+  // Saves a caller-supplied whole-config JSON document (the webapp's
+  // whole-document PUT path) in the stored shape, for the next boot to load
+  // (config_codec::saveRawJson). Returns Ok when every key landed; from
+  // then on persistConfig declines (and any pending retry is dropped) until
+  // the reboot that loads it, and a second web document is Held. A save
+  // that fails partway leaves the running config's save pending, which
+  // writes it back whole. Loop task only.
+  config_codec::SaveResult persistRawJson(const char* json);
 
   // Wipe persisted state (factory reset). Returns true on success. The caller
   // reboots afterward so defaults reload; in-memory state is left as-is.
@@ -159,14 +179,13 @@ class Config {
   // since the OFFER/stream bursts starve BLE connect.
   bool isOtaDistributing() const;
 
-  // Per-section serializers, each returning a String of just the JSON for
-  // that section. Internal helpers backing the *JsonCached() accessors
-  // below; the BLE onRead path always goes through the cache.
-  String asLampJson();
-  String asBaseJson();
-  String asShadeJson();
-  String asExpressionsJson();
-  String asHomeModeJson();
+  // Per-section documents, each holding just that section. Internal helpers
+  // backing the *JsonCached() accessors below; the BLE onRead path always
+  // goes through the cache.
+  JsonDocument asLampJson();
+  JsonDocument asBaseJson();
+  JsonDocument asShadeJson();
+  JsonDocument asHomeModeJson();
 
   // Per-section JSON cache. Each section caches its serialised JSON plus a
   // dirty flag; the accessor rebuilds if dirty and copies the JSON into out,
@@ -178,6 +197,11 @@ class Config {
   void shadeSectionJsonCached(std::string& out);
   void expressionsSectionJsonCached(std::string& out);
   void homeSectionJsonCached(std::string& out);
+
+  // Frees every section cache (they rebuild on the next read). For when no
+  // client can read them: a cache otherwise holds its heap, up to about 4 KB
+  // for the expressions section, for the rest of the uptime.
+  void releaseSectionCaches();
 
   // Rebuild a dirty section cache without the copy-out. For an off-BLE-path
   // caller (ble_control::tick) to warm the cache so the Core-0 read hits it
@@ -233,7 +257,8 @@ class Config {
   // is new. A non-canonical `lampId` is a no-op.
   void setDisposition(const std::string& lampId, uint8_t value);
   // Full JSON serialization for the CHAR_SOCIAL_DISPOSITIONS read path.
-  String asDispositionsJson() const;
+  // Empty when the heap cannot spare it.
+  std::string asDispositionsJson() const;
   // Bulk replace from the CHAR_SOCIAL_DISPOSITIONS write path. Caller
   // provides a JSON object; parse, clamp, mark dirty. The NVS commit is
   // deferred to the next maybeFlushDispositions/flushDispositionsNow call.
@@ -253,6 +278,7 @@ class Config {
 
  private:
   DispositionStore dispositions_{kDispositionFlushIdleMs};
+  SaveGate saveGate_{kPersistRetryBaseMs, kPersistRetryMaxMs};
 
   // All dirty=true initially so the first cached() call computes and
   // populates the string. After that, mutations on Core 1 must call
@@ -276,5 +302,8 @@ class Config {
   bool shadeSectionDirty_ = true;
   bool expressionsSectionDirty_ = true;
   bool homeSectionDirty_ = true;
+
+  // Caller holds the cache mutex.
+  void expressionsSectionRebuildLocked();
 };
 }  // namespace lamp

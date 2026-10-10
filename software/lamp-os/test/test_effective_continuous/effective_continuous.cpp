@@ -23,22 +23,22 @@ void setUp() {}
 void tearDown() {}
 
 void test_loop_param_continuous_is_continuous() {
-  std::map<std::string, uint32_t> p = {{"loop", 1}};
+  ExpressionParams p = {{"loop", 1}};
   TEST_ASSERT_TRUE(effectiveContinuous(kWithLoop, p));
 }
 
 void test_loop_param_trigger_is_not_continuous() {
-  std::map<std::string, uint32_t> p = {{"loop", 0}};
+  ExpressionParams p = {{"loop", 0}};
   TEST_ASSERT_FALSE(effectiveContinuous(kWithLoop, p));
 }
 
 void test_loop_param_absent_defaults_to_trigger() {
-  std::map<std::string, uint32_t> p;
+  ExpressionParams p;
   TEST_ASSERT_FALSE(effectiveContinuous(kWithLoop, p));
 }
 
 void test_no_loop_param_uses_descriptor_continuous() {
-  std::map<std::string, uint32_t> p;
+  ExpressionParams p;
   TEST_ASSERT_TRUE(effectiveContinuous(kContinuousNoLoop, p));
   TEST_ASSERT_FALSE(effectiveContinuous(kOneShotNoLoop, p));
 }

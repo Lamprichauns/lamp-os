@@ -15,12 +15,18 @@
 
 #include <cstdint>
 
+#include <lampos/led_types.hpp>
+
 namespace lamp {
 namespace apply {
 
 template <typename Surface>
 inline void pixelFormatLocal(JsonObjectConst section, Surface& surf) {
-  if (section["byteOrder"].is<const char*>()) {
+  // An order the strip driver does not know is ignored, which also bounds
+  // the stored field.
+  lampos::led::ByteOrder order;
+  if (section["byteOrder"].is<const char*>() &&
+      lampos::led::byteOrderFromString(section["byteOrder"].as<const char*>(), order)) {
     surf.byteOrder = section["byteOrder"].as<const char*>();
   }
   JsonArrayConst segs = section["segments"];

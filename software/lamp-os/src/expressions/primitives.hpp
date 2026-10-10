@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -61,7 +60,7 @@ struct Zone {
   uint16_t posMin = 0;
   uint16_t posMax = 0;
 
-  static Zone fromParameters(const std::map<std::string, uint32_t>& p,
+  static Zone fromParameters(const ExpressionParams& p,
                              uint16_t windowSize) {
     Zone r;
     if (windowSize == 0) { r.posMin = 1; r.posMax = 0; return r; }
@@ -105,7 +104,7 @@ inline std::vector<Zone> evenZones(uint16_t count, uint16_t windowSize) {
 
 // Zone from the whole-strip/region toggle: fullStrip=1 (default) spans the
 // window, ignoring any stale posMin/posMax the Region mode left behind.
-inline Zone resolveZone(const std::map<std::string, uint32_t>& p, uint16_t window) {
+inline Zone resolveZone(const ExpressionParams& p, uint16_t window) {
   return getParam(p, "fullStrip", 1) != 0 ? Zone::fromParameters({}, window)
                                           : Zone::fromParameters(p, window);
 }
@@ -114,7 +113,7 @@ inline Zone resolveZone(const std::map<std::string, uint32_t>& p, uint16_t windo
 struct Points {
   uint16_t count = 1;
 
-  static Points fromParameters(const std::map<std::string, uint32_t>& p,
+  static Points fromParameters(const ExpressionParams& p,
                                uint16_t windowSize, uint16_t defaultCount) {
     uint32_t c = getParam(p, "count", defaultCount);
     const uint16_t hi = windowSize == 0 ? 1 : windowSize;
@@ -128,7 +127,7 @@ struct Points {
 
 // Pixels each effect-point occupies. Clamped to [1, windowSize]; returns
 // defaultValue when absent.
-inline uint16_t parseSize(const std::map<std::string, uint32_t>& p,
+inline uint16_t parseSize(const ExpressionParams& p,
                           uint16_t windowSize, uint16_t defaultValue) {
   uint32_t s = getParam(p, "size", defaultValue);
   const uint16_t hi = windowSize == 0 ? 1 : windowSize;

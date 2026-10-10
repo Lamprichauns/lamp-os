@@ -26,7 +26,7 @@ ShimmerExpression::ShimmerExpression(FrameBuffer* inBuffer, uint32_t inFrames)
     : Expression(inBuffer, inFrames) {}
 
 void ShimmerExpression::configureFromParameters(
-    const std::map<std::string, uint32_t>& parameters) {
+    const ExpressionParams& parameters) {
   const uint16_t window = windowSize();
   zone_ = resolveZone(parameters, window);
 
