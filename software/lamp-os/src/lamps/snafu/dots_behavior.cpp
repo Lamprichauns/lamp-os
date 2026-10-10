@@ -140,7 +140,6 @@ void DotsBehavior::endDriftIfDone() {
 
 void DotsBehavior::control() {
   if (!fb || fb->buffer.empty()) return;
-  endDriftIfDone();
   if (borrowActive_ && context_ && context_->ignoresPeers()) {
     // Drift from what draw() would paint next back to the own palette: the
     // scene (mid-crossfade included) crossfades to the own scene beneath the
@@ -161,6 +160,9 @@ void DotsBehavior::control() {
     borrowBase_.clear();
     borrowShade_.clear();
     sinceShuffle_ = 0;
+    // A palette edited during the borrow lands in cur_ here; refresh the
+    // snapshot so the next pass does not read the edit as new and snap.
+    colorsChanged();
     prev_ = std::move(shown);
     cur_  = buildScene();
     frame = 0;

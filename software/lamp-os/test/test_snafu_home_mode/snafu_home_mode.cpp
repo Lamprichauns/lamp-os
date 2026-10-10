@@ -108,8 +108,9 @@ const std::vector<Color> kOwnPalette = {Color(0x80, 0, 0, 0), Color(0, 0, 0x80, 
 
 // The landed buffer holds exactly the own gradient's pixels (in the scatter's
 // order), each mixed with the wisp's paint at its presence.
-bool isOwnSceneUnderWisp(const std::vector<Color>& buffer, float wisp, Color wispPaint) {
-  std::vector<Color> want = buildGradientWithStops(16, kOwnPalette);
+bool isOwnSceneUnderWisp(const std::vector<Color>& buffer, float wisp, Color wispPaint,
+                         const std::vector<Color>& palette = kOwnPalette) {
+  std::vector<Color> want = buildGradientWithStops(16, palette);
   for (Color& c : want) c = mixColorWeight(c, wispPaint, wisp);
   std::vector<Color> got = buffer;
   auto key = [](const Color& c) { return (c.r << 24) | (c.g << 16) | (c.b << 8) | c.w; };
@@ -345,6 +346,63 @@ void test_borrow_mid_drift_keeps_its_crossfade_length() {
   for (const Color& c : fb.buffer) TEST_ASSERT_LESS_OR_EQUAL_UINT8(8, c.r);
 }
 
+// The own palette edited during the borrow, then home mode: the drift-back
+// heads for the edited palette from its first frame, with no snap on its
+// second.
+void test_drift_after_palette_edit_mid_borrow_is_continuous() {
+  ShadeSettings cfg;
+  cfg.segments = {{"a", 16, kOwnPalette}};
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "a", 0, 16}});
+  BehaviorContext ctx;
+  DotsBehavior dots(&fb, cfg);
+  dots.setBehaviorContext(&ctx);
+  dots.control();
+  dots.draw();
+  dots.borrowColors({kPeer, Color(0, 0, 0, 0x80)}, {kPeer, Color(0, 0, 0, 0x80)}, 2000);
+  for (int i = 0; i < 100; ++i) { dots.control(); dots.draw(); }
+  cfg.segments[0].colors = {Color(0, 0, 0x80, 0), Color(0x80, 0x80, 0, 0)};
+  for (int i = 0; i < 100; ++i) { dots.control(); dots.draw(); }
+
+  g_ignore = true;
+  std::vector<Color> last = fb.buffer;
+  int most = 0;
+  for (uint32_t i = 0; i < DotsBehavior::kBorrowSceneFrames; ++i) {
+    dots.control();
+    dots.draw();
+    most = std::max(most, largestStep(last, fb.buffer));
+    last = fb.buffer;
+  }
+  TEST_ASSERT_LESS_OR_EQUAL_INT(5, most);
+}
+
+// A palette edit during the drift recolours in place, as snafu does for any
+// edit, and ends the drift: the ambient crossfade is back to its own length.
+void test_palette_edit_mid_drift_ends_the_drift() {
+  ShadeSettings cfg;
+  cfg.segments = {{"a", 16, kOwnPalette}};
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "a", 0, 16}});
+  BehaviorContext ctx;
+  DotsBehavior dots(&fb, cfg);
+  dots.setBehaviorContext(&ctx);
+  dots.control();
+  dots.draw();
+  dots.borrowColors({kPeer, Color(0, 0, 0, 0x80)}, {kPeer, Color(0, 0, 0, 0x80)}, 2000);
+  for (int i = 0; i < 1500; ++i) { dots.control(); dots.draw(); }  // deep in the melt
+
+  g_ignore = true;
+  for (int i = 0; i < 50; ++i) { dots.control(); dots.draw(); }
+  cfg.segments[0].colors = {Color(0, 0, 0x80, 0), Color(0x80, 0x80, 0, 0)};
+  dots.control();
+  dots.draw();
+  dots.control();
+  TEST_ASSERT_EQUAL_UINT32(DotsBehavior::kSceneFrames, dots.frames);
+  // No melt overlay left: the buffer is the edited palette's gradient.
+  dots.draw();
+  TEST_ASSERT_TRUE(isOwnSceneUnderWisp(fb.buffer, 0.0f, Color(), cfg.segments[0].colors));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_borrow_shows_peer_palette_outside_home_mode);
@@ -355,6 +413,8 @@ int main(int, char**) {
   RUN_TEST(test_drift_back_is_continuous_mid_melt_under_wisp);
   RUN_TEST(test_ambient_crossfade_length_restored_after_drift);
   RUN_TEST(test_borrow_mid_drift_keeps_its_crossfade_length);
+  RUN_TEST(test_drift_after_palette_edit_mid_borrow_is_continuous);
+  RUN_TEST(test_palette_edit_mid_drift_ends_the_drift);
   RUN_TEST(test_greeting_takes_colour_info_outside_home_mode);
   RUN_TEST(test_greeting_takes_no_colour_info_while_ignoring_peers);
   return UNITY_END();
