@@ -9,6 +9,8 @@
 
 #include "../../src/core/animated_behavior.cpp"
 #include "../../src/core/frame_buffer.cpp"
+// Carries Expression's typeinfo, which GCC's -fsanitize=vptr checks reference.
+#include "../../src/expressions/expression.cpp"
 #include "../../src/lamps/snafu/dots_behavior.cpp"
 #include "../../src/lamps/snafu/greeting.cpp"
 #include "../../src/util/color.cpp"
@@ -44,6 +46,7 @@ bool BehaviorContext::ignoresPeers() const { return g_ignore; }
 void BehaviorContext::forEachArrival(uint32_t, const std::function<bool(const PeerView&)>&) {}
 void ExpressionManager::sendInvocationTo(const uint8_t*, const ExpressionInvocation&) {}
 void ExpressionManager::broadcastInvocation(const ExpressionInvocation&, const uint8_t*) {}
+void ExpressionManager::onExpressionFired(Expression*) {}
 bool MeshLink::sendColorQuery(const uint8_t*) { return true; }
 }  // namespace lamp
 
