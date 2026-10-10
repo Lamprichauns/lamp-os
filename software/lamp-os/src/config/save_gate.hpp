@@ -29,7 +29,6 @@ class SaveGate {
   // A web document's save finished with `result`.
   void rawFinished(config_codec::SaveResult result, uint32_t nowMs) {
     if (result == config_codec::SaveResult::Ok) {
-      retry_.succeed();
       frozen_ = true;
     } else if (result == config_codec::SaveResult::WriteFailed) {
       retry_.fail(nowMs);

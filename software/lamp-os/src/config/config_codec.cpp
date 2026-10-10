@@ -459,10 +459,11 @@ constexpr uint8_t kRecordFormat = 1;
 constexpr uint8_t kRecordEnabled = 0x01;
 constexpr const char* kCountKey = "xn";
 constexpr const char* kKnockoutKey = "ko";
-// The rest (or a staged whole config) as a blob: a generation byte, then the
-// JSON. Two keys in turn, so a rewrite never touches the live copy.
+// The rest (or a staged whole config) as a JSON blob, in two keys by turns so
+// a rewrite never touches the live copy. With both present (a save cut short
+// between writing one and erasing the other) the first wins: either is a
+// whole copy, and saves and loads pick the same one.
 constexpr const char* kRestKeys[2] = {"cfgb", "cfgc"};
-constexpr uint8_t kRestGenerations = 3;
 constexpr const char* kLampCfgKey = "cfgl";
 // Record slots every save sweeps ("x0".."x31"), past kMaxExpressions, so a
 // record no count names is erased wherever it sits.
@@ -570,49 +571,42 @@ static void eraseRest(ConfigStore& store) {
 }
 
 struct RestBlob {
-  int slot = -1;  // the key holding the newer blob, -1 for none
-  uint8_t gen = 0;
-  bool unreadable = false;  // a rest key exists but did not read
+  int slot = -1;  // the key holding the live blob, -1 for none
+  // A rest key holds a blob that did not read: over the buffer, or a chunk
+  // that failed its CRC (IDF erases the chunk then, and the blob on the next
+  // read or boot).
+  bool unreadable = false;
 };
 
-// A blob from an earlier build of this layout has no generation byte.
-static size_t restOffset(const char* buf) { return buf[0] == '{' ? 0 : 1; }
-
-// The newer of the two rest blobs: generations count 0, 1, 2, 0, ..., so of
-// two the newer is the one a step ahead. Reads into `buf`.
-static RestBlob newestRest(ConfigStore& store, char* buf, size_t cap) {
+// The live rest blob, read into `buf`, NUL-terminated.
+static RestBlob liveRest(ConfigStore& store, char* buf, size_t cap) {
   RestBlob found;
-  bool ok[2];
-  uint8_t gen[2] = {0, 0};
-  for (int i = 0; i < 2; ++i) {
-    ok[i] = store.readBlob(kRestKeys[i], buf, cap) > 0;
-    if (ok[i] && restOffset(buf) == 1) gen[i] = static_cast<uint8_t>(buf[0]);
-    if (!ok[i] && store.has(kRestKeys[i])) found.unreadable = true;
+  for (int i = 0; i < 2 && found.slot < 0; ++i) {
+    const size_t len = store.readBlob(kRestKeys[i], buf, cap - 1);
+    if (len > 0) {
+      buf[len] = '\0';
+      found.slot = i;
+    } else if (store.has(kRestKeys[i])) {
+      found.unreadable = true;
+    }
   }
-  if (ok[0] && ok[1]) {
-    found.slot = (gen[1] + kRestGenerations - gen[0]) % kRestGenerations == 1 ? 1 : 0;
-  } else if (ok[0] || ok[1]) {
-    found.slot = ok[0] ? 0 : 1;
-  }
-  if (found.slot >= 0) found.gen = gen[found.slot];
   return found;
 }
 
-// Writes `json` after the next generation byte to the key the newer blob is
-// not in, erased first, then erases the older one. A failed write touches
-// only the key that held nothing live: IDF's cleanup of a failed blob write
-// can take a chunk of the version it replaces.
+// Writes the JSON `write` produces to the rest key that is not live, erased
+// first, then erases the live one. A failed write touches only a key that
+// held nothing live: IDF's cleanup of a failed blob write can take a chunk of
+// the version it replaces.
 template <class Write>
 static bool writeRest(ConfigStore& store, char* buf, size_t cap, Write write) {
-  const RestBlob newer = newestRest(store, buf, cap);
-  JsonWriter w(buf + 1, cap - 1);
+  const RestBlob live = liveRest(store, buf, cap);
+  JsonWriter w(buf, cap);
   write(w);
   w.finish();
   if (!w.ok()) return false;
-  buf[0] = static_cast<char>((newer.gen + 1) % kRestGenerations);
-  const char* target = kRestKeys[newer.slot == 0 ? 1 : 0];
-  if (!store.erase(target) || store.writeBlob(target, buf, 1 + w.length()) == 0) return false;
-  return newer.slot < 0 || store.erase(kRestKeys[newer.slot]);
+  const char* target = kRestKeys[live.slot == 0 ? 1 : 0];
+  if (!store.erase(target) || store.writeBlob(target, buf, w.length()) == 0) return false;
+  return live.slot < 0 || store.erase(kRestKeys[live.slot]);
 }
 
 template <class Write>
@@ -674,6 +668,8 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
       if (!writeRest(store, cfgBuffer, cfgBufferLen, whole) || !store.erase("cfg")) {
         return SaveResult::WriteFailed;
       }
+      // "cfgl" too: a save cut short can leave it, and the whole string is
+      // placed with only the staged blob beside the system keys.
       eraseSplitKeys(store);
       store.erase(kLampCfgKey);
       if (build(cfgBuffer, cfgBufferLen, whole) == 0 || store.write("cfg", cfgBuffer) == 0) {
@@ -687,29 +683,21 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
 
   // Split: the expressions as records beside the rest. The rest must fit the
   // blob form, checked before any write so TooLarge writes nothing.
-  if (cfgBufferLen < 2 || build(cfgBuffer + 1, cfgBufferLen - 1, rest) == 0) {
+  if (build(cfgBuffer, cfgBufferLen, rest) == 0) {
     return SaveResult::TooLarge;
   }
 
   // The rest as a blob and the lamp section alone in "cfg". The lamp section
   // lives in one of three places: a staged whole rest blob when that is the
-  // newest, else "cfg" when it holds the lamp section alone, else "cfgl"
+  // live one, else "cfg" when it holds the lamp section alone, else "cfgl"
   // (a save cut short with "cfg" erased). Unless "cfg" holds it, the new lamp
   // section is staged in "cfgl" first, since from when "cfg" is erased until
   // the new one lands it is the only copy; a "cfgl" that is the current copy
-  // stays as it is. A stale lamp-only "cfg" (a staged whole is newer) goes
+  // stays as it is. A stale lamp-only "cfg" (a staged whole is live) goes
   // before the rest blob replaces that whole; any other "cfg" (a whole
-  // string, or a rest string from an earlier build) is the authority until
-  // the rest blob lands, and goes after.
-  const RestBlob newer = newestRest(store, cfgBuffer, cfgBufferLen);
-  bool stagedWhole = false;
-  if (newer.slot >= 0) {
-    const size_t len =
-        store.readBlob(kRestKeys[newer.slot], cfgBuffer, cfgBufferLen - 1);
-    cfgBuffer[len] = '\0';
-    stagedWhole = len > 0 && std::strstr(cfgBuffer + restOffset(cfgBuffer),
-                                         "\"expressions\":") != nullptr;
-  }
+  // string) is the authority until the rest blob lands, and goes after.
+  const bool stagedWhole = liveRest(store, cfgBuffer, cfgBufferLen).slot >= 0 &&
+                           std::strstr(cfgBuffer, "\"expressions\":") != nullptr;
   const bool cfgPresent = store.has("cfg");
   const size_t cfgLen = store.readString("cfg", cfgBuffer, cfgBufferLen);
   const bool cfgIsLampOnly = cfgLen > 0 && std::strstr(cfgBuffer, "\"base\":") == nullptr &&
@@ -719,8 +707,7 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
   const bool lampBlobHoldsLamp = !cfgPresent && !stagedWhole && store.has(kLampCfgKey);
   if (!cfgHoldsLamp && !lampBlobHoldsLamp) {
     const size_t len = build(cfgBuffer, cfgBufferLen, lampOnly);
-    if (len == 0 || !store.erase(kLampCfgKey) ||
-        store.writeBlob(kLampCfgKey, cfgBuffer, len) == 0) {
+    if (len == 0 || store.writeBlob(kLampCfgKey, cfgBuffer, len) == 0) {
       return SaveResult::WriteFailed;
     }
   }
@@ -751,14 +738,8 @@ LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
   if (cfgHasExpressions) return result;
   size_t n = 0;
   char countText[4];
-  if (store.readString(kCountKey, countText, sizeof(countText)) > 0) {
-    n = std::strtoul(countText, nullptr, 10);
-  } else {
-    // An earlier build of this layout kept the count as a one-byte blob.
-    uint8_t count = 0;
-    if (store.readBlob(kCountKey, &count, 1) != 1) return result;
-    n = count;
-  }
+  if (store.readString(kCountKey, countText, sizeof(countText)) == 0) return result;
+  n = std::strtoul(countText, nullptr, 10);
   result.present = true;
   expressions.expressions.clear();
   expressions.expressions.reserve(std::min<size_t>(n, kMaxExpressions));
@@ -800,11 +781,9 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
     eraseRest(store);
     return LoadedRecords{};
   }
-  // Otherwise the newer rest blob holds the config: a staged whole one when
-  // it carries expressions, else the rest beside the records, with the lamp
+  // Otherwise the live rest blob holds the config: a staged whole one when it
+  // carries expressions, else the rest beside the records, with the lamp
   // section from the cfg string, or from "cfgl" while a save has it erased.
-  // With no rest blob, the cfg string holds the rest too: a store split by an
-  // earlier build of this layout.
   bool unreadable = false;
   std::unique_ptr<char[]> buf(new (std::nothrow) char[kMaxStoredCfgJsonLen + 1]);
   const size_t cap = kMaxStoredCfgJsonLen + 1;
@@ -813,12 +792,9 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
   if (!buf) {
     unreadable = true;
   } else {
-    const RestBlob newer = newestRest(store, buf.get(), cap);
-    unreadable = newer.unreadable;
-    const size_t len = newer.slot < 0 ? 0 : store.readBlob(kRestKeys[newer.slot], buf.get(), cap);
-    const size_t off = len > 0 ? restOffset(buf.get()) : 0;
-    if (len > off &&
-        deserializeJson(doc, buf.get() + off, len - off) == DeserializationError::Ok &&
+    const RestBlob live = liveRest(store, buf.get(), cap);
+    unreadable = live.unreadable;
+    if (live.slot >= 0 && deserializeJson(doc, buf.get()) == DeserializationError::Ok &&
         doc.is<JsonObject>()) {
       from = doc.as<JsonObject>();
       if (!from["expressions"].is<JsonArray>()) {
@@ -836,7 +812,7 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
           }
         }
       }
-    } else if (newer.slot >= 0) {
+    } else if (live.slot >= 0) {
       unreadable = true;
     }
   }
