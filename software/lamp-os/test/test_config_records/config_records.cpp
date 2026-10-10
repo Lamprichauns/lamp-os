@@ -1272,10 +1272,10 @@ void test_failed_rest_rewrite_keeps_the_live_copy() {
 
 void test_every_store_shape_survives_churn_with_margin() {
   Churn churn;
-  // Seed 31 leaves the least room of the first 150 (34 spare entries); seed
+  // Seed 107 leaves the least room of the first 150 (34 spare entries); seed
   // 69 switches to split where no page has room for the lamp string beside
   // the whole one.
-  for (uint32_t seed : {1u, 7u, 31u, 42u, 69u}) {
+  for (uint32_t seed : {1u, 7u, 42u, 69u, 107u}) {
     TEST_ASSERT_TRUE(churnFits(kMargin, seed, 400, true, churn, seed == 1 ? 12 : 0));
   }
   printf("[budget] churn: %zu staged whole saves, %zu shape changes, %zu follow-ups, "

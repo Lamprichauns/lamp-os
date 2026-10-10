@@ -109,16 +109,24 @@ Two properties make it lethal:
    the document, refuses one that overflowed while it was built (it would save
    truncated), and serializes into one exactly-sized buffer. A refused save
    never aborts: it logs, keeps the dirty state and retries later.
-   A config save takes no heap at all, so it never waits on a large free block:
-   the expression records and knockout are written from stack buffers, and the
+   A config save takes no config-sized heap, so it never waits on a large free
+   block (NVS itself allocates a handle per call and small bookkeeping per
+   page): the expression records and knockout are written from stack buffers, and the
    JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact JSON
    straight into a fixed buffer, byte-identical to ArduinoJson) into a
    1792-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above both a
-   whole config's 1759-byte ceiling and the split rest's 1746-byte worst case
-   with every free-text field fully escaped and every number at its widest).
-   A whole web document (`saveRawJson`) is parsed once, only when the largest
-   free block holds three times the document plus 8 KB for the model, so no
-   allocation on the way can throw. The dispositions flush writes its blob
+   whole config's 1759-byte ceiling and the split rest's 1747-byte worst case,
+   generation byte included, with every free-text field fully escaped and
+   every number at its widest). A whole web document (`saveRawJson`) is
+   parsed once, and only when the heap can take it: free heap for 13 bytes per
+   structural token (`{`, `[`, `:`, `,`), 2 per document byte and per byte of
+   its longest string, and 4 KB for the model, and a largest block for a 4 KB
+   slot pool or the longest string plus 128 bytes. Those are a counting
+   allocator's host figures with margin (`test_config_persist_validate`: a
+   5.4 KB document peaks at 16 KB, the 32 KB the PUT accepts at 267 KB as bare
+   numbers and 103 KB as one string), and the host's 64-bit slots are twice
+   the ESP32's. A typical 5 KB document passes with a 23.5 KB largest block
+   in 46.5 KB free; a document at every cap needs about 43 KB free. The dispositions flush writes its blob
    from the stack. A failed save (a full NVS, or a JSON that outgrew its
    buffer) backs off 5 s doubling to 60 s (`util/retry_backoff.hpp`) for
    both, and the commit drain waits on the same backoff, so no failure path
@@ -147,11 +155,26 @@ Two placement rules make the entry count alone overstate the room
   either. Collection empties the page with the fewest live entries, which
   holds at most a quarter of the `L` live entries on the four data pages, so
   a string of `S` entries is always placed while `L <= 4 x (126 - S) + 3`.
-- **A blob under 400 bytes behaves like a string.** A blob's first chunk is
-  never split off into a tail under 400 bytes (`CHUNK_MAX_SIZE / 10`); NVS
-  moves to a fresh page instead, and fails if that does not improve the tail.
-  A larger blob is written in chunks across pages, one header entry per
-  chunk, collecting a page for each.
+- **A blob under 400 bytes behaves like a string.** When the active page's
+  tail is shorter than the blob and under 400 bytes (`CHUNK_MAX_SIZE / 10`),
+  NVS moves to a fresh page for the first chunk rather than split it, and
+  fails if the fresh page's tail is no longer. A blob under 400 bytes so
+  always lands as one chunk in one page's tail. A larger blob takes a short
+  tail as its first chunk and continues in chunks across pages, one header
+  entry per chunk, collecting a page for each.
+- **A failed blob rewrite can take the old copy.** IDF 5.5's
+  `writeMultiPageBlob` cleans up a write that fails after a chunk (a page
+  request that fails, or the 12-byte `UsedPageNode` allocation) by erasing,
+  on each page it wrote, the chunk numbered by its position (0, 1, ...)
+  rather than by the new version's offset. Rewriting a blob whose live
+  version starts at offset 0 can so erase the live version's chunk, and the
+  blob no longer reads. The rest blob therefore alternates between two keys
+  and is written to the one erased first; the count is a string, which a
+  failed write leaves as it was. A record, `ko` or `disp` rewrite can still
+  lose its old copy that way, only when NVS has no page for it or the heap
+  cannot spare 12 bytes: the save fails and its retry writes it back from
+  RAM, and a reset before then drops that one record (logged at load), the
+  knockout levels or the dispositions.
 
 `config_codec::saveConfig` writes one of two shapes, chosen per save:
 
@@ -166,10 +189,11 @@ Two placement rules make the entry count alone overstate the room
 | Key | Content | Worst case | Entries |
 |---|---|---|---|
 | `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 121 B | 21 x 6 = 126 |
-| `xn` | expression count | 1 B | 3 |
+| `xn` | expression count, a decimal string | 2 B | 2 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfgb` | base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1746 B fully escaped | 57 |
+| `cfgb` or `cfgc` | a generation byte, then base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1747 B fully escaped | 57 |
 | `cfg` | the lamp section as a JSON string, the one an older release reads | 376 B fully escaped | 13 |
+| `cfgl` | the lamp section, staged while `cfg` is replaced | 376 B | 14 while it exists |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
 | `lampType` | variant id | under 16 B | 2 |
 
@@ -196,24 +220,26 @@ The arithmetic, every case with at least 32 entries to spare
   or staged blob 57 = 249. The bound for 56 entries is 4 x 70 + 3 = 283:
   34 spare.
 - **Lamp string.** Live beside every split key at its cap: 166 + 2 + 24 +
-  126 + 3 + 10 + 57 + its old copy 14 = 402. The bound for 13 is 455: 53
-  spare.
+  126 + 2 + 10 + 57 + its old copy or `cfgl` 14 = 401. The bound for 13 is
+  455: 54 spare.
 - **Small blobs.** The largest is a dispositions blob just under 400 bytes,
-  14 entries, at 401 live: bound 451, 50 spare. Records (6) and `ko` (10)
-  are smaller.
-- **Entries.** The split store holds 401; rewriting its largest blob, PHY
-  calibration (62) or `cfgb` (57), peaks at 463 of 504. Switching from whole
-  peaks at 458: every split key beside the whole string and the staged lamp
-  section.
+  14 entries, at 400 live: bound 451, 51 spare. Records (6), `ko` (10) and
+  `cfgl` (14) are no larger.
+- **Entries.** The split store holds 400; rewriting its largest blob, PHY
+  calibration (62) or the rest (57), peaks at 462 of 504. Switching from
+  whole peaks at 457 (every split key, the staged lamp section and the new
+  rest blob beside the whole string), and so does staging a whole config
+  beside the split store.
 
 Those bounds hold for any arrangement of entries across the pages. The
 native suite also runs NVS itself: `PagedNvs` (`test/test_config_records`)
-models the pages, one-page strings, chunked blobs and the collection rule,
-and every store shape (empty, the largest whole, split at every escaped
-worst case, the standard variant's 18 full expressions) is saved in seeded
-order with system keys and dispositions rewritten between saves and 32
-padding entries beside them. Every write must land and every save load back
-as saved; the closest of 150 seeds leaves 34 entries to spare.
+models the pages, one-page strings, chunked blobs, the collection rule and
+IDF's cleanup of a failed blob write, and every store shape (empty, the
+largest whole, split at every escaped worst case, the standard variant's 18
+full expressions) is saved in seeded order with system keys and
+dispositions rewritten between saves and 32 padding entries beside them.
+Every write must land and every save load back as saved; the closest of 150
+seeds leaves 34 entries to spare.
 
 An expression record holds at most 12 parameters (`kMaxExpressionParams`;
 every type carries at most 11, guarded by `test_builtin_descriptors`) and
@@ -259,38 +285,49 @@ answers 202 and the save is attempted on its own; a failure is logged as
 `[webapp] pending save failed`. A landed web save arms the reboot that loads
 it, drops any pending retry, and makes `persistConfig` decline until that
 reboot, so the running config cannot overwrite it; the commit drain waits
-without retrying or logging (`config/save_gate.hpp`). The reboot waits while
+without retrying or logging, and a second web document is answered 409
+rather than written over it (`config/save_gate.hpp`). The reboot waits while
 OTA quiet mode is held, at most 10 minutes (`kRebootOtaWaitMaxMs`), after
 which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead.
 
 A reset at any point of a save leaves a whole config, and so does a save that
-stops at a refused write. `test_config_records` cuts every staged save and
-every switch to split short at each of its writes, over the page model, and
-loads what is left.
+stops at a refused write. `test_config_records` cuts saves short at each of
+their writes and loads what is left, then cuts the next save short at each
+of its writes from every store that leaves: every shape to every shape, staged
+or not, in memory, and the staged saves and shape changes of the page-model
+churn. Each section must load as the store before the save had it or as
+saved.
 
 - **Whole.** `cfg` is written (always with an `expressions` array, empty
   included, so deleting every expression and losing power before the erase
   cannot bring them back), then every record slot `x0`..`x31`, `xn`, `ko`,
-  `cfgl` and `cfgb` are erased. When NVS refuses the string (switching from
-  split, it may have no page with room beside the split keys), it is staged:
-  the whole JSON goes to `cfgb` as a blob, `cfg` is erased, then the split
-  keys, then `cfg` is written and `cfgb` erased.
-- **Split.** The `cfgb` JSON is built first (TooLarge writes nothing). A store
-  that was whole (no `cfgb`) first stages the lamp section as the `cfgl`
-  blob. Then the records, `ko`, the count `xn`, every record slot past the
-  count erased, `cfgb`; a store switching from whole erases its whole `cfg`
-  string here, so the lamp string needs no room beside it; then the lamp
-  section as `cfg`, and `cfgl` is erased. Sweeping every slot means a save
-  cut short before its count lands leaves no record that a later save does
-  not erase.
+  both rest keys and `cfgl` are erased. When NVS refuses the string
+  (switching from split, it may have no page with room beside the split
+  keys), it is staged: the whole JSON goes to a rest blob, `cfg` is erased,
+  then the split keys and `cfgl`, then `cfg` is written and the rest keys
+  erased.
+- **Split.** The rest JSON is checked first (TooLarge writes nothing). The
+  lamp section lives in the newest rest blob when that is a staged whole,
+  else in `cfg` when that holds the lamp section alone, else in `cfgl`. Unless
+  `cfg` holds it, the save first stages the new lamp section in `cfgl` (a
+  `cfgl` that is the current copy stays) and erases a stale lamp-only `cfg`.
+  Then the records, `ko`, the count `xn`, every record slot past the count
+  erased, and the rest blob, written to the rest key that is not live, erased
+  first, before the older is erased. A whole or rest-bearing `cfg` is the
+  authority until then and is erased only now. Last the lamp section goes to
+  `cfg` and `cfgl` is erased. Sweeping every slot means a save cut short
+  before its count lands leaves no record that a later save does not erase.
 - **Load.** A `cfg` string with an `expressions` array (a whole save, or any
-  older release's) is the authority and the load erases a `cfgb` beside it.
-  Otherwise `cfgb` holds the config: a staged whole one when it has an
+  older release's) is the authority and the load erases rest blobs and
+  `cfgl` beside it. Otherwise the newer rest blob (by its generation byte,
+  counting 0, 1, 2) holds the config: a staged whole one when it has an
   `expressions` array, else the rest beside the records, with the lamp
   section from `cfg`, or from `cfgl` while a save has `cfg` erased. A store
-  with no `cfgb` was split by a build that kept the rest in `cfg`, and loads
-  as such. The dispositions JSON key wins over the blob unless it is corrupt,
-  or empty while the blob has entries.
+  with no rest blob was split by a build that kept the rest in `cfg`, and
+  loads as such. A rest blob or `cfgl` that exists but does not read sets
+  `loadFailedWithData`, as an unparseable `cfg` does, so the first-boot save
+  does not write defaults over it. The dispositions JSON key wins over the
+  blob unless it is corrupt, or empty while the blob has entries.
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
@@ -305,25 +342,14 @@ drops only itself, logged as `[cfg] expression record xN unreadable`. The
 boot log's `[cfg] expressions=N from records|cfg json` is the loaded count;
 the `cfg_bytes` on the line before is the `cfg` string alone.
 
-**Downgrades.** An older release reads only the `cfg` string and the legacy
-dispositions JSON key.
-
-- A whole-saved lamp keeps everything there but its dispositions.
-- A split-saved lamp keeps only its lamp section (name, password, brightness,
-  setup flags); its segments, colours, byte order, knockout levels, shade,
-  home mode and expressions read as defaults there. The split keys stay in
-  NVS, unknown to that release, so its own saves have to fit beside them and
-  may fail.
-- Dispositions read as empty there, since the migration removed the JSON key.
-  An older release that saves them empty (`{}`) leaves the blob in place, so
-  they come back when the lamp is flashed forward; one that saves entries
-  replaces them.
-- A parameter key the older release does not know (one appended to
-  `kExpressionParamKeys` later) is dropped there, and stays dropped if that
-  release saves.
-
-Flashed forward again, whatever the older release saved is what loads; if it
-saved nothing, the split store loads intact.
+**Downgrades.** Downgrades happen only on the bench, so this layout does not
+try to serve one. An older release reads only the `cfg` string and the
+legacy dispositions JSON key. A whole-saved lamp keeps everything there but
+its dispositions. A split-saved lamp keeps only its lamp section (name,
+password, brightness, setup flags); everything else reads as defaults, and
+that release's own saves have to fit beside split keys it does not know.
+Flashed forward again, whatever the older release saved is what loads; if
+it saved nothing, the split store loads intact, dispositions included.
 
 ## What expressions cost at runtime
 
