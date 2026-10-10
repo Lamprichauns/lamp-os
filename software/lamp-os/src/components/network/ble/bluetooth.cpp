@@ -163,7 +163,12 @@ void BluetoothComponent::begin(std::string name, Color inBaseColor,
 #ifdef LAMP_DEBUG
   Serial.printf("Starting Bluetooth Async Client\n");
 #endif
-  NimBLEDevice::init(name.substr(0, 12));
+  // A failed init (NVS or controller) leaves NimBLE's host unusable; every
+  // later BLE call is gated on isInitialized() so the lamp runs on without it.
+  if (!NimBLEDevice::init(name.substr(0, 12))) {
+    Serial.println("[ble] NimBLE init failed; running without Bluetooth");
+    return;
+  }
   ble_control::disableBtModemSleep();
   NimBLEDevice::setPower(BLE_POWER_LEVEL);
 
@@ -306,6 +311,7 @@ void BluetoothComponent::tickAdvertising() {
 }
 
 void BluetoothComponent::activateGattServices(Config* cfg) {
+  if (!NimBLEDevice::isInitialized()) return;
   // NimBLE's ble_gatts_mutable() returns false if any GAP procedure is
   // active, and ble_gatts_add_svcs() silently drops services if so. Pause
   // the central scan while registering services + starting advertising.

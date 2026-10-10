@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
-#include <Preferences.h>
 #include <esp_bt.h>
 #include <esp_heap_caps.h>
 
@@ -1252,8 +1251,10 @@ void start(lamp::Config* config) {
 
   s_config = config;
 
-  if (!NimBLEDevice::isInitialized()) {
-    NimBLEDevice::init(config->lamp.name.substr(0, 12));
+  if (!NimBLEDevice::isInitialized() &&
+      !NimBLEDevice::init(config->lamp.name.substr(0, 12))) {
+    Serial.println("[ble_control] NimBLE init failed; GATT service not started");
+    return;
   }
   disableBtModemSleep();
 

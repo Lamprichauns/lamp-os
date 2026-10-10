@@ -438,6 +438,7 @@ void updateAdvertisedDeviceName(const char* newName) {
   // GATT connections are unaffected (advertising and connections are
   // separate state machines in NimBLE). The brief gap (~50ms, well under the
   // advertising interval) is below human perception.
+  if (!NimBLEDevice::isInitialized()) return;
   NimBLEDevice::setDeviceName(newName);
   auto* adv = NimBLEDevice::getAdvertising();
   if (adv != nullptr) {

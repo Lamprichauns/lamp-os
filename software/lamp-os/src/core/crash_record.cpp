@@ -1,7 +1,7 @@
 #include "core/crash_record.hpp"
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
-#include <Preferences.h>
+#include <nvs.h>
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
 #endif
@@ -66,16 +66,21 @@ void boot(uint32_t fwVersion) {
   const bool rtcValid = s_rtc.magic == kRtcMagic;
   if (rtcValid) s_rtc.snap.reason[kReasonLen - 1] = '\0';
 
-  Preferences prefs;
-  if (prefs.begin(kNvsNamespace, false)) {
-    if (prefs.getBytesLength(kNvsKey) == sizeof(Record)) {
-      prefs.getBytes(kNvsKey, &s_last, sizeof(Record));
+  // The nvs_* API directly: a failed write returns an error to ignore, where
+  // Preferences would log it through a path that faults on a starved heap.
+  nvs_handle_t h;
+  if (nvs_open(kNvsNamespace, NVS_READWRITE, &h) == ESP_OK) {
+    size_t len = sizeof(Record);
+    Record stored{};
+    if (nvs_get_blob(h, kNvsKey, &stored, &len) == ESP_OK && len == sizeof(Record)) {
+      s_last = stored;
     }
     if (foldBoot(s_last, esp_reset_reason(), rtcValid ? &s_rtc.snap : nullptr,
-                 fwVersion)) {
-      prefs.putBytes(kNvsKey, &s_last, sizeof(Record));
+                 fwVersion) &&
+        nvs_set_blob(h, kNvsKey, &s_last, sizeof(Record)) == ESP_OK) {
+      nvs_commit(h);
     }
-    prefs.end();
+    nvs_close(h);
   }
 
   s_rtc = RtcState{};

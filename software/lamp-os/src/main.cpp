@@ -31,6 +31,10 @@ void setup() {
   // Small delay so the boot log isn't lost while the host opens the port.
   delay(50);
 
+  // Before anything opens NVS: a partition that cannot initialize is erased so
+  // the lamp boots with Bluetooth instead of needing a reflash.
+  lamp::NvsConfigStore::initFlash();
+
   // Attach the store to the file-scope Config so loadLampType / setLampType
   // can hit NVS during the variant-resolution chain below. Lamp::setup()
   // later replaces this Config via the store ctor (which loads the JSON

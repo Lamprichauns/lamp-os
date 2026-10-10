@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstring>
 #include <map>
 #include <string>
 
@@ -9,36 +11,63 @@ namespace lamp {
 // in-memory in tests), so Config carries no platform dependency and its
 // serialization/policy logic can be exercised in the native suite.
 //
-// Reads return defaultValue when the key is absent or the backing is
-// unavailable. write() returns bytes stored (0 = nothing written, e.g. the
-// backing couldn't be opened). All access is single-writer on Core 1 (NVS is
-// not Core-0-safe); the seam adds no locking of its own.
+// Reads return defaultValue (or 0 bytes) when the key is absent or the backing
+// is unavailable. A write returns bytes stored, 0 when nothing was written (the
+// backing could not be opened, or is full); a failed write never faults. All
+// access is single-writer on Core 1 (NVS is not Core-0-safe); the seam adds no
+// locking of its own.
 class ConfigStore {
  public:
   virtual ~ConfigStore() = default;
   virtual std::string read(const char* key, const char* defaultValue) = 0;
   virtual size_t write(const char* key, const char* value) = 0;
+  // Bytes copied into `out`; 0 when absent or longer than `cap`.
+  virtual size_t readBlob(const char* key, void* out, size_t cap) = 0;
+  virtual size_t writeBlob(const char* key, const void* data, size_t len) = 0;
+  // True when the key is gone afterwards (absent counts).
+  virtual bool erase(const char* key) = 0;
   // Wipe the whole namespace (factory reset). Returns true on success.
   virtual bool clear() = 0;
 };
 
 // In-memory ConfigStore for the native suite (no Arduino/flash). The second
 // implementation that makes ConfigStore a test seam rather than speculative
-// indirection (see docs/dev/code-smells.md).
+// indirection (see docs/dev/code-smells.md). `failWrites` makes every write
+// return 0, the way a full NVS does.
 class InMemoryConfigStore : public ConfigStore {
  public:
+  bool failWrites = false;
+  size_t writeCount = 0;
+
   std::string read(const char* key, const char* defaultValue) override {
     auto it = map_.find(key);
     return it == map_.end() ? std::string(defaultValue) : it->second;
   }
   size_t write(const char* key, const char* value) override {
-    map_[key] = value;
-    return map_[key].size();
+    return writeBlob(key, value, std::strlen(value));
+  }
+  size_t readBlob(const char* key, void* out, size_t cap) override {
+    auto it = map_.find(key);
+    if (it == map_.end() || it->second.size() > cap) return 0;
+    std::memcpy(out, it->second.data(), it->second.size());
+    return it->second.size();
+  }
+  size_t writeBlob(const char* key, const void* data, size_t len) override {
+    ++writeCount;
+    if (failWrites) return 0;
+    map_[key].assign(static_cast<const char*>(data), len);
+    return len;
+  }
+  bool erase(const char* key) override {
+    if (failWrites) return false;
+    map_.erase(key);
+    return true;
   }
   bool clear() override {
     map_.clear();
     return true;
   }
+  bool has(const char* key) const { return map_.count(key) != 0; }
 
  private:
   std::map<std::string, std::string> map_;
