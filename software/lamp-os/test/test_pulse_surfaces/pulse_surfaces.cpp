@@ -41,6 +41,7 @@ struct Rig {
   BehaviorContext ctx;
 
   Rig() {
+    // reversed flags as StandardLamp declares them in standard_lamp.hpp.
     shade.begin({}, {{&shadeStrip, "Shade", 0, kShadePx, /*reversed=*/false}});
     base.begin({}, {{&baseStrip, "Base", 0, kBasePx, /*reversed=*/true}});
     clear();
@@ -387,6 +388,10 @@ void test_both_default_speed_matches_one_surface() {
   PulseExpression shade(&single.shade);
   build(single, shade, TARGET_SHADE, params);
   const uint32_t shadeMs = crossingMs(single, shade, kBasePx, kBasePx + kShadePx - 1);
+  // The floor's per-pixel step scales the longer surface's floor to the strip.
+  const uint32_t strip = kBasePx + kShadePx;
+  const uint32_t expectBoth = (kPulseFloorMsPerPx * kShadePx / strip) * (strip - 2);
+  TEST_ASSERT_UINT32_WITHIN(2 * kFrameMs, expectBoth, bothMs);
   TEST_ASSERT_UINT32_WITHIN(250, shadeMs, bothMs);
 }
 

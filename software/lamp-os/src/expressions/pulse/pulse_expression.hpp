@@ -56,7 +56,7 @@ inline constexpr ParamSpec kPulseParams[] = {
     .kind    = ParamKind::Enum,
     .label   = "Direction",
     .max     = 1,
-    .help    = "Up rises from the bottom of the base. Down falls the other way.",
+    .help    = "Up rises toward the top of the lamp. Down falls.",
     .options = kPulseTravelOpts,
   },
   kOpacityParam,

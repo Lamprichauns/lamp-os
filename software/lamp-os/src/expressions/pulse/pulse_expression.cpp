@@ -199,6 +199,7 @@ void PulseExpression::draw() {
   }
 
   // blendFactor varies per pixel (distance to wave center), so no frame-level hoist.
+  // Per-surface weights differ only once Pulse yields to the wisp (wispDimFloor < 1).
   const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
   const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
   // Base logical 0 is its top, so a base-only pulse walks its zone mirrored to

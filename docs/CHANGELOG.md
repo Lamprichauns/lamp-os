@@ -20,6 +20,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   venue network: Straylight's feed arrives over the cable, the wisp's WiFi
   stays off so the mesh keeps its radio, and the app shows the wisp's
   network address. A wisp with no module works exactly as before.
+- **Pulse has a Direction.** Up is the default. Down runs the other way: on
+  both surfaces it drips from the top of the shade down to the bottom of the
+  base.
 
 ### Fixed
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run
@@ -89,10 +92,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   did. On a lamp whose base and shade don't stack, the
   pulse sweeps one and then the other. While lamps are partway through an
   update, a lamp still on the old firmware shows a received both-surface
-  Pulse as two pulses side by side.
-- **Pulse has a Direction.** Up is the default. Down runs the other way: on
-  both surfaces it drips from the top of the shade down to the bottom of the
-  base.
+  Pulse as two pulses side by side, ignores Down, and still runs a base-only
+  Pulse down the base.
 - **A Pulse on just the base rises.** It used to run down the base; Up now
   climbs it from the bottom, like the shade, and Down runs it downward.
 

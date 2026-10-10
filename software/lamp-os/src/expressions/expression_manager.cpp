@@ -424,7 +424,6 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
 
   const SurfacePlan plan =
       surfacePlan(registry_.find(inv.type.c_str()), invTarget, shadeBuffer, baseBuffer);
-  if (plan.count == 0) return false;
   const size_t targetCount = plan.count;
 
   // A crowd of distinct senders would otherwise stack one transient pair per
