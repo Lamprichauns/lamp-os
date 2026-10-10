@@ -174,7 +174,19 @@ static lamp::HomeModeState currentHomeModeState() {
                                  wifi::homeSsidVisible(config.homeMode.ssid)));
 }
 
-bool calculateEffectiveHomeMode() { return currentHomeModeState().active; }
+// The snapshot reapplyHomeModeState last took, so brightness and the
+// compositor's gate never read two different states. Taken on first use for
+// the boot path that runs before any reapply.
+static lamp::HomeModeState s_homeState;
+static bool s_homeStateTaken = false;
+
+bool calculateEffectiveHomeMode() {
+  if (!s_homeStateTaken) {
+    s_homeState = currentHomeModeState();
+    s_homeStateTaken = true;
+  }
+  return s_homeState.active;
+}
 
 // Single funnel for "home mode state may have changed". Keeps the
 // compositor's behavior gate and the strip brightness in lockstep so the
@@ -183,8 +195,9 @@ bool calculateEffectiveHomeMode() { return currentHomeModeState().active; }
 void reapplyHomeModeState() {
   compositor.setHomeModePolicy(config.homeMode.socialDisabled,
                                config.homeMode.disabledExpressionTypes);
-  const lamp::HomeModeState state = currentHomeModeState();
-  compositor.setHomeMode(state.active);
-  compositor.homePreview = state.preview;
+  s_homeState = currentHomeModeState();
+  s_homeStateTaken = true;
+  compositor.setHomeMode(s_homeState.active);
+  compositor.homePreview = s_homeState.preview;
   lamp::applyEffectiveBrightness();
 }
