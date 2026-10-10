@@ -115,19 +115,23 @@ Two properties make it lethal:
    JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact JSON
    straight into a fixed buffer, byte-identical to ArduinoJson) into a
    1792-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above both a
-   whole config's 1759-byte ceiling and the split rest's 1747-byte worst case,
-   generation byte included, with every free-text field fully escaped and
-   every number at its widest). A whole web document (`saveRawJson`) is
-   parsed once, and only when the heap can take it: free heap for 13 bytes per
-   structural token (`{`, `[`, `:`, `,`), 2 per document byte and per byte of
-   its longest string, and 4 KB for the model, and a largest block for a 4 KB
-   slot pool or the longest string plus 128 bytes. Those are a counting
-   allocator's host figures with margin (`test_config_persist_validate`: a
-   5.4 KB document peaks at 16 KB, the 32 KB the PUT accepts at 267 KB as bare
-   numbers and 103 KB as one string), and the host's 64-bit slots are twice
-   the ESP32's. A typical 5 KB document passes with a 23.5 KB largest block
-   in 46.5 KB free; a document at every cap needs about 43 KB free. The dispositions flush writes its blob
-   from the stack. A failed save (a full NVS, or a JSON that outgrew its
+   whole config's 1759-byte ceiling and the split rest's 1746-byte worst case
+   with every free-text field fully escaped and every number at its widest).
+   A whole web document is parsed once, on the loop: the web PUT gathers the
+   body (at most 12 KB, `kMaxSettingsBody`; the document at every cap is
+   about 10.5 KB) into one block and hands that block over without parsing
+   it, and `saveRawJson` parses it only when the heap can take it. Free heap:
+   15 bytes per structural token (`{`, `[`, `:`, `,`), a byte per document
+   byte, 3 per byte of its longest string and 4 KB for the model. Largest
+   block: a 4 KB slot pool, or twice the longest string plus 128 bytes. Those
+   are a counting allocator's host figures with margin
+   (`test_config_persist_validate`: a 5.4 KB document peaks at 16 KB, the
+   standard variant's 18 full expressions at 23 KB, 12 KB of bare numbers at
+   103 KB, 12 KB as one string at 45 KB with a 16 KB block), and the host's
+   64-bit slots are twice the ESP32's. With the body taken out of 46.5 KB free
+   and a 23.5 KB largest block, both the typical document and the 18
+   expressions pass. These are host figures; the device's need a bench check.
+   The dispositions flush writes its blob from the stack. A failed save (a full NVS, or a JSON that outgrew its
    buffer) backs off 5 s doubling to 60 s (`util/retry_backoff.hpp`) for
    both, and the commit drain waits on the same backoff, so no failure path
    retries at loop rate. Old stored formats load unchanged and move to the
@@ -167,10 +171,15 @@ Two placement rules make the entry count alone overstate the room
   request that fails, or the 12-byte `UsedPageNode` allocation) by erasing,
   on each page it wrote, the chunk numbered by its position (0, 1, ...)
   rather than by the new version's offset. Rewriting a blob whose live
-  version starts at offset 0 can so erase the live version's chunk, and the
-  blob no longer reads. The rest blob therefore alternates between two keys
-  and is written to the one erased first; the count is a string, which a
-  failed write leaves as it was. A record, `ko` or `disp` rewrite can still
+  version starts at offset 0 can so erase the live version's chunk; the first
+  read then finds the chunk missing and erases the whole blob
+  (`readMultiPageBlob`), as the boot after a reset does
+  (`eraseMismatchedBlobIndexes`). The rest blob therefore alternates between
+  `cfgb` and `cfgc`, written to the one that is not live after erasing it
+  first, so a failed write never reaches the live copy; with both present (a
+  save cut short before the older is erased) `cfgb` is the live one, for
+  saves and loads alike. The count is a string, which a failed write leaves
+  as it was. A record, `ko` or `disp` rewrite can still
   lose its old copy that way, only when NVS has no page for it or the heap
   cannot spare 12 bytes: the save fails and its retry writes it back from
   RAM, and a reset before then drops that one record (logged at load), the
@@ -191,7 +200,7 @@ Two placement rules make the entry count alone overstate the room
 | `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 121 B | 21 x 6 = 126 |
 | `xn` | expression count, a decimal string | 2 B | 2 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfgb` or `cfgc` | a generation byte, then base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1747 B fully escaped | 57 |
+| `cfgb` or `cfgc` | base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1746 B fully escaped | 57 |
 | `cfg` | the lamp section as a JSON string, the one an older release reads | 376 B fully escaped | 13 |
 | `cfgl` | the lamp section, staged while `cfg` is replaced | 376 B | 14 while it exists |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
@@ -313,20 +322,22 @@ saved.
   `cfgl` that is the current copy stays) and erases a stale lamp-only `cfg`.
   Then the records, `ko`, the count `xn`, every record slot past the count
   erased, and the rest blob, written to the rest key that is not live, erased
-  first, before the older is erased. A whole or rest-bearing `cfg` is the
-  authority until then and is erased only now. Last the lamp section goes to
+  first, before the live one is erased. A whole `cfg` is the authority until
+  then and is erased only now. Last the lamp section goes to
   `cfg` and `cfgl` is erased. Sweeping every slot means a save cut short
   before its count lands leaves no record that a later save does not erase.
 - **Load.** A `cfg` string with an `expressions` array (a whole save, or any
   older release's) is the authority and the load erases rest blobs and
-  `cfgl` beside it. Otherwise the newer rest blob (by its generation byte,
-  counting 0, 1, 2) holds the config: a staged whole one when it has an
-  `expressions` array, else the rest beside the records, with the lamp
-  section from `cfg`, or from `cfgl` while a save has `cfg` erased. A store
-  with no rest blob was split by a build that kept the rest in `cfg`, and
-  loads as such. A rest blob or `cfgl` that exists but does not read sets
+  `cfgl` beside it. Otherwise the live rest blob holds the config: a staged
+  whole one when it has an `expressions` array, else the rest beside the
+  records, with the lamp section from `cfg`, or from `cfgl` while a save has
+  `cfg` erased. A rest blob or `cfgl` that holds something unreadable sets
   `loadFailedWithData`, as an unparseable `cfg` does, so the first-boot save
-  does not write defaults over it. The dispositions JSON key wins over the
+  does not write defaults over it. On the device that is a blob over the
+  read buffer, a chunk that fails its CRC (IDF erases that chunk on the read,
+  and the blob on the next read or boot), or JSON that does not parse. A
+  blob with a chunk missing is gone by the time it is read, so nothing marks
+  it. The dispositions JSON key wins over the
   blob unless it is corrupt, or empty while the blob has entries.
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts

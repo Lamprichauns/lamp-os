@@ -43,8 +43,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   and a lamp whose storage is already full frees space on its first start.
   Your existing settings carry over on update. If the lamp's storage reports
   itself unusable at startup it is cleared so the lamp still comes up and
-  can be set up again from the app. Saving from the web page again while an
-  earlier save waits for its restart is refused, so the first one is kept.
+  can be set up again from the app. A big setup saved from the web page now
+  fits, since the lamp reads the page's settings once instead of twice, and
+  saving again while an earlier save waits for its restart is refused, so
+  the first one is kept.
 - **Settings the lamp can't keep are refused up front.** A control password
   longer than 64 characters, or a home network name longer than 32, is
   refused from the app and from the web page, instead of being stored in a
