@@ -21,9 +21,8 @@ struct InterSessionQuietHold {
     exitAtMs = 0;
   }
 
-  // A session that never entered quiet leaves nothing to hold.
+  // Inert unless held: a session that never entered quiet leaves nothing to hold.
   void sessionEnded(uint32_t nowMs, bool done) {
-    if (!held) return;
     exitAtMs = nowMs + kHoldMs;
     endedDone = done;
   }
