@@ -10,6 +10,7 @@
 
 #include "components/network/protocol/lamp_protocol.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
+#include "components/network/transport/tx_credit.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "core/behavior_context.hpp"
 #include "core/compositor.hpp"
@@ -123,6 +124,8 @@ void ExpressionManager::setCompositor(Compositor* compositor) {
 
 static_assert(CascadeScheduler::kMaxPeers == LampRoster::kCapacity,
               "a cascade holds every peer the roster can");
+static_assert(CascadeScheduler::kBatchSize <= TxCredit::kMaxInFlight,
+              "a cascade pass fits the driver's TX credits");
 
 void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                                      const uint8_t* excludeMac) {

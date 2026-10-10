@@ -57,20 +57,29 @@ Model worstCaseModel(char fill = 'z') {
   Model m;
   m.lamp.name = std::string(kMaxLampNameLen, fill);
   m.lamp.password = std::string(kMaxPasswordLen, fill);
+  // Every number at its widest and every boolean "false", the longer form.
+  m.lamp.brightness = 255;
+  m.lamp.apBootMinutes = 255;
+  m.lamp.brightnessCeiling = 255;
+  m.lamp.socialMode = SocialMode::Extrovert;
+  m.lamp.setup = m.lamp.named = m.lamp.advancedEnabled = m.lamp.webappEnabled = false;
+  m.base.colorsEditable = m.shade.colorsEditable = false;
+  m.homeMode.brightness = 255;
+  m.homeMode.enabled = m.homeMode.networkBound = m.homeMode.socialDisabled = false;
   m.lamp.lampType = "standard";
   for (auto* segs : {&m.base.segments, &m.shade.segments}) {
     segs->clear();
     for (size_t s = 0; s < kMaxSegments; ++s) {
       SegmentSettings seg;
       seg.name = std::string(kMaxSegmentNameLen, fill);
-      seg.px = 63;
+      seg.px = 255;
       seg.colors.assign(kMaxSurfaceColors, Color(255, 255, 255, 255));
       segs->push_back(seg);
     }
   }
   m.base.byteOrder = "GRBW";
   m.shade.byteOrder = "GRBW";
-  m.base.knockoutPixels.assign(m.base.sumPx(), 100);
+  m.base.knockoutPixels.assign(255, 100);
   m.homeMode.ssid = std::string(kMaxSsidLen, fill);
   m.homeMode.disabledExpressionTypes.assign(kMaxDisabledExpressionTypes,
                                             std::string(kMaxExpressionTypeLen, 't'));

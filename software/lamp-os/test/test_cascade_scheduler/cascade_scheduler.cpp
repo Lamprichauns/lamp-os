@@ -74,7 +74,7 @@ void test_delay_keeps_the_intended_fire_time() {
   TEST_ASSERT_EQUAL_UINT32(kMaxDelayMs, CascadeScheduler::delayFor(49, 0xFFFFFFFFu, 0));
 }
 
-// 50 peers drain in batches of 8, one batch per gap, every peer once, closest
+// 50 peers drain in batches of kBatchSize, one batch per gap, every peer once, closest
 // first, each frame what serializeInvocation writes for its remaining delay.
 void test_every_peer_is_reached_in_bounded_batches() {
   CascadeScheduler s;
@@ -93,7 +93,8 @@ void test_every_peer_is_reached_in_bounded_batches() {
     now += CascadeScheduler::kBatchGapMs;
   }
   TEST_ASSERT_EQUAL(50, sent.size());
-  TEST_ASSERT_EQUAL(7, batches);
+  TEST_ASSERT_EQUAL((50 + CascadeScheduler::kBatchSize - 1) / CascadeScheduler::kBatchSize,
+                    batches);
   for (size_t i = 0; i < sent.size(); ++i) {
     TEST_ASSERT_EQUAL_UINT8(i, sent[i].peer);
     const uint32_t elapsed = static_cast<uint32_t>(i / CascadeScheduler::kBatchSize) *
@@ -113,9 +114,10 @@ void test_cascades_queue_behind_the_drain() {
   beginWith(s, sampleInvocation(), 20, 0, 0);
   std::vector<Sent> sent;
   drain(s, 0, sent);
-  TEST_ASSERT_EQUAL(12, s.pending());
+  const size_t left = 20 - CascadeScheduler::kBatchSize;
+  TEST_ASSERT_EQUAL(left, s.pending());
   beginWith(s, sampleInvocation(), 3, 0, 10);
-  TEST_ASSERT_EQUAL(15, s.pending());
+  TEST_ASSERT_EQUAL(left + 3, s.pending());
   std::string json;
   serializeInvocation(sampleInvocation(), json);
   TEST_ASSERT_TRUE(s.begin(json.data(), json.size(), 0, 20) ==
@@ -124,7 +126,7 @@ void test_cascades_queue_behind_the_drain() {
     const uint8_t mac[6] = {0x03, 0, 0, 0, 0, static_cast<uint8_t>(i)};
     s.addPeer(mac);
   }
-  TEST_ASSERT_EQUAL(17, s.pending());
+  TEST_ASSERT_EQUAL(left + 5, s.pending());
   for (uint32_t t = 100; s.active(); t += CascadeScheduler::kBatchGapMs) drain(s, t, sent);
   TEST_ASSERT_EQUAL(25, sent.size());
 }

@@ -226,7 +226,8 @@ void test_expressions_within_caps_load_whole() {
 void test_over_cap_stored_expressions_truncate_on_load() {
   std::string json = "{\"lamp\":{},\"expressions\":[";
   for (size_t i = 0; i < kMaxExpressions + 5; ++i) {
-    json += (i ? "," : "") + expressionEntry("pulse", 1, 60, 40);
+    json += (i ? "," : "") +
+            expressionEntry(("type" + std::to_string(i)).c_str(), 1, 60, 40);
   }
   json += "]}";
   Model m;
@@ -236,6 +237,17 @@ void test_over_cap_stored_expressions_truncate_on_load() {
                          m.expressions.expressions[0].colors.size());
   TEST_ASSERT_EQUAL_UINT(kMaxExpressionParams,
                          m.expressions.expressions[0].parameters.size());
+}
+
+// A repeated (type, target) loads once, the first kept.
+void test_repeated_expression_loads_once() {
+  std::string json = "{\"lamp\":{},\"expressions\":[" + expressionEntry("pulse", 1, 1, 0) +
+                     "," + expressionEntry("pulse", 1, 2, 0) + "," +
+                     expressionEntry("pulse", 2, 1, 0) + "]}";
+  Model m;
+  parseInto(json.c_str(), m);
+  TEST_ASSERT_EQUAL_UINT(2, m.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT(1, m.expressions.expressions[0].colors.size());
 }
 
 // A key no expression reads is dropped at parse, so it never costs RAM or NVS.
@@ -445,6 +457,7 @@ int main(int, char**) {
   RUN_TEST(test_over_cap_stored_expressions_truncate_on_load);
   RUN_TEST(test_stored_out_of_range_target_kept);
   RUN_TEST(test_unknown_param_keys_dropped);
+  RUN_TEST(test_repeated_expression_loads_once);
   RUN_TEST(test_parse_expression_upsert_defaults_enabled);
   RUN_TEST(test_old_format_base_colors_migrated);
   RUN_TEST(test_old_format_shade_colors_migrated);

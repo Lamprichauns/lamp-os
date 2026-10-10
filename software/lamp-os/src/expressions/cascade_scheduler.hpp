@@ -20,7 +20,10 @@ class CascadeScheduler {
  public:
   static constexpr size_t kMaxPeers = 50;        // LampRoster::kCapacity, asserted where both are seen
   static constexpr size_t kMaxDrains = 2;        // fan-outs held at once
-  static constexpr size_t kBatchSize = 8;        // frames sent per pass at most
+  // Frames sent per pass at most: the TX credits (TxCredit::kMaxInFlight,
+  // asserted in expression_manager.cpp), so a pass never asks the driver for
+  // more than it can hold.
+  static constexpr size_t kBatchSize = 6;
   // Outlasts a command's resend copies (MeshLink: 2 more, 40 ms apart), so
   // one batch never overwrites the previous batch's pending resends in the
   // 10-slot resend ring.

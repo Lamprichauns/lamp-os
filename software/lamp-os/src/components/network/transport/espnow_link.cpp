@@ -24,8 +24,8 @@ static bool submit(const uint8_t* mac, const uint8_t* data, size_t len, esp_err_
     static uint32_t s_lastLogMs = 0;
     if (s_lastLogMs == 0 || now - s_lastLogMs >= kStallLogMs) {
       s_lastLogMs = now;
-      Serial.printf("[espnow.tx] no send callback for %lums; credits reset (%lu so far)\n",
-                    (unsigned long)TxCredit::kStallMs,
+      // Short enough for Print's stack buffer: no malloc on a starved heap.
+      Serial.printf("[espnow.tx] no tx callback, credits reset n=%lu\n",
                     (unsigned long)EspNowLink::s_txCredit.stalls());
     }
   }

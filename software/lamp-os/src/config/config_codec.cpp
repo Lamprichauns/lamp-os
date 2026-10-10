@@ -225,6 +225,8 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
       }
       ExpressionConfig expr;
       if (!parseExpression(exprNode, expr, false)) withinCaps = false;
+      // One entry per (type, target), the first kept, as the records load.
+      if (findExpressionParams(expressions, expr.type, expr.target)) continue;
       expressions.expressions.push_back(std::move(expr));
     }
   }
