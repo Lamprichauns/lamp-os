@@ -150,6 +150,7 @@ class Expression : public AnimatedBehavior {
   // calls do not restart the fade. retired() is true once it has finished,
   // and the owner then removes the expression.
   void retire();
+  bool retiring() const { return retiring_; }
   bool retired() const;
   static constexpr uint32_t kRetireFadeMs = 1000;
 

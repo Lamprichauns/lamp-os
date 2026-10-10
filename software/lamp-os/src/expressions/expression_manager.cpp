@@ -399,11 +399,12 @@ bool ExpressionManager::triggerInvocation(const ExpressionInvocation& inv,
   // animating, drop this incoming cascade. Prevents pile-up from one
   // chatty sender (e.g. spam-tapping Test on the originator) while still
   // letting concurrent cascades from DIFFERENT senders both land; each
-  // sender contributes one in-flight transient.
+  // sender contributes one in-flight transient. A retiring transient is on its
+  // way out and does not hold the sender's place.
   for (const auto& t : transientExpressions_) {
     if (t.type == inv.type && t.expression &&
         std::memcmp(t.srcMac, srcMac, 6) == 0 &&
-        !t.expression->isAnimationComplete()) {
+        !t.expression->isAnimationComplete() && !t.expression->retiring()) {
 #ifdef LAMP_DEBUG
       Serial.printf("[expr] coalesce %s from %02X:%02X:%02X:%02X:%02X:%02X (in flight)\n",
                     inv.type.c_str(),

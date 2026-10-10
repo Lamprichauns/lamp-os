@@ -238,6 +238,18 @@ void test_manager_ignores_peers_in_home_and_preview() {
   TEST_ASSERT_FALSE(r.manager.ignoresPeers());
 }
 
+// A peer transient fading out after home mode ends no longer holds the
+// sender's place: the same peer's next invocation starts.
+void test_retiring_transient_does_not_coalesce() {
+  Rig r;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  r.compositor.homeMode = true;
+  r.manager.gcTransients();
+  r.compositor.homeMode = false;
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Remote));
+  TEST_ASSERT_EQUAL_size_t(2, s_registered.size());
+}
+
 // Bloom paints its swell through the same contribution scale, so a retired
 // bloom fades with the rest.
 void test_retired_bloom_paints_nothing() {
@@ -273,5 +285,6 @@ int main(int, char**) {
   RUN_TEST(test_echo_books_outside_home_mode);
   RUN_TEST(test_echo_books_nothing_at_home_or_in_preview);
   RUN_TEST(test_manager_ignores_peers_in_home_and_preview);
+  RUN_TEST(test_retiring_transient_does_not_coalesce);
   return UNITY_END();
 }
