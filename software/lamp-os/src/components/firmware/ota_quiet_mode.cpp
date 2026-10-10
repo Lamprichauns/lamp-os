@@ -67,6 +67,10 @@ bool isQuiet() {
   return s_quietCount.load(std::memory_order_acquire) > 0;
 }
 
+int holders() {
+  return s_quietCount.load(std::memory_order_acquire);
+}
+
 bool visibleOtaActive() {
   return s_visible.load(std::memory_order_acquire);
 }

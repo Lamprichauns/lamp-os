@@ -26,7 +26,7 @@ void tickOtaOffers(uint32_t nowMs, bool startupComplete) {
   const OtaOfferBusy busy =
       offerBusy(startupComplete, firmwareDistributor.isInProgress(),
                 ::firmwareReceiver.isInProgress(), fs_ota::fsPathBusy(),
-                ota_quiet_mode::isQuiet());
+                ota_quiet_mode::holders(), firmwareDistributor.holdingIdleQuiet());
   if (!s_throttle.due(busy, nowMs)) return;
 
   const std::vector<MeshPeer>& peers = lampRoster.getMesh(LAMP_PRUNE_TIME_MS);

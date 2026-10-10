@@ -128,6 +128,10 @@ class FirmwareDistributor {
   // isn't rejected before the reaping tick runs.
   bool isInProgress() const;
 
+  // True while Idle with the inter-session quiet hold pending its exit: the one
+  // quiet this distributor holds that a new offer is meant to inherit. Loop task.
+  bool holdingIdleQuiet() const { return quietHeld_ && quietHoldUntilMs_ != 0; }
+
   // Snapshot the active OTA target's MAC into out[6]. True while mid-flow. Used
   // by the OTA indicator to look up the receiver's base color from LampRoster.
   bool getPeerMac(uint8_t out[6]) const {

@@ -62,15 +62,27 @@ void test_startup_phase_holds_offers() {
 }
 
 void test_offer_busy_holds_until_startup_completes() {
-  TEST_ASSERT_TRUE(offerBusy(/*startupComplete=*/false, false, false, false, false).any());
-  TEST_ASSERT_FALSE(offerBusy(/*startupComplete=*/true, false, false, false, false).any());
+  TEST_ASSERT_TRUE(offerBusy(/*startupComplete=*/false, false, false, false, 0, false).any());
+  TEST_ASSERT_FALSE(offerBusy(/*startupComplete=*/true, false, false, false, 0, false).any());
 }
 
 void test_offer_busy_maps_each_source() {
-  TEST_ASSERT_TRUE(offerBusy(true, true, false, false, false).firmwareSending);
-  TEST_ASSERT_TRUE(offerBusy(true, false, true, false, false).firmwareReceiving);
-  TEST_ASSERT_TRUE(offerBusy(true, false, false, true, false).fsBusy);
-  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, true).quiet);
+  TEST_ASSERT_TRUE(offerBusy(true, true, false, false, 0, false).firmwareSending);
+  TEST_ASSERT_TRUE(offerBusy(true, false, true, false, 0, false).firmwareReceiving);
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, true, 0, false).fsBusy);
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, 1, false).quiet);
+}
+
+void test_distributor_idle_hold_lets_the_scan_run() {
+  TEST_ASSERT_FALSE(offerBusy(true, false, false, false, /*quietHolders=*/1,
+                              /*quietIsOwnIdleHold=*/true).any());
+}
+
+void test_other_quiet_still_blocks_during_the_hold() {
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, /*quietHolders=*/2,
+                             /*quietIsOwnIdleHold=*/true).quiet);
+  TEST_ASSERT_TRUE(offerBusy(true, false, false, false, /*quietHolders=*/1,
+                             /*quietIsOwnIdleHold=*/false).quiet);
 }
 
 void test_busy_tick_does_not_spend_the_interval() {
@@ -116,6 +128,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_startup_phase_holds_offers);
   RUN_TEST(test_offer_busy_holds_until_startup_completes);
   RUN_TEST(test_offer_busy_maps_each_source);
+  RUN_TEST(test_distributor_idle_hold_lets_the_scan_run);
+  RUN_TEST(test_other_quiet_still_blocks_during_the_hold);
   RUN_TEST(test_busy_tick_does_not_spend_the_interval);
   RUN_TEST(test_newer_peer_holds_offers);
   RUN_TEST(test_same_or_older_peers_allow_offers);
