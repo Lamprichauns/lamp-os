@@ -133,13 +133,19 @@ static void handleGetNearby(AsyncWebServerRequest* req) {
   req->send(200, "application/json", json.c_str());
 }
 
+// A map the heap could not build answers 503, never "{}": the editor PUTs the
+// whole map back, so an empty one would erase every stored disposition.
 static void handleGetDispositions(AsyncWebServerRequest* req) {
   bumpDeadline();
   try {
-    req->send(200, "application/json", s_config->asDispositionsJson().c_str());
+    const std::string json = s_config->asDispositionsJson();
+    if (!json.empty()) {
+      req->send(200, "application/json", json.c_str());
+      return;
+    }
   } catch (const std::bad_alloc&) {
-    req->send(200, "application/json", "{}");
   }
+  req->send(503, "application/json", "{\"ok\":false}");
 }
 
 // Bulk replace of the per-peer disposition map, mirroring the auth-gated
