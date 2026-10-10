@@ -122,7 +122,9 @@ virtual queries on `AnimatedBehavior`: `isSocialBehavior()` (true on
 by `reapplyHomeModeState()` via `Compositor::setHomeModePolicy()` and comes from
 `HomeModeSettings::socialDisabled` and `HomeModeSettings::disabledExpressionTypes`.
 The render rule is `!homeMode || !homeModeSkips(b)`; behaviors matching neither
-query always draw.
+query always draw. The OTA offer scan (`tickOtaOffers`) runs in
+`Lamp::tick` outside the compositor, so home mode never stops a lamp offering
+updates.
 
 ## Brightness path and the power governor
 

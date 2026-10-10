@@ -25,6 +25,15 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   base.
 
 ### Fixed
+- **Every lamp passes updates on.** A lamp at home with social turned off,
+  and snafu and lioness lamps at any time, never offered a firmware or web-UI
+  update to the lamps around them, so an update could stall at them. Every
+  lamp type now passes updates on in every mode.
+- **Lamps passing an update along stay on the update display.** A lamp
+  updating several neighbours in a row no longer flashes back to its normal
+  colours between one neighbour and the next. If an update to a neighbour
+  fails, the lamp goes back to its normal colours about ten seconds later, as
+  before.
 - **Shimmer's Candle and Campfire are calmer.** Candle is now a slow sway
   with a soft flicker now and then instead of a fast buzz, and Campfire keeps
   its gusts and flaring embers without looking hectic. Neither speeds up on a

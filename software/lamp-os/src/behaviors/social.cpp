@@ -11,22 +11,12 @@
 #include "core/personality_engine.hpp"
 #include "core/override_aggregate.hpp"
 #include "behaviors/greetable.hpp"
-#include "components/firmware/firmware_distributor.hpp"
-#include "components/firmware/fs_ota.hpp"
-#include "components/firmware/firmware_receiver.hpp"
 #include "config/config.hpp"
 #include "util/bd_addr.hpp"
 #include "util/color.hpp"
 #include "util/easing.hpp"
 #include "util/fade.hpp"
 #include "util/gradient.hpp"
-#include "version.hpp"
-
-// firmwareReceiver lives at file scope in lamp.cpp; the receiver
-// header doesn't expose an extern itself (matching the established
-// pattern in ota_indicator.cpp); declare it here so the receive-first
-// gate in the OTA gossip tick can read its isInProgress().
-extern lamp::FirmwareReceiver firmwareReceiver;
 
 namespace lamp {
 
@@ -183,91 +173,6 @@ void SocialBehavior::draw() {
 
 void SocialBehavior::control() {
   const uint32_t now = millis();
-
-  // Fires INDEPENDENTLY of the social greeting state. The user's intent
-  // (locked in the design): "personality controls the visual greeting,
-  // not whether firmware propagates. Version updates outrank social
-  // preference." So this loop runs even when:
-  //   - The behavior is mid-greeting animation (animationState != STOPPED)
-  //   - The greeting cooldown gate (just below) would skip greeting
-  //   - The Introvert fatigue window blocks greeting
-  //
-  // The distributor's per-peer backoff (10 min after a failure, idempotent
-  // on Idle re-trigger) handles dedup so calling considerPeerForOta on
-  // every social tick is safe.
-  //
-  // Two throttles to keep this cheap:
-  //   (1) Skip entirely while distributor.isInProgress(); the single-
-  //       source mutex blocks concurrent sessions, so scanning during
-  //       OTA finds nothing actionable.
-  //   (2) Throttle the ESP-NOW vector snapshot to kOtaScanIntervalMs,
-  //       collapsing the 60 Hz tick rate.
-  //
-  // Iterates ESP-NOW-reachable peers (not BLE) because firmwareVersion is
-  // only populated by ESP-NOW HELLO; BLE-only sightings carry no version.
-  //
-  // Receive-first policy: skip the outbound loop entirely if either
-  //   (a) an OTA is currently RECEIVING. Finish receiving before
-  //       burning Core 1 + airtime on outbound chunks that may be
-  //       obsolete after the lamp reboots into the new image, OR
-  //   (b) any reachable peer reports a higher firmware version than
-  //       this lamp's. This lamp is about to be the receiver, so any
-  //       outbound started now is just chunks to re-send under the
-  //       new image.
-  if (!firmwareDistributor.isInProgress() &&
-      !::firmwareReceiver.isInProgress() &&
-      !fs_ota::fsPathBusy() &&
-      (lastOtaScanMs_ == 0 ||
-       static_cast<int32_t>(now - lastOtaScanMs_) >=
-           static_cast<int32_t>(kOtaScanIntervalMs))) {
-    lastOtaScanMs_ = now;
-    const std::vector<MeshPeer>& espNowPeers =
-        lampRoster.getMesh(LAMP_PRUNE_TIME_MS);
-    bool peerHigherSeen = false;
-    for (const auto& p : espNowPeers) {
-      if (!p.hasMac) continue;
-      if (p.firmwareVersion == 0) continue;
-      if (p.firmwareVersion > lamp::FIRMWARE_VERSION) {
-        peerHigherSeen = true;
-        break;
-      }
-    }
-    if (!peerHigherSeen) {
-      for (const auto& p : espNowPeers) {
-        if (!p.hasMac) continue;
-        if (p.firmwareVersion == 0) continue;
-        // Don't stomp a transfer another lamp already owns: the peer is
-        // receiving, or some roster peer reports sending to it. The roster
-        // holds peers only, so this lamp's own in-progress send never trips
-        // the scan (and state != Idle guards that case anyway).
-        bool peerBeingServed =
-            p.otaState == lamp_protocol::kOtaStateReceiving;
-        if (!peerBeingServed) {
-          for (const auto& q : espNowPeers) {
-            if (q.otaState == lamp_protocol::kOtaStateSending &&
-                q.hasOtaSendingTo &&
-                std::memcmp(q.otaSendingTo, p.mac, 6) == 0) {
-              peerBeingServed = true;
-              break;
-            }
-          }
-        }
-        firmwareDistributor.considerPeerForOta(p.mac, p.firmwareVersion,
-                                                p.protocolVersion, now,
-                                                p.fwChannel, p.maxChunk,
-                                                p.espnowRssi, peerBeingServed);
-      }
-      // FS-image OTA: offer the local UI image to same-firmware-version peers
-      // whose FS digest differs. fs_ota::considerPeer does the staleness +
-      // busy gating internally.
-      for (const auto& p : espNowPeers) {
-        if (!p.hasMac) continue;
-        fs_ota::considerPeer(p.mac, p.firmwareVersion, p.protocolVersion, now,
-                             p.fwChannel, p.fsDigest, p.hasFsDigest, p.needsFs,
-                             p.espnowRssi);
-      }
-    }
-  }
 
   // onGreetingChange_ is the sole path to CHAR_STATE_NOTIFY; keeps behaviors
   // free of BLE includes.
