@@ -241,7 +241,7 @@ Moments ([`moments.md`](moments.md)) render only through existing types fired
 with `triggerInvocation(inv, selfMac, /*broadcast=*/false, TransientSource::Remote)`:
 they never cascade or announce, and take only the two peer transient slots.
 All of them render on the base, in a colour that is not the base's own:
-Fireflies and Heartbeat fire tinted `flicker` bursts; Whisper fires a `pulse`.
+Fireflies fires tinted `flicker` bursts, Heartbeat `breathing` swells, Whisper a `pulse`.
 
 **The flicker burst.** `flicker` reads two keys outside its descriptor, so the
 app and `exprcat` never offer them: on a transient (auto-trigger off) with both
@@ -256,6 +256,13 @@ either key, or on a configured auto-triggering flicker, it runs continuously
 and paints the colour under it, unchanged. No key was
 added to `kExpressionParamKeys`. Math and tests: `shimmer_math.hpp`,
 `test_shimmer_math`.
+
+**The breathing swell.** `breathing` reads `durationMax`, also outside its
+descriptor, so its user-facing 8 to 60 s `breathSpeed` range is unchanged: on a
+transient with `durationMax` above 0, one trigger runs a single breath (rise and
+fall) of that many ms, clamped 100 to 2000, then completes so the GC reaps it,
+in place of the `kPreviewCycles` preview. A configured instance ignores the key.
+Tests: `test_breathing_swell`.
 
 ## Expression mirror
 
@@ -283,6 +290,7 @@ Host-side tests are per-folder PlatformIO suites under `software/lamp-os/test/` 
 - `test/test_transient_lifetime/transient_lifetime.cpp`, transient GC backstop + never-started-transient rejection
 - `test/test_shimmer_math/shimmer_math.cpp`, flicker heat/warmth math and the burst (spark band, the anchor-neutral paint threshold, a spark lit mid-burst and dark at completion)
 - `test/test_shimmer_burst/shimmer_burst.cpp`, the real `ShimmerExpression` on stub frame buffers: a transient burst completes for the GC, only sparked cells paint, a configured flicker with the burst keys stays continuous
+- `test/test_breathing_swell/breathing_swell.cpp`, the real `BreathingExpression`: a transient with `durationMax` completes after one swell and ends dark, the 100 ms floor, a configured breathing with the key keeps its cycle
 - `test/test_moments/moments.cpp`, Moments: pacing, cooldown, the 50-lamp herd, the Fireflies timeline, Whisper hops, Heartbeat, the `mo` codec, render routing, the mirror bypass
 - `test/test_social_echo/social_echo.cpp`, expression-mirror rate grid, disp<4 early-out, introvert cooldown, replay scheduling window + fire, emitEvent continuous-gate
 
