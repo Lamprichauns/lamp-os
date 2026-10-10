@@ -71,9 +71,13 @@ bool enumerateManifest(std::vector<lamp::firmware::FsManifestFile>& files,
     // A real UI asset can't be empty or exceed the partition; skip ghosts.
     if (name.empty() || sz == 0 || sz > kMaxAssetBytes) continue;
     if (name == lamp::firmware::kFsSigName) {
+      // Only a kFsSigLen file is ever usable; reading any other size into RAM
+      // (up to kMaxAssetBytes, from an image not yet verified) buys nothing.
+      haveLsig = true;
+      lsig.clear();
+      if (sz != lamp::firmware::kFsSigLen) continue;
       lsig.resize(sz);
       if (f.read(lsig.data(), sz) != static_cast<int>(sz)) return false;
-      haveLsig = true;
       continue;
     }
     const std::string path = "/" + name;

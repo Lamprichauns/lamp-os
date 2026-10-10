@@ -9,6 +9,7 @@
 #include "components/network/ble/ble_control.hpp"  // pauseRadioForOta / resumeRadioAfterOta
 #include "components/firmware/ota_quiet_mode.hpp"     // enterQuiet / exitQuiet
 #include "components/network/mesh/mesh_link.hpp"
+#include "util/heap_guard.hpp"
 #include "util/heap_probe.hpp"
 #include "../../version.hpp"
 
@@ -402,6 +403,14 @@ void FirmwareReceiver::onOfferOnLoop(const PendingFirmwareControl& ctrl,
   }
   offerTotalChunks_ = static_cast<uint16_t>(expectedChunks);
 
+  // The bitmap is up to 8 KB, allocated per session; a crowd re-offers, so a
+  // fragmented heap declines and the sender retries later instead of aborting.
+  if (!::lamp::heapCanSpare((expectedChunks + 7) / 8)) {
+    Serial.printf("[fw_receiver] OFFER declined: low heap for %u chunks\n",
+                  (unsigned)expectedChunks);
+    sendAccept(ctrl, lamp_protocol::FwAcceptStatus::DeclineBusy);
+    return;
+  }
   resetBitmap(expectedChunks);
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
