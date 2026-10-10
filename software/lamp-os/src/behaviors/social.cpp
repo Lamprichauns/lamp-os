@@ -366,6 +366,15 @@ void SocialBehavior::control() {
   if (onGreetingChange_) onGreetingChange_();
 };
 
+void SocialBehavior::cancelGreeting() {
+  if (animationState == STOPPED && !greetingWasActive_) return;
+  animationState = STOPPED;
+  frame = 0;
+  greetingWasActive_ = false;
+  greetedHasMac_ = false;
+  if (onGreetingChange_) onGreetingChange_();
+}
+
 void SocialBehavior::triggerGreeting(const PeerView& peer) {
   const uint32_t now = millis();
   const GreetingTuning tuning = personalityEngine.greetingFor(peer.mac);

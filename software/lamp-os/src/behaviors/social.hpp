@@ -69,6 +69,9 @@ class SocialBehavior : public AnimatedBehavior, public Greetable {
   Easing   breathCurve  = Easing::Float;
 
   bool isSocialBehavior() const override { return true; }
+  // Ends a greeting in progress: STOPPED, frame 0, and the app told it ended.
+  // A no-op when none is playing.
+  void cancelGreeting() override;
 
   void draw() override;
   void control() override;

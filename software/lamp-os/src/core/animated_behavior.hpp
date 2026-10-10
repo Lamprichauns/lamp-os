@@ -109,8 +109,11 @@ class AnimatedBehavior {
   // Home-mode compositor queries. isSocialBehavior returns true on
   // SocialBehavior; homeModeExpressionId returns the expression type id
   // string on Expression subclasses (used to match disabledExpressionTypes),
-  // or nullptr for non-expression behaviors.
+  // or nullptr for non-expression behaviors. cancelGreeting ends a greeting
+  // the home-mode skip cut off; the compositor calls it on every skipped
+  // social behavior, so it must be idempotent.
   virtual bool isSocialBehavior() const { return false; }
+  virtual void cancelGreeting() {}
   virtual const char* homeModeExpressionId() const { return nullptr; }
 
  protected:

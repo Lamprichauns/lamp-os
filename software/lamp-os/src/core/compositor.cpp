@@ -161,10 +161,9 @@ void Compositor::tick() {
             b->draw();
           }
         } else if (b->isSocialBehavior()) {
-          // A greeting cut off by home mode ends here rather than resuming
-          // when home mode does.
-          b->animationState = STOPPED;
-          b->frame = 0;
+          // A greeting cut off by home mode ends here, so it cannot resume
+          // when home mode ends.
+          b->cancelGreeting();
         }
       }
       if (!wispComposited) compositeWisp();
