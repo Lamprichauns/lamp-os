@@ -2,7 +2,8 @@
 //
 // Private header. Internal to the lamp.cpp TU family:
 //   core/lamp.cpp, core/lamp_drains.cpp, core/lamp_remote_op.cpp,
-//   core/lamp_brightness.cpp, core/lamp_behaviors.cpp, core/lamp_test_action.cpp
+//   core/lamp_brightness.cpp, core/lamp_behaviors.cpp, core/lamp_test_action.cpp,
+//   core/lamp_moments.cpp
 //
 // Exposes the file-scope statics and helpers that the split method bodies
 // need to reach back into lamp.cpp state. The DEFINITIONS still live in
@@ -142,6 +143,10 @@ void setSurfaceFactor(Surface surface, uint8_t factor);
 
 // lamp_test_action.cpp (LAMP_DEBUG builds only)
 void pollSerialCommands();
+
+// lamp_moments.cpp: wire the Moment director to this lamp. Call once the mesh
+// and the expression manager are up.
+void beginMoments(const uint8_t ownMac[6]);
 
 // lamp_behaviors.cpp
 void initBehaviors(lamp::Features features, lamp::Lamp& self);

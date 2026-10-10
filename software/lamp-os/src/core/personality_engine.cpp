@@ -46,7 +46,7 @@ void PersonalityEngine::tick(uint32_t nowMs) {
   // window is uniformly-spaced regardless of loop jitter.
   if (nowMs - lastSampleMs_ >= kSamplePeriodMs || lastSampleMs_ == 0) {
     lastSampleMs_ = nowMs;
-    sampleAndSmoothCrowd_(nowMs, snapshotBlePeers_());
+    sampleAndSmoothCrowd_(nowMs, nearbyPeers());
   }
 }
 
@@ -63,7 +63,7 @@ float PersonalityEngine::smoothedCrowdWeight() const {
 CrowdComposition PersonalityEngine::crowdComposition() const {
   CrowdComposition c;
   if (!config_) return c;
-  const std::vector<NearbyCopy>& peers = snapshotBlePeers_();
+  const std::vector<NearbyCopy>& peers = nearbyPeers();
   for (const auto& p : peers) {
     if (p.name[0] == '\0') continue;
     const uint8_t d = p.hasMac ? config_->getDisposition(p.mac) : 3;
@@ -173,7 +173,7 @@ float PersonalityEngine::dimFactorForCount_(float weightedCount, float floor) co
   return factor;
 }
 
-const std::vector<NearbyCopy>& PersonalityEngine::snapshotBlePeers_() const {
+const std::vector<NearbyCopy>& PersonalityEngine::nearbyPeers() const {
   // Gate must match setNearbyOverride() in the header; that method
   // compiles under (LAMP_TEST || LAMP_DEBUG), so the read side has to
   // honor the override in both build flavors. Without LAMP_DEBUG here,

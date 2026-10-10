@@ -42,6 +42,7 @@
 #if LAMP_WEBAPP_ENABLED
 #include "components/webapp/webapp.hpp"
 #endif
+#include "core/moments.hpp"
 #include "core/personality_engine.hpp"
 #include "core/arrival_notifier.hpp"
 #include "components/transient_override/brightness_override.hpp"
@@ -881,6 +882,7 @@ void lamp::Lamp::setup() {
   expressionManager.setCompositor(&compositor);
   // Expression mirror: replay a warm peer's triggered expression locally.
   expressionObserverRegistry.registerObserver(&socialEchoObserver);
+  beginMoments(ownMac);
   // One-shot reservation so the loop-task drain never reallocates mid-frame.
   pendingTriggers.reserve(MAX_PENDING_TRIGGERS);
   lamp::logHeap("boot");
@@ -1126,6 +1128,7 @@ void lamp::Lamp::tick() {
     if (lamp::personalityEngine.consumePendingApply()) {
       pendingApplyEffectiveBrightness = true;
     }
+    lamp::momentDirector.tick(now);
   }
 
   // Fire any delayed triggerExpression invocations whose deadline has passed.

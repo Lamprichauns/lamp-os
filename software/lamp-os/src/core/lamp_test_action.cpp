@@ -30,6 +30,7 @@
 #include "components/network/mesh/lamp_roster.hpp"
 #include "config/config.hpp"
 #include "core/compositor.hpp"
+#include "core/moments.hpp"
 #include "core/frame_buffer.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/personality_engine.hpp"
@@ -267,6 +268,27 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   } else if (action == "clear_nearby") {
     Serial.println("[personality] clear_nearby");
     lamp::personalityEngine.clearNearbyOverride();
+  }
+  // Bench hooks for Moments. "moment" starts a kind now, past eligibility,
+  // conditions and the crowd cooldown but never past a suppressor:
+  //   {"a":"moment","k":"fireflies|whisper|heartbeat","seed":42}
+  else if (action == "moment") {
+    const String k = String(doc["k"] | "");
+    const uint32_t seed = doc["seed"] | 0u;
+    lamp::MomentKind kind;
+    if (k == "fireflies") {
+      kind = lamp::MomentKind::Fireflies;
+    } else if (k == "whisper") {
+      kind = lamp::MomentKind::Whisper;
+    } else if (k == "heartbeat") {
+      kind = lamp::MomentKind::Heartbeat;
+    } else {
+      Serial.println("[moment] force err kind");
+      return;
+    }
+    lamp::momentDirector.force(kind, seed, millis());
+  } else if (action == "moment_state") {
+    lamp::momentDirector.dumpState(millis());
   }
 #endif
 }
