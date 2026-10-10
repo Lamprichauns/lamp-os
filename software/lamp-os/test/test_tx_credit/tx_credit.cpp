@@ -40,8 +40,41 @@ void test_a_full_leak_on_a_quiet_link_frees_up_for_a_waiting_caller() {
   TEST_ASSERT_FALSE(c.available(100 + TxCredit::kStallMs - 1));
   TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
   TEST_ASSERT_TRUE(c.available(100 + TxCredit::kStallMs));
-  TEST_ASSERT_EQUAL_UINT32(TxCredit::kMaxInFlight, c.stalls());
+  TEST_ASSERT_EQUAL_UINT32(1, c.stalls());
   TEST_ASSERT_EQUAL_UINT16(0, c.inFlight());
+}
+
+// A credit whose callback is lost while other frames keep completing stays
+// out, and comes back once the link goes quiet for kStallMs.
+void test_a_credit_leaked_during_traffic_comes_back_once_quiet() {
+  TxCredit c;
+  TEST_ASSERT_TRUE(c.tryAcquire(1000));  // its callback never comes
+  uint32_t t = 1100;
+  for (; t < 1000 + 3 * TxCredit::kStallMs; t += 100) {
+    TEST_ASSERT_TRUE(c.tryAcquire(t));
+    c.complete(t + 5);
+  }
+  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
+  c.available(t + TxCredit::kStallMs - 200);
+  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
+  TEST_ASSERT_TRUE(c.available(t + TxCredit::kStallMs));
+  TEST_ASSERT_EQUAL_UINT16(0, c.inFlight());
+  TEST_ASSERT_EQUAL_UINT32(1, c.stalls());
+}
+
+// Sustained traffic with every callback arriving never holds more than
+// kMaxInFlight credits, and never resets.
+void test_sustained_traffic_stays_inside_the_bound() {
+  TxCredit c;
+  uint32_t t = 0;
+  for (int round = 0; round < 1000; ++round, t += 3) {
+    while (c.tryAcquire(t)) {
+    }
+    TEST_ASSERT_EQUAL_UINT16(TxCredit::kMaxInFlight, c.inFlight());
+    c.complete(t + 1);
+    c.complete(t + 2);
+  }
+  TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
 }
 
 void test_refused_submit_returns_its_credit() {
@@ -56,40 +89,40 @@ void test_lost_completions_reset_after_the_stall_window() {
   for (uint16_t i = 0; i < TxCredit::kMaxInFlight; ++i) c.tryAcquire(1000);
   TEST_ASSERT_FALSE(c.tryAcquire(1000 + TxCredit::kStallMs - 1));
   TEST_ASSERT_TRUE(c.tryAcquire(1000 + TxCredit::kStallMs + 1));
-  TEST_ASSERT_EQUAL_UINT32(TxCredit::kMaxInFlight, c.stalls());
-  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
-}
-
-// A lost callback while other frames keep completing: that one credit is
-// taken back once it is kStallMs old, so the bound never shrinks for good
-// however busy the link stays.
-void test_a_leaked_credit_comes_back_while_traffic_flows() {
-  TxCredit c;
-  TEST_ASSERT_TRUE(c.tryAcquire(1000));  // its callback never comes
-  for (uint32_t t = 1100; t < 1000 + TxCredit::kStallMs; t += 100) {
-    TEST_ASSERT_TRUE(c.tryAcquire(t));
-    TEST_ASSERT_TRUE(c.tryAcquire(t + 1));
-    c.complete(t + 5);
-    c.complete(t + 6);
-  }
-  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
-  TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
-  TEST_ASSERT_TRUE(c.available(1000 + TxCredit::kStallMs));
   TEST_ASSERT_EQUAL_UINT32(1, c.stalls());
-  TEST_ASSERT_EQUAL_UINT16(0, c.inFlight());
+  TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
 }
 
-// A credit stamped by the WiFi task a little after the loop read millis()
-// reads as fresh from the loop's older clock.
-void test_a_credit_stamped_ahead_is_not_stale() {
+// A few lost callbacks with credits still free would otherwise shrink the
+// bound for good; any credit outstanding with no completion for the window
+// resets.
+void test_partial_leak_resets() {
   TxCredit c;
-  TEST_ASSERT_TRUE(c.tryAcquire(5010));
-  TEST_ASSERT_TRUE(c.available(5005));
+  c.tryAcquire(1000);
+  c.tryAcquire(1000);
+  TEST_ASSERT_TRUE(c.tryAcquire(1000 + TxCredit::kStallMs - 1));
+  TEST_ASSERT_EQUAL_UINT16(3, c.inFlight());
+  TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
+  TEST_ASSERT_TRUE(c.tryAcquire(1000 + TxCredit::kStallMs));
+  TEST_ASSERT_EQUAL_UINT32(1, c.stalls());
   TEST_ASSERT_EQUAL_UINT16(1, c.inFlight());
+}
+
+// The WiFi task can stamp a completion a little after the loop read millis();
+// that newer stamp must not read as a stall from the loop's older clock.
+void test_a_completion_stamped_ahead_is_not_a_stall() {
+  TxCredit c;
+  c.tryAcquire(5000);
+  c.tryAcquire(5000);
+  c.complete(5010);
+  TEST_ASSERT_TRUE(c.tryAcquire(5005));
+  TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
+  c.complete(4000);  // an older stamp never moves the clock back
+  TEST_ASSERT_TRUE(c.tryAcquire(5010 + TxCredit::kStallMs - 1));
   TEST_ASSERT_EQUAL_UINT32(0, c.stalls());
 }
 
-// A frame going out after an idle spell is fresh.
+// A frame going out after an idle spell starts the stall clock afresh.
 void test_first_frame_after_idle_is_not_a_stall() {
   TxCredit c;
   c.tryAcquire(0);
@@ -129,13 +162,15 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_bound_holds_until_a_frame_completes);
   RUN_TEST(test_refused_submit_returns_its_credit);
+  RUN_TEST(test_a_credit_leaked_during_traffic_comes_back_once_quiet);
+  RUN_TEST(test_sustained_traffic_stays_inside_the_bound);
   RUN_TEST(test_a_full_leak_on_a_quiet_link_frees_up_for_a_waiting_caller);
   RUN_TEST(test_a_send_without_a_credit_is_counted);
   RUN_TEST(test_lost_completions_reset_after_the_stall_window);
   RUN_TEST(test_extra_completions_never_underflow);
-  RUN_TEST(test_a_leaked_credit_comes_back_while_traffic_flows);
+  RUN_TEST(test_partial_leak_resets);
   RUN_TEST(test_submit_takes_and_returns_credits);
-  RUN_TEST(test_a_credit_stamped_ahead_is_not_stale);
+  RUN_TEST(test_a_completion_stamped_ahead_is_not_a_stall);
   RUN_TEST(test_first_frame_after_idle_is_not_a_stall);
   return UNITY_END();
 }
