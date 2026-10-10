@@ -139,7 +139,8 @@ and (with upfront-erase) reliable at speed without the erase-stall failure class
 > `components/firmware/ota_offer.cpp`), keeping that 1 s interval
 > (`OtaOfferThrottle::kIntervalMs`) and holding offers until the compositor's
 > startup phase ends, so every variant offers in every mode. The scan also runs
-> through the distributor's own inter-session quiet hold, so the next session
-> arms inside it and inherits its quiet as designed. This ADR covers the
-> firmware-image case; the FS-image path is the same shape applied to the SPIFFS
-> partition.
+> through the distributor's own inter-session quiet hold after a session that
+> ended Done, so the next session arms inside it and inherits its quiet as
+> designed; after a failed session the hold expires as before. This ADR covers
+> the firmware-image case; the FS-image path is the same shape applied to the
+> SPIFFS partition.

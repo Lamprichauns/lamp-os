@@ -28,7 +28,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   lamp type now passes updates on in every mode.
 - **Lamps passing an update along stay on the update display.** A lamp
   updating several neighbours in a row no longer flashes back to its normal
-  colours between one neighbour and the next.
+  colours between one neighbour and the next. If an update to a neighbour
+  fails, the lamp goes back to its normal colours about ten seconds later, as
+  before.
 - **Lamps hold up in big crowds.** A lamp among dozens of others could run out
   of memory and restart, with or without the app open: saving settings or
   social dispositions on a crowded lamp could crash it outright, and a crowd's
