@@ -414,6 +414,34 @@ void test_both_editors_open_refuses_trigger() {
   TEST_ASSERT_FALSE(fired);
 }
 
+// Direction Down drips from the shade top through to the base bottom.
+void test_both_down_drips_shade_top_to_base_bottom() {
+  Rig rig;
+  auto p = buildBoth(rig, {{"pulseSpeed", 10}, {"size", 1}, {"travel", 1}});
+  assertSweep(peakTrail(rig, *p), kBasePx + kShadePx - 1, 0);
+}
+
+// A single-surface pulse runs its logical order Up and the reverse Down.
+void test_single_surface_down_reverses() {
+  const int shadeBottom = kBasePx;
+  const int shadeTop = kBasePx + kShadePx - 1;
+  for (uint32_t travel : {0u, 1u}) {
+    Rig rig;
+    PulseExpression shade(&rig.shade);
+    build(rig, shade, TARGET_SHADE, {{"pulseSpeed", 6}, {"size", 1}, {"travel", travel}});
+    const std::vector<int> trail = peakTrail(rig, shade);
+    if (travel == 0) assertSweep(trail, shadeBottom, shadeTop);
+    else assertSweep(trail, shadeTop, shadeBottom);
+
+    Rig baseRig;
+    PulseExpression base(&baseRig.base);
+    build(baseRig, base, TARGET_BASE, {{"pulseSpeed", 6}, {"size", 1}, {"travel", travel}});
+    const std::vector<int> baseTrail = peakTrail(baseRig, base);
+    if (travel == 0) assertSweep(baseTrail, kBasePx - 1, 0);
+    else assertSweep(baseTrail, 0, kBasePx - 1);
+  }
+}
+
 void test_plan_base_without_pixels_plans_per_surface() {
   Rig rig;
   rig.base.pixelCount = 0;
@@ -439,6 +467,8 @@ int main(int, char**) {
   RUN_TEST(test_both_default_speed_matches_one_surface);
   RUN_TEST(test_both_fires_with_base_editor_open);
   RUN_TEST(test_both_editors_open_refuses_trigger);
+  RUN_TEST(test_both_down_drips_shade_top_to_base_bottom);
+  RUN_TEST(test_single_surface_down_reverses);
   RUN_TEST(test_plan_base_without_pixels_plans_per_surface);
   return UNITY_END();
 }

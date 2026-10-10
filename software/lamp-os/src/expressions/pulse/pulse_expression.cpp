@@ -30,6 +30,7 @@ void PulseExpression::configureFromParameters(const ExpressionParams& parameters
     aboveMin_ = upper.posMin;
     zone_.posMax = static_cast<uint16_t>(lowerEnd_ + upper.size());
   }
+  down_ = getParam(parameters, "travel", 0) != 0;
 
   uint32_t pulseSpeed = getParam(parameters, "pulseSpeed");
   const uint16_t span = zone_.size() > 0 ? zone_.size() : window;
@@ -201,7 +202,7 @@ void PulseExpression::draw() {
   const float lowerWeight = lowerLive ? wispDimScale(fb) : 0.0f;
   const float upperWeight = upperLive ? wispDimScale(above_) : 0.0f;
   for (int pos = zone_.posMin; pos <= zone_.posMax; pos++) {
-    const int at = pos;
+    const int at = down_ ? zone_.posMin + zone_.posMax - pos : pos;
     const bool upper = at > lowerEnd_;
     if (!(upper ? upperLive : lowerLive)) continue;
     uint32_t blendFactor = calculateBlendFactor(pos);

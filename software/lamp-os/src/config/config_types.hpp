@@ -237,7 +237,7 @@ inline constexpr const char* kExpressionParamKeys[] = {
     "fillMode",     "fire",             "fullStrip",        "loop",
     "opacity",      "posMax",           "posMin",           "pulseSpeed",
     "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
-    "spotSpeed",
+    "spotSpeed",    "travel",
 };
 constexpr size_t kExpressionParamKeyCount =
     sizeof(kExpressionParamKeys) / sizeof(kExpressionParamKeys[0]);

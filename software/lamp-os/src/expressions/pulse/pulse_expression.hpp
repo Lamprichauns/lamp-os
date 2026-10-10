@@ -13,6 +13,10 @@ inline constexpr EnumOption kPulseLoopOpts[] = {
   { .value = 0, .label = "Trigger"    },
   { .value = 1, .label = "Continuous" },
 };
+inline constexpr EnumOption kPulseTravelOpts[] = {
+  { .value = 0, .label = "Up"   },
+  { .value = 1, .label = "Down" },
+};
 inline constexpr ParamSpec kPulseParams[] = {
   {
     .key        = "pulseSpeed",
@@ -46,6 +50,14 @@ inline constexpr ParamSpec kPulseParams[] = {
     .max     = 1,
     .help    = "Trigger runs one sweep then stops. Continuous ping-pongs back and forth forever.",
     .options = kPulseLoopOpts,
+  },
+  {
+    .key     = "travel",
+    .kind    = ParamKind::Enum,
+    .label   = "Direction",
+    .max     = 1,
+    .help    = "Up rises from the bottom of the base. Down falls the other way.",
+    .options = kPulseTravelOpts,
   },
   kOpacityParam,
 };
@@ -96,6 +108,7 @@ class PulseExpression : public Expression {
   FrameBuffer* above_ = nullptr;   // Shade continuing the strip past lowerEnd_
   uint16_t lowerEnd_ = 0;          // Last strip position on fb
   uint16_t aboveMin_ = 0;          // above_ pixel at strip position lowerEnd_ + 1
+  bool down_ = false;              // Direction Down: travel mirrored across zone_
   bool loopContinuous_ = false;   // Ping-pong forever instead of ending on exit
   bool reachedFarEnd_ = false;    // Continuous wave has touched the far end; arms preview one-cycle stop
   bool firstEntranceDone_ = false;  // Continuous leg 0 enters off-strip; later legs ping-pong the visible edges
