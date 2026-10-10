@@ -1,0 +1,121 @@
+// Native pin for the flicker burst against the real ShimmerExpression: a
+// transient burst completes so the transient GC reaps it, only its sparked
+// cells ever paint, and a configured auto-triggering flicker carrying the same
+// keys stays continuous.
+
+#include <unity.h>
+
+#include <vector>
+
+#include "../../src/core/animated_behavior.cpp"
+#include "../../src/core/frame_buffer.cpp"
+#include "../../src/expressions/expression.cpp"
+#include "../../src/expressions/shimmer/shimmer_expression.cpp"
+#include "../../src/util/color.cpp"
+#include "../../src/util/fade.cpp"
+
+using namespace lamp;
+
+namespace lamp {
+OverrideAggregate overrides;
+void ExpressionManager::onExpressionFired(Expression*) {}
+}  // namespace lamp
+
+namespace {
+
+constexpr uint8_t kPixels = 24;
+constexpr uint32_t kStars = 5;
+constexpr uint32_t kBurstMs = 400;
+constexpr uint32_t kFrameMs = 16;
+const Color kAnchor(120, 60, 30, 0);
+
+struct Surfaces {
+  FrameBuffer shade;
+  FrameBuffer base;
+  BehaviorContext ctx;
+  Surfaces() {
+    for (FrameBuffer* fb : {&shade, &base}) {
+      fb->pixelCount = kPixels;
+      fb->buffer.assign(kPixels, kAnchor);
+    }
+    ctx.expressionFrameBuffers = {&shade, &base};
+  }
+};
+
+void burstOn(ShimmerExpression& e, Surfaces& s, bool transient) {
+  e.configure({}, 60, 900, TARGET_SHADE);
+  e.configureFromParameters(
+      {{"fire", 0}, {"count", kStars}, {"durationMax", kBurstMs}, {"opacity", 100}});
+  e.autoTriggerEnabled = !transient;
+  e.setBehaviorContext(&s.ctx);
+}
+
+// One compositor frame: the layer below repaints the anchor, then the
+// expression runs its control and draw.
+size_t frame(ShimmerExpression& e, Surfaces& s, uint32_t nowMs) {
+  set_mock_millis(nowMs);
+  s.shade.buffer.assign(kPixels, kAnchor);
+  e.control();
+  e.draw();
+  size_t touched = 0;
+  for (const Color& c : s.shade.buffer) touched += !(c == kAnchor);
+  return touched;
+}
+
+}  // namespace
+
+void setUp() { set_mock_millis(1000); }
+void tearDown() {}
+
+void test_a_transient_burst_completes_for_the_gc() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  TEST_ASSERT_TRUE(e.trigger());
+  size_t peak = 0;
+  uint32_t now = 1000;
+  for (; now < 1000 + kBurstMs; now += kFrameMs) {
+    TEST_ASSERT_FALSE(e.isAnimationComplete());
+    const size_t touched = frame(e, s, now);
+    peak = touched > peak ? touched : peak;
+  }
+  for (int i = 0; i < 3; ++i) frame(e, s, now += kFrameMs);
+  TEST_ASSERT_TRUE(peak > 0);
+  // gcTransients reaps on isAnimationComplete(); the 180 s cap is never reached.
+  TEST_ASSERT_TRUE(e.isAnimationComplete());
+  TEST_ASSERT_TRUE(now - 1000 < 180000);
+}
+
+void test_only_sparked_cells_ever_paint() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  e.trigger();
+  for (uint32_t now = 1000; now < 1000 + kBurstMs + 4 * kFrameMs; now += kFrameMs) {
+    TEST_ASSERT_TRUE(frame(e, s, now) <= kStars);
+  }
+}
+
+void test_a_configured_flicker_with_burst_keys_stays_continuous() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/false);
+  e.trigger();
+  size_t widest = 0;
+  for (uint32_t now = 1000; now < 1000 + 5 * kBurstMs; now += kFrameMs) {
+    const size_t touched = frame(e, s, now);
+    widest = touched > widest ? touched : widest;
+  }
+  TEST_ASSERT_FALSE(e.isAnimationComplete());
+  TEST_ASSERT_TRUE(e.animationState != STOPPED);
+  // Continuous Twinkle paints every cell of its zone.
+  TEST_ASSERT_EQUAL_UINT32(kPixels, widest);
+}
+
+int main(int, char**) {
+  UNITY_BEGIN();
+  RUN_TEST(test_a_transient_burst_completes_for_the_gc);
+  RUN_TEST(test_only_sparked_cells_ever_paint);
+  RUN_TEST(test_a_configured_flicker_with_burst_keys_stays_continuous);
+  return UNITY_END();
+}
