@@ -118,19 +118,24 @@ Two properties make it lethal:
    whole config's 1759-byte ceiling and the split rest's 1746-byte worst case
    with every free-text field fully escaped and every number at its widest).
    A whole web document is parsed once, on the loop: the web PUT gathers the
-   body (at most 12 KB, `kMaxSettingsBody`; the document at every cap is
-   about 10.5 KB) into one block and hands that block over without parsing
-   it, and `saveRawJson` parses it only when the heap can take it. Free heap:
-   15 bytes per structural token (`{`, `[`, `:`, `,`), a byte per document
-   byte, 3 per byte of its longest string and 4 KB for the model. Largest
-   block: a 4 KB slot pool, or twice the longest string plus 128 bytes. Those
-   are a counting allocator's host figures with margin
+   body (at most 16 KB, `kMaxSettingsBody`; a lamp at every cap sends about
+   12.9 KB) into one block and hands that block over without parsing it, and
+   `saveRawJson` parses it only when the heap can take it. Free heap: 15 bytes
+   per structural token (`{`, `[`, `:`, `,`), a byte per document byte, 24
+   per distinct string (ArduinoJson stores each distinct key or value once;
+   the scan compares each short string with the last 32), 3 per byte of the
+   longest string and 4 KB for the model, which carries some slack. Largest
+   block: a 4 KB slot pool, or twice the longest string plus 128 bytes.
+   Those are a counting allocator's host figures with margin
    (`test_config_persist_validate`: a 5.4 KB document peaks at 16 KB, the
-   standard variant's 18 full expressions at 23 KB, 12 KB of bare numbers at
-   103 KB, 12 KB as one string at 45 KB with a 16 KB block), and the host's
-   64-bit slots are twice the ESP32's. With the body taken out of 46.5 KB free
-   and a 23.5 KB largest block, both the typical document and the 18
-   expressions pass. These are host figures; the device's need a bench check.
+   standard variant's 18 full expressions at 23 KB, a lamp at every cap at
+   32 KB, 16 KB of bare numbers at 136 KB, of distinct four-character strings
+   at 86 KB as values and 97 KB as keys, and one 16 KB string at 53 KB with
+   a 16 KB block), and the host's 64-bit slots are twice the ESP32's. With
+   the body taken out of 46.5 KB free and a 23.5 KB largest block, the
+   typical document and the 18 expressions pass; a setup near the caps may
+   be refused by that check (500) and saves from the app instead. These are
+   host figures; the device's need a bench check.
    The dispositions flush writes its blob from the stack. A failed save (a full NVS, or a JSON that outgrew its
    buffer) backs off 5 s doubling to 60 s (`util/retry_backoff.hpp`) for
    both, and the commit drain waits on the same backoff, so no failure path
