@@ -71,6 +71,7 @@ struct FakeHost : MomentHost {
   bool greeting = false;
   bool sendable = true;
   std::vector<std::string> sent;
+  std::vector<uint32_t> sentAt;
   std::vector<Render> renders;
   uint16_t shadePx = 40;
   std::vector<Color> base{Color(255, 0, 0, 0)};
@@ -151,6 +152,7 @@ struct Bus {
 
 void FakeHost::send(const char* payload, size_t len) {
   sent.emplace_back(payload, len);
+  sentAt.push_back(nowMs);
   if (bus) bus->post(this, sent.back());
 }
 
@@ -216,6 +218,33 @@ void addLikedPeers(Rig& r, uint32_t nowMs, uint8_t count = 3) {
 void readyForFireflies(Rig& r) {
   addLikedPeers(r, 0);
   r.director.begin(&r.host, r.self, r.seed, 0);
+}
+
+}  // namespace
+
+namespace {
+
+MomentFrame decodeSent(const std::string& payload) {
+  JsonDocument doc;
+  deserializeJson(doc, payload);
+  MomentFrame f;
+  TEST_ASSERT_TRUE(decodeMomentFrame(doc["mo"].as<JsonObjectConst>(), f));
+  return f;
+}
+
+bool logged(const FakeHost& h, const char* line) {
+  for (const std::string& l : h.logs) {
+    if (l == line) return true;
+  }
+  return false;
+}
+
+void runFresh(Rig& r, uint32_t from, uint32_t to, uint32_t step) {
+  for (uint32_t t = from; t <= to; t += step) {
+    for (NearbyCopy& p : r.host.peers) seeAt(p, t);
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
 }
 
 }  // namespace
@@ -720,6 +749,7 @@ void test_hop_eight_does_not_forward() {
   r7.frame(sender, whisperTo(r7.self, 5, {1, 2, 3, 4, 5, 6, 8}), 1000);
   r7.run(1000, 6000, 10);
   TEST_ASSERT_EQUAL_UINT32(2, r7.host.sent.size());
+  TEST_ASSERT_EQUAL_UINT8(8, decodeSent(r7.host.sent[0]).hop);
 }
 
 void test_malformed_whisper_frames_are_dropped() {
@@ -818,6 +848,9 @@ void test_ring_of_ten_never_revisits_and_ends_within_eight_hops() {
   size_t hopFrames = 0;
   for (auto& rig : rigs) hopFrames += rig->host.sent.size();
   TEST_ASSERT_EQUAL_UINT32(16, hopFrames);  // 8 hops, each sent twice
+  for (auto& rig : rigs) {
+    for (const std::string& p : rig->host.sent) TEST_ASSERT_TRUE(decodeSent(p).hop <= kWhisperMaxHops);
+  }
 }
 
 
@@ -1087,6 +1120,194 @@ void test_frames_go_out_twice_with_a_fresh_age() {
   TEST_ASSERT_EQUAL_STRING("{\"type\":\"moment\",\"mo\":{\"k\":1,\"s\":99,\"a\":200}}", r.host.sent[1].c_str());
 }
 
+
+void test_a_busy_lamp_refuses_a_whisper() {
+  Rig r(9);
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  uint8_t sender[6];
+  macOf(8, sender);
+  r.frame(sender, whisperTo(r.self, 5, {8}), 1000);
+  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
+  TEST_ASSERT_EQUAL_UINT8(0, r.director.growth(MomentKind::Whisper));
+}
+
+void test_an_accepter_glows_one_hand_off_after_its_sender() {
+  Rig r(9);
+  uint8_t sender[6];
+  macOf(8, sender);
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 5;
+  f.ageMs = 500;
+  f.hop = 1;
+  macOf(8, f.visited[0]);
+  std::memcpy(f.to, r.self, 6);
+  r.frame(sender, encode(f), 1000);
+  r.run(1000, 6000, 10);
+  TEST_ASSERT_EQUAL_UINT32(1, r.host.rendersOf("pulse"));
+  TEST_ASSERT_EQUAL_UINT32(1000 - 500 + MomentDirector::kWhisperHandOffMs, r.host.renders[0].atMs);
+}
+
+void test_whisper_start_thresholds() {
+  std::map<uint64_t, uint8_t> d;
+  auto disp = [&](const uint8_t* m) { return d[macKey(m)]; };
+  const uint32_t now = 50000;
+  struct Case {
+    uint8_t disposition;
+    int8_t rssi;
+    uint32_t seenMs;
+    bool starts;
+  } cases[] = {
+      {kDispositionSmitten, -70, now, true},  {kDispositionSmitten, -71, now, false},
+      {kDispositionFond, -62, now, true},     {kDispositionFond, -63, now, false},
+      {kDispositionNeutral, -30, now, false}, {kDispositionSmitten, -40, now - 15001, false},
+  };
+  for (const Case& c : cases) {
+    std::vector<NearbyCopy> peers = {peerOf(1, c.rssi, c.seenMs)};
+    d[macKey(peers[0].mac)] = c.disposition;
+    TEST_ASSERT_EQUAL(c.starts, hasWhisperTarget(peers, now, disp));
+  }
+}
+
+void test_whisper_starts_naturally_and_announces_at_once() {
+  Rig r(1, 9, 0);
+  r.host.like(30, kDispositionFond);
+  r.host.peers.push_back(peerOf(30, -55, 0));
+  runFresh(r, 0, 30 * kMin, 10);
+  bool started = false;
+  for (const std::string& l : r.host.logs) started = started || l.rfind("[moment] start k=2", 0) == 0;
+  TEST_ASSERT_TRUE(started);
+  TEST_ASSERT_TRUE(r.host.sent.size() >= 2);
+  const MomentFrame f = decodeSent(r.host.sent[0]);
+  TEST_ASSERT_EQUAL_UINT8(1, f.hop);
+  TEST_ASSERT_EQUAL_UINT16(0, f.ageMs);
+  TEST_ASSERT_EQUAL_UINT8(30, f.to[5]);
+  TEST_ASSERT_EQUAL_MEMORY(r.self, f.visited[0], 6);
+  // The first hop leaves with the origin's glow.
+  TEST_ASSERT_EQUAL_UINT32(r.host.renders[0].atMs, r.host.sentAt[0]);
+}
+
+void test_fireflies_needs_three_liked_peers() {
+  for (uint8_t count : {2, 3}) {
+    Rig r(1, 9, 0);
+    addLikedPeers(r, 0, count);
+    r.director.begin(&r.host, r.self, r.seed, 0);
+    runFresh(r, 0, 100 * kMin, 1000);
+    runFresh(r, 100 * kMin, 100 * kMin + 100000, 100);
+    TEST_ASSERT_EQUAL(count == 3, r.host.rendersOf("flicker") > 0);
+  }
+}
+
+void test_hop_floor_is_minus_eighty() {
+  std::map<uint64_t, uint8_t> d;
+  auto disp = [&](const uint8_t* m) { return d[macKey(m)]; };
+  uint8_t self[6], out[6];
+  macOf(99, self);
+  std::vector<NearbyCopy> peers = {peerOf(1, -80, 1000)};
+  d[macKey(peers[0].mac)] = kDispositionFond;
+  TEST_ASSERT_TRUE(selectWhisperHop(peers, 1000, self, nullptr, 0, disp, out));
+  peers[0].lastRssi = -81;
+  TEST_ASSERT_FALSE(selectWhisperHop(peers, 1000, self, nullptr, 0, disp, out));
+}
+
+void test_a_greeting_does_not_block_joining_or_accepting() {
+  uint8_t origin[6];
+  macOf(9, origin);
+  Rig ff;
+  ff.host.greeting = true;
+  ff.frame(origin, firefliesStart(5), 1000);
+  TEST_ASSERT_TRUE(ff.director.active());
+  Rig wh(9);
+  wh.host.greeting = true;
+  uint8_t sender[6];
+  macOf(8, sender);
+  wh.frame(sender, whisperTo(wh.self, 5, {8}), 1000);
+  TEST_ASSERT_TRUE(wh.director.active());
+}
+
+// A backoff that expires between two crowd evaluations re-checks before it
+// starts anything: a greeting that began after it was armed holds it.
+void test_backoff_expiry_rechecks_before_starting() {
+  bool exercised = false;
+  for (uint32_t seed = 1; seed < 2000 && !exercised; ++seed) {
+    Rig r(1, seed, 0);
+    const uint32_t t = 100 * kMin;
+    runFresh(r, 0, t - 1000, 1000);  // eligible, nobody near yet
+    r.host.like(30, kDispositionFond);
+    r.host.peers.push_back(peerOf(30, -55, t));
+    r.host.nowMs = t;
+    r.director.tick(t);
+    if (!r.director.backoffArmed(MomentKind::Whisper)) continue;
+    r.host.greeting = true;
+    for (uint32_t now = t + 1; now < t + MomentDirector::kEvalPeriodMs; ++now) {
+      for (NearbyCopy& p : r.host.peers) seeAt(p, now);
+      r.director.tick(now);
+      if (!r.director.backoffArmed(MomentKind::Whisper)) {
+        exercised = true;
+        break;
+      }
+    }
+    if (exercised) {
+      TEST_ASSERT_FALSE(r.director.active());
+      TEST_ASSERT_EQUAL_UINT32(0, r.host.renders.size());
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(exercised, "no seed expired between evaluations");
+}
+
+void test_encode_refuses_a_short_buffer() {
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 1;
+  f.hop = 8;
+  char big[256];
+  const size_t n = encodeMomentFrame(f, big, sizeof(big));
+  TEST_ASSERT_TRUE(n > 0);
+  char exact[256];
+  TEST_ASSERT_EQUAL_UINT32(n, encodeMomentFrame(f, exact, n));
+  std::memset(exact, '#', sizeof(exact));
+  TEST_ASSERT_EQUAL_UINT32(0, encodeMomentFrame(f, exact, n - 1));
+  TEST_ASSERT_EQUAL_CHAR('#', exact[0]);
+}
+
+void test_heartbeat_settles_when_the_peer_fades() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -50, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.host.peers[0].lastRssi = -95;
+  runFresh(r, 0, 60000, 10);
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_TRUE(logged(r.host, "[moment] hb settle faded"));
+}
+
+// A direct HELLO renews presence but not the BLE RSSI; it cannot hold a beat.
+void test_heartbeat_ignores_presence_without_a_ble_sighting() {
+  Rig r;
+  r.host.like(30, kDispositionSmitten);
+  r.host.peers.push_back(peerOf(30, -46, 0));
+  r.director.force(MomentKind::Heartbeat, 1, 0);
+  for (uint32_t t = 0; t <= 60000; t += 10) {
+    r.host.peers[0].lastSeenNearMs = t;
+    r.host.nowMs = t;
+    r.director.tick(t);
+  }
+  TEST_ASSERT_FALSE(r.director.active());
+  TEST_ASSERT_TRUE(logged(r.host, "[moment] hb settle stale"));
+}
+
+void test_heartbeat_starts_at_minus_sixty_five() {
+  for (int8_t rssi : {-66, -65}) {
+    Rig r(1, 9, 0);
+    r.host.like(30, kDispositionSmitten);
+    r.host.peers.push_back(peerOf(30, rssi, 0));
+    runFresh(r, 0, 100 * kMin, 100);
+    bool beat = false;
+    for (const std::string& l : r.host.logs) beat = beat || l.rfind("[moment] start k=3", 0) == 0;
+    TEST_ASSERT_EQUAL(rssi == -65, beat);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_wait_lies_in_the_range_times_mode);
@@ -1140,5 +1361,17 @@ int main(int, char**) {
   RUN_TEST(test_a_suppressor_mid_moment_ends_it);
   RUN_TEST(test_unsent_fireflies_start_aborts_but_still_grows);
   RUN_TEST(test_frames_go_out_twice_with_a_fresh_age);
+  RUN_TEST(test_a_busy_lamp_refuses_a_whisper);
+  RUN_TEST(test_an_accepter_glows_one_hand_off_after_its_sender);
+  RUN_TEST(test_whisper_start_thresholds);
+  RUN_TEST(test_whisper_starts_naturally_and_announces_at_once);
+  RUN_TEST(test_fireflies_needs_three_liked_peers);
+  RUN_TEST(test_hop_floor_is_minus_eighty);
+  RUN_TEST(test_a_greeting_does_not_block_joining_or_accepting);
+  RUN_TEST(test_backoff_expiry_rechecks_before_starting);
+  RUN_TEST(test_encode_refuses_a_short_buffer);
+  RUN_TEST(test_heartbeat_settles_when_the_peer_fades);
+  RUN_TEST(test_heartbeat_ignores_presence_without_a_ble_sighting);
+  RUN_TEST(test_heartbeat_starts_at_minus_sixty_five);
   return UNITY_END();
 }
