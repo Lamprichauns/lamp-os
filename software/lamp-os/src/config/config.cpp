@@ -82,7 +82,9 @@ Config::Config(ConfigStore* inStore) {
     Serial.println("[cfg] stored expressions over caps; truncated on load");
   }
   const config_codec::LoadedRecords records =
-      config_codec::loadRecords(*store_, base, expressions);
+      config_codec::loadRecords(*store_, base, expressions,
+                                doc["base"]["knockout"].is<JsonArray>(),
+                                doc["expressions"].is<JsonArray>());
   for (size_t i = 0; i < kMaxExpressions; ++i) {
     if (records.droppedMask & (1u << i)) {
       Serial.printf("[cfg] expression record x%u unreadable; dropped\n", (unsigned)i);
@@ -102,7 +104,8 @@ Config::Config(ConfigStore* inStore) {
 };
 
 // The "cfg" JSON is written here rather than on the heap, so a save never
-// waits for a large free block. Core 1 only (every save runs on the loop).
+// waits for a large free block. Loop task only: every save, the webapp's
+// included (webapp::tick drains it), runs there.
 static char s_cfgJson[config_codec::kMaxStoredCfgJsonLen + 1];
 
 bool Config::persistConfig(const char* via) {
@@ -207,9 +210,7 @@ void Config::setDisposition(const std::string& lampId, uint8_t value) {
   dispositions_.set(mac, value, millis());
 }
 
-String Config::asDispositionsJson() const {
-  return String(dispositions_.asJson().c_str());
-}
+std::string Config::asDispositionsJson() const { return dispositions_.asJson(); }
 
 bool Config::setDispositionsFromJson(const char* json, size_t len) {
   return dispositions_.setFromJson(json, len, millis());
@@ -370,6 +371,27 @@ static SemaphoreHandle_t cacheMutex() {
   return m;
 }
 
+// The heap check before each of these cannot reserve the block: another
+// task can take it first. The catch is the last line, best effort since the
+// build has no exception emergency pool.
+static bool assignNoThrow(std::string& dst, const char* src, size_t len) {
+  try {
+    dst.assign(src, len);
+    return true;
+  } catch (const std::bad_alloc&) {
+    return false;
+  }
+}
+
+static bool resizeNoThrow(std::string& dst, size_t len) {
+  try {
+    dst.resize(len);
+    return true;
+  } catch (const std::bad_alloc&) {
+    return false;
+  }
+}
+
 // A field OOM must stay visible without spamming: warn on the degrade path
 // on every channel, throttled to one line per LAMP_SECTION_OOM_MIN_MS.
 static void logSectionOom(const char* msg) {
@@ -397,8 +419,8 @@ static void logSectionOom(const char* msg) {
         json = serializeGuarded(doc, len);                                 \
       }                                                                    \
       if (json && (NAME##SectionJson_.capacity() >= len ||                 \
-                   heapCanSpare(len))) {                                   \
-        NAME##SectionJson_.assign(json.get(), len);                        \
+                   heapCanSpare(len)) &&                                   \
+          assignNoThrow(NAME##SectionJson_, json.get(), len)) {            \
         NAME##SectionDirty_ = false;                                       \
       } else {                                                             \
         logSectionOom(#NAME);                                              \
@@ -409,10 +431,10 @@ static void logSectionOom(const char* msg) {
   void Config::NAME##SectionJsonCached(std::string& out) {                 \
     NAME##SectionRebuildIfDirty();                                         \
     xSemaphoreTake(cacheMutex(), portMAX_DELAY);                           \
-    if (out.capacity() >= NAME##SectionJson_.size() ||                     \
-        heapCanSpare(NAME##SectionJson_.size())) {                         \
-      out = NAME##SectionJson_;                                            \
-    } else {                                                               \
+    if (!((out.capacity() >= NAME##SectionJson_.size() ||                  \
+           heapCanSpare(NAME##SectionJson_.size())) &&                     \
+          assignNoThrow(out, NAME##SectionJson_.data(),                    \
+                        NAME##SectionJson_.size()))) {                     \
       out.clear();                                                         \
       logSectionOom(#NAME);                                                \
     }                                                                      \
@@ -440,8 +462,8 @@ void Config::expressionsSectionRebuildIfDirty() {
     JsonWriter measure(nullptr, 0);
     writeExpressionsSection(measure, expressions);
     const size_t len = measure.length();
-    if (expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) {
-      expressionsSectionJson_.resize(len);
+    if ((expressionsSectionJson_.capacity() >= len || heapCanSpare(len + 1)) &&
+        resizeNoThrow(expressionsSectionJson_, len)) {
       JsonWriter w(expressionsSectionJson_.data(), len + 1);
       writeExpressionsSection(w, expressions);
       expressionsSectionDirty_ = false;
@@ -455,10 +477,9 @@ void Config::expressionsSectionRebuildIfDirty() {
 void Config::expressionsSectionJsonCached(std::string& out) {
   expressionsSectionRebuildIfDirty();
   xSemaphoreTake(cacheMutex(), portMAX_DELAY);
-  if (out.capacity() >= expressionsSectionJson_.size() ||
-      heapCanSpare(expressionsSectionJson_.size())) {
-    out = expressionsSectionJson_;
-  } else {
+  if (!((out.capacity() >= expressionsSectionJson_.size() ||
+         heapCanSpare(expressionsSectionJson_.size())) &&
+        assignNoThrow(out, expressionsSectionJson_.data(), expressionsSectionJson_.size()))) {
     out.clear();
     logSectionOom("expressions");
   }

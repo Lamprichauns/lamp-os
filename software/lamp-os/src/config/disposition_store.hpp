@@ -110,13 +110,14 @@ class DispositionStore {
 
  private:
   static constexpr size_t kBdAddrLen = 17;
-  // `"AA:BB:CC:DD:EE:FF":5` per entry, a comma between, braces and a NUL.
-  static constexpr size_t kMaxJsonLen = 2 + kMax * (kBdAddrLen + 4) + (kMax - 1) + 1;
+  // `"AA:BB:CC:DD:EE:FF":5` per entry, a comma between, and the braces.
+  static size_t jsonLen(size_t entries);
 
   bool persist_();
   void flushIfDue_(uint32_t nowMs);
-  // Writes the JSON object into `out` (kMaxJsonLen bytes); returns its length.
-  size_t writeJson_(char* out) const;
+  // Writes the JSON object into `out` (jsonLen(entries_.size()) + 1 bytes).
+  // Caller holds mutex_.
+  void writeJsonLocked_(char* out) const;
 
   std::vector<std::pair<std::array<uint8_t, 6>, uint8_t>> entries_;
   DispositionDebouncer debouncer_;

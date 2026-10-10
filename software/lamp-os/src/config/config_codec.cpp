@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <lampos/led_types.hpp>
+
 #include "util/color.hpp"
 #include "util/heap_guard.hpp"
 #include "util/json_writer.hpp"
@@ -78,6 +80,35 @@ static void writeSegments(JsonObject node,
   }
 }
 
+const ExpressionParams* findExpressionParams(const ExpressionSettings& settings,
+                                             const std::string& type, uint8_t target) {
+  for (const auto& e : settings.expressions) {
+    if (e.target == target && e.type == type) return &e.parameters;
+  }
+  return nullptr;
+}
+
+bool mirrorUpsert(ExpressionSettings& settings, const ExpressionConfig& cfg) {
+  auto& exprs = settings.expressions;
+  for (auto& e : exprs) {
+    if (e.type == cfg.type && e.target == cfg.target) {
+      e = cfg;
+      return true;
+    }
+  }
+  if (exprs.size() >= kMaxExpressions) return false;
+  if (exprs.size() == exprs.capacity()) {
+    exprs.reserve(std::min(kMaxExpressions, exprs.capacity() + 4));
+  }
+  exprs.push_back(cfg);
+  return true;
+}
+
+std::string storableByteOrder(const char* s) {
+  lampos::led::ByteOrder order;
+  return s && lampos::led::byteOrderFromString(s, order) ? std::string(s) : std::string();
+}
+
 bool parseExpression(JsonObject node, ExpressionConfig& out, bool enabledDefault) {
   bool withinCaps = true;
   out.type = std::string(node["type"] | "");
@@ -134,6 +165,10 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
   lamp.brightness = lampNode["brightness"] | 100;
   std::string password = std::string(lampNode["password"] | "");
   if (!password.empty()) {
+    // Every write path refuses one past kMaxPasswordLen, so only a store
+    // written before the cap holds a longer one; holding the BOOT button at
+    // power-up clears a password the owner can no longer type.
+    truncateUtf8(password, kMaxPasswordLen);
     lamp.password = password;
   }
   lamp.setup = lampNode["setup"] | false;
@@ -152,7 +187,7 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
   }
 
   JsonObject baseNode = root["base"];
-  base.byteOrder = std::string(baseNode["byteOrder"] | "");
+  base.byteOrder = storableByteOrder(baseNode["byteOrder"] | "");
   parseSegments(baseNode, base.segments, kBaseDefaultColor, "Base");
   clampSumPx(base.segments);
   // Keep knockoutPixels in sync with the active pixel count. Drops stale
@@ -171,7 +206,7 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
   }
 
   JsonObject shadeNode = root["shade"];
-  shade.byteOrder = std::string(shadeNode["byteOrder"] | "");
+  shade.byteOrder = storableByteOrder(shadeNode["byteOrder"] | "");
   parseSegments(shadeNode, shade.segments, kShadeDefaultColor, "Shade");
   clampSumPx(shade.segments);
   // colorsEditable is firmware-owned (set by Lamp subclass defaults via
@@ -199,6 +234,7 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
   JsonObject homeModeNode = root["homeMode"];
   if (homeModeNode) {
     homeMode.ssid = std::string(homeModeNode["ssid"] | "");
+    truncateUtf8(homeMode.ssid, kMaxSsidLen);
     homeMode.brightness = homeModeNode["brightness"] | 60;
     // Migration: lamps configured before `enabled` existed have no
     // "enabled" key in their NVS-stored JSON. Treat "has SSID" as proxy
@@ -277,7 +313,8 @@ static void writeSegmentsJson(JsonWriter& w, const std::vector<SegmentSettings>&
 }
 
 void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
-                     const ShadeSettings& shade, const HomeModeSettings& homeMode) {
+                     const ShadeSettings& shade, const HomeModeSettings& homeMode,
+                     const ExpressionSettings* whole) {
   w.beginObject();
   w.key("lamp");
   w.beginObject();
@@ -313,6 +350,12 @@ void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings
   w.key("colorsEditable");
   w.value(base.colorsEditable);
   writeSegmentsJson(w, base.segments);
+  if (whole) {
+    w.key("knockout");
+    w.beginArray();
+    for (uint8_t level : base.knockoutPixels) w.value(static_cast<uint32_t>(level));
+    w.endArray();
+  }
   w.endObject();
   w.key("shade");
   w.beginObject();
@@ -341,6 +384,12 @@ void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings
   for (const auto& t : homeMode.disabledExpressionTypes) w.value(t.c_str());
   w.endArray();
   w.endObject();
+  if (whole) {
+    w.key("expressions");
+    w.beginArray();
+    for (const auto& expr : whole->expressions) writeExpressionJson(w, expr);
+    w.endArray();
+  }
   w.endObject();
 }
 
@@ -492,42 +541,69 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const ExpressionSettings& expressions,
                       const HomeModeSettings& homeMode, char* cfgBuffer,
                       size_t cfgBufferLen) {
-  const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
   const uint8_t previous = readCount(store);
-  uint8_t record[kMaxExpressionRecordLen];
   char key[5];
+
+  // Whole: everything in the one "cfg" JSON, the form every firmware reads,
+  // so a lamp flashed back to an older build keeps its expressions. The
+  // split keys from an earlier save go after it lands; until then a load
+  // prefers the expressions and knockout the cfg JSON carries.
+  {
+    JsonWriter whole(cfgBuffer, cfgBufferLen);
+    writeStoredJson(whole, lamp, base, shade, homeMode, &expressions);
+    whole.finish();
+    if (whole.ok()) {
+      if (store.write("cfg", cfgBuffer) == 0) return SaveResult::WriteFailed;
+      store.erase(kCountKey);
+      for (size_t i = 0; i < previous; ++i) {
+        recordKey(i, key);
+        store.erase(key);
+      }
+      store.erase(kKnockoutKey);
+      return SaveResult::Ok;
+    }
+  }
+
+  // Split: too big for one page-sized string. The cfg JSON is built first,
+  // so a TooLarge refusal writes nothing.
+  JsonWriter rest(cfgBuffer, cfgBufferLen);
+  writeStoredJson(rest, lamp, base, shade, homeMode, nullptr);
+  rest.finish();
+  if (!rest.ok()) return SaveResult::TooLarge;
+
+  const size_t count = std::min(expressions.expressions.size(), kMaxExpressions);
+  uint8_t record[kMaxExpressionRecordLen];
   for (size_t i = 0; i < count; ++i) {
     const size_t len = encodeExpression(expressions.expressions[i], record);
     recordKey(i, key);
     if (store.writeBlob(key, record, len) == 0) return SaveResult::WriteFailed;
   }
-  const uint8_t n = static_cast<uint8_t>(count);
-  if (store.writeBlob(kCountKey, &n, 1) == 0) return SaveResult::WriteFailed;
   if (!base.knockoutPixels.empty() &&
       store.writeBlob(kKnockoutKey, base.knockoutPixels.data(),
                       base.knockoutPixels.size()) == 0) {
     return SaveResult::WriteFailed;
   }
+  const uint8_t n = static_cast<uint8_t>(count);
+  if (store.writeBlob(kCountKey, &n, 1) == 0) return SaveResult::WriteFailed;
   for (size_t i = count; i < previous; ++i) {
     recordKey(i, key);
     store.erase(key);
   }
-
-  JsonWriter w(cfgBuffer, cfgBufferLen);
-  writeStoredJson(w, lamp, base, shade, homeMode);
-  w.finish();
-  if (!w.ok()) return SaveResult::TooLarge;
   return store.write("cfg", cfgBuffer) > 0 ? SaveResult::Ok : SaveResult::WriteFailed;
 }
 
 LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
-                          ExpressionSettings& expressions) {
+                          ExpressionSettings& expressions, bool cfgHasKnockout,
+                          bool cfgHasExpressions) {
   LoadedRecords result;
-  uint8_t knockout[255];
-  const size_t knockoutLen = store.readBlob(kKnockoutKey, knockout, sizeof(knockout));
-  for (size_t i = 0; i < knockoutLen && i < base.knockoutPixels.size(); ++i) {
-    base.knockoutPixels[i] = knockout[i];
+  if (!cfgHasKnockout) {
+    uint8_t knockout[255];
+    const size_t knockoutLen = store.readBlob(kKnockoutKey, knockout, sizeof(knockout));
+    for (size_t i = 0; i < knockoutLen && i < base.knockoutPixels.size(); ++i) {
+      base.knockoutPixels[i] = knockout[i];
+    }
   }
+  if (cfgHasExpressions) return result;
   uint8_t n = 0;
   if (store.readBlob(kCountKey, &n, 1) != 1) return result;
   result.present = true;

@@ -20,11 +20,15 @@ class NvsConfigStore : public ConfigStore {
   bool erase(const char* key) override;
   bool clear() override;
 
-  // Boot gate, before anything opens NVS: initializes the flash partition and,
-  // when it cannot be initialized, erases and re-initializes it. Every stored
-  // key is lost then, but the lamp boots with BLE instead of needing a
-  // reflash. Returns true when NVS is usable.
+  // Boot gate, before the lamp opens NVS: makes sure the partition is
+  // initialized, erasing and re-initializing it only when it reports itself
+  // unusable (every stored key is lost then, but the lamp boots with BLE
+  // instead of needing a reflash), then reclaims the WiFi driver's stored
+  // config. Returns true when NVS is usable.
   static bool initFlash();
+
+ private:
+  static void reclaimWifiNamespace();
 };
 
 }  // namespace lamp

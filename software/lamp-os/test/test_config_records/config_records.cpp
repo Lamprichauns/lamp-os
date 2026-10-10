@@ -91,7 +91,18 @@ void load(InMemoryConfigStore& store, Model& m) {
   deserializeJson(doc, store.read("cfg", "{}"));
   config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade,
                          m.expressions, m.homeMode);
-  config_codec::loadRecords(store, m.base, m.expressions);
+  config_codec::loadRecords(store, m.base, m.expressions,
+                            doc["base"]["knockout"].is<JsonArray>(),
+                            doc["expressions"].is<JsonArray>());
+}
+
+// Adds full expressions until the whole config cannot fit one cfg JSON, so the
+// save splits into records.
+void padToSplit(Model& m) {
+  for (int i = 0; i < 4; ++i) {
+    m.expressions.expressions.push_back(
+        fullExpression(("pad" + std::to_string(i)).c_str(), 1));
+  }
 }
 
 // NVS stores 32-byte entries, 126 to a 4 KB page. A string is a header entry
@@ -154,8 +165,8 @@ void test_save_load_round_trip() {
 }
 
 // A lamp updating from the single-JSON form keeps its expressions and
-// knockout; the first save moves them into records.
-void test_legacy_single_json_migrates_on_save() {
+// knockout, and a config that fits stays in that form.
+void test_legacy_single_json_loads_and_small_config_stays_whole() {
   InMemoryConfigStore store;
   store.write("cfg",
               "{\"lamp\":{\"name\":\"jacko\"},\"base\":{\"segments\":[{\"name\":\"Base\","
@@ -167,12 +178,91 @@ void test_legacy_single_json_migrates_on_save() {
   TEST_ASSERT_EQUAL(1, m.expressions.expressions.size());
   TEST_ASSERT_EQUAL_UINT8(20, m.base.knockoutPixels[1]);
   TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
-  TEST_ASSERT_TRUE(store.has("xn") && store.has("x0") && store.has("ko"));
+  TEST_ASSERT_FALSE(store.has("xn") || store.has("x0") || store.has("ko"));
   Model back;
   load(store, back);
   TEST_ASSERT_EQUAL(1, back.expressions.expressions.size());
   TEST_ASSERT_EQUAL_UINT32(4, back.expressions.expressions[0].getParameter("size", 0));
   TEST_ASSERT_EQUAL_UINT8(30, back.base.knockoutPixels[2]);
+}
+
+// A config too big for one cfg JSON splits into records; once it shrinks
+// back, the whole save erases the split keys.
+void test_split_then_whole_erases_split_keys() {
+  InMemoryConfigStore store;
+  Model m;
+  m.base.segments = {{"Base", 3, {Color(1, 2, 3, 4)}}};
+  m.base.knockoutPixels = {10, 20, 30};
+  padToSplit(m);
+  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
+  TEST_ASSERT_TRUE(store.has("xn") && store.has("x3") && store.has("ko"));
+  TEST_ASSERT_TRUE(store.read("cfg", "").find("expressions") == std::string::npos);
+  m.expressions.expressions.resize(1);
+  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
+  TEST_ASSERT_FALSE(store.has("xn") || store.has("x0") || store.has("ko"));
+  Model back;
+  load(store, back);
+  TEST_ASSERT_EQUAL(1, back.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_UINT8(20, back.base.knockoutPixels[1]);
+}
+
+// A lamp flashed back to a build that predates records rewrites the cfg JSON
+// with its own expressions and knockout; flashed forward again, that config
+// loads and the stale records and knockout blob are ignored.
+void test_config_saved_by_older_firmware_wins_over_stale_records() {
+  InMemoryConfigStore store;
+  Model m;
+  m.base.segments = {{"Base", 3, {Color(1, 2, 3, 4)}}};
+  m.base.knockoutPixels = {10, 20, 30};
+  padToSplit(m);
+  save(store, m);
+  store.write("cfg",
+              "{\"lamp\":{\"name\":\"jacko\"},\"base\":{\"segments\":[{\"name\":\"Base\","
+              "\"px\":3,\"colors\":[\"#11223300\"]}],\"knockout\":[1,2,3]},"
+              "\"expressions\":[{\"type\":\"spotty\",\"enabled\":true,\"target\":2}]}");
+  Model back;
+  load(store, back);
+  TEST_ASSERT_EQUAL(1, back.expressions.expressions.size());
+  TEST_ASSERT_EQUAL_STRING("spotty", back.expressions.expressions[0].type.c_str());
+  TEST_ASSERT_EQUAL_UINT8(2, back.base.knockoutPixels[1]);
+  TEST_ASSERT_TRUE(save(store, back) == SaveResult::Ok);
+  TEST_ASSERT_FALSE(store.has("xn") || store.has("x0") || store.has("ko"));
+}
+
+// A cfg JSON that cannot fit is refused before any record, count or
+// knockout write.
+void test_too_large_writes_nothing() {
+  InMemoryConfigStore store;
+  Model m;
+  padToSplit(m);
+  char small[64];
+  TEST_ASSERT_TRUE(config_codec::saveConfig(store, m.lamp, m.base, m.shade, m.expressions,
+                                            m.homeMode, small, sizeof(small)) ==
+                   SaveResult::TooLarge);
+  TEST_ASSERT_EQUAL(0, store.writeCount);
+}
+
+// Over-long fields arriving through the cfg JSON (a web save or an old
+// store) are bounded at parse, so the save that follows always fits.
+void test_over_long_fields_cannot_fail_every_save() {
+  const std::string big(5000, 'z');
+  const std::string json =
+      "{\"lamp\":{\"name\":\"" + big + "\",\"password\":\"" + big +
+      "\"},\"base\":{\"byteOrder\":\"" + big + "\",\"segments\":[{\"name\":\"" + big +
+      "\",\"px\":3,\"colors\":[\"#11223300\"]}]},\"shade\":{\"byteOrder\":\"" + big +
+      "\"},\"homeMode\":{\"ssid\":\"" + big + "\",\"disabledExpressionTypes\":[\"" + big +
+      "\"]}}";
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, json) == DeserializationError::Ok);
+  Model m;
+  config_codec::fromJson(doc.as<JsonObject>(), m.lamp, m.base, m.shade, m.expressions,
+                         m.homeMode);
+  TEST_ASSERT_EQUAL(kMaxPasswordLen, m.lamp.password.size());
+  TEST_ASSERT_EQUAL(kMaxSsidLen, m.homeMode.ssid.size());
+  TEST_ASSERT_TRUE(m.base.byteOrder.empty());
+  TEST_ASSERT_TRUE(m.shade.byteOrder.empty());
+  InMemoryConfigStore store;
+  TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
 }
 
 void test_removed_expressions_erase_stale_records() {
@@ -270,21 +360,37 @@ void assertCrashSafe(const Model& before, const Model& after) {
 }  // namespace
 
 void test_crash_mid_save_removing_an_entry_keeps_the_rest() {
-  Model before;
-  before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2),
-                                    tagged("spotty", 3, 3), tagged("glitchy", 1, 4)};
-  Model after = before;
-  after.expressions.expressions.erase(after.expressions.expressions.begin());
-  assertCrashSafe(before, after);
+  for (bool split : {false, true}) {
+    Model before;
+    before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2),
+                                      tagged("spotty", 3, 3), tagged("glitchy", 1, 4)};
+    if (split) padToSplit(before);
+    Model after = before;
+    after.expressions.expressions.erase(after.expressions.expressions.begin());
+    assertCrashSafe(before, after);
+  }
 }
 
 void test_crash_mid_save_adding_and_editing_keeps_the_rest() {
-  Model before;
-  before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2)};
-  Model after = before;
-  after.expressions.expressions[1] = tagged("shifty", 2, 9);
-  after.expressions.expressions.push_back(tagged("spotty", 3, 3));
-  assertCrashSafe(before, after);
+  for (bool split : {false, true}) {
+    Model before;
+    before.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2)};
+    if (split) padToSplit(before);
+    Model after = before;
+    after.expressions.expressions[1] = tagged("shifty", 2, 9);
+    after.expressions.expressions.push_back(tagged("spotty", 3, 3));
+    assertCrashSafe(before, after);
+  }
+}
+
+// Growing past one cfg JSON, or shrinking back under it, is reset-safe too.
+void test_crash_mid_save_crossing_the_split_keeps_the_rest() {
+  Model small;
+  small.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2)};
+  Model big = small;
+  padToSplit(big);
+  assertCrashSafe(small, big);
+  assertCrashSafe(big, small);
 }
 
 // A reset during the first save after an update leaves the single-JSON form
@@ -333,6 +439,7 @@ void test_unreadable_record_drops_only_itself() {
   Model m;
   m.expressions.expressions = {tagged("pulse", 1, 1), tagged("shifty", 2, 2),
                                tagged("spotty", 3, 3)};
+  padToSplit(m);
   save(store, m);
   const uint8_t junk[3] = {9, 9, 9};
   store.writeBlob("x1", junk, sizeof(junk));
@@ -341,10 +448,11 @@ void test_unreadable_record_drops_only_itself() {
   deserializeJson(doc, store.read("cfg", "{}"));
   config_codec::fromJson(doc.as<JsonObject>(), back.lamp, back.base, back.shade,
                          back.expressions, back.homeMode);
-  const auto loaded = config_codec::loadRecords(store, back.base, back.expressions);
+  const auto loaded = config_codec::loadRecords(store, back.base, back.expressions,
+                                                false, false);
   TEST_ASSERT_TRUE(loaded.present);
   TEST_ASSERT_EQUAL_UINT32(1u << 1, loaded.droppedMask);
-  TEST_ASSERT_EQUAL(2, back.expressions.expressions.size());
+  TEST_ASSERT_EQUAL(6, back.expressions.expressions.size());
   TEST_ASSERT_EQUAL_STRING("pulse", back.expressions.expressions[0].type.c_str());
   TEST_ASSERT_EQUAL_STRING("spotty", back.expressions.expressions[1].type.c_str());
 }
@@ -398,6 +506,23 @@ void test_worst_case_config_fits_nvs_with_margin() {
   TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel(), "caps") + 32 <= kUsableEntries);
 }
 
+// A whole save holds at most the 2 KB cfg JSON and no records. The peak is
+// the moment a split config turns whole: the new cfg lands before the
+// records, the knockout blob and the old cfg are erased.
+void test_whole_save_and_the_switch_to_it_fit_nvs() {
+  const size_t system = 4 + blobEntries(1904) + blobEntries(6) + 1 + 64 + blobEntries(64);
+  const size_t fixed = stringEntries(16) + blobEntries(DispositionStore::kMaxBlobLen) + system;
+  const size_t wholeCfg = stringEntries(config_codec::kMaxStoredCfgJsonLen);
+  const size_t whole = fixed + 2 * wholeCfg;
+  const size_t splitLive = kMaxExpressions * blobEntries(config_codec::kMaxExpressionRecordLen) +
+                           blobEntries(1) + blobEntries(255) +
+                           stringEntries(config_codec::kMaxStoredCfgJsonLen);
+  const size_t peak = fixed + splitLive + wholeCfg;
+  printf("[budget] whole: %zu, split-to-whole peak: %zu of %u\n", whole, peak, kUsableEntries);
+  TEST_ASSERT_TRUE(whole + 32 <= kUsableEntries);
+  TEST_ASSERT_TRUE(peak + 32 <= kUsableEntries);
+}
+
 // The standard variant's real worst case: its six registered types at every
 // target, every expression full.
 void test_standard_variant_worst_case_fits_nvs() {
@@ -417,13 +542,19 @@ int main(int, char**) {
   RUN_TEST(test_worst_record_fits_the_bound);
   RUN_TEST(test_truncated_record_rejected);
   RUN_TEST(test_save_load_round_trip);
-  RUN_TEST(test_legacy_single_json_migrates_on_save);
+  RUN_TEST(test_legacy_single_json_loads_and_small_config_stays_whole);
+  RUN_TEST(test_split_then_whole_erases_split_keys);
+  RUN_TEST(test_config_saved_by_older_firmware_wins_over_stale_records);
+  RUN_TEST(test_too_large_writes_nothing);
+  RUN_TEST(test_over_long_fields_cannot_fail_every_save);
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
   RUN_TEST(test_worst_case_config_fits_nvs_with_margin);
   RUN_TEST(test_standard_variant_worst_case_fits_nvs);
+  RUN_TEST(test_whole_save_and_the_switch_to_it_fit_nvs);
   RUN_TEST(test_crash_mid_save_removing_an_entry_keeps_the_rest);
   RUN_TEST(test_crash_mid_save_adding_and_editing_keeps_the_rest);
+  RUN_TEST(test_crash_mid_save_crossing_the_split_keeps_the_rest);
   RUN_TEST(test_crash_mid_migration_keeps_the_legacy_config);
   RUN_TEST(test_unreadable_record_drops_only_itself);
   RUN_TEST(test_cfg_json_over_the_buffer_fails_cleanly);

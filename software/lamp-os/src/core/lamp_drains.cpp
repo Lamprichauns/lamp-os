@@ -35,8 +35,9 @@ namespace lamp {
 
 namespace {
 
-// Local state for drainCommit only.
+// Loop-task state for drainCommit and drainSettingsBlob.
 bool      commitDirty = false;
+bool      rebootWhenSaved = false;  // drainSettingsBlob: a deferred save owes a reboot
 uint32_t  lastCommitSignalMs = 0;
 constexpr uint32_t kCommitFlushIdleMs = 2500;
 
@@ -212,6 +213,12 @@ void Lamp::drainCommit() {
 // Runs after drainExpressionOp. OTA-in-progress guard discards the write.
 void Lamp::drainSettingsBlob() {
   lamp::Config& config = ::config;
+  // A blob that needed a reboot whose save was deferred reboots once the
+  // retry lands, so it never comes up on a half-applied config.
+  if (rebootWhenSaved && !config.persistPending()) {
+    rebootWhenSaved = false;
+    lamp::fadeOutRebootRequested = true;
+  }
   if (lamp::pendingSlots.settingsBlob.valid) {
     // static: 2 KB is too big for the loop-task stack; this drain is the
     // slot's only consumer and runs only on Core 1.
@@ -263,11 +270,8 @@ void Lamp::drainSettingsBlob() {
       if (wantsReboot && persisted) {
         lamp::fadeOutRebootRequested = true;
       } else if (wantsReboot && !persisted) {
-#ifdef LAMP_DEBUG
-        Serial.println(
-            "[loop] settingsBlob: persist failed; skipping reboot to avoid "
-            "rebooting into a half-applied config");
-#endif
+        Serial.println("[loop] settingsBlob: save deferred; reboot waits for it");
+        rebootWhenSaved = true;
       }
     }
   }

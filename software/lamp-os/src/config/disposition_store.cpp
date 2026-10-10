@@ -7,6 +7,7 @@
 #include <array>
 
 #include "util/bd_addr.hpp"
+#include "util/heap_guard.hpp"
 
 namespace lamp {
 
@@ -84,18 +85,27 @@ DispositionStore::DispositionStore(uint32_t flushIdleMs)
 
 void DispositionStore::load() {
   if (!store_) return;
-  std::array<uint8_t, kMaxBlobLen> blob;
-  const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
   std::vector<Entry> next;
-  if (n > 0) {
-    if (!parseBlob(blob.data(), n, next)) return;
-  } else {
-    std::string json = store_->read(kLegacyJsonKey, "{}");
+  // The legacy JSON key exists only before the first migration, or after an
+  // older firmware rewrote it following a downgrade; either way it is the
+  // newest copy, so it wins over a stale blob.
+  const std::string json = store_->read(kLegacyJsonKey, "");
+  const bool fromJson = !json.empty();
+  if (fromJson) {
     if (!parseEntries(json.c_str(), json.size(), next)) return;
+  } else {
+    std::array<uint8_t, kMaxBlobLen> blob;
+    const size_t n = store_->readBlob(kBlobKey, blob.data(), blob.size());
+    if (n == 0 || !parseBlob(blob.data(), n, next)) return;
   }
   xSemaphoreTake(mutex_, portMAX_DELAY);
   entries_ = std::move(next);
   xSemaphoreGive(mutex_);
+  // Migrate now rather than on the next change: the JSON is about three
+  // times the blob, and a lamp whose NVS is full gets that space back on
+  // this boot. The blob lands before the JSON goes, so a reset between
+  // them keeps a readable copy.
+  if (fromJson && !persist_()) debouncer_.markDirty(0);
 }
 
 uint8_t DispositionStore::get(const uint8_t mac[6]) const {
@@ -136,11 +146,14 @@ void DispositionStore::set(const uint8_t mac[6], uint8_t value,
   debouncer_.markDirty(nowMs);
 }
 
-size_t DispositionStore::writeJson_(char* out) const {
-  // The compact shape ArduinoJson emits for the same object, written directly
-  // so a flush builds no document and never grows a string. Sorted-vector
-  // order is ascending byte order, which is canonical colon-hex order.
-  xSemaphoreTake(mutex_, portMAX_DELAY);
+size_t DispositionStore::jsonLen(size_t entries) {
+  return 2 + entries * (kBdAddrLen + 4) + (entries ? entries - 1 : 0);
+}
+
+void DispositionStore::writeJsonLocked_(char* out) const {
+  // The compact shape ArduinoJson emits for the same object, written
+  // directly. Sorted-vector order is ascending byte order, which is
+  // canonical colon-hex order.
   char* p = out;
   *p++ = '{';
   for (size_t i = 0; i < entries_.size(); ++i) {
@@ -154,13 +167,20 @@ size_t DispositionStore::writeJson_(char* out) const {
   }
   *p++ = '}';
   *p = '\0';
-  xSemaphoreGive(mutex_);
-  return static_cast<size_t>(p - out);
 }
 
 std::string DispositionStore::asJson() const {
-  std::string out(kMaxJsonLen, '\0');
-  out.resize(writeJson_(out.data()));
+  // Sized from the entry count under the lock, so a concurrent set() cannot
+  // outgrow it, and allocated only when the heap can spare it (this runs on
+  // the NimBLE host task).
+  std::string out;
+  xSemaphoreTake(mutex_, portMAX_DELAY);
+  const size_t len = jsonLen(entries_.size());
+  if (heapCanSpare(len + 1)) {
+    out.resize(len);
+    writeJsonLocked_(out.data());
+  }
+  xSemaphoreGive(mutex_);
   return out;
 }
 

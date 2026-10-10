@@ -13,6 +13,7 @@
 
 // Native tests don't build src/, so compile the real implementation in.
 #include "../../src/config/disposition_store.cpp"
+#include "../../src/util/heap_guard.cpp"
 
 using namespace lamp;
 
@@ -179,6 +180,54 @@ void test_legacy_json_migrates_on_first_flush() {
   TEST_ASSERT_EQUAL_UINT8(2, getMac(reloaded, "AA:BB:CC:DD:EE:01"));
 }
 
+// The legacy JSON migrates at load, blob first: a reset between the two
+// writes still leaves a readable copy, and the JSON's space comes back on the
+// first boot.
+void test_legacy_json_migrates_at_load_blob_first() {
+  for (size_t crashAt = 0; crashAt < 3; ++crashAt) {
+    InMemoryConfigStore backing;
+    backing.write("dispositions", "{\"11:22:33:44:55:66\":1}");
+    backing.writesBeforeCrash = crashAt;
+    DispositionStore ds(100);
+    ds.attachStore(&backing);
+    ds.load();
+    backing.writesBeforeCrash = SIZE_MAX;
+    DispositionStore reloaded(100);
+    reloaded.attachStore(&backing);
+    reloaded.load();
+    TEST_ASSERT_EQUAL_UINT8(1, getMac(reloaded, "11:22:33:44:55:66"));
+  }
+  InMemoryConfigStore backing;
+  backing.write("dispositions", "{\"11:22:33:44:55:66\":1}");
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  ds.load();
+  TEST_ASSERT_FALSE(backing.has("dispositions"));
+  TEST_ASSERT_TRUE(backing.has(DispositionStore::kBlobKey));
+}
+
+// After a downgrade an older firmware writes the JSON key again; flashed
+// forward, that newer copy wins over the stale blob.
+void test_json_written_after_a_downgrade_wins() {
+  InMemoryConfigStore backing;
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  setMac(ds, "11:22:33:44:55:66", 1, 0);
+  ds.flushNow(0);
+  backing.write("dispositions", "{\"11:22:33:44:55:66\":5}");
+  DispositionStore reloaded(100);
+  reloaded.attachStore(&backing);
+  reloaded.load();
+  TEST_ASSERT_EQUAL_UINT8(5, getMac(reloaded, "11:22:33:44:55:66"));
+}
+
+void test_asjson_sized_to_the_entries() {
+  DispositionStore ds(100);
+  setMac(ds, "AA:BB:CC:DD:EE:01", 2, 0);
+  const std::string json = ds.asJson();
+  TEST_ASSERT_EQUAL_STRING("{\"AA:BB:CC:DD:EE:01\":2}", json.c_str());
+}
+
 // A full store round-trips through the blob at its 701-byte ceiling.
 void test_full_store_blob_round_trip() {
   InMemoryConfigStore backing;
@@ -235,6 +284,9 @@ int main(int, char**) {
   RUN_TEST(test_failed_write_backs_off_then_lands);
   RUN_TEST(test_legacy_json_migrates_on_first_flush);
   RUN_TEST(test_full_store_blob_round_trip);
+  RUN_TEST(test_legacy_json_migrates_at_load_blob_first);
+  RUN_TEST(test_json_written_after_a_downgrade_wins);
+  RUN_TEST(test_asjson_sized_to_the_entries);
   RUN_TEST(test_full_store_matches_arduinojson_bytes);
   RUN_TEST(test_empty_store_serializes_empty_object);
   return UNITY_END();

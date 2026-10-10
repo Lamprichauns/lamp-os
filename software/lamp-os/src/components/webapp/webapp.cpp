@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "expr_catalog.h"
@@ -26,6 +27,7 @@
 #include "config/config_types.hpp"
 #include "core/pending_json_slot.hpp"
 #include "util/color.hpp"
+#include "util/heap_guard.hpp"
 #include "util/heap_probe.hpp"
 
 // Same Core 0 → Core 1 drain handoff the BLE writes use; mutating config
@@ -122,7 +124,7 @@ static void handleGetNearby(AsyncWebServerRequest* req) {
 static void handleGetDispositions(AsyncWebServerRequest* req) {
   bumpDeadline();
   try {
-    req->send(200, "application/json", s_config->asDispositionsJson());
+    req->send(200, "application/json", s_config->asDispositionsJson().c_str());
   } catch (const std::bad_alloc&) {
     req->send(200, "application/json", "{}");
   }
@@ -150,6 +152,39 @@ static void handlePutDispositions(AsyncWebServerRequest* req,
   }
   postPendingSocialDispositionsJson(out.c_str(), out.length());
   req->send(200, "application/json", "{\"ok\":true}");
+}
+
+// A web save handed from the AsyncTCP task to the loop. One in flight; the
+// handler waits on s_webSaveDone for the loop's result.
+static char* s_webSaveBody = nullptr;
+static bool s_webSaveOk = false;
+static portMUX_TYPE s_webSaveMux = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t s_webSaveDone = nullptr;
+static constexpr uint32_t kWebSaveWaitMs = 3000;
+
+static bool saveOnLoop(std::unique_ptr<char[]> body) {
+  if (!s_webSaveDone) return false;
+  xSemaphoreTake(s_webSaveDone, 0);  // drop a result a timed-out request left
+  char* raw = body.release();
+  portENTER_CRITICAL(&s_webSaveMux);
+  char* stale = s_webSaveBody;
+  s_webSaveBody = raw;
+  portEXIT_CRITICAL(&s_webSaveMux);
+  delete[] stale;
+  return xSemaphoreTake(s_webSaveDone, pdMS_TO_TICKS(kWebSaveWaitMs)) == pdTRUE &&
+         s_webSaveOk;
+}
+
+// Loop task: runs a pending web save.
+static void drainWebSave() {
+  portENTER_CRITICAL(&s_webSaveMux);
+  char* raw = s_webSaveBody;
+  s_webSaveBody = nullptr;
+  portEXIT_CRITICAL(&s_webSaveMux);
+  if (!raw) return;
+  s_webSaveOk = s_config->persistRawJson(raw);
+  delete[] raw;
+  xSemaphoreGive(s_webSaveDone);
 }
 
 static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
@@ -182,18 +217,22 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
   // adoption flag so boot's applyDefaults never reverts the name to a default.
   const char* nm = obj["lamp"]["name"] | "";
   if (nm[0] != '\0') obj["lamp"]["named"] = true;
-  String out;
-  // Reserve the exact size so a fragmented heap fails loud instead of Arduino
-  // String silently truncating mid-serialize; a short write is a 500, not a
-  // truncated blob handed to persist.
+  // A longer password could never be typed back; refuse rather than store a
+  // truncated one.
+  if (std::strlen(obj["lamp"]["password"] | "") > lamp::kMaxPasswordLen) {
+    req->send(400, "application/json", "{\"ok\":false}");
+    return;
+  }
+  // The save runs on the loop (Core 1), the only task that writes config:
+  // hand it the serialized body and wait for its result.
   const size_t need = measureJson(json);
-  out.reserve(need);
-  serializeJson(json, out);
-  if (out.length() != need) {
+  std::unique_ptr<char[]> body = lamp::allocateSpare(need + 1);
+  if (!body) {
     req->send(500, "application/json", "{\"ok\":false}");
     return;
   }
-  if (!s_config->persistRawJson(out.c_str())) {
+  serializeJson(json, body.get(), need + 1);
+  if (!saveOnLoop(std::move(body))) {
     req->send(500, "application/json", "{\"ok\":false}");
     return;
   }
@@ -355,6 +394,7 @@ static void startServer() {
 void begin(lamp::Config& config) {
   if (s_apUp) return;
   s_config = &config;
+  if (!s_webSaveDone) s_webSaveDone = xSemaphoreCreateBinary();
 
   // SoftAP SSID is the lamp's name + "-lamp" so it's recognizable as a
   // lamp's setup network in a Wi-Fi scan.
@@ -414,6 +454,7 @@ static void rebootNow() {
 }
 
 void tick() {
+  drainWebSave();
   if (!s_apUp) return;
   const uint32_t now = millis();
 

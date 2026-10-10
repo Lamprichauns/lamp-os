@@ -123,6 +123,8 @@ class Config {
   // False while a failed save is backing off; a caller with its own retry
   // loop (the commit drain) waits on it instead of spinning.
   bool persistDue(uint32_t nowMs) const;
+  // True while a failed save waits for its retry.
+  bool persistPending() const { return persistRetry_.pending(); }
   // Core 1 loop drain: re-runs a failed persistConfig once its backoff ends.
   void maybeRetryPersist(uint32_t nowMs);
   static constexpr uint32_t kPersistRetryBaseMs = 5000;
@@ -247,7 +249,8 @@ class Config {
   // is new. A non-canonical `lampId` is a no-op.
   void setDisposition(const std::string& lampId, uint8_t value);
   // Full JSON serialization for the CHAR_SOCIAL_DISPOSITIONS read path.
-  String asDispositionsJson() const;
+  // Empty when the heap cannot spare it.
+  std::string asDispositionsJson() const;
   // Bulk replace from the CHAR_SOCIAL_DISPOSITIONS write path. Caller
   // provides a JSON object; parse, clamp, mark dirty. The NVS commit is
   // deferred to the next maybeFlushDispositions/flushDispositionsNow call.

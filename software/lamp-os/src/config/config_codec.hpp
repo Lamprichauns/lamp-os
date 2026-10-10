@@ -16,6 +16,20 @@
 namespace lamp {
 namespace config_codec {
 
+// The stored parameters for (type, target), or null when the list has no
+// such entry.
+const ExpressionParams* findExpressionParams(const ExpressionSettings& settings,
+                                             const std::string& type, uint8_t target);
+
+// Mirrors an upsert into the stored list: replaces the (type, target) entry,
+// or appends while under kMaxExpressions (growing four slots at a time, not
+// by doubling). False when the list is full and the entry was not stored.
+bool mirrorUpsert(ExpressionSettings& settings, const ExpressionConfig& cfg);
+
+// `s` when it names a byte order the strip driver knows ("GRBW", "GRB",
+// "BGR"), else "" (the variant's default). Bounds the stored field.
+std::string storableByteOrder(const char* s);
+
 // Parse one expression entry (a stored "expressions" element or an upsert
 // op's "entry"), dropping colours and parameters past the caps. The target is
 // copied as given. Returns false when a cap dropped something.
@@ -39,8 +53,11 @@ void toJson(JsonObject root, const LampSettings& lamp, const BaseSettings& base,
 // The same shapes written with no heap, byte-identical to serializeJson of
 // expressionToJson / toStoredJson (pinned by test_json_writer).
 void writeExpressionJson(JsonWriter& w, const ExpressionConfig& expr);
+// `whole` non-null adds base.knockout and the expressions array, the shape
+// of a whole save.
 void writeStoredJson(JsonWriter& w, const LampSettings& lamp, const BaseSettings& base,
-                     const ShadeSettings& shade, const HomeModeSettings& homeMode);
+                     const ShadeSettings& shade, const HomeModeSettings& homeMode,
+                     const ExpressionSettings* whole);
 
 // One expression's JSON object, the shape the BLE expressions section and the
 // webapp document both carry: type, enabled, the interval pair, target, each
@@ -69,13 +86,16 @@ enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge };
 // test_config_records); saveConfig writes it into a buffer this long.
 constexpr size_t kMaxStoredCfgJsonLen = 2048;
 
-// Writes the model across NVS keys: each expression as its own record ("x0",
-// "x1", ...), the count in "xn", stale records erased, the knockout levels in
-// "ko", then the rest as the "cfg" JSON, written into `cfgBuffer`
-// (kMaxStoredCfgJsonLen + 1 bytes) so a save needs no heap. TooLarge when the
-// JSON outgrows it. No single value outgrows an NVS page, and an unchanged record is
-// not rewritten (NVS skips identical writes). Stops at the first failed
-// write; the caller keeps its dirty state and retries.
+// Saves the model. When the whole config fits `cfgBuffer` (2 KB) it is one
+// "cfg" JSON carrying the expressions and knockout too, the form any firmware
+// reads, and the split keys from an earlier save are erased after it lands.
+// Otherwise it splits: each expression as a record ("x0", "x1", ...), the
+// knockout levels in "ko", the count in "xn" (written after the records),
+// records past the count erased, then the rest as the "cfg" JSON. The cfg
+// JSON is built before any write, so TooLarge leaves the store untouched. No
+// single value outgrows an NVS page, an unchanged key is not rewritten (NVS
+// skips identical writes), and a save needs no heap. Stops at the first
+// failed write; the caller keeps its dirty state and retries.
 SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       const BaseSettings& base, const ShadeSettings& shade,
                       const ExpressionSettings& expressions,
@@ -83,20 +103,21 @@ SaveResult saveConfig(ConfigStore& store, const LampSettings& lamp,
                       size_t cfgBufferLen);
 
 struct LoadedRecords {
-  bool present = false;      // "xn" existed; the expressions came from records
+  bool present = false;      // the expressions came from records
   uint32_t droppedMask = 0;  // bit i: record "x<i>" missing or unreadable
   uint8_t duplicates = 0;    // records skipped as a repeat (type, target)
 };
 
-// Overlays what saveConfig keeps outside the "cfg" JSON: the knockout levels
-// ("ko", one byte per pixel) onto `base`, and the expressions from their
-// records when "xn" is present. A record that fails to read drops only itself
-// (reported in droppedMask); a repeat (type, target) keeps its first record.
-// With no "xn" the expressions stay as the "cfg" JSON loaded them, for a store
-// written before records existed; the next save migrates it. Call after
-// fromJson, which sizes the knockout.
+// Overlays what a split save keeps outside the "cfg" JSON. The cfg JSON wins
+// wherever it carries the data itself: knockout levels from "ko" only when it
+// has no base.knockout, expressions from their records only when it has no
+// expressions array (an older firmware always writes both, so a config it
+// saved after a downgrade is what loads). A record that fails to read drops
+// only itself (droppedMask); a repeated (type, target) keeps its first record.
+// Call after fromJson, which sizes the knockout.
 LoadedRecords loadRecords(ConfigStore& store, BaseSettings& base,
-                          ExpressionSettings& expressions);
+                          ExpressionSettings& expressions, bool cfgHasKnockout,
+                          bool cfgHasExpressions);
 
 // True when `json` is a whole config document safe to persist: it parses and
 // carries a `lamp` object. persistRawJson gates on this so a truncated or

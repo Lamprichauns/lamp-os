@@ -718,7 +718,7 @@ class SocialDispositionsCallback : public NimBLECharacteristicCallbacks {
       return;
     }
     try {
-      c->setValue(s_config->asDispositionsJson().c_str());
+      c->setValue(s_config->asDispositionsJson());
     } catch (const std::bad_alloc&) {
       c->setValue("");
       logBleSectionOom("dispositions");
@@ -1476,8 +1476,10 @@ void pauseRadioForOta() {
   // Stop both adv and scan so the IDF coex arbiter stops gating WiFi RX
   // during BLE windows. Phone app loses connection briefly; reconnects
   // on resumeRadioAfterOta or after the OTA-driven reboot.
-  NimBLEDevice::getAdvertising()->stop();
-  NimBLEDevice::getScan()->stop();
+  if (NimBLEDevice::isInitialized()) {
+    NimBLEDevice::getAdvertising()->stop();
+    NimBLEDevice::getScan()->stop();
+  }
   // Also tear down the boot-window SoftAP webapp. AP beacons fire every
   // ~100 ms and contend with the ESP-NOW chunk stream for WiFi airtime;
   // shutting the AP off frees the band for the OTA. The webapp is a
@@ -1526,6 +1528,7 @@ void resumeRadioAfterOta() {
   s_otaRadioPaused = false;
   // Two independent scan-pause flags: OTA and active GATT client. Only
   // restart if the client flag isn't also holding the scan down.
+  if (!NimBLEDevice::isInitialized()) return;
   if (!s_scanPausedForGattClient) {
     NimBLEDevice::getScan()->start(0);
   }

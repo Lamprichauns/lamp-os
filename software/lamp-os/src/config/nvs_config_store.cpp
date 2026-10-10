@@ -11,6 +11,7 @@ namespace lamp {
 namespace {
 
 constexpr const char* kNamespace = "lamp";
+constexpr const char* kWifiNamespace = "nvs.net80211";
 
 void logFailure(const char* op, const char* key, esp_err_t err) {
   Serial.printf("[nvs] %s %s failed: 0x%x\n", op, key, (unsigned)err);
@@ -99,19 +100,39 @@ bool NvsConfigStore::clear() {
 }
 
 bool NvsConfigStore::initFlash() {
+  // initArduino has already run nvs_flash_init (erasing on NO_FREE_PAGES or
+  // NEW_VERSION_FOUND); an initialized partition makes this a no-op.
   esp_err_t err = nvs_flash_init();
-  if (err == ESP_OK) return true;
-  // Nothing on an uninitializable partition can be read through the API, so
-  // there is nothing to salvage first: erase it and boot clean.
-  Serial.printf("[nvs] init failed: 0x%x; erasing NVS (stored settings lost)\n",
-                (unsigned)err);
-  err = nvs_flash_erase();
-  if (err == ESP_OK) err = nvs_flash_init();
   if (err != ESP_OK) {
-    Serial.printf("[nvs] re-init after erase failed: 0x%x\n", (unsigned)err);
-    return false;
+    // Erase only for the codes that mean the partition itself is unusable;
+    // nothing on it is readable through the API then, so nothing is lost
+    // that could be saved. Any other error (out of memory, a transient
+    // flash fault) leaves it alone and the lamp runs without NVS.
+    const bool unusable = err == ESP_ERR_NVS_NO_FREE_PAGES ||
+                          err == ESP_ERR_NVS_NEW_VERSION_FOUND ||
+                          err == ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+    Serial.printf("[nvs] init failed: 0x%x%s\n", (unsigned)err,
+                  unusable ? "; erasing NVS (stored settings lost)" : "");
+    if (!unusable) return false;
+    err = nvs_flash_erase();
+    if (err == ESP_OK) err = nvs_flash_init();
+    if (err != ESP_OK) {
+      Serial.printf("[nvs] re-init after erase failed: 0x%x\n", (unsigned)err);
+      return false;
+    }
   }
+  reclaimWifiNamespace();
   return true;
+}
+
+void NvsConfigStore::reclaimWifiNamespace() {
+  // The WiFi driver keeps its config in RAM (wifi::begin), so whatever an
+  // earlier build stored in its namespace is dead weight in a tight
+  // partition. Erasing an empty namespace writes nothing.
+  nvs_handle_t h;
+  if (nvs_open(kWifiNamespace, NVS_READWRITE, &h) != ESP_OK) return;
+  if (nvs_erase_all(h) == ESP_OK) nvs_commit(h);
+  nvs_close(h);
 }
 
 }  // namespace lamp
