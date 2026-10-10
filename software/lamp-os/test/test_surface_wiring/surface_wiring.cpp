@@ -105,15 +105,35 @@ struct Rig {
   }
 };
 
+// Plays `b` to the end and reports whether it painted the shade.
+bool paintsShade(Rig& rig, AnimatedBehavior* b) {
+  bool lit = false;
+  for (uint32_t t = 1016; t < 30000 && !lit; t += 16) {
+    set_mock_millis(t);
+    b->control();
+    if (b->animationState == STOPPED) break;
+    b->draw();
+    for (const Color& c : rig.shade.buffer) lit = lit || c.r > 0;
+  }
+  return lit;
+}
+
 }  // namespace
 
 void setUp() {}
 void tearDown() {}
 
+// The configured instance reaches the shade only through the buffer the
+// manager handed it.
 void test_configured_both_pulse_is_one_base_instance() {
   Rig rig;
   TEST_ASSERT_EQUAL_UINT32(1, rig.configured("pulse", TARGET_BOTH));
-  TEST_ASSERT_EQUAL_PTR(&rig.base, rig.manager.getBehaviors()[0]->fb);
+  AnimatedBehavior* b = rig.manager.getBehaviors()[0];
+  TEST_ASSERT_EQUAL_PTR(&rig.base, b->fb);
+  rig.compositor.addBehavior(b);
+  set_mock_millis(1000);
+  TEST_ASSERT_TRUE(rig.manager.triggerExpression("pulse"));
+  TEST_ASSERT_TRUE(paintsShade(rig, b));
 }
 
 void test_configured_both_per_surface_type_is_two() {
@@ -134,15 +154,7 @@ void test_received_both_pulse_is_one_transient_on_both_surfaces() {
   set_mock_millis(1000);
   TEST_ASSERT_TRUE(rig.receive("pulse", TARGET_BOTH, kSenderA));
   TEST_ASSERT_EQUAL_UINT32(1, g_added.size());
-  bool shadeLit = false;
-  for (uint32_t t = 1016; t < 30000 && !shadeLit; t += 16) {
-    set_mock_millis(t);
-    g_added[0]->control();
-    if (g_added[0]->animationState == STOPPED) break;
-    g_added[0]->draw();
-    for (const Color& c : rig.shade.buffer) shadeLit = shadeLit || c.r > 0;
-  }
-  TEST_ASSERT_TRUE(shadeLit);
+  TEST_ASSERT_TRUE(paintsShade(rig, g_added[0]));
 }
 
 // Remote transients may fill two slots: two senders' both-surface pulses fit,
