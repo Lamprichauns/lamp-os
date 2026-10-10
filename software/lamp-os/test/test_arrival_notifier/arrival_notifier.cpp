@@ -148,8 +148,8 @@ void test_no_greeting_ack_coupling() {
   TEST_ASSERT_EQUAL_STRING("jacko", ungreeted.name);
 }
 
-// The fired set has a slot for every peer the roster can hold, so a crowd past
-// the old 16 is tracked whole: everyone fires once, and a silenced pass marks
+// The fired set has a slot for every peer the roster can hold, so a crowd of
+// 20 is tracked whole: everyone fires once, and a silenced pass marks
 // all of them.
 void seedCrowd(LampRoster& roster, int n) {
   for (int i = 0; i < n; ++i) {

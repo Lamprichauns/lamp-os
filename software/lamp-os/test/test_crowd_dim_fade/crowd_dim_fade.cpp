@@ -85,7 +85,7 @@ void test_settled_ramp_survives_millis_wrap() {
 }
 
 // A pass timed just before the ramp began (the loop's `now` against a ramp
-// started inside the brightness tick) reads as the ramp's start, not its end.
+// started inside the brightness tick) reads as the ramp's start.
 void test_timestamp_before_ramp_start_reads_as_start() {
   CrowdDim d = dimmed();
   d.fading(kCrowdDimFadeMs);
