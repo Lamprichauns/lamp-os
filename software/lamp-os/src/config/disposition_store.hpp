@@ -89,14 +89,21 @@ class DispositionStore {
   // NVS commit to the next flush. Returns true on a valid parse.
   bool setFromJson(const char* json, size_t len, uint32_t nowMs);
 
-  // Core 1 loop drain: flush once idle past the window, clearing dirty only on
-  // a successful write so a failed write retries next tick.
+  // Core 1 loop drain: flush once idle past the window. A failed write (NVS
+  // full, or a heap that cannot spare the buffer) keeps the entries dirty and
+  // retries one window later.
   void maybeFlush(uint32_t nowMs);
   // Synchronous flush (BLE disconnect); no-op when not dirty.
   void flushNow();
 
  private:
+  static constexpr size_t kBdAddrLen = 17;
+  // `"AA:BB:CC:DD:EE:FF":5` per entry, a comma between, braces and a NUL.
+  static constexpr size_t kMaxJsonLen = 2 + kMax * (kBdAddrLen + 4) + (kMax - 1) + 1;
+
   bool persist_();
+  // Writes the JSON object into `out` (kMaxJsonLen bytes); returns its length.
+  size_t writeJson_(char* out) const;
 
   std::vector<std::pair<std::array<uint8_t, 6>, uint8_t>> entries_;
   DispositionDebouncer debouncer_;

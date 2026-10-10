@@ -1,11 +1,13 @@
 #include "config/disposition_store.hpp"
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 
 #include <algorithm>
 #include <array>
 
 #include "util/bd_addr.hpp"
+#include "util/heap_guard.hpp"
 
 namespace lamp {
 
@@ -112,22 +114,31 @@ void DispositionStore::set(const uint8_t mac[6], uint8_t value,
   debouncer_.markDirty(nowMs);
 }
 
-std::string DispositionStore::asJson() const {
+size_t DispositionStore::writeJson_(char* out) const {
+  // The compact shape ArduinoJson emits for the same object, written directly
+  // so a flush builds no document and never grows a string. Sorted-vector
+  // order is ascending byte order, which is canonical colon-hex order.
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  std::vector<Entry> snapshot = entries_;
-  xSemaphoreGive(mutex_);
-  // Sorted-vector iteration yields keys in ascending byte (== colon-hex)
-  // order, a stable on-disk shape. Format each MAC back to canonical
-  // colon-hex only here, at serialize time. ArduinoJson copies the char[]
-  // key, so the reused buffer is safe.
-  JsonDocument doc;
-  char keyBuf[18];
-  for (const auto& kv : snapshot) {
-    formatBdAddr(kv.first.data(), keyBuf);
-    doc[keyBuf] = kv.second;
+  char* p = out;
+  *p++ = '{';
+  for (size_t i = 0; i < entries_.size(); ++i) {
+    if (i) *p++ = ',';
+    *p++ = '"';
+    formatBdAddr(entries_[i].first.data(), p);
+    p += kBdAddrLen;
+    *p++ = '"';
+    *p++ = ':';
+    *p++ = static_cast<char>('0' + entries_[i].second);
   }
-  std::string out;
-  serializeJson(doc, out);
+  *p++ = '}';
+  *p = '\0';
+  xSemaphoreGive(mutex_);
+  return static_cast<size_t>(p - out);
+}
+
+std::string DispositionStore::asJson() const {
+  std::string out(kMaxJsonLen, '\0');
+  out.resize(writeJson_(out.data()));
   return out;
 }
 
@@ -144,16 +155,23 @@ bool DispositionStore::setFromJson(const char* json, size_t len,
 
 bool DispositionStore::persist_() {
   if (!store_) return false;
-  std::string out = asJson();
+  auto buf = allocateSpare(kMaxJsonLen);
+  if (!buf) {
+    Serial.println("[nvs] dispositions flush deferred: low heap");
+    return false;
+  }
+  writeJson_(buf.get());
   // A 0-byte write means NVS is full or corrupt; leave the dirty flag set so
   // the next flush retries.
-  return store_->write("dispositions", out.c_str()) > 0;
+  return store_->write("dispositions", buf.get()) > 0;
 }
 
 void DispositionStore::maybeFlush(uint32_t nowMs) {
   if (!debouncer_.shouldFlush(nowMs)) return;
   if (persist_()) {
     debouncer_.clear();
+  } else {
+    debouncer_.markDirty(nowMs);
   }
 }
 

@@ -13,6 +13,7 @@
 
 // Native tests don't build src/, so compile the real implementation in.
 #include "../../src/config/disposition_store.cpp"
+#include "../../src/util/heap_guard.cpp"
 
 using namespace lamp;
 
@@ -30,7 +31,7 @@ static void setMac(DispositionStore& ds, const char* s, uint8_t v, uint32_t t) {
   ds.set(mac(s).data(), v, t);
 }
 
-void setUp(void) {}
+void setUp(void) { g_mock_largest_free_block = 1 << 20; }
 void tearDown(void) {}
 
 void test_unknown_peer_returns_default() {
@@ -136,6 +137,48 @@ void test_loads_existing_persisted_blob() {
       "{\"11:22:33:44:55:66\":1,\"C4:DD:57:EB:64:60\":4}", ds.asJson().c_str());
 }
 
+// A fragmented heap defers the flush instead of aborting in a growing string;
+// the entries stay dirty and land once a later window finds the room.
+void test_flush_deferred_on_low_heap_then_retried() {
+  InMemoryConfigStore backing;
+  DispositionStore ds(100);
+  ds.attachStore(&backing);
+  setMac(ds, "AA:BB:CC:DD:EE:01", 5, 0);
+  g_mock_largest_free_block = 1024;
+  ds.maybeFlush(100);
+  TEST_ASSERT_EQUAL_STRING("MISS", backing.read("dispositions", "MISS").c_str());
+  g_mock_largest_free_block = 1 << 20;
+  ds.maybeFlush(150);  // inside the re-armed window: no write yet
+  TEST_ASSERT_EQUAL_STRING("MISS", backing.read("dispositions", "MISS").c_str());
+  ds.maybeFlush(200);
+  TEST_ASSERT_EQUAL_STRING("{\"AA:BB:CC:DD:EE:01\":5}",
+                           backing.read("dispositions", "MISS").c_str());
+}
+
+// The direct writer emits exactly what ArduinoJson serialized for the same
+// object, at full capacity, so a stored blob reads back unchanged.
+void test_full_store_matches_arduinojson_bytes() {
+  DispositionStore ds(100);
+  JsonDocument doc;
+  char key[18];
+  for (unsigned i = 0; i < DispositionStore::kMax; ++i) {
+    const uint8_t m[6] = {0x10, 0x20, 0x30, 0x40, static_cast<uint8_t>(i >> 8),
+                          static_cast<uint8_t>(i)};
+    const uint8_t v = static_cast<uint8_t>(1 + i % 5);
+    ds.set(m, v, 0);
+    formatBdAddr(m, key);
+    doc[key] = v;
+  }
+  std::string expected;
+  serializeJson(doc, expected);
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), ds.asJson().c_str());
+}
+
+void test_empty_store_serializes_empty_object() {
+  DispositionStore ds(100);
+  TEST_ASSERT_EQUAL_STRING("{}", ds.asJson().c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_unknown_peer_returns_default);
@@ -147,5 +190,8 @@ int main(int, char**) {
   RUN_TEST(test_flush_now_writes_immediately);
   RUN_TEST(test_asjson_is_sorted_canonical_colon_hex);
   RUN_TEST(test_loads_existing_persisted_blob);
+  RUN_TEST(test_flush_deferred_on_low_heap_then_retried);
+  RUN_TEST(test_full_store_matches_arduinojson_bytes);
+  RUN_TEST(test_empty_store_serializes_empty_object);
   return UNITY_END();
 }
