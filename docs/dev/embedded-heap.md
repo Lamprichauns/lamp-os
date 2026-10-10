@@ -98,6 +98,58 @@ Two properties make it lethal:
    calls it per frame and does not roll its own throttle. A different
    `maxAgeMs` rebuilds.
 
+8. **A save allocates once, exactly, and only when the heap can spare it.** A
+   large document serialized into an Arduino `String` or `std::string` grows by
+   repeated reallocation, a staircase of blocks on an already fragmented heap,
+   and a failed `String` reserve leaves a null buffer that NVS then
+   dereferences. `util/heap_guard.hpp` holds the pattern: `heapCanSpare(n)`
+   asks whether the largest free block holds `n` plus `kHeapHeadroom` (4 KB, so
+   the radio stacks still find their buffers right after); `allocateSpare(n)`
+   is the nothrow allocation behind it; `serializeGuarded(doc, len)` measures
+   the document, refuses one that overflowed while it was built (it would save
+   truncated), and serializes into one exactly-sized buffer. A refused save
+   never aborts: it logs, keeps the dirty state and retries later.
+   `Config::persistConfig` gates the document build itself on the headroom and
+   retries every 5 s from the loop (`maybeRetryPersist`); the commit drain
+   hashes and writes that same buffer and re-arms its 2.5 s debounce; the
+   dispositions flush writes its compact JSON directly into one
+   `allocateSpare` buffer and retries one idle window later. The stored bytes
+   are what ArduinoJson wrote before, so an updating lamp reads its NVS
+   unchanged. Do not lean on `try`/`catch (std::bad_alloc)` alone: the build
+   sets `CONFIG_CXX_EXCEPTIONS_EMG_POOL_SIZE=0`, so on a truly exhausted heap
+   the throw itself cannot allocate and ends in `terminate()`.
+
+## What a crowd drives with no phone attached
+
+A lamp in a crowd allocates on its own, with no app and no wisp. These paths
+scale with the number of peers or the mesh's message rate, so each is bounded:
+
+- **Cascade transients.** Every accepted MSG_COMMAND or MSG_EVENT invocation can
+  start a one-shot heap Expression per target, alive until its animation
+  completes (up to 180 s). At most `ExpressionManager::kMaxTransients` (8) are in
+  flight; a cascade past that is dropped. The vector is reserved at
+  `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
+  past its boot list for transients and live upserts.
+- **Peer-supplied expression data.** An invocation keeps at most 8 colours and
+  16 parameter keys; an expression upsert (app, or a relayed `expressionOp`)
+  is rejected outside targets 1-3 and held to the same colour and parameter
+  caps, and the stored list to 32 entries (`config/config_types.hpp`). A stored
+  config over the caps is truncated on load with a `[cfg]` line and saved
+  truncated on the next save; a stored out-of-range target is kept, since
+  `remove` matches it exactly.
+- **Frame authentication.** The COMMAND/EVENT HMAC runs on the WiFi task for
+  every such frame overheard, before dedup. It hashes on stack-held SHA-256
+  contexts and allocates nothing.
+- **The BLE scan.** The scan callback hands the roster the six address bytes,
+  so a lamp advertisement builds no 17-char string on the host task.
+- **Cascade fan-out.** A locally fired cascading expression builds its
+  invocation document once and reuses one string across up to 50 peers.
+- **Reads nobody asked for.** The section caches warm, and the state notify
+  builds its payload, only while a BLE client holds the link.
+- **OTA sessions.** The receiver's chunk bitmap (up to 8 KB per OFFER) is
+  allocated only when `heapCanSpare` allows it; otherwise the OFFER is declined
+  busy and the sender retries.
+
 ## Reading a crash record
 
 Every build, released ones included, keeps a crash record (`core/crash_record`).

@@ -22,6 +22,14 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   network address. A wisp with no module works exactly as before.
 
 ### Fixed
+- **Lamps hold up in big crowds.** A lamp among dozens of others could run
+  out of memory and restart, with or without the app open: saving settings or
+  social dispositions on a crowded lamp could crash it outright, and a crowd's
+  traffic piled up memory on its own. A save that can't find room now waits
+  and tries again a few seconds later instead of crashing, your stored
+  settings are untouched, and the lamp caps how much a crowd can make it hold
+  at once. Expressions keep at most 8 colours each, and a stored setup beyond
+  the app's limits is trimmed back to them when the lamp updates.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at

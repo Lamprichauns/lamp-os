@@ -39,8 +39,8 @@ source file is where the tag's format strings live.
 | `[ble]` | `components/network/ble/bluetooth.cpp`, `ble_control.cpp` | Advertising config (adv colors, central scan stop/restart) + brightness recv |
 | `[ble_control]` | `components/network/ble/ble_control.cpp` | GATT client connect / disconnect / auth, edit-session, home-mode focus, knockout write, settings_blob write, page CTRL/DATA, GATT binding + service start/stop, OTA pause/resume |
 | `[wisp_state]` | `components/network/ble/ble_control.cpp`, `core/lamp_behaviors.cpp` | Wisp-state notify to app (controllingBase/Shade, preview) + provider active toggle |
-| `[nvs]` | `config/config.cpp`, `core/lamp_drains.cpp` | `persistConfig` write (bytes, OOM, zero-byte) |
-| `[cfg]` | `config/config.cpp` | Config load / parse-failure (serving defaults) |
+| `[nvs]` | `config/config.cpp`, `core/lamp_drains.cpp` | `persistConfig` write (bytes, zero-byte); a config save or dispositions flush deferred for low heap (logged on every build) |
+| `[cfg]` | `config/config.cpp` | Config load / parse-failure (serving defaults); stored expressions truncated to the caps on load |
 | `[drain]` | `core/lamp_drains.cpp` | Core 0→1 drain of brightness / colors / edit-session |
 | `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed, with the AP's `auth=` and boot window |
 | `[fwdist]` | `components/firmware/firmware_distributor.cpp` | Firmware OTA distribution state (disabled reasons, offer/serve) |
@@ -49,7 +49,7 @@ source file is where the tag's format strings live.
 | `[fw_sig]` | `components/firmware/firmware_signature.cpp` | Signature-verify detail (imageLen / signed-region len, footer + computed sha256 + pubkey hex dumps) |
 | `[ota_ind]` | `components/firmware/ota_indicator.cpp` | OTA progress-indicator state (`rxInProgress`, rxTotal, done/total whole/frac) |
 | `[fs_ota]` | `components/firmware/fs_ota.cpp` | Filesystem-image OTA apply / online (spiffs bytes, digestReady, version; no-spiffs disable) |
-| `[expr]` | `expressions/expression_manager.cpp`, `expressions/expression_observer.cpp` | Expression fired / coalesce-in-flight / home-mode drop |
+| `[expr]` | `expressions/expression_manager.cpp`, `expressions/expression_observer.cpp` | Expression fired / coalesce-in-flight / home-mode drop / transient cap drop; upsert over caps or rejected target (`core/lamp.cpp`) |
 | `[cascade]` | `expressions/expression_manager.cpp` | Cascade fan-out skip reasons (not-enabled / continuous / dedup) |
 | `[trigger]` | `expressions/expression_manager.cpp` | Named trigger fired (matched type/target) |
 | `[invocation]` | `expressions/expression_invocation.cpp` | Invocation dropping bad colors |
