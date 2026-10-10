@@ -62,6 +62,13 @@ class BreathingExpression : public Expression {
   uint32_t breathSpeedMs = 10000;     // Total breath cycle time in ms (default 10s)
   Color targetColor;                   // Target color to breathe towards
 
+  // A transient carrying `durationMax` (ms, hidden from the descriptor) runs
+  // one swell of that length, rise and fall, then completes for the GC.
+  static constexpr uint32_t kSwellMinMs = 100;
+  static constexpr uint32_t kSwellMaxMs = 2000;
+  uint32_t swellMs_ = 0;
+  bool swelling() const { return swellMs_ > 0 && isTransient; }
+
   // Bench-tunable aesthetic: pixels tapered at each end (higher = wider soft
   // shoulder).
   static constexpr uint16_t kBreathTaperWidth = 2;
