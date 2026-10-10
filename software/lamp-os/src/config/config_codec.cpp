@@ -794,7 +794,8 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
   } else {
     const RestBlob live = liveRest(store, buf.get(), cap);
     unreadable = live.unreadable;
-    if (live.slot >= 0 && deserializeJson(doc, buf.get()) == DeserializationError::Ok &&
+    if (live.slot >= 0 &&
+        deserializeJson(doc, buf.get(), std::strlen(buf.get())) == DeserializationError::Ok &&
         doc.is<JsonObject>()) {
       from = doc.as<JsonObject>();
       if (!from["expressions"].is<JsonArray>()) {
@@ -853,24 +854,29 @@ RawJsonShape scanRawJson(const char* json) {
 }
 
 size_t RawJsonShape::heapBytes() const {
-  return kRawSlotBytes * (tokens + 1) + kRawBytesPerByte * (len + longest) + kRawModelBytes;
+  return kRawSlotBytes * (tokens + 1) + len + kRawLongestPerByte * longest + kRawModelBytes;
 }
 
 size_t RawJsonShape::largestBlock() const {
-  return std::max(kRawPoolBytes, longest + kRawStringSlack);
+  return std::max(kRawPoolBytes, 2 * longest + kRawStringSlack);
 }
 
 SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
-                       size_t cfgBufferLen) {
+                       size_t cfgBufferLen, const std::string& keptPassword) {
   if (json == nullptr) return SaveResult::Invalid;
   const RawJsonShape shape = scanRawJson(json);
-  const size_t len = shape.len;
   if (!heapHasFree(shape.heapBytes()) || !heapCanSpare(shape.largestBlock())) {
     return SaveResult::NoHeap;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, json, len) != DeserializationError::Ok ||
+  if (deserializeJson(doc, json, shape.len) != DeserializationError::Ok ||
       !doc["lamp"].is<JsonObject>()) {
+    return SaveResult::Invalid;
+  }
+  // A longer password could never be typed back, and a longer SSID names no
+  // network, so the save is refused rather than stored truncated.
+  if (std::strlen(doc["lamp"]["password"] | "") > kMaxPasswordLen ||
+      std::strlen(doc["homeMode"]["ssid"] | "") > kMaxSsidLen) {
     return SaveResult::Invalid;
   }
   LampSettings lamp;
@@ -879,6 +885,10 @@ SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
   ExpressionSettings expressions;
   HomeModeSettings homeMode;
   fromJson(doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode);
+  // The GET document redacts the password, so a body without one keeps the
+  // stored one; a body carrying a name is an explicit configuration.
+  if (lamp.password.empty()) lamp.password = keptPassword;
+  if (!lamp.name.empty()) lamp.named = true;
   return saveConfig(store, lamp, base, shade, expressions, homeMode, cfgBuffer, cfgBufferLen);
 }
 

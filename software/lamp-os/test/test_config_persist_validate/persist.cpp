@@ -102,8 +102,15 @@ void tearDown(void) {}
 
 static char s_buf[config_codec::kMaxStoredCfgJsonLen + 1];
 
-static SaveResult persist(InMemoryConfigStore& s, const char* json) {
-  return config_codec::saveRawJson(s, json, s_buf, sizeof(s_buf));
+static SaveResult persist(InMemoryConfigStore& s, const char* json,
+                          const std::string& kept = "") {
+  return config_codec::saveRawJson(s, json, s_buf, sizeof(s_buf), kept);
+}
+
+static std::string storedField(InMemoryConfigStore& s, const char* field) {
+  JsonDocument doc;
+  deserializeJson(doc, s.read("cfg", "{}"));
+  return doc["lamp"][field].as<std::string>();
 }
 
 static std::string storedName(InMemoryConfigStore& s) {
@@ -200,6 +207,27 @@ ExpressionConfig full(const char* type, uint8_t target) {
   return e;
 }
 
+// The web PUT's handling, done in the one parse: the stored password stays
+// when the document carries none (GET redacts it), a named lamp is marked
+// named, and an over-long password or SSID is refused.
+void test_web_document_fixups() {
+  InMemoryConfigStore s;
+  TEST_ASSERT_TRUE(persist(s, R"({"lamp":{"name":"jacko"}})", "secret") == SaveResult::Ok);
+  TEST_ASSERT_EQUAL_STRING("secret", storedField(s, "password").c_str());
+  TEST_ASSERT_EQUAL_STRING("true", storedField(s, "named").c_str());
+  TEST_ASSERT_TRUE(persist(s, R"({"lamp":{"name":"jacko","password":"new"}})", "secret") ==
+                   SaveResult::Ok);
+  TEST_ASSERT_EQUAL_STRING("new", storedField(s, "password").c_str());
+  const size_t writes = s.writeCount;
+  const std::string longPassword =
+      R"({"lamp":{"password":")" + std::string(kMaxPasswordLen + 1, 'p') + R"("}})";
+  TEST_ASSERT_TRUE(persist(s, longPassword.c_str()) == SaveResult::Invalid);
+  const std::string longSsid = R"({"lamp":{},"homeMode":{"ssid":")" +
+                               std::string(kMaxSsidLen + 1, 's') + R"("}})";
+  TEST_ASSERT_TRUE(persist(s, longSsid.c_str()) == SaveResult::Invalid);
+  TEST_ASSERT_EQUAL(writes, s.writeCount);
+}
+
 // A web document as the stored JSON of a lamp with `n` full expressions.
 std::string document(size_t n, size_t nameLen = 8) {
   LampSettings lamp;
@@ -218,17 +246,18 @@ std::string document(size_t n, size_t nameLen = 8) {
 
 }  // namespace
 
-// The gate is set from these: a typical document (about 5 KB), every
-// expression the caps allow, the 32 KB the web PUT accepts made of the
-// smallest elements (the most slots per byte) and of one long string (the
-// largest single block).
+// The gate is set from these: a typical document (about 5 KB), the standard
+// variant's 18 full expressions, every expression the caps allow, and the
+// 12 KB the web PUT accepts made of the smallest elements (the most slots per
+// byte) and of one long string (the largest single block).
 void test_raw_save_heap_figures_stay_inside_the_gate() {
-  std::vector<std::string> docs = {document(10), document(kMaxExpressions)};
+  constexpr size_t kMaxBody = 12 * 1024;
+  std::vector<std::string> docs = {document(10), document(18), document(kMaxExpressions)};
   std::string slots = "{\"lamp\":{},\"x\":[";
-  while (slots.size() < 32760) slots += "0,";
+  while (slots.size() < kMaxBody - 4) slots += "0,";
   slots += "0]}";
   docs.push_back(slots);
-  docs.push_back("{\"lamp\":{\"name\":\"" + std::string(32700, 'n') + "\"}}");
+  docs.push_back("{\"lamp\":{\"name\":\"" + std::string(kMaxBody - 24, 'n') + "\"}}");
   bool inside = true;
   for (const auto& json : docs) {
     const Measured m = measure(json);
@@ -241,16 +270,20 @@ void test_raw_save_heap_figures_stay_inside_the_gate() {
   TEST_ASSERT_TRUE(inside);
 }
 
-// A typical 5 KB document passes the gate at the runtime figures
-// docs/dev/embedded-heap.md designs against: a 23.5 KB largest block in
-// 46.5 KB free.
-void test_a_typical_document_passes_at_the_documented_heap() {
-  const std::string json = document(10);
-  TEST_ASSERT_TRUE(json.size() >= 4500 && json.size() <= 6000);
-  g_mock_largest_free_block = 23500;
-  g_mock_free_size = 46500;
-  InMemoryConfigStore s;
-  TEST_ASSERT_TRUE(persist(s, json.c_str()) == SaveResult::Ok);
+// A typical 5 KB document, and the standard variant's 18 full expressions,
+// pass the gate at the runtime figures docs/dev/embedded-heap.md designs
+// against (a 23.5 KB largest block in 46.5 KB free) with the web handler's
+// live memory taken out first: the request body, held until the save ends.
+// The handler keeps no parse of its own.
+void test_typical_documents_pass_at_the_documented_heap() {
+  for (size_t n : {10, 18}) {
+    const std::string json = document(n);
+    g_mock_largest_free_block = 23500;
+    g_mock_free_size = 46500 - (json.size() + 1);
+    InMemoryConfigStore s;
+    TEST_ASSERT_TRUE_MESSAGE(persist(s, json.c_str()) == SaveResult::Ok,
+                             std::to_string(n).c_str());
+  }
 }
 
 int main(int, char**) {
@@ -261,6 +294,7 @@ int main(int, char**) {
   RUN_TEST(test_null_rejected);
   RUN_TEST(test_low_heap_refuses_before_parsing);
   RUN_TEST(test_raw_save_heap_figures_stay_inside_the_gate);
-  RUN_TEST(test_a_typical_document_passes_at_the_documented_heap);
+  RUN_TEST(test_typical_documents_pass_at_the_documented_heap);
+  RUN_TEST(test_web_document_fixups);
   return UNITY_END();
 }

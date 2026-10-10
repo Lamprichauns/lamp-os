@@ -150,15 +150,16 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
 
 // Heap a raw save takes beside its document, bounded from the host
 // measurements in test_config_persist_validate (64-bit, so its slots and
-// pools are twice the ESP32's) with margin. In all, the parse and the model
-// take at most kRawSlotBytes per structural token (`{`, `[`, `:`, `,`),
-// kRawBytesPerByte per document byte and per byte of its longest string
-// (strings are built, kept, and copied into the model), and kRawModelBytes
-// for the model at the caps. The largest single block is a pool of slots or
-// the longest string: at most kRawPoolBytes, or the longest string plus
+// pools are twice the ESP32's) with margin, over every document up to the
+// web PUT's 12 KB. In all, the parse and the model take at most
+// kRawSlotBytes per structural token (`{`, `[`, `:`, `,`), a byte per
+// document byte, kRawLongestPerByte per byte of the longest string (grown
+// while it is parsed, kept, and copied into the model) and kRawModelBytes for
+// the model at the caps. The largest single block is a pool of slots, at most
+// kRawPoolBytes, or the longest string's growth, at most twice it plus
 // kRawStringSlack.
-constexpr size_t kRawSlotBytes = 13;
-constexpr size_t kRawBytesPerByte = 2;
+constexpr size_t kRawSlotBytes = 15;
+constexpr size_t kRawLongestPerByte = 3;
 constexpr size_t kRawModelBytes = 4096;
 constexpr size_t kRawPoolBytes = 4096;
 constexpr size_t kRawStringSlack = 128;
@@ -174,13 +175,15 @@ struct RawJsonShape {
 RawJsonShape scanRawJson(const char* json);
 
 // Saves a whole config document (the webapp's whole-document PUT) through
-// fromJson and saveConfig, for the next boot to load. Invalid when it does
-// not parse or carries no `lamp` object, so a truncated body cannot replace a
-// good config; NoHeap when the free heap cannot hold the parse and the model,
-// or the largest free block their largest single block, so no allocation on
-// the way can throw.
+// fromJson and saveConfig, for the next boot to load, parsing it once.
+// Invalid when it does not parse, carries no `lamp` object (so a truncated
+// body cannot replace a good config), or carries a password or SSID over its
+// cap; NoHeap when the free heap cannot hold the parse and the model, or the
+// largest free block their largest single block, so no allocation on the way
+// can throw. A document with no password keeps `keptPassword`, the GET
+// document having redacted it, and one with a name is marked named.
 SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
-                       size_t cfgBufferLen);
+                       size_t cfgBufferLen, const std::string& keptPassword);
 
 }  // namespace config_codec
 }  // namespace lamp

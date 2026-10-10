@@ -154,7 +154,9 @@ static void handlePutDispositions(AsyncWebServerRequest* req,
   req->send(200, "application/json", "{\"ok\":true}");
 }
 
-// A web save handed from the AsyncTCP task to the loop. Each hand-off carries
+// A web save handed from the AsyncTCP task to the loop: the request body as
+// it arrived, in one malloc'd block the loop frees, so the document is parsed
+// once, on the loop (config_codec::saveRawJson). Each hand-off carries
 // a sequence number and the loop publishes (seq, ok) for it, so a waiter only
 // takes its own result. A waiter that times out withdraws its body if the
 // loop has not taken it (nothing is saved); once taken, the save finishes and
@@ -172,17 +174,19 @@ static SemaphoreHandle_t s_webSaveDone = nullptr;
 static constexpr uint32_t kWebSaveWaitMs = 3000;
 static constexpr uint32_t kRebootDelayMs = 1500;
 
-enum class WebSaveResult { Saved, Failed, Held, Withdrawn, StillSaving };
+enum class WebSaveResult { Saved, Failed, Invalid, Held, Withdrawn, StillSaving };
 
-static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
-  if (!s_webSaveDone) return WebSaveResult::Failed;
-  char* raw = body.release();
+static WebSaveResult saveOnLoop(char* raw) {
+  if (!s_webSaveDone) {
+    free(raw);
+    return WebSaveResult::Failed;
+  }
   portENTER_CRITICAL(&s_webSaveMux);
   const uint32_t seq = ++s_webSaveSeq;
   char* stale = s_webSavePending.body;
   s_webSavePending = {raw, seq};
   portEXIT_CRITICAL(&s_webSaveMux);
-  delete[] stale;
+  free(stale);
 
   const uint32_t deadline = millis() + kWebSaveWaitMs;
   while (true) {
@@ -193,9 +197,12 @@ static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
       const lamp::config_codec::SaveResult result = s_webSaveDoneResult;
       portEXIT_CRITICAL(&s_webSaveMux);
       if (mine) {
-        if (result == lamp::config_codec::SaveResult::Ok) return WebSaveResult::Saved;
-        return result == lamp::config_codec::SaveResult::Held ? WebSaveResult::Held
-                                                              : WebSaveResult::Failed;
+        switch (result) {
+          case lamp::config_codec::SaveResult::Ok: return WebSaveResult::Saved;
+          case lamp::config_codec::SaveResult::Invalid: return WebSaveResult::Invalid;
+          case lamp::config_codec::SaveResult::Held: return WebSaveResult::Held;
+          default: return WebSaveResult::Failed;
+        }
       }
       continue;  // an earlier hand-off's result
     }
@@ -207,7 +214,7 @@ static WebSaveResult saveOnLoop(std::unique_ptr<char[]> body) {
     }
     portEXIT_CRITICAL(&s_webSaveMux);
     if (withdrawn) {
-      delete[] withdrawn;
+      free(withdrawn);
       return WebSaveResult::Withdrawn;
     }
     return WebSaveResult::StillSaving;
@@ -224,7 +231,7 @@ static void drainWebSave() {
   if (!save.body) return;
   const lamp::config_codec::SaveResult result = s_config->persistRawJson(save.body);
   const bool ok = result == lamp::config_codec::SaveResult::Ok;
-  delete[] save.body;
+  free(save.body);
   // Every build: a handler that already answered 202 has no other way to
   // surface the failure.
   if (!ok) Serial.printf("[webapp] pending save failed (seq %lu)\n", (unsigned long)save.seq);
@@ -239,57 +246,47 @@ static void drainWebSave() {
   xSemaphoreGive(s_webSaveDone);
 }
 
-static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
+// The settings body, gathered as it arrives into one block the loop takes.
+// The document at every cap is about 10.5 KB.
+static constexpr size_t kMaxSettingsBody = 12 * 1024;
+
+static void collectSettingsBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
+                                size_t index, size_t total) {
+  if (total > kMaxSettingsBody) return;
+  if (index == 0 && req->_tempObject == nullptr && lamp::heapCanSpare(total + 1)) {
+    req->_tempObject = calloc(total + 1, 1);
+  }
+  if (req->_tempObject != nullptr && index + len <= total) {
+    std::memcpy(static_cast<char*>(req->_tempObject) + index, data, len);
+  }
+}
+
+// Whole-document replace: the body must be the full config (the GET doc,
+// mutated and sent back in its entirety). The loop parses it once and
+// refuses one with no `lamp` object, an over-long password or SSID (400),
+// keeps the stored password when the body carries none (GET redacts it), and
+// stamps a named lamp (config_codec::saveRawJson).
+static void handlePutSettings(AsyncWebServerRequest* req) {
   bumpDeadline();
   if (webSurfaceReadOnly()) {
     req->send(403, "application/json", "{\"ok\":false}");
     return;
   }
-  JsonObject obj = json.as<JsonObject>();
-  // Whole-document replace: the body must be the full config (the GET doc,
-  // mutated and sent back in its entirety). Reject anything without a `lamp`
-  // object so a partial/garbage body can't wipe config back to constructor
-  // defaults on the reboot below.
-  if (obj.isNull() || !obj["lamp"].is<JsonObject>()) {
-    req->send(400, "application/json", "{\"ok\":false}");
+  if (req->contentLength() > kMaxSettingsBody) {
+    req->send(413, "application/json", "{\"ok\":false}");
     return;
   }
-  // GET redacts the password, so the body won't carry it. Re-inject the
-  // server-side value (the from-scratch reload on boot only keeps a password
-  // present in the blob, so omitting it would wipe the control password).
-  const char* pw = obj["lamp"]["password"] | "";
-  if (pw[0] == '\0' && !s_config->lamp.password.empty()) {
-    obj["lamp"]["password"] = s_config->lamp.password;
-  }
-  // The GET-only fields never belong in the persisted blob; an older SPIFFS
-  // UI riding a newer firmware wouldn't know to strip them.
-  obj["lamp"].remove("hasPassword");
-  obj["lamp"].remove("apSecured");
-  // A web save carrying a name is an explicit user configuration; stamp the
-  // adoption flag so boot's applyDefaults never reverts the name to a default.
-  const char* nm = obj["lamp"]["name"] | "";
-  if (nm[0] != '\0') obj["lamp"]["named"] = true;
-  // A longer password could never be typed back, and a longer SSID names no
-  // network, so the save is refused.
-  if (std::strlen(obj["lamp"]["password"] | "") > lamp::kMaxPasswordLen ||
-      std::strlen(obj["homeMode"]["ssid"] | "") > lamp::kMaxSsidLen) {
-    req->send(400, "application/json", "{\"ok\":false}");
-    return;
-  }
-  // The save runs on the loop (Core 1), the only task that writes config:
-  // hand it the serialized body and wait for its result.
-  const size_t need = measureJson(json);
-  std::unique_ptr<char[]> body = lamp::allocateSpare(need + 1);
-  if (!body) {
+  char* body = static_cast<char*>(req->_tempObject);
+  if (body == nullptr) {
     req->send(500, "application/json", "{\"ok\":false}");
     return;
   }
-  serializeJson(json, body.get(), need + 1);
+  req->_tempObject = nullptr;  // the loop frees it
   // A landed save arms its own reboot (drainWebSave): the constructor
   // re-parses the new config on boot, and drain-level side-effects in
   // apply::settingsBlobLocal() do not run inline for web saves. The 1.5 s
   // delay lets the HTTP response flush.
-  switch (saveOnLoop(std::move(body))) {
+  switch (saveOnLoop(body)) {
     case WebSaveResult::Saved:
       lamp::logHeap("web-save");
       req->send(200, "application/json", "{\"ok\":true}");
@@ -298,6 +295,9 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
       // Taken by the loop but not done in time: it lands, and reboots, on
       // its own.
       req->send(202, "application/json", "{\"ok\":true,\"pending\":true}");
+      return;
+    case WebSaveResult::Invalid:
+      req->send(400, "application/json", "{\"ok\":false}");
       return;
     case WebSaveResult::Held:
       // An earlier save waits for its reboot; this one would write over it.
@@ -426,12 +426,7 @@ static void startServer() {
   s_server->addHandler(new AsyncCallbackJsonWebHandler("/api/dispositions",
                                                        handlePutDispositions));
 
-  auto* putHandler =
-      new AsyncCallbackJsonWebHandler("/api/settings", handlePutSettings);
-  // Full config (expressions + dense knockout) can exceed the 16 KB default,
-  // which AsyncJson drops silently. Give it generous headroom.
-  putHandler->setMaxContentLength(32768);
-  s_server->addHandler(putHandler);
+  s_server->on("/api/settings", HTTP_PUT, handlePutSettings, nullptr, collectSettingsBody);
 
   s_server->addHandler(
       new AsyncCallbackJsonWebHandler("/api/unlock", handleUnlock));
