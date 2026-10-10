@@ -717,13 +717,18 @@ class SocialDispositionsCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
+    // A map the heap could not build reads as "!", never "" or "{}": the app
+    // writes the whole map back, so an empty one would erase every entry.
     try {
-      c->setValue(s_config->asDispositionsJson());
+      const std::string json = s_config->asDispositionsJson();
+      if (!json.empty()) {
+        c->setValue(json);
+        return;
+      }
     } catch (const std::bad_alloc&) {
-      c->setValue("");
-      logBleSectionOom("dispositions");
-      return;
     }
+    c->setValue("!");
+    logBleSectionOom("dispositions");
   }
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
     if (!isAuthed(connInfo.getConnHandle())) return;
