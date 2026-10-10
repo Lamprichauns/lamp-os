@@ -19,6 +19,7 @@
 #include <string>
 
 #include "expr_catalog.h"
+#include "components/firmware/firmware_receiver.hpp"
 #include "components/firmware/ota_quiet_mode.hpp"
 #include "components/network/ble/ble_control.hpp"
 #include "behaviors/fade_out.hpp"
@@ -40,6 +41,8 @@ void postPendingEditSession(uint8_t surfaceMask, bool open);
 void postPendingTestActionJson(const char* data, size_t len);
 void postPendingSocialDispositionsJson(const char* data, size_t len);
 
+extern lamp::FirmwareReceiver firmwareReceiver;
+
 namespace webapp {
 
 static lamp::Config* s_config = nullptr;
@@ -47,7 +50,15 @@ static AsyncWebServer* s_server = nullptr;
 static AsyncWebSocket* s_ws = nullptr;
 
 static uint32_t s_deadlineMs = 0;
+// An armed reboot and when it is due; millis() can read 0, so the flag, not
+// the time, says whether one is armed.
+static bool s_rebootArmed = false;
 static uint32_t s_rebootAtMs = 0;
+
+static void armReboot(uint32_t atMs) {
+  s_rebootArmed = true;
+  s_rebootAtMs = atMs;
+}
 // Set only by the save path so rebootNow() fades to black first; the
 // browser-left / idle reboots stay a hard restart (no scene to fade).
 static bool s_fadeOnReboot = false;
@@ -223,8 +234,10 @@ static WebSaveResult saveOnLoop(char* raw) {
 }
 
 // Loop task: runs a pending web save and, when it lands, arms the reboot that
-// loads it.
+// loads it. Waits while a firmware update is being received, as every config
+// save does; a handler that times out meanwhile withdraws its body.
 static void drainWebSave() {
+  if (firmwareReceiver.isInProgress()) return;
   portENTER_CRITICAL(&s_webSaveMux);
   const WebSave save = s_webSavePending;
   s_webSavePending = {};
@@ -238,7 +251,7 @@ static void drainWebSave() {
   if (!ok) Serial.printf("[webapp] pending save failed (seq %lu)\n", (unsigned long)save.seq);
   if (ok) {
     s_fadeOnReboot = true;
-    s_rebootAtMs = millis() + kRebootDelayMs;
+    armReboot(millis() + kRebootDelayMs);
   }
   portENTER_CRITICAL(&s_webSaveMux);
   s_webSaveDoneSeq = save.seq;
@@ -463,7 +476,7 @@ void begin(lamp::Config& config) {
   const uint8_t bootMinutes = config.lamp.apBootMinutes;
   s_neverExpire = (bootMinutes == 0);
   s_deadlineMs = millis() + bootMinutes * 60000UL;
-  s_rebootAtMs = 0;
+  s_rebootArmed = false;
   s_apUp = true;
 
 #ifdef LAMP_DEBUG
@@ -495,7 +508,7 @@ static void rebootNow() {
     // restart below still fires so the save always reboots.
     lamp::fadeOutRebootRequested = true;
     s_fadeOnReboot = false;
-    s_rebootAtMs = millis() + 4000;
+    armReboot(millis() + 4000);
     return;
   }
   delay(50);  // let the serial log flush before restart
@@ -512,7 +525,7 @@ void tick() {
   // reboots this one), leaves quiet mode and this reboot follows. Past
   // kRebootOtaWaitMaxMs the OTA is taken as stuck and the reboot goes ahead.
   const bool otaQuiet = lamp::ota_quiet_mode::isQuiet();
-  if (webappRebootDue(now, s_rebootAtMs, otaQuiet)) {
+  if (webappRebootDue(now, s_rebootArmed, s_rebootAtMs, otaQuiet)) {
     if (otaQuiet) Serial.println("[webapp] reboot after 10 min OTA wait");
     rebootNow();  // save path; restart frees the server, never delete s_server
     return;
@@ -530,16 +543,16 @@ void tick() {
   if (s_pendingServerStart.exchange(false)) startServer();
   if (s_pendingServerStop.exchange(false) && WiFi.softAPgetStationNum() == 0 &&
       ble_control::isDownForWebapp()) {
-    s_rebootAtMs = now;  // station left -> reboot restores BLE
+    armReboot(now);  // station left -> reboot restores BLE
   }
-  if (s_rebootAtMs == 0 &&
+  if (!s_rebootArmed &&
       webappShouldRestoreBle(now, s_deadlineMs, ble_control::isDownForWebapp())) {
-    s_rebootAtMs = now;  // idle (browser closed) -> reboot
+    armReboot(now);  // idle (browser closed) -> reboot
   }
 
   // A connected station blocks expiry indefinitely; never reboot someone still
   // associated. A station mid-save (reboot armed) is likewise left alone.
-  if (s_rebootAtMs == 0 && WiFi.softAPgetStationNum() == 0 &&
+  if (!s_rebootArmed && WiFi.softAPgetStationNum() == 0 &&
       webappShouldTeardown(now, s_deadlineMs, s_neverExpire)) {
     if (s_serverUp) {
       rebootNow();  // reclaim the async task + server cleanly; delete races it
