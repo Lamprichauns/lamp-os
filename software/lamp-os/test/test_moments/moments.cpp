@@ -1169,6 +1169,11 @@ void test_whisper_start_thresholds() {
     d[macKey(peers[0].mac)] = c.disposition;
     TEST_ASSERT_EQUAL(c.starts, hasWhisperTarget(peers, now, disp));
   }
+  // A direct HELLO keeps the peer near while its BLE RSSI goes stale.
+  std::vector<NearbyCopy> peers = {peerOf(1, -40, now - 20000)};
+  peers[0].lastSeenNearMs = now;
+  d[macKey(peers[0].mac)] = kDispositionSmitten;
+  TEST_ASSERT_FALSE(hasWhisperTarget(peers, now, disp));
 }
 
 void test_whisper_starts_naturally_and_announces_at_once() {
