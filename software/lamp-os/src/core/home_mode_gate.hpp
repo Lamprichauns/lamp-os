@@ -20,8 +20,8 @@ inline bool homeModeExpressionSkips(const char* id,
 
 // True when this lamp ignores what `source` asks it to draw: home mode is
 // active with social off and the request came from another lamp. Every peer
-// path (cascades, event mirrors, arrivals, relayed remote ops) and the reaping
-// of peer transients already running route through this one decision.
+// path (cascades, event mirrors, arrivals, nearby peers, crowd-dim) and the
+// reaping of peer transients already running route through this one decision.
 constexpr bool homeModeBlocksRemote(bool homeActive, bool socialDisabled,
                                     TransientSource source) {
   return homeActive && socialDisabled && source == TransientSource::Remote;

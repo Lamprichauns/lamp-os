@@ -2,7 +2,8 @@
 // Lamp::setup() boot wiring, Lamp::tick() orchestrator.
 //
 // Sibling TUs share file-scope state via core/lamp_internal.hpp:
-// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: cascade routing;
+// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: remote-op and inbound
+// control-op receive;
 // lamp_brightness.cpp: brightness/home-mode; lamp_behaviors.cpp: initBehaviors;
 // lamp_test_action.cpp: dispatchLampAction.
 
@@ -261,8 +262,8 @@ lamp::FirmwareReceiver    firmwareReceiver;
 bool g_pendingVerify = false;
 uint32_t g_markValidDeadlineMs = 0;
 
-// Local appliers for mesh-received ops, shared between the slot drains
-// (lamp_drains.cpp) and the cascade-receive router (lamp_remote_op.cpp):
+// Local appliers shared between the slot drains (lamp_drains.cpp) and the
+// remote-op receive (lamp_remote_op.cpp):
 // apply a JSON colors array / expression op to configurator + advert +
 // section cache in one shot.
 //
