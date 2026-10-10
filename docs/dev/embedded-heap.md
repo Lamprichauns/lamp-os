@@ -120,23 +120,31 @@ Two properties make it lethal:
    A whole web document is parsed once, on the loop: the web PUT gathers the
    body (at most 16 KB, `kMaxSettingsBody`; a lamp at every cap sends about
    12.9 KB) into one block and hands that block over without parsing it, and
-   `saveRawJson` parses it only when the heap can take it. Free heap: 15 bytes
-   per structural token (`{`, `[`, `:`, `,`), a byte per document byte, 24
-   per distinct string (ArduinoJson stores each distinct key or value once;
-   the scan compares each short string with the last 32), 3 per byte of the
-   longest string and 4 KB for the model, which carries some slack. Largest
+   `saveRawJson` parses it only when it is strict JSON and the heap can take
+   it. ArduinoJson also reads single-quoted strings and unquoted keys, which
+   the scan cannot measure, so a body with a `'` outside a double-quoted
+   string, a bare word that is not `true`, `false` or `null`, or a key that
+   is not double-quoted is refused (400); the web UI sends strict JSON. Free
+   heap: 15 bytes per structural token (`{`, `[`, `:`, `,`), a byte per
+   document byte, 24 per distinct string (ArduinoJson stores each distinct
+   key or value once; the scan compares each short string with the last 32),
+   4 per byte of the longest string (built by doubling, so up to twice it,
+   then kept and copied into the model) and 4 KB for the model, which carries
+   some slack. A parse that runs out of memory all the same answers 500. Largest
    block: a 4 KB slot pool, or twice the longest string plus 128 bytes.
    Those are a counting allocator's host figures with margin
    (`test_config_persist_validate`: a 5.4 KB document peaks at 16 KB, the
    standard variant's 18 full expressions at 23 KB, a lamp at every cap at
    32 KB, 16 KB of bare numbers at 136 KB, of distinct four-character strings
-   at 86 KB as values and 97 KB as keys, and one 16 KB string at 53 KB with
-   a 16 KB block), and the host's 64-bit slots are twice the ESP32's. With
+   at 86 KB as values and 97 KB as keys, one 16 KB string at 53 KB with a
+   16 KB block, and one of 8,193 bytes, just past a doubling, at 37 KB with a
+   16 KB block), and the host's 64-bit slots are twice the ESP32's. With
    the body taken out of 46.5 KB free and a 23.5 KB largest block, the
    typical document and the 18 expressions pass; a setup near the caps may
    be refused by that check (500) and saves from the app instead. These are
-   host figures; the device's need a bench check.
-   The dispositions flush writes its blob from the stack. A failed save (a full NVS, or a JSON that outgrew its
+   host figures; the device's need a bench check. The dispositions flush
+   writes its blob from the stack, and its JSON for a reader is allocated
+   outside its lock. A failed save (a full NVS, or a JSON that outgrew its
    buffer) backs off 5 s doubling to 60 s (`util/retry_backoff.hpp`) for
    both, and the commit drain waits on the same backoff, so no failure path
    retries at loop rate. Old stored formats load unchanged and move to the
@@ -164,12 +172,12 @@ Two placement rules make the entry count alone overstate the room
   either. Collection empties the page with the fewest live entries, which
   holds at most a quarter of the `L` live entries on the four data pages, so
   a string of `S` entries is always placed while `L <= 4 x (126 - S) + 3`.
-- **A blob under 400 bytes behaves like a string.** When the active page's
-  tail is shorter than the blob and under 400 bytes (`CHUNK_MAX_SIZE / 10`),
-  NVS moves to a fresh page for the first chunk rather than split it, and
-  fails if the fresh page's tail is no longer. A blob under 400 bytes so
-  always lands as one chunk in one page's tail. A larger blob takes a short
-  tail as its first chunk and continues in chunks across pages, one header
+- **A blob under 400 bytes behaves like a string.** A blob's first chunk
+  goes into the active page's tail only when that tail holds the whole blob
+  or at least 400 bytes (`CHUNK_MAX_SIZE / 10`); otherwise NVS asks for a
+  fresh page, and fails if its tail is no longer. A blob under 400 bytes so
+  always lands as one chunk in one page's tail. A larger one starts in a tail
+  of 400 bytes or more and continues in chunks across pages, one header
   entry per chunk, collecting a page for each.
 - **A failed blob rewrite can take the old copy.** IDF 5.5's
   `writeMultiPageBlob` cleans up a write that fails after a chunk (a page
@@ -244,6 +252,15 @@ The arithmetic, every case with at least 32 entries to spare
   whole peaks at 457 (every split key, the staged lamp section and the new
   rest blob beside the whole string), and so does staging a whole config
   beside the split store.
+- **The first save after an update.** An older release's `cfg` string can
+  hold 4,000 bytes (127 entries), beside its dispositions JSON (about 2.2 KB,
+  71 entries, migrated to the 24-entry blob at the first load). The first
+  split save keeps that string until the new keys land, but those keys copy
+  only what the string held: a string full of fully escaped rest leaves room
+  for few expressions, and one full of expressions has a short rest. Over
+  every legacy shape up to 4,000 bytes, saved split and trimmed to whole, the
+  page model leaves 91 entries spare at the tightest
+  (`test_the_first_save_after_an_update_fits`).
 
 Those bounds hold for any arrangement of entries across the pages. The
 native suite also runs NVS itself: `PagedNvs` (`test/test_config_records`)
@@ -307,10 +324,11 @@ which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead.
 A reset at any point of a save leaves a whole config, and so does a save that
 stops at a refused write. `test_config_records` cuts saves short at each of
 their writes and loads what is left, then cuts the next save short at each
-of its writes from every store that leaves: every shape to every shape, staged
-or not, in memory, and the staged saves and shape changes of the page-model
-churn. Each section must load as the store before the save had it or as
-saved.
+of its writes from every store that leaves. In memory that runs every shape
+to every shape and on to every shape, each whole save also staged (407,600
+loads); over the page model, the staged saves and
+shape changes of the churn. Each section must load as the store before the
+save had it or as saved.
 
 - **Whole.** `cfg` is written (always with an `expressions` array, empty
   included, so deleting every expression and losing power before the erase
@@ -321,7 +339,7 @@ saved.
   then the split keys and `cfgl`, then `cfg` is written and the rest keys
   erased.
 - **Split.** The rest JSON is checked first (TooLarge writes nothing). The
-  lamp section lives in the newest rest blob when that is a staged whole,
+  lamp section lives in the live rest blob when that is a staged whole,
   else in `cfg` when that holds the lamp section alone, else in `cfgl`. Unless
   `cfg` holds it, the save first stages the new lamp section in `cfgl` (a
   `cfgl` that is the current copy stays) and erases a stale lamp-only `cfg`.
@@ -341,9 +359,19 @@ saved.
   does not write defaults over it. On the device that is a blob over the
   read buffer, a chunk that fails its CRC (IDF erases that chunk on the read,
   and the blob on the next read or boot), or JSON that does not parse. A
-  blob with a chunk missing is gone by the time it is read, so nothing marks
-  it. The dispositions JSON key wins over the
-  blob unless it is corrupt, or empty while the blob has entries.
+  blob with a chunk missing is gone by the time it is read, so a lamp-only
+  `cfg` with no rest blob beside it sets the flag too: a split store has
+  lost its rest. The dispositions JSON key wins over the blob unless it is
+  corrupt, or empty while the blob has entries.
+- **A write that ran out of heap.** When `writeMultiPageBlob`'s 12-byte
+  `UsedPageNode` allocation fails, the chunk it had just written stays, named
+  by no index and erased by nobody until the next boot; a rewrite in the same
+  version family puts a second chunk at its position, and IDF then drops the
+  whole blob. `NvsConfigStore` so refuses every blob write to that key until
+  the next boot (`config/write_quarantine.hpp`, eight keys, then every key),
+  whose scan erases the orphan; the save fails and retries meanwhile, and the
+  config that loads is the one before (`PagedNvs` models the orphan,
+  `test_an_out_of_memory_rest_write_is_held_until_boot`).
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
@@ -400,11 +428,14 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   start a one-shot heap Expression per target, alive until its animation
   completes (up to 180 s). `admitTransient`
   (`expressions/transient_admission.hpp`) admits them: at most 4 in flight,
-  at most 2 of them a peer's (cascades and event echoes), so the lamp's own
-  Test and greetings always have room, and only when the largest free block
-  holds 2 KB per target plus the headroom, so a transient that starts can
-  finish allocating. A dropped one logs `[expr] transient drop` on every
-  build, at most every 5 s. The vector is reserved at
+  at most 2 of them a peer's (cascades and event echoes), so at least 2 slots
+  are always free of peers for the lamp's own Test and greetings (a Test on
+  both halves takes both), and only when the largest free block holds 2 KB
+  per target plus the 4 KB headroom (8 KB for both halves, 6 KB for one), so
+  a transient that starts can finish allocating. Under that, the lamp's own
+  Test plays nothing here and logs `[expr] transient drop` (every build, at
+  most every 5 s), but its cascade still goes out to the crowd
+  (`cascadesFrom`); a peer's invocation never re-sends. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Expression parameters live inline.** `ExpressionParams` holds one
@@ -451,7 +482,9 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   serialized invocation each, about 2.2 KB of .bss: 50 MACs and a 768-byte
   payload per fan-out, above the 536-byte worst case). The loop sends up to 6
   frames per pass (`kBatchSize`, held to the 6 TX credits), only while credits
-  remain (a frame with none waits for a later pass), and passes are 100 ms
+  remain (`TxCredit::available`, which applies the 2 s stall reset itself,
+  so credits lost on a quiet link never hold the drain; a frame with none
+  waits for a later pass), and passes are 100 ms
   apart, past a command's two resend copies
   40 ms apart, so a batch never overwrites the previous batch's resends in the
   10-slot ring. Each frame's `delayMs` is rewritten in place to keep the
@@ -459,8 +492,9 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   fire, less the time the drain has taken, never below zero. Fifty peers take
   9 passes, so the last leaves at least 800 ms after the fire, and with a
   short stagger the far end of a 50-lamp crowd fires up to about a second
-  late. A second cascade waits behind the one draining; a third replaces the
-  one waiting. Fired together, the second starts its 9 passes after the
+  late. A second cascade waits behind the one draining, its first batch a
+  full gap after the last batch of the one before, so it never overwrites
+  that batch's resends; a third replaces the one waiting. Fired together, the second starts its 9 passes after the
   first's, so its far end leaves about 1.7 s after its fire and fires that
   late. Those are floors on an idle link: relay traffic and mesh resends
   (each command's two copies 40 ms apart) take the same 6 credits, so a pass
