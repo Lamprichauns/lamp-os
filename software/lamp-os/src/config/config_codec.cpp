@@ -246,10 +246,8 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
       homeMode.disabledExpressionTypes.clear();
       for (JsonVariant v : homeModeNode["disabledExpressionTypes"].as<JsonArray>()) {
         if (homeMode.disabledExpressionTypes.size() == kMaxDisabledExpressionTypes) break;
-        if (const char* s = v.as<const char*>()) {
-          homeMode.disabledExpressionTypes.push_back(s);
-          truncateUtf8(homeMode.disabledExpressionTypes.back(), kMaxExpressionTypeLen);
-        }
+        const char* s = v.as<const char*>();
+        if (isExpressionTypeId(s)) homeMode.disabledExpressionTypes.push_back(s);
       }
     } else {
       homeMode.disabledExpressionTypes = {"glitchy"};

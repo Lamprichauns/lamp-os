@@ -465,6 +465,22 @@ void test_every_descriptor_key_has_a_stored_index() {
   TEST_ASSERT_TRUE(expressionParamKeyIndex(kLoopParamKey) >= 0);
 }
 
+// The stored and wire parameter cap holds every key a type can carry: its
+// params, its duration range keys, the three zone keys and the two cascade
+// keys.
+void test_every_type_fits_the_parameter_cap() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) {
+    size_t keys = d->params.size() + 2;
+    if (d->duration.has_value() && d->duration->minKey) keys += 2;
+    if (d->hasZone) keys += 3;
+    TEST_ASSERT_TRUE_MESSAGE(keys <= kMaxExpressionParams, d->id);
+  }
+}
+
 // The table is append-only: an index already written to a lamp's NVS must
 // keep naming the same key.
 void test_param_key_table_prefix_is_pinned() {
@@ -485,6 +501,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_every_descriptor_key_has_a_stored_index);
   RUN_TEST(test_param_key_table_prefix_is_pinned);
+  RUN_TEST(test_every_type_fits_the_parameter_cap);
   RUN_TEST(test_all_five_ids_present);
   RUN_TEST(test_continuous_flags);
   RUN_TEST(test_glitchy_zone_optional);

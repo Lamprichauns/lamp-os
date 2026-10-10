@@ -198,7 +198,7 @@ inline bool resolveNamed(bool namedKeyPresent, bool loadedNamed,
 constexpr uint8_t kExpressionTargetMin = 1;
 constexpr uint8_t kExpressionTargetMax = 3;
 constexpr size_t kMaxExpressionColors = 8;
-constexpr size_t kMaxExpressionParams = 16;
+constexpr size_t kMaxExpressionParams = 12;
 constexpr size_t kMaxExpressions = 21;
 constexpr size_t kMaxExpressionTypeLen = 15;
 
@@ -211,6 +211,20 @@ constexpr size_t kMaxSegmentNameLen = 16;
 constexpr size_t kMaxPasswordLen = 64;
 constexpr size_t kMaxSsidLen = 32;
 constexpr size_t kMaxDisabledExpressionTypes = 8;
+
+// True for an expression type id as the registry names them: lowercase
+// letters, digits and '_' (so it never needs JSON escaping), 1 to
+// kMaxExpressionTypeLen bytes.
+inline bool isExpressionTypeId(const char* s) {
+  if (!s || !*s) return false;
+  size_t n = 0;
+  for (; s[n]; ++n) {
+    const char c = s[n];
+    if (n == kMaxExpressionTypeLen) return false;
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+  }
+  return true;
+}
 
 // Every parameter key an expression reads, in byte-wise order (the order the
 // wire JSON carries them). A split save's expression records carry a key as

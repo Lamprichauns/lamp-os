@@ -43,7 +43,7 @@ inline void homeModeLocal(JsonObject obj, uint8_t maxBrightness) {
     ::config.homeMode.disabledExpressionTypes.clear();
     for (JsonVariant v : obj["disabledExpressionTypes"].as<JsonArray>()) {
       const char* type = v.as<const char*>();
-      if (!type || std::strlen(type) > kMaxExpressionTypeLen) continue;
+      if (!isExpressionTypeId(type)) continue;
       if (::config.homeMode.disabledExpressionTypes.size() == kMaxDisabledExpressionTypes) break;
       ::config.homeMode.disabledExpressionTypes.push_back(type);
     }

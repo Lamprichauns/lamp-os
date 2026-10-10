@@ -51,17 +51,18 @@ ExpressionConfig fullExpression(const char* type, uint8_t target) {
   return e;
 }
 
-// Every capped field at its ceiling.
-Model worstCaseModel() {
+// Every capped field at its ceiling; `fill` is the character the free-text
+// fields are made of, so a '"' or '\\' fill gives the fully escaped worst case.
+Model worstCaseModel(char fill = 'z') {
   Model m;
-  m.lamp.name = std::string(kMaxLampNameLen, 'n');
-  m.lamp.password = std::string(kMaxPasswordLen, 'p');
+  m.lamp.name = std::string(kMaxLampNameLen, fill);
+  m.lamp.password = std::string(kMaxPasswordLen, fill);
   m.lamp.lampType = "standard";
   for (auto* segs : {&m.base.segments, &m.shade.segments}) {
     segs->clear();
     for (size_t s = 0; s < kMaxSegments; ++s) {
       SegmentSettings seg;
-      seg.name = std::string(kMaxSegmentNameLen, 's');
+      seg.name = std::string(kMaxSegmentNameLen, fill);
       seg.px = 63;
       seg.colors.assign(kMaxSurfaceColors, Color(255, 255, 255, 255));
       segs->push_back(seg);
@@ -70,7 +71,7 @@ Model worstCaseModel() {
   m.base.byteOrder = "GRBW";
   m.shade.byteOrder = "GRBW";
   m.base.knockoutPixels.assign(m.base.sumPx(), 100);
-  m.homeMode.ssid = std::string(kMaxSsidLen, 'w');
+  m.homeMode.ssid = std::string(kMaxSsidLen, fill);
   m.homeMode.disabledExpressionTypes.assign(kMaxDisabledExpressionTypes,
                                             std::string(kMaxExpressionTypeLen, 't'));
   for (size_t i = 0; i < kMaxExpressions; ++i) {
@@ -476,6 +477,27 @@ void test_unregistered_type_record_loads() {
 // before the old one is erased.
 constexpr unsigned kUsableEntries = (5 - 1) * 126;
 
+// Everything outside the lamp namespace, as measured or bounded from each
+// owner's store format:
+// - 5 namespace entries: lamp, crash, phy, nvs.net80211, nimble_bond;
+// - PHY calibration: a 1904-byte cal_data blob, a 6-byte cal_mac blob and a
+//   u32 cal_version;
+// - the WiFi driver's namespace: empty, erased at boot (its config is in RAM);
+// - the crash record: one blob under 64 bytes;
+// - NimBLE's bond store (ble_store_nvs.c, bonding on, privacy on): our_sec_N
+//   and peer_sec_N blobs of ble_store_value_sec (88 bytes on the ESP32) for
+//   each of MAX_BONDS (3), p_dev_rec_N blobs of ble_hs_dev_records (44 bytes)
+//   for MAX_BONDS + 1, cccd_sec_N blobs (16 bytes) for MAX_CCCDS (8),
+//   csfc_sec_N (8 bytes) for MAX_CSFCS (1, the connection count), and
+//   local_irk_N and rpa_rec_N (under 32 bytes) for MAX_BONDS each.
+size_t systemEntries() {
+  const size_t bonds = 3, cccds = 8, csfcs = 1;
+  const size_t bondStore = 2 * bonds * blobEntries(88) + (bonds + 1) * blobEntries(44) +
+                           cccds * blobEntries(16) + csfcs * blobEntries(8) +
+                           2 * bonds * blobEntries(32);
+  return 5 + blobEntries(1904) + blobEntries(6) + 1 + blobEntries(64) + bondStore;
+}
+
 size_t nvsEntriesNeeded(const Model& m, const char* label) {
   InMemoryConfigStore store;
   TEST_ASSERT_TRUE(save(store, m) == SaveResult::Ok);
@@ -488,9 +510,7 @@ size_t nvsEntriesNeeded(const Model& m, const char* label) {
   const size_t lampNs = records + blobEntries(1) + blobEntries(255) +
                         stringEntries(cfgLen) + stringEntries(16) /* lampType */ +
                         blobEntries(DispositionStore::kMaxBlobLen);
-  const size_t system = 4 /* namespaces */ + blobEntries(1904) + blobEntries(6) +
-                        1 /* phy cal_version */ + 64 /* nvs.net80211 */ +
-                        blobEntries(64) /* crash record */;
+  const size_t system = systemEntries();
   const size_t largest = std::max(stringEntries(cfgLen),
                                   blobEntries(DispositionStore::kMaxBlobLen));
   const size_t needed = lampNs + system + largest;
@@ -506,12 +526,24 @@ void test_worst_case_config_fits_nvs_with_margin() {
   TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel(), "caps") + 32 <= kUsableEntries);
 }
 
+// Every free-text field at its cap and made of a character JSON escapes as two
+// bytes still fits the save buffer and the budget, so a web save of such
+// fields cannot fail every save.
+void test_quote_filled_worst_case_fits() {
+  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel('"'), "quotes") + 32 <= kUsableEntries);
+}
+
+void test_backslash_filled_worst_case_fits() {
+  TEST_ASSERT_TRUE(nvsEntriesNeeded(worstCaseModel('\\'), "backslashes") + 32 <=
+                   kUsableEntries);
+}
+
 // A whole save holds at most the 2 KB cfg JSON and no records. The peak is
 // the moment a split config turns whole: the new cfg lands before the
 // records, the knockout blob and the old cfg are erased.
 void test_whole_save_and_the_switch_to_it_fit_nvs() {
-  const size_t system = 4 + blobEntries(1904) + blobEntries(6) + 1 + 64 + blobEntries(64);
-  const size_t fixed = stringEntries(16) + blobEntries(DispositionStore::kMaxBlobLen) + system;
+  const size_t fixed = stringEntries(16) + blobEntries(DispositionStore::kMaxBlobLen) +
+                       systemEntries();
   const size_t wholeCfg = stringEntries(config_codec::kMaxStoredCfgJsonLen);
   const size_t whole = fixed + 2 * wholeCfg;
   const size_t splitLive = kMaxExpressions * blobEntries(config_codec::kMaxExpressionRecordLen) +
@@ -550,6 +582,8 @@ int main(int, char**) {
   RUN_TEST(test_removed_expressions_erase_stale_records);
   RUN_TEST(test_failed_write_reports_and_keeps_the_old_config);
   RUN_TEST(test_worst_case_config_fits_nvs_with_margin);
+  RUN_TEST(test_quote_filled_worst_case_fits);
+  RUN_TEST(test_backslash_filled_worst_case_fits);
   RUN_TEST(test_standard_variant_worst_case_fits_nvs);
   RUN_TEST(test_whole_save_and_the_switch_to_it_fit_nvs);
   RUN_TEST(test_crash_mid_save_removing_an_entry_keeps_the_rest);

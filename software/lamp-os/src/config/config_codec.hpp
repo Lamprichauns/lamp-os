@@ -82,9 +82,10 @@ bool decodeExpression(const uint8_t* data, size_t len, ExpressionConfig& out);
 
 enum class SaveResult : uint8_t { Ok, WriteFailed, TooLarge };
 
-// Ceiling of the "cfg" JSON at the caps (about 1.85 KB measured by
-// test_config_records); saveConfig writes it into a buffer this long.
-constexpr size_t kMaxStoredCfgJsonLen = 2048;
+// Ceiling of the "cfg" JSON at the caps with every escapable string fully
+// escaped (measured by test_config_records); saveConfig writes it into a
+// buffer this long.
+constexpr size_t kMaxStoredCfgJsonLen = 2176;
 
 // Saves the model. When the whole config fits `cfgBuffer` (2 KB) it is one
 // "cfg" JSON carrying the expressions and knockout too, the form any firmware
