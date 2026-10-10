@@ -37,23 +37,16 @@ renders in the base's own colours, so each stands out there.
 |---|---|---|---|
 | Fireflies (one beat) | `flicker`, Twinkle burst | this lamp's shade colours (up to 4, one per beat) | `fire=0`, `count` = 25% of the base's pixels **(T)**, `durationMax=700` ms **(T)**, `opacity` per envelope (10 to 25) **(T)** |
 | Whisper (one glow) | `pulse` | the origin's base colour; the origin itself glows in its shade colours | `loop=0`, `fullStrip=1`, `pulseSpeed=3`, `size=6`, `easing=1`, `opacity=30` **(T)** |
-| Heartbeat lub | `breathing`, one swell | the Smitten peer's base colour | `durationMax=180` ms (rise and fall), `opacity=60` **(T)** |
-| Heartbeat dub | `breathing`, one swell | as the lub | `durationMax=360` ms, `opacity=35`, 260 ms after the lub's onset **(T)** |
+| Heartbeat lub | `flicker`, Twinkle burst | the Smitten peer's base colour | `fire=0`, every cell, `durationMax=160` ms, `opacity=60` **(T)** |
+| Heartbeat dub | `flicker`, Twinkle burst | as the lub | as the lub, `durationMax=140` ms, `opacity=35`, 260 ms after the lub's onset **(T)** |
 
-**Why these.** Fireflies is many soft points: each lamp's beat fires a short,
+**Why flicker.** Fireflies is many soft points: each lamp's beat fires a short,
 faint Twinkle burst of stars, so a crowd sparkles together on the shared
-rhythm. Heartbeat is a whole-surface swell: each lub and dub is one smooth
-Breathing swell of the whole base in the loved peer's colour, the dub fainter
-and longer, so it reads as a throb rather than a sparkle. Breathing's own
-cycle clamps to at least 8 s, so the swell rides a hidden key (below). Glitchy
-is not used. Pulse clamps to at least 100 ms a pixel, too slow for a beat;
-spotty runs independent random lifecycles that cannot land on a shared beat.
-
-**The breathing swell.** `durationMax` on a transient breathing (hidden from
-its descriptor, so the app's 8 to 60 s range is unchanged) runs one breath,
-rise and fall, of that many ms (clamped 100 to 2000), then completes so the
-transient GC reaps it. A configured breathing ignores it. Tests:
-`test/test_breathing_swell/`.
+rhythm. Heartbeat is a whole-surface swell: a burst that lights every cell
+reads as a soft throb in the loved peer's colour. Glitchy is not used.
+Breathing clamps to at least 8 s a cycle and pulse to at least 100 ms a pixel,
+too slow for a beat; spotty runs independent random lifecycles that cannot
+land on a shared beat.
 
 **The flicker burst.** Flicker is continuous and its sparks roll at random per
 frame, so a trigger alone does not sparkle on cue. Two existing keys it does
@@ -268,10 +261,9 @@ heartbeat follows it.
 `P = lerp(1500 ms at -75 dBm, 700 ms at -45 dBm)` **(T)**, clamped, over an EMA
 (alpha 0.2) of the peer's RSSI, re-read at each beat, so the beat quickens as
 the peer comes closer. The EMA samples at 1 Hz and only on a new BLE sighting,
-so a reading a HELLO keeps alive cannot hold the beat. The lub's swell ends before the dub
-fires, and the dub's before the next lub at the fastest period (260 + 360 ms
-inside 700), so the same-sender, same-type coalesce in `triggerInvocation`
-never drops a beat and one beat holds a slot at a time.
+so a reading a HELLO keeps alive cannot hold the beat. The lub's burst ends before the dub
+fires, so the same-sender, same-type coalesce in `triggerInvocation` never
+drops the dub.
 
 **Settle** when the peer's last BLE sighting is 10 s old, or its EMA has been
 under -80 dBm for 10 s, or 180 s have passed **(T)**. Over 6 beats the period
@@ -299,8 +291,7 @@ Crowd-dim multiplies the whole frame, so Moments dim with the lamp.
 kind states, the liked fingerprint, one active Moment (with an 8-entry visited
 list), one outbound frame, and an 8-entry dedup ring of `{origin, seed, kind}`.
 Heap is the transients only: a flicker burst (about 8 B a cell plus the
-Expression) for 700 ms, a breathing swell (the Expression alone) for 180 to
-360 ms, a pulse for about 6 s, one at a time. A
+Expression) for 140 to 700 ms, a pulse for about 6 s, one at a time. A
 Fireflies churns about 120 same-size alloc/free pairs over 2.6 min, under 1 Hz,
 off the hot path. Building an invocation allocates its type string and colour
 vector, at no more than a few per second. The roster's BLE stamp adds 4 bytes
@@ -332,8 +323,7 @@ a peer (`RosterEntry` 112 B, `NearbyCopy` 64 B).
   quickens and settles.
 - **Load**: the wisp's crowd sim with events while Fireflies runs; watch
   `[heap]` `largest`, `txrefused`, `[expr] transient drop`, and that each
-  burst logs `transient reaped type=flicker (complete)` (a Heartbeat beat
-  `type=breathing`), never `expired`.
+  burst logs `transient reaped type=flicker (complete)`, never `expired`.
 - **The crowd sim cannot satisfy conditions.** Its fake HELLOs are sent by the
   wisp, so they fail `isDirectHello` and are never near, and they carry no BLE
   RSSI. The sim gives mesh and roster load only; near-based conditions come
