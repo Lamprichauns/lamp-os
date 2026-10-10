@@ -235,9 +235,11 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   //
   // Payload:
   //   {"a":"inject_nearby","peers":[
-  //     {"name":"red","baseColor":"#FF0000FF","disposition":5},
-  //     {"name":"blue","baseColor":"#0000FFFF","disposition":1}
+  //     {"name":"red","mac":"AA:BB:CC:DD:EE:01","baseColor":"#FF0000FF","disposition":5},
+  //     {"name":"blue","mac":"AA:BB:CC:DD:EE:02","baseColor":"#0000FFFF","disposition":1}
   //   ]}
+  // Dispositions are keyed by MAC, so a peer without "mac" counts as Neutral.
+  // Injected peers read as seen now and go stale after the freshness window.
   // Pair with {"a":"clear_nearby"} to drop back to live data.
   else if (action == "inject_nearby") {
     std::vector<lamp::NearbyCopy> peers;
@@ -249,9 +251,14 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
       const String baseHex = String(v["baseColor"] | "#FFFFFFFF");
       p.baseColor = lamp::hexStringToColor(baseHex.c_str());
       p.lastRssi = v["rssi"].is<int>() ? static_cast<int8_t>(v["rssi"].as<int>()) : -50;
+      p.lastSeenNearMs = millis();
+      const char* mac = v["mac"] | "";
+      p.hasMac = lamp::parseBdAddr(mac, p.mac);
       const int disp = v["disposition"] | 3;
-      if (disp >= 1 && disp <= 5) {
-        config.setDisposition(p.name, static_cast<uint8_t>(disp));
+      if (p.hasMac && disp >= 1 && disp <= 5) {
+        char lampId[18];
+        lamp::formatBdAddr(p.mac, lampId);
+        config.setDisposition(lampId, static_cast<uint8_t>(disp));
       }
       peers.push_back(p);
     }
