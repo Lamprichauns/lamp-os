@@ -219,12 +219,81 @@ void test_static_pixels_settle_to_rounded_level_and_dedup() {
   TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
 }
 
+// A slow fade holding each content byte for 17 to 30 flushes never settles
+// mid-fade: every flush still pushes a dithered frame. The last byte, held,
+// settles after exactly the hold.
+void test_slow_fade_keeps_dithering_between_steps() {
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
+  for (int v = 60; v > 40; v--) {
+    TEST_ASSERT_NOT_EQUAL(0, kGamma88[v] & 0xFF);
+    const int holdFor = 17 + (v % 14);
+    for (int f = 0; f < holdFor; f++) {
+      fb.buffer = {Color(v, 0, 0, 0)};
+      neo0.reset();
+      fb.flush();
+      TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
+    }
+  }
+  fb.buffer = {Color(40, 0, 0, 0)};
+  TEST_ASSERT_NOT_EQUAL(0, kGamma88[40] & 0xFF);
+  int pushes = 0;
+  for (int f = 0; f < 3 * FrameBuffer::kDitherHoldFrames; f++) {
+    neo0.reset();
+    fb.flush();
+    pushes += neo0.showCount;
+  }
+  TEST_ASSERT_EQUAL_INT(FrameBuffer::kDitherHoldFrames + 1, pushes);
+}
+
+// A strip-level change over a settled scene resumes dithering at the new level.
+void test_level_change_resumes_dithering_a_settled_pixel() {
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
+  fb.buffer = {Color(49, 0, 0, 0)};
+  for (int f = 0; f <= FrameBuffer::kDitherHoldFrames; f++) fb.flush();
+  neo0.reset();
+  fb.flush();
+  TEST_ASSERT_EQUAL_INT(0, neo0.showCount);
+
+  fb.level = 200;
+  for (int f = 0; f < 3; f++) {
+    neo0.reset();
+    fb.flush();
+    TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
+  }
+}
+
+// A settled pixel that starts moving again dithers exactly as a freshly begun
+// buffer would, whatever its carries ran through before it settled.
+void test_resumed_pixels_dither_like_a_fresh_begin() {
+  const uint16_t n = 4;
+  FrameBuffer fb;
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, n}});
+  fb.buffer.assign(n, Color(40, 0, 0, 0));  // fraction 17/256 walks the carries
+  for (int f = 0; f <= FrameBuffer::kDitherHoldFrames; f++) fb.flush();
+
+  FrameBuffer fresh;
+  fresh.begin({}, std::vector<StripSegment>{{&neo1, "s1", 0, n}});
+  for (int f = 0; f < 8; f++) {
+    fb.buffer.assign(n, Color(49, 0, 0, f & 1));
+    fresh.buffer = fb.buffer;
+    neo0.reset();
+    neo1.reset();
+    fb.flush();
+    fresh.flush();
+    for (uint16_t i = 0; i < n; i++) {
+      TEST_ASSERT_EQUAL_UINT32(neo1.pixelCalls[i].c, neo0.pixelCalls[i].c);
+    }
+  }
+}
+
 // A fade to black is exactly off from the frame it reaches zero, through the
 // hold and after it; full stays exact while dithering and once settled.
 void test_zero_stays_off_and_full_stays_exact() {
   FrameBuffer fade;
   fade.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 2}});
-  for (int v = 60; v >= -40; v--) {
+  for (int v = 60; v >= -(FrameBuffer::kDitherHoldFrames + 20); v--) {
     // The second pixel keeps changing, so every frame pushes the settled zero.
     fade.buffer = {Color(v > 0 ? v : 0, 0, 0, 0), Color(49, 0, 0, v & 1)};
     neo0.reset();
@@ -237,7 +306,7 @@ void test_zero_stays_off_and_full_stays_exact() {
   full.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
   full.buffer = {Color(49, 255, 255, 255)};  // red keeps it pushing until it settles
   int pushes = 0;
-  for (int f = 0; f < 40; f++) {
+  for (int f = 0; f < FrameBuffer::kDitherHoldFrames + 20; f++) {
     neo0.reset();
     full.flush();
     if (neo0.pixelCalls.empty()) continue;
@@ -290,6 +359,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_changing_pixels_dither_independently_and_staggered);
   RUN_TEST(test_static_pixels_settle_to_rounded_level_and_dedup);
   RUN_TEST(test_zero_stays_off_and_full_stays_exact);
+  RUN_TEST(test_slow_fade_keeps_dithering_between_steps);
+  RUN_TEST(test_level_change_resumes_dithering_a_settled_pixel);
+  RUN_TEST(test_resumed_pixels_dither_like_a_fresh_begin);
   RUN_TEST(test_reversed_segment_flips_pixel_order);
   return UNITY_END();
 }

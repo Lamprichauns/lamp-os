@@ -38,10 +38,11 @@ class FrameBuffer {
 
   void begin(std::vector<Color> inDefaultColors, uint8_t inPixelCount, Adafruit_NeoPixel* inDriver);
 
-  // Frames a pixel's colour and the level must hold still before the pixel
-  // stops dithering and shows its rounded drive level. Too long and a static
-  // dim scene sparkles that long after every change.
-  static constexpr uint8_t kDitherHoldFrames = 12;
+  // Flushes a pixel's colour and the level must hold still before the pixel
+  // stops dithering and shows its rounded drive level: 1 s at the compositor's
+  // 16 ms floor, longer on slower frames. Shorter and a slow fade snaps between
+  // content steps; longer and a static dim scene sparkles after every change.
+  static constexpr uint8_t kDitherHoldFrames = 60;
 
   // Temporally dithered push: a changing pixel between drive levels keeps
   // flush() sending every frame; a pixel held still for kDitherHoldFrames
