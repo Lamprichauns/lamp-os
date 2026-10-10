@@ -319,7 +319,13 @@ reboot, so the running config cannot overwrite it; the commit drain waits
 without retrying or logging, and a second web document is answered 409
 rather than written over it (`config/save_gate.hpp`). The reboot waits while
 OTA quiet mode is held, at most 10 minutes (`kRebootOtaWaitMaxMs`), after
-which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead.
+which it logs `[webapp] reboot after 10 min OTA wait` and goes ahead. A
+settings blob from the app that needs a reboot, whose save was deferred
+(`[loop] settingsBlob: save deferred; reboot waits for it`), reboots once the
+save lands and no firmware is being received; after 5 minutes of the save
+failing it gives up (`deferredReboot` in `config/save_gate.hpp`): no reboot,
+the change runs until the next one, logged as `[loop] settingsBlob: save
+never landed; no reboot`.
 
 A reset at any point of a save leaves a whole config, and so does a save that
 stops at a refused write. `test_config_records` cuts saves short at each of
@@ -364,14 +370,23 @@ save had it or as saved.
   lost its rest. The dispositions JSON key wins over the blob unless it is
   corrupt, or empty while the blob has entries.
 - **A write that ran out of heap.** When `writeMultiPageBlob`'s 12-byte
-  `UsedPageNode` allocation fails, the chunk it had just written stays, named
-  by no index and erased by nobody until the next boot; a rewrite in the same
-  version family puts a second chunk at its position, and IDF then drops the
-  whole blob. `NvsConfigStore` so refuses every blob write to that key until
-  the next boot (`config/write_quarantine.hpp`, eight keys, then every key),
-  whose scan erases the orphan; the save fails and retries meanwhile, and the
-  config that loads is the one before (`PagedNvs` models the orphan,
-  `test_an_out_of_memory_rest_write_is_held_until_boot`).
+  `UsedPageNode` allocation fails, the chunk it had just written stays in the
+  version it was writing, named by no index. The key's next write goes to
+  that same version and puts a second chunk at its position, and IDF then
+  drops the whole blob at the next read or boot; a boot with nothing written
+  there since erases the orphan instead. The store remembers such a key
+  (`config/orphan_guard.hpp`, eight keys, then every key until the boot) and
+  writes it once past the orphan: an empty throwaway version first, which
+  takes the orphan's version, then the value, in the other version; erasing
+  the throwaway leaves the orphan named by no index for the boot to erase.
+  So the save that hit the failure fails and retries, every save after it
+  lands, and the boot loads the latest. A reset between the throwaway and
+  the value drops that key at boot, as a cut-short write of it would.
+  `NvsConfigStore` and the native suite's `PagedNvs` both write through
+  `writeBlobPastOrphan`; `test_nvs_config_store` runs the device store itself
+  over the page model, and
+  `test_saves_after_an_out_of_memory_write_land_and_survive_the_boot` covers a
+  record, the knockout blob and the rest.
 
 An edit rewrites one record and NVS skips the unchanged ones; a remove shifts
 later records down a slot, so a reset mid-shift can leave one record in two
@@ -435,7 +450,10 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   a transient that starts can finish allocating. Under that, the lamp's own
   Test plays nothing here and logs `[expr] transient drop` (every build, at
   most every 5 s), but its cascade still goes out to the crowd
-  (`cascadesFrom`); a peer's invocation never re-sends. The vector is reserved at
+  (`cascadesFrom`), built from the invocation with no Expression made for
+  it; a peer's invocation never re-sends. That type then waits a second
+  (`LocalCooldown`) before the lamp tries it again, so a Test tapped over
+  and over while the lamp is short neither retries nor resends each tap. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Expression parameters live inline.** `ExpressionParams` holds one
@@ -466,24 +484,26 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
   held and every broadcast failing. `TxCredit`
   (`components/network/transport/tx_credit.hpp`) bounds the frames handed to
   the driver and not yet reported by its send callback to 6: every submit
-  takes a credit, the callback returns it, a refused submit returns it at
-  once, and when credits are out and no completion has come back for 2 s
-  they are presumed lost and the count resets. Timestamps compare by signed
-  delta and never move backwards, since the WiFi task can stamp a completion
-  just after the loop read `millis()`. A send past the bound fails before it
-  reaches the driver and is counted. A reset logs `[espnow.tx] no tx
-  callback, credits reset` on every build (at most every 10 s); the running
-  counts show as `txstalls` (resets) and `txrefused` (sends dropped for want
-  of a credit, a mesh resend among them) in `heap.get` and the `[heap]` trend
-  line.
+  takes a credit stamped with its time, the callback returns the newest, a
+  refused submit returns it at once. IDF documents no promise of one callback
+  per accepted send (`esp_now.h`; the driver is closed), so a credit out for
+  2 s is presumed lost and taken back, even while other frames complete: the
+  callback returning the newest leaves a lost frame's credit the oldest, and
+  it ages out. Stamps compare by signed delta, since the WiFi task can stamp
+  a credit just after the loop read `millis()`. A send past the bound fails
+  before it reaches the driver and is counted. Credits taken back log
+  `[espnow.tx] no tx callback, credits taken back` on every build (at most
+  every 10 s); the running counts show as `txstalls` (credits taken back)
+  and `txrefused` (sends dropped for want of a credit, a mesh resend among
+  them) in `heap.get` and the `[heap]` trend line.
 - **Cascade fan-out.** A locally fired cascade (a cascading expression, or the
   app's Test) reaches every mesh peer, closest first. `CascadeScheduler`
   (`expressions/cascade_scheduler.hpp`) holds up to two fan-outs (peers and one
   serialized invocation each, about 2.2 KB of .bss: 50 MACs and a 768-byte
   payload per fan-out, above the 536-byte worst case). The loop sends up to 6
   frames per pass (`kBatchSize`, held to the 6 TX credits), only while credits
-  remain (`TxCredit::available`, which applies the 2 s stall reset itself,
-  so credits lost on a quiet link never hold the drain; a frame with none
+  remain (`TxCredit::available`, which takes back stale credits itself, so
+  credits lost on a quiet link never hold the drain; a frame with none
   waits for a later pass), and passes are 100 ms
   apart, past a command's two resend copies
   40 ms apart, so a batch never overwrites the previous batch's resends in the

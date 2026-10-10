@@ -60,8 +60,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   expressions with full colour lists) keeps its settings on an older
   release. A larger setup keeps only its name, password, brightness and
   setup state there; everything else comes up as defaults, and that release
-  may fail to save. Updating again brings the larger setup back unless the
-  older release saved over it.
+  may fail to save. Social dispositions reset there either way. Updating
+  again brings the larger setup back unless the older release saved over
+  it.
 - **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
   a password, Ethernet and custom LED and drift settings, the wisp's status
   could outgrow what one Bluetooth read carries, and the app showed no wisp at
