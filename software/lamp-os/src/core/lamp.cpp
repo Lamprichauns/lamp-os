@@ -1050,6 +1050,7 @@ void lamp::Lamp::tick() {
   // has been idle for kDispositionFlushIdleMs (5s). Cheap when nothing is
   // dirty (single bool check + uint32_t subtraction).
   config.maybeFlushDispositions(millis());
+  config.maybeRetryPersist(millis());
   if (pendingFlushDispositionsRequested) {
     // Phone disconnected (set on Core 0 in ble_control's onDisconnect).
     // Force-commit so the user's final slider value survives even if

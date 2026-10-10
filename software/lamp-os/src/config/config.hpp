@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -108,14 +109,27 @@ class Config {
    * fade-out-and-reboot. The runtime state has already been applied by
    * the caller; this just writes the canonical JSON to NVS.
    *
-   * Returns true iff the store wrote > 0 bytes. On failure the in-memory
-   * state is unchanged; the next call may succeed.
+   * Returns true iff the store wrote > 0 bytes. Never throws: when the heap
+   * cannot spare the serialization it returns false, logs, and schedules a
+   * retry that maybeRetryPersist() runs; in-memory state is unchanged.
    *
    * `via`: short tag like "commit" / "settings_blob" / "expressionOp"
-   * included in the success log to disambiguate which path triggered the write.
+   * included in the log to disambiguate which path triggered the write.
    * Pass a constant string literal.
    */
   bool persistConfig(const char* via);
+
+  // The whole config as NUL-terminated JSON in one exactly-sized buffer, `len`
+  // its byte count; null (logged) when the heap cannot spare it. The bytes
+  // persistConfig writes, for a caller that inspects them first.
+  std::unique_ptr<char[]> serializeConfig(size_t& len, const char* via);
+  // Writes serializeConfig's output to the "cfg" key; true iff > 0 bytes
+  // landed. A success clears any retry persistConfig scheduled.
+  bool writeSerializedConfig(const char* json, const char* via);
+  // Core 1 loop drain: re-runs a persistConfig the heap deferred, at most once
+  // per kPersistRetryMs.
+  void maybeRetryPersist(uint32_t nowMs);
+  static constexpr uint32_t kPersistRetryMs = 5000;
 
   // Writes a caller-supplied whole-config JSON string straight to the NVS
   // "cfg" blob (the webapp's whole-document PUT path; the constructor
@@ -253,6 +267,7 @@ class Config {
 
  private:
   DispositionStore dispositions_{kDispositionFlushIdleMs};
+  DispositionDebouncer persistRetry_{kPersistRetryMs};
 
   // All dirty=true initially so the first cached() call computes and
   // populates the string. After that, mutations on Core 1 must call

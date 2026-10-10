@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <cstdio>
 #include <cstring>
+#include <esp_heap_caps.h>
 #include <new>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -13,6 +14,7 @@
 #include "expr_catalog.h"
 #include "util/bd_addr.hpp"
 #include "util/color.hpp"
+#include "util/heap_guard.hpp"
 #include "version.hpp"
 
 #include <lampos/protocol/presence.hpp>
@@ -87,26 +89,25 @@ Config::Config(ConfigStore* inStore) {
   dispositions_.load();
 };
 
-bool Config::persistConfig(const char* via) {
-  if (!store_) return false;
-  JsonDocument doc = asJsonDocument();
-  String out;
-  // Reserve the exact serialized size up front; growing by doubling would
-  // momentarily need ~2x the final size contiguous on a heap this fragmented,
-  // tipping into bad_alloc.
-  out.reserve(measureJson(doc));
-  try {
-    serializeJson(doc, out);
-  } catch (const std::bad_alloc&) {
-#ifdef LAMP_DEBUG
-    Serial.println("[nvs] persistConfig OOM during serialize");
-#endif
-    return false;
+std::unique_ptr<char[]> Config::serializeConfig(size_t& len, const char* via) {
+  len = 0;
+  std::unique_ptr<char[]> json;
+  // Gate the document build too: it allocates as it grows, and on a heap this
+  // tight a half-built document is the allocation that tips it over.
+  if (heapCanSpare(kHeapHeadroom)) {
+    JsonDocument doc = asJsonDocument();
+    json = serializeGuarded(doc, len);
   }
-  // A store write returns 0 bytes when NVS is full or the partition is
-  // corrupt; the caller decides what to do (callers today just move on;
-  // expression edits stay in RAM and the next attempt may succeed).
-  size_t written = store_->write("cfg", out.c_str());
+  if (!json) {
+    Serial.printf("[nvs] config save via=%s deferred: low heap (largest=%u)\n", via,
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  }
+  return json;
+}
+
+bool Config::writeSerializedConfig(const char* json, const char* via) {
+  // A store write returns 0 bytes when NVS is full or the partition is corrupt.
+  size_t written = store_->write("cfg", json);
 #ifdef LAMP_DEBUG
   if (written == 0) {
     Serial.println("[nvs] persistConfig wrote 0 bytes");
@@ -114,8 +115,26 @@ bool Config::persistConfig(const char* via) {
     Serial.printf("[nvs] persistConfig via=%s wrote %u bytes\n",
                   via, (unsigned)written);
   }
+#else
+  (void)via;
 #endif
+  if (written > 0) persistRetry_.clear();
   return written > 0;
+}
+
+bool Config::persistConfig(const char* via) {
+  if (!store_) return false;
+  size_t len = 0;
+  auto json = serializeConfig(len, via);
+  if (!json) {
+    persistRetry_.markDirty(millis());
+    return false;
+  }
+  return writeSerializedConfig(json.get(), via);
+}
+
+void Config::maybeRetryPersist(uint32_t nowMs) {
+  if (persistRetry_.shouldFlush(nowMs)) persistConfig("retry");
 }
 
 bool Config::persistRawJson(const char* json) {

@@ -41,9 +41,9 @@ uint32_t  lastCommitSignalMs = 0;
 uint32_t  lastPersistedHash = 0;  // FNV-1a of last successfully persisted serialized JSON
 constexpr uint32_t kCommitFlushIdleMs = 2500;
 
-uint32_t fnv1aHash(const String& s) {
+uint32_t fnv1aHash(const char* s, size_t len) {
   uint32_t h = 2166136261u;
-  for (size_t i = 0; i < s.length(); ++i) {
+  for (size_t i = 0; i < len; ++i) {
     h ^= static_cast<uint8_t>(s[i]);
     h *= 16777619u;
   }
@@ -207,35 +207,24 @@ void Lamp::drainCommit() {
       Serial.println("[loop] commit drain: OTA in progress, deferred");
 #endif
     } else {
-      JsonDocument doc = config.asJsonDocument();
-      String serialized;
-      // Reserve up front; growing by doubling would momentarily need ~2x the
-      // final size contiguous on a heap this fragmented, tipping into
-      // bad_alloc.
-      serialized.reserve(measureJson(doc));
-      try {
-        serializeJson(doc, serialized);
-        uint32_t hash = fnv1aHash(serialized);
-        if (hash == lastPersistedHash) {
+      size_t len = 0;
+      auto serialized = config.serializeConfig(len, "commit");
+      const uint32_t hash = serialized ? fnv1aHash(serialized.get(), len) : 0;
+      if (!serialized) {
+        // Low heap: re-arm the debounce so the retry waits one window.
+        lastCommitSignalMs = millis();
+      } else if (hash == lastPersistedHash) {
 #ifdef LAMP_DEBUG
-          Serial.println("[loop] commit drain: hash-dedup skip");
+        Serial.println("[loop] commit drain: hash-dedup skip");
 #endif
-          commitDirty = false;
-        } else {
-          bool persisted = config.persistConfig("commit");
-          if (persisted) {
-            lastPersistedHash = hash;
-            config.invalidateAllSections();
-            lamp::refreshDefaultScene();
-            commitDirty = false;
-          }
-          // Persist failure leaves commitDirty set; next tick retries.
-        }
-      } catch (const std::bad_alloc&) {
-#ifdef LAMP_DEBUG
-        Serial.println("[loop] commit drain: OOM during dedup hash, deferred");
-#endif
-        // commitDirty stays set; next tick retries.
+        commitDirty = false;
+      } else if (config.writeSerializedConfig(serialized.get(), "commit")) {
+        lastPersistedHash = hash;
+        config.invalidateAllSections();
+        lamp::refreshDefaultScene();
+        commitDirty = false;
+      } else {
+        lastCommitSignalMs = millis();
       }
     }
   }
