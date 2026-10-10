@@ -272,7 +272,7 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   }
   // Bench hooks for Moments. "moment" starts a kind now, past eligibility,
   // conditions and the crowd cooldown but never past a suppressor:
-  //   {"a":"moment","k":"fireflies|whisper|heartbeat","seed":42}
+  //   {"a":"moment","k":"fireflies|whisper","seed":42}
   else if (action == "moment") {
     const String k = String(doc["k"] | "");
     const uint32_t seed = doc["seed"] | 0u;
@@ -281,8 +281,6 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
       kind = lamp::MomentKind::Fireflies;
     } else if (k == "whisper") {
       kind = lamp::MomentKind::Whisper;
-    } else if (k == "heartbeat") {
-      kind = lamp::MomentKind::Heartbeat;
     } else {
       Serial.println("[moment] force err kind");
       return;

@@ -14,15 +14,7 @@ constexpr MomentPacing kPacing[kMomentKindCount] = {
     {20, 60, 30, 6, 45 * kMinuteMs, 90000},
     // Whisper
     {8, 20, 10, 6, 10 * kMinuteMs, 30000},
-    // Heartbeat: local only, so no crowd to cool and no herd to back off.
-    {20, 60, 30, 6, 0, 0},
 };
-
-constexpr int kRssiFar = -75;
-constexpr int kRssiNear = -45;
-constexpr uint32_t kHeartbeatFarMs = 1500;
-constexpr uint32_t kHeartbeatNearMs = 700;
-constexpr float kHeartbeatEmaAlpha = 0.2f;
 
 constexpr uint8_t kFirefliesOpacityLow = 10;
 constexpr uint8_t kFirefliesOpacityPeak = 25;
@@ -133,18 +125,6 @@ uint8_t firefliesOpacity(uint16_t blink) {
 uint16_t firefliesStars(uint16_t surfacePixels) {
   const uint32_t stars = static_cast<uint32_t>(surfacePixels) * kFirefliesStarPercent / 100;
   return static_cast<uint16_t>(stars < 1 ? 1 : stars);
-}
-
-uint32_t heartbeatPeriodMs(float rssiEma) {
-  if (rssiEma <= kRssiFar) return kHeartbeatFarMs;
-  if (rssiEma >= kRssiNear) return kHeartbeatNearMs;
-  const float t = (rssiEma - kRssiFar) / static_cast<float>(kRssiNear - kRssiFar);
-  return static_cast<uint32_t>(kHeartbeatFarMs -
-                               t * static_cast<float>(kHeartbeatFarMs - kHeartbeatNearMs) + 0.5f);
-}
-
-float heartbeatEma(float ema, int8_t rssi) {
-  return ema + kHeartbeatEmaAlpha * (static_cast<float>(rssi) - ema);
 }
 
 bool macIn(const uint8_t mac[6], const uint8_t (*list)[6], uint8_t count) {

@@ -19,13 +19,6 @@ namespace {
 constexpr const char* kTwinkle = "flicker";
 constexpr uint32_t kTwinkleStyle = 0;
 constexpr uint32_t kFirefliesBurstMs = 700;
-constexpr uint32_t kHeartbeatLubMs = 160;
-constexpr uint32_t kHeartbeatDubBurstMs = 140;
-constexpr uint8_t kHeartbeatLubOpacity = 60;
-constexpr uint8_t kHeartbeatDubOpacity = 35;
-constexpr uint8_t kHeartbeatSettledOpacity = 10;
-// Every cell of the base swells; the flicker burst clamps it to the surface.
-constexpr uint32_t kWholeSurface = 0xFFFF;
 
 constexpr uint32_t kWhisperPulseSpeed = 3;
 constexpr uint32_t kWhisperPulseSize = 6;
@@ -37,11 +30,6 @@ constexpr uint32_t kBorrowSameColor = 48;
 constexpr uint8_t kBorrowWhiten = 102;
 
 bool later(uint32_t a, uint32_t b) { return static_cast<int32_t>(a - b) > 0; }
-
-uint32_t lerpMs(uint32_t from, uint32_t to, uint32_t step, uint32_t steps) {
-  return static_cast<uint32_t>(static_cast<int64_t>(from) +
-                               (static_cast<int64_t>(to) - from) * step / steps);
-}
 
 }  // namespace
 
@@ -89,7 +77,6 @@ void MomentDirector::tick(uint32_t nowMs) {
   switch (moment_.kind) {
     case static_cast<uint8_t>(MomentKind::Fireflies): tickFireflies(nowMs); break;
     case static_cast<uint8_t>(MomentKind::Whisper):   tickWhisper(nowMs); break;
-    case static_cast<uint8_t>(MomentKind::Heartbeat): tickHeartbeat(nowMs); break;
     default: break;
   }
   if (nowMs - lastEvalMs_ >= kEvalPeriodMs) {
@@ -119,8 +106,6 @@ void MomentDirector::evaluate(uint32_t nowMs) {
     if (!s.eligible && timeReached(nowMs, s.nextEligibleMs)) s.eligible = true;
     if (s.cooling && timeReached(nowMs, s.coolUntilMs)) s.cooling = false;
   }
-  if (moment_.kind == static_cast<uint8_t>(MomentKind::Heartbeat)) sampleHeartbeat(nowMs);
-
   for (size_t i = 0; i < kMomentKindCount; ++i) {
     const MomentKind kind = static_cast<MomentKind>(i + 1);
     KindState& s = kinds_[i];
@@ -141,9 +126,6 @@ bool MomentDirector::conditionsHold(MomentKind kind, uint32_t nowMs) {
       return likedCount_ >= kFirefliesMinLiked && nowMs - likedSinceMs_ >= kStableLikedMs;
     case MomentKind::Whisper:
       return hasWhisperTarget(host_->nearbyPeers(), nowMs, disposition);
-    case MomentKind::Heartbeat:
-      return strongestSmitten(host_->nearbyPeers(), nowMs, kHeartbeatStartRssi,
-                              disposition) != nullptr;
   }
   return false;
 }
@@ -204,14 +186,6 @@ void MomentDirector::initiate(MomentKind kind, uint32_t seed, uint32_t nowMs) {
       // bystander's crowd cooldown lands before a second origin's backoff.
       tickWhisper(nowMs);
       break;
-    case MomentKind::Heartbeat: {
-      auto disposition = [this](const uint8_t* m) { return host_->disposition(m); };
-      const std::vector<NearbyCopy>& peers = host_->nearbyPeers();
-      const NearbyCopy* peer = strongestSmitten(peers, nowMs, kHeartbeatStartRssi, disposition);
-      if (!peer) peer = strongestSmitten(peers, nowMs, INT8_MIN, disposition);
-      startHeartbeat(peer, nowMs);
-      break;
-    }
   }
 }
 
@@ -372,89 +346,6 @@ void MomentDirector::tickWhisper(uint32_t nowMs) {
   endMoment("handed on");
 }
 
-void MomentDirector::startHeartbeat(const NearbyCopy* peer, uint32_t nowMs) {
-  moment_ = ActiveMoment{};
-  moment_.kind = static_cast<uint8_t>(MomentKind::Heartbeat);
-  moment_.role = Role::Initiator;
-  moment_.t0 = nowMs;
-  moment_.lastSightingMs = nowMs;
-  moment_.rssiEma = -75.0f;
-  if (peer) {
-    std::memcpy(moment_.peer, peer->mac, 6);
-    moment_.hasPeer = true;
-    moment_.rssiEma = peer->lastRssi;
-    moment_.hasTint = true;
-    moment_.tint = peer->baseColor;
-    moment_.lastSightingMs = peer->lastSeenBleMs;
-  }
-  moment_.nextMs = nowMs;
-}
-
-void MomentDirector::sampleHeartbeat(uint32_t nowMs) {
-  if (moment_.hasPeer) {
-    for (const NearbyCopy& p : host_->nearbyPeers()) {
-      if (!isPeer(p) || std::memcmp(p.mac, moment_.peer, 6) != 0) continue;
-      // Only a new BLE sighting carries a new RSSI; a direct HELLO renews
-      // presence while lastRssi stands still.
-      if (p.lastSeenBleMs != moment_.lastSightingMs) {
-        moment_.rssiEma = heartbeatEma(moment_.rssiEma, p.lastRssi);
-        moment_.lastSightingMs = p.lastSeenBleMs;
-      }
-      break;
-    }
-  }
-  if (moment_.rssiEma < kHeartbeatFadeRssi) {
-    if (!moment_.faint) {
-      moment_.faint = true;
-      moment_.faintSinceMs = nowMs;
-    }
-  } else {
-    moment_.faint = false;
-  }
-  if (moment_.settleBeat > 0) return;
-  const bool stale = !withinMs(moment_.lastSightingMs, nowMs, kHeartbeatStaleMs);
-  const bool faded = moment_.faint && nowMs - moment_.faintSinceMs >= kHeartbeatStaleMs;
-  const bool capped = nowMs - moment_.t0 >= kHeartbeatMaxMs;
-  if (stale || faded || capped) {
-    moment_.settleBeat = 1;
-    moment_.settleFromMs = heartbeatPeriodMs(moment_.rssiEma);
-    logf("[moment] hb settle %s", stale ? "stale" : (faded ? "faded" : "time"));
-  }
-}
-
-void MomentDirector::tickHeartbeat(uint32_t nowMs) {
-  if (moment_.dubPending && timeReached(nowMs, moment_.dubMs)) {
-    moment_.dubPending = false;
-    const uint8_t step = moment_.settleBeat > 0 ? moment_.settleBeat - 1 : 0;
-    const uint8_t dub = static_cast<uint8_t>(
-        lerpMs(kHeartbeatDubOpacity, kHeartbeatSettledOpacity, step, kHeartbeatSettleBeats));
-    renderBeat(kHeartbeatDubBurstMs, dub);
-    if (moment_.settleBeat > kHeartbeatSettleBeats) {
-      endMoment("settled");
-      return;
-    }
-  }
-  if (moment_.settleBeat <= kHeartbeatSettleBeats && timeReached(nowMs, moment_.nextMs)) {
-    beat(nowMs);
-  }
-}
-
-void MomentDirector::beat(uint32_t nowMs) {
-  uint32_t period = heartbeatPeriodMs(moment_.rssiEma);
-  uint8_t lub = kHeartbeatLubOpacity;
-  if (moment_.settleBeat > 0) {
-    period = lerpMs(moment_.settleFromMs, kHeartbeatSettleMs, moment_.settleBeat,
-                    kHeartbeatSettleBeats);
-    lub = static_cast<uint8_t>(lerpMs(kHeartbeatLubOpacity, kHeartbeatSettledOpacity,
-                                      moment_.settleBeat, kHeartbeatSettleBeats));
-    ++moment_.settleBeat;
-  }
-  renderBeat(kHeartbeatLubMs, lub);
-  moment_.dubPending = true;
-  moment_.dubMs = nowMs + kHeartbeatDubMs;
-  moment_.nextMs = nowMs + period;
-}
-
 void MomentDirector::queueFrame(const MomentFrame& frame, uint32_t refMs, uint32_t nowMs) {
   outbox_ = Outbox{};
   outbox_.pending = true;
@@ -557,18 +448,6 @@ void MomentDirector::renderBlink() {
   inv.parameters.set("count", firefliesStars(host_->basePixels()));
   inv.parameters.set("durationMax", kFirefliesBurstMs);
   inv.parameters.set("opacity", firefliesOpacity(moment_.blink));
-  addTintOrShade(inv);
-  render(inv);
-}
-
-void MomentDirector::renderBeat(uint32_t burstMs, uint8_t opacity) {
-  ExpressionInvocation inv;
-  inv.type = kTwinkle;
-  inv.target = TARGET_BASE;
-  inv.parameters.set("fire", kTwinkleStyle);
-  inv.parameters.set("count", kWholeSurface);
-  inv.parameters.set("durationMax", burstMs);
-  inv.parameters.set("opacity", opacity);
   addTintOrShade(inv);
   render(inv);
 }

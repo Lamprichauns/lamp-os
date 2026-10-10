@@ -78,13 +78,6 @@ class MomentDirector {
   static constexpr uint32_t kResendMs = 200;
   static constexpr uint32_t kSendGiveUpMs = 1000;
   static constexpr uint32_t kWhisperHandOffMs = 3000;
-  static constexpr int8_t kHeartbeatStartRssi = -65;
-  static constexpr uint32_t kHeartbeatDubMs = 260;
-  static constexpr uint32_t kHeartbeatStaleMs = 10000;
-  static constexpr int8_t kHeartbeatFadeRssi = -80;
-  static constexpr uint32_t kHeartbeatMaxMs = 180000;
-  static constexpr uint8_t kHeartbeatSettleBeats = 6;
-  static constexpr uint32_t kHeartbeatSettleMs = 1600;
   static constexpr size_t kDedupSlots = 8;
 
  private:
@@ -115,21 +108,10 @@ class MomentDirector {
     // Whisper: the origin's colour, carried down the chain.
     bool hasChainColor = false;
     Color chainColor;
-    // The colour this lamp renders in: the Smitten peer's for a Heartbeat,
-    // the origin's for a Whisper hop. Without one it renders its shade colours.
+    // The colour this lamp renders in: the origin's for a Whisper hop.
+    // Without one it renders its shade colours.
     bool hasTint = false;
     Color tint;
-    // Heartbeat
-    uint8_t peer[6] = {0};
-    bool hasPeer = false;
-    float rssiEma = 0.0f;
-    uint32_t lastSightingMs = 0;
-    bool faint = false;
-    uint32_t faintSinceMs = 0;
-    bool dubPending = false;
-    uint32_t dubMs = 0;
-    uint8_t settleBeat = 0;
-    uint32_t settleFromMs = 0;
   };
 
   struct Outbox {
@@ -163,12 +145,8 @@ class MomentDirector {
   void onWhisper(const uint8_t src[6], const MomentFrame& f, uint32_t nowMs);
   void startFireflies(uint32_t seed, uint32_t t0, const uint8_t origin[6], Role role,
                       uint32_t nowMs);
-  void startHeartbeat(const NearbyCopy* peer, uint32_t nowMs);
   void tickFireflies(uint32_t nowMs);
   void tickWhisper(uint32_t nowMs);
-  void tickHeartbeat(uint32_t nowMs);
-  void sampleHeartbeat(uint32_t nowMs);
-  void beat(uint32_t nowMs);
 
   void queueFrame(const MomentFrame& frame, uint32_t refMs, uint32_t nowMs);
   void tickOutbox(uint32_t nowMs);
@@ -184,7 +162,6 @@ class MomentDirector {
   void addTintOrShade(ExpressionInvocation& inv);
   void renderBlink();
   void renderGlow();
-  void renderBeat(uint32_t burstMs, uint8_t opacity);
   bool render(ExpressionInvocation& inv);
   void logf(const char* fmt, ...);
 

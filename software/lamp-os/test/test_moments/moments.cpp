@@ -232,13 +232,6 @@ MomentFrame decodeSent(const std::string& payload) {
   return f;
 }
 
-bool logged(const FakeHost& h, const char* line) {
-  for (const std::string& l : h.logs) {
-    if (l == line) return true;
-  }
-  return false;
-}
-
 void runFresh(Rig& r, uint32_t from, uint32_t to, uint32_t step) {
   for (uint32_t t = from; t <= to; t += step) {
     for (NearbyCopy& p : r.host.peers) seeAt(p, t);
@@ -650,9 +643,9 @@ void test_fireflies_join_gates() {
   }
   {
     Rig r;
-    r.director.force(MomentKind::Heartbeat, 3, 500);
+    r.director.force(MomentKind::Fireflies, 3, 500);
     r.frame(origin, firefliesStart(5), 1000);
-    TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
+    TEST_ASSERT_TRUE(r.director.role() == MomentDirector::Role::Initiator);
   }
 }
 
@@ -896,120 +889,6 @@ void test_ring_of_ten_never_revisits_and_ends_within_eight_hops() {
 }
 
 
-void test_heartbeat_period_follows_rssi() {
-  TEST_ASSERT_EQUAL_UINT32(1500, heartbeatPeriodMs(-90.0f));
-  TEST_ASSERT_EQUAL_UINT32(1500, heartbeatPeriodMs(-75.0f));
-  TEST_ASSERT_EQUAL_UINT32(1100, heartbeatPeriodMs(-60.0f));
-  TEST_ASSERT_EQUAL_UINT32(700, heartbeatPeriodMs(-45.0f));
-  TEST_ASSERT_EQUAL_UINT32(700, heartbeatPeriodMs(-30.0f));
-  TEST_ASSERT_EQUAL_FLOAT(-72.0f, heartbeatEma(-75.0f, -60));
-}
-
-namespace {
-
-std::vector<uint32_t> beatTimes(const FakeHost& h, uint8_t opacityAtLeast = 0) {
-  std::vector<uint32_t> out;
-  for (const Render& r : h.renders) {
-    if (r.inv.parameters.get("durationMax", 0) == 160 &&
-        r.inv.parameters.get("opacity", 0) >= opacityAtLeast) {
-      out.push_back(r.atMs);
-    }
-  }
-  return out;
-}
-
-}  // namespace
-
-void test_heartbeat_quickens_as_the_peer_comes_closer() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -64, 0));
-  TEST_ASSERT_TRUE(r.director.force(MomentKind::Heartbeat, 1, 0));
-  for (uint32_t t = 0; t <= 30000; t += 10) {
-    seeAt(r.host.peers[0], t);
-    r.host.peers[0].lastRssi = static_cast<int8_t>(t < 10000 ? -64 : -46);
-    r.host.nowMs = t;
-    r.director.tick(t);
-  }
-  const std::vector<uint32_t> beats = beatTimes(r.host);
-  TEST_ASSERT_TRUE(beats.size() > 10);
-  const uint32_t early = beats[2] - beats[1];
-  const uint32_t lateGap = beats.back() - beats[beats.size() - 2];
-  TEST_ASSERT_UINT32_WITHIN(20, heartbeatPeriodMs(-64.0f), early);
-  TEST_ASSERT_TRUE(lateGap < early);
-  TEST_ASSERT_UINT32_WITHIN(40, 700, lateGap);
-  TEST_ASSERT_TRUE(r.host.sent.empty());
-}
-
-void test_heartbeat_lub_completes_before_the_dub() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -50, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.run(0, 3000, 5);
-  TEST_ASSERT_TRUE(r.host.renders.size() >= 2);
-  const Render& lub = r.host.renders[0];
-  const Render& dub = r.host.renders[1];
-  TEST_ASSERT_EQUAL_STRING("flicker", lub.inv.type.c_str());
-  TEST_ASSERT_EQUAL_UINT8(TARGET_BASE, lub.inv.target);
-  TEST_ASSERT_EQUAL_UINT32(160, lub.inv.parameters.get("durationMax", 0));
-  TEST_ASSERT_EQUAL_UINT32(140, dub.inv.parameters.get("durationMax", 0));
-  TEST_ASSERT_TRUE(lub.atMs + lub.inv.parameters.get("durationMax", 0) < dub.atMs);
-  TEST_ASSERT_UINT32_WITHIN(5, MomentDirector::kHeartbeatDubMs, dub.atMs - lub.atMs);
-}
-
-void test_heartbeat_settles_when_the_peer_goes_stale() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -50, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.run(0, 60000, 10);  // the peer is never seen again after t=0
-  TEST_ASSERT_FALSE(r.director.active());
-  const std::vector<uint32_t> beats = beatTimes(r.host);
-  // Last BLE sighting at t=0: settling starts 10 s later and takes six beats.
-  TEST_ASSERT_TRUE(beats.back() > 10000);
-  TEST_ASSERT_TRUE(beats.back() < 25000);
-  TEST_ASSERT_EQUAL_UINT8(10, r.host.renders.back().inv.parameters.get("opacity", 0));
-  bool settled = false;
-  for (const std::string& l : r.host.logs) settled = settled || l == "[moment] hb settle stale";
-  TEST_ASSERT_TRUE(settled);
-}
-
-void test_heartbeat_settles_at_the_time_cap() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -50, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  for (uint32_t t = 0; t <= 200000; t += 10) {
-    seeAt(r.host.peers[0], t);
-    r.host.nowMs = t;
-    r.director.tick(t);
-  }
-  TEST_ASSERT_FALSE(r.director.active());
-  const std::vector<uint32_t> beats = beatTimes(r.host);
-  TEST_ASSERT_TRUE(beats.back() >= MomentDirector::kHeartbeatMaxMs);
-  TEST_ASSERT_TRUE(beats.back() < MomentDirector::kHeartbeatMaxMs + 15000);
-}
-
-void test_heartbeat_waits_for_the_greeting() {
-  Rig r(1, 9, 0);
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -50, 0));
-  r.host.greeting = true;
-  for (uint32_t t = 0; t <= 100 * kMin; t += 1000) {
-    seeAt(r.host.peers[0], t);
-    r.host.nowMs = t;
-    r.director.tick(t);
-  }
-  TEST_ASSERT_FALSE(r.director.active());
-  r.host.greeting = false;
-  seeAt(r.host.peers[0], 100 * kMin + 1000);
-  r.run(100 * kMin + 1000, 100 * kMin + 1100, 10);
-  TEST_ASSERT_TRUE(r.director.active());
-  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
-}
-
-
 void test_hop_eight_payload_fits_the_event_frame() {
   MomentFrame f;
   f.kind = MomentKind::Whisper;
@@ -1091,11 +970,7 @@ void test_renders_are_remote_terminal_and_on_the_base() {
   r.host.nowMs = 6000;
   r.director.begin(&r.host, r.self, 1, 6000);
   r.director.force(MomentKind::Whisper, 98, 6000);
-  r.host.nowMs = 7000;
-  r.director.begin(&r.host, r.self, 2, 7000);
-  r.director.force(MomentKind::Heartbeat, 97, 7000);
-  r.run(7000, 8000, 5);
-  size_t kinds[3] = {0, 0, 0};
+  size_t kinds[2] = {0, 0};
   for (const Render& rd : r.host.renders) {
     TEST_ASSERT_TRUE(rd.source == TransientSource::Remote);
     TEST_ASSERT_FALSE(rd.broadcast);
@@ -1103,10 +978,9 @@ void test_renders_are_remote_terminal_and_on_the_base() {
     TEST_ASSERT_EQUAL_UINT8(TARGET_BASE, rd.inv.target);
     TEST_ASSERT_FALSE(rd.inv.colors.empty());
     if (rd.atMs < 6000) ++kinds[0];
-    else if (rd.atMs < 7000) ++kinds[1];
-    else ++kinds[2];
+    else ++kinds[1];
   }
-  TEST_ASSERT_TRUE(kinds[0] > 0 && kinds[1] > 0 && kinds[2] > 0);
+  TEST_ASSERT_TRUE(kinds[0] > 0 && kinds[1] > 0);
   const Render& blink = r.host.renders.front();
   TEST_ASSERT_EQUAL_STRING("flicker", blink.inv.type.c_str());
   TEST_ASSERT_EQUAL_UINT32(0, blink.inv.parameters.get("fire", 9));
@@ -1125,21 +999,6 @@ void test_fireflies_take_the_shade_colours() {
   TEST_ASSERT_EQUAL_UINT32(2, blink.inv.colors.size());
   TEST_ASSERT_TRUE(blink.inv.colors[0] == Color(0, 200, 0, 0));
   TEST_ASSERT_TRUE(blink.inv.colors[1] == Color(0, 0, 200, 0));
-}
-
-void test_heartbeat_takes_the_smitten_peers_colour() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  NearbyCopy loved = peerOf(30, -50, 0);
-  loved.baseColor = Color(10, 20, 230, 0);
-  r.host.peers.push_back(loved);
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.run(0, 2000, 5);
-  TEST_ASSERT_TRUE(r.host.renders.size() >= 2);
-  for (const Render& rd : r.host.renders) {
-    TEST_ASSERT_EQUAL_UINT32(1, rd.inv.colors.size());
-    TEST_ASSERT_TRUE(rd.inv.colors[0] == Color(10, 20, 230, 0));
-  }
 }
 
 // The origin glows in its shade colours and carries its base colour down the
@@ -1249,11 +1108,11 @@ void test_frames_go_out_twice_with_a_fresh_age() {
 
 void test_a_busy_lamp_refuses_a_whisper() {
   Rig r(9);
-  r.director.force(MomentKind::Heartbeat, 1, 0);
+  r.director.force(MomentKind::Fireflies, 1, 0);
   uint8_t sender[6];
   macOf(8, sender);
   r.frame(sender, whisperTo(r.self, 5, {8}), 1000);
-  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Heartbeat);
+  TEST_ASSERT_TRUE(r.director.activeKind() == MomentKind::Fireflies);
   TEST_ASSERT_EQUAL_UINT8(0, r.director.growth(MomentKind::Whisper));
 }
 
@@ -1412,75 +1271,13 @@ void test_encode_clamps_the_hop_count_with_the_list() {
   TEST_ASSERT_EQUAL_UINT8(kWhisperMaxHops, back.hop);
 }
 
-void test_heartbeat_settles_when_the_peer_fades() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -50, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.host.peers[0].lastRssi = -95;
-  runFresh(r, 0, 60000, 10);
-  TEST_ASSERT_FALSE(r.director.active());
-  TEST_ASSERT_TRUE(logged(r.host, "[moment] hb settle faded"));
-}
-
-// A direct HELLO renews presence but not the BLE RSSI; it cannot hold a beat.
-void test_heartbeat_ignores_presence_without_a_ble_sighting() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -46, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  for (uint32_t t = 0; t <= 60000; t += 10) {
-    r.host.peers[0].lastSeenNearMs = t;
-    r.host.nowMs = t;
-    r.director.tick(t);
-  }
-  TEST_ASSERT_FALSE(r.director.active());
-  TEST_ASSERT_TRUE(logged(r.host, "[moment] hb settle stale"));
-}
-
-void test_heartbeat_starts_at_minus_sixty_five() {
-  for (int8_t rssi : {-66, -65}) {
-    Rig r(1, 9, 0);
-    r.host.like(30, kDispositionSmitten);
-    r.host.peers.push_back(peerOf(30, rssi, 0));
-    runFresh(r, 0, 100 * kMin, 100);
-    bool beat = false;
-    for (const std::string& l : r.host.logs) beat = beat || l.rfind("[moment] start k=3", 0) == 0;
-    TEST_ASSERT_EQUAL(rssi == -65, beat);
-  }
-}
-
-namespace {
-
-std::vector<Color> heartbeatColours(Color peerColour, std::vector<Color> shade) {
-  Rig r;
-  r.host.shade = shade;
-  r.host.like(30, kDispositionSmitten);
-  NearbyCopy loved = peerOf(30, -50, 0);
-  loved.baseColor = peerColour;
-  r.host.peers.push_back(loved);
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.run(0, 10, 10);
-  if (r.host.renders.empty()) TEST_FAIL_MESSAGE("no beat rendered");
-  return r.host.renders.front().inv.colors;
-}
-
-}  // namespace
-
-void test_a_black_peer_colour_falls_back_to_the_shade() {
-  const std::vector<Color> c = heartbeatColours(Color(0, 0, 0, 0), {Color(0, 160, 0, 0)});
-  TEST_ASSERT_EQUAL_UINT32(1, c.size());
-  TEST_ASSERT_TRUE(c[0] == Color(0, 160, 0, 0));
-}
-
-void test_a_white_only_peer_colour_is_kept() {
-  const std::vector<Color> c = heartbeatColours(Color(0, 0, 0, 200), {Color(0, 160, 0, 0)});
-  TEST_ASSERT_EQUAL_UINT32(1, c.size());
-  TEST_ASSERT_TRUE(c[0] == Color(0, 0, 0, 200));
-}
-
 void test_with_no_lit_colour_a_moment_renders_white() {
-  const std::vector<Color> c = heartbeatColours(Color(3, 2, 1, 0), {Color(0, 0, 0, 0)});
+  Rig r;
+  r.host.shade = {Color(3, 2, 1, 0), Color(0, 0, 0, 0)};
+  r.director.force(MomentKind::Fireflies, 1, 0);
+  r.run(0, 3000, 5);
+  TEST_ASSERT_FALSE(r.host.renders.empty());
+  const std::vector<Color>& c = r.host.renders.front().inv.colors;
   TEST_ASSERT_EQUAL_UINT32(1, c.size());
   TEST_ASSERT_TRUE(c[0] == Expression::kSafeFallbackColor);
 }
@@ -1559,28 +1356,6 @@ void test_a_stamp_older_than_the_signed_horizon_is_stale() {
   TEST_ASSERT_FALSE(isFresh(p, now));
 }
 
-// With no new BLE sighting a changed RSSI never reaches the beat.
-void test_the_beat_holds_without_a_new_ble_sighting() {
-  Rig r;
-  r.host.like(30, kDispositionSmitten);
-  r.host.peers.push_back(peerOf(30, -64, 0));
-  r.director.force(MomentKind::Heartbeat, 1, 0);
-  r.host.peers[0].lastRssi = -46;
-  for (uint32_t t = 0; t <= 8000; t += 10) {
-    r.host.peers[0].lastSeenNearMs = t;
-    r.host.nowMs = t;
-    r.director.tick(t);
-  }
-  std::vector<uint32_t> lubs;
-  for (const Render& rd : r.host.renders) {
-    if (rd.inv.parameters.get("durationMax", 0) == 160) lubs.push_back(rd.atMs);
-  }
-  TEST_ASSERT_TRUE(lubs.size() >= 4);
-  for (size_t i = 1; i < lubs.size(); ++i) {
-    TEST_ASSERT_UINT32_WITHIN(10, heartbeatPeriodMs(-64.0f), lubs[i] - lubs[i - 1]);
-  }
-}
-
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_wait_lies_in_the_range_times_mode);
@@ -1619,19 +1394,12 @@ int main(int, char**) {
   RUN_TEST(test_wary_toward_the_sender_drops_the_whisper);
   RUN_TEST(test_whisper_suppressors);
   RUN_TEST(test_ring_of_ten_never_revisits_and_ends_within_eight_hops);
-  RUN_TEST(test_heartbeat_period_follows_rssi);
-  RUN_TEST(test_heartbeat_quickens_as_the_peer_comes_closer);
-  RUN_TEST(test_heartbeat_lub_completes_before_the_dub);
-  RUN_TEST(test_heartbeat_settles_when_the_peer_goes_stale);
-  RUN_TEST(test_heartbeat_settles_at_the_time_cap);
-  RUN_TEST(test_heartbeat_waits_for_the_greeting);
   RUN_TEST(test_hop_eight_payload_fits_the_event_frame);
   RUN_TEST(test_codec_round_trips);
   RUN_TEST(test_unknown_kind_is_ignored);
   RUN_TEST(test_older_lamps_parse_the_sentinel);
   RUN_TEST(test_renders_are_remote_terminal_and_on_the_base);
   RUN_TEST(test_fireflies_take_the_shade_colours);
-  RUN_TEST(test_heartbeat_takes_the_smitten_peers_colour);
   RUN_TEST(test_whisper_takes_the_origins_colour);
   RUN_TEST(test_a_colour_matching_the_base_is_whitened);
   RUN_TEST(test_a_malformed_origin_colour_drops_the_frame);
@@ -1649,11 +1417,6 @@ int main(int, char**) {
   RUN_TEST(test_backoff_expiry_rechecks_before_starting);
   RUN_TEST(test_encode_refuses_a_short_buffer);
   RUN_TEST(test_encode_clamps_the_hop_count_with_the_list);
-  RUN_TEST(test_heartbeat_settles_when_the_peer_fades);
-  RUN_TEST(test_heartbeat_ignores_presence_without_a_ble_sighting);
-  RUN_TEST(test_heartbeat_starts_at_minus_sixty_five);
-  RUN_TEST(test_a_black_peer_colour_falls_back_to_the_shade);
-  RUN_TEST(test_a_white_only_peer_colour_is_kept);
   RUN_TEST(test_with_no_lit_colour_a_moment_renders_white);
   RUN_TEST(test_a_dark_whisper_origin_falls_back_to_the_shade);
   RUN_TEST(test_whitening_checks_every_base_stop);
@@ -1661,6 +1424,5 @@ int main(int, char**) {
   RUN_TEST(test_a_suppressor_cancels_a_pending_resend);
   RUN_TEST(test_a_non_object_mo_is_swallowed);
   RUN_TEST(test_a_stamp_older_than_the_signed_horizon_is_stale);
-  RUN_TEST(test_the_beat_holds_without_a_new_ble_sighting);
   return UNITY_END();
 }

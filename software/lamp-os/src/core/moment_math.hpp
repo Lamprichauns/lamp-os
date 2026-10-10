@@ -1,7 +1,7 @@
 #pragma once
 
 // Pure arithmetic for Moments (docs/dev/moments.md): pacing, the Fireflies
-// timeline, the Heartbeat period, peer selection and the `mo` wire object.
+// timeline, peer selection and the `mo` wire object.
 // No Arduino, no globals; the director and the native suite share it.
 
 #include <ArduinoJson.h>
@@ -16,9 +16,9 @@
 
 namespace lamp {
 
-// Wire values of `k`. Heartbeat never goes on the wire.
-enum class MomentKind : uint8_t { Fireflies = 1, Whisper = 2, Heartbeat = 3 };
-inline constexpr size_t kMomentKindCount = 3;
+// Wire values of `k`.
+enum class MomentKind : uint8_t { Fireflies = 1, Whisper = 2 };
+inline constexpr size_t kMomentKindCount = 2;
 inline constexpr size_t momentIndex(MomentKind k) { return static_cast<size_t>(k) - 1; }
 
 inline constexpr uint8_t kDispositionNeutral = 3;
@@ -111,9 +111,6 @@ uint8_t firefliesOpacity(uint16_t blink);
 // Stars lit by one blink on a surface of `surfacePixels`.
 uint16_t firefliesStars(uint16_t surfacePixels);
 
-uint32_t heartbeatPeriodMs(float rssiEma);
-float heartbeatEma(float ema, int8_t rssi);
-
 // The fresh peer a Whisper may start toward: Smitten at or above -70 dBm, or
 // Fond at or above -62 dBm.
 template <class Disposition>
@@ -128,19 +125,6 @@ bool hasWhisperTarget(const std::vector<NearbyCopy>& peers, uint32_t nowMs,
     }
   }
   return false;
-}
-
-// The strongest fresh Smitten peer at or above `minRssi`, or null.
-template <class Disposition>
-const NearbyCopy* strongestSmitten(const std::vector<NearbyCopy>& peers, uint32_t nowMs,
-                                   int8_t minRssi, Disposition disposition) {
-  const NearbyCopy* best = nullptr;
-  for (const NearbyCopy& p : peers) {
-    if (!isPeer(p) || !isFresh(p, nowMs) || p.lastRssi < minRssi) continue;
-    if (disposition(p.mac) != kDispositionSmitten) continue;
-    if (!best || p.lastRssi > best->lastRssi) best = &p;
-  }
-  return best;
 }
 
 inline constexpr uint8_t kWhisperMaxHops = 8;
