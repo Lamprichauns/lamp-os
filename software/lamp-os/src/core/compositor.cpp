@@ -155,15 +155,18 @@ void Compositor::tick() {
           compositeWisp();
           wispComposited = true;
         }
-        if (!homeMode || !homeModeSkips(b)) {
-          b->control();
-          if (b->animationState != STOPPED) {
-            b->draw();
-          }
-        } else if (b->isSocialBehavior()) {
-          // A greeting cut off by home mode ends here, so it cannot resume
-          // when home mode ends.
-          b->cancelGreeting();
+        switch (homeModeTickFor(b)) {
+          case HomeModeTick::Run:
+            b->control();
+            if (b->animationState != STOPPED) b->draw();
+            break;
+          case HomeModeTick::Skip:
+            break;
+          case HomeModeTick::Cancel:
+            // A greeting cut off by home mode ends here, so it cannot resume
+            // when home mode ends.
+            b->cancelGreeting();
+            break;
         }
       }
       if (!wispComposited) compositeWisp();
@@ -277,15 +280,5 @@ void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string>
   }
 }
 
-bool Compositor::homeModeSkips(AnimatedBehavior* b) const {
-  if (b->isSocialBehavior()) {
-    return homeModeSkipsSocial(homeSocialDisabled_, b->playsAppGreeting());
-  }
-  return homeModeExpressionSkips(b->homeModeExpressionId(), homeDisabledExprIds_);
-}
-
-bool Compositor::homeModeSkipsType(const std::string& type) const {
-  return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
-}
 
 };  // namespace lamp

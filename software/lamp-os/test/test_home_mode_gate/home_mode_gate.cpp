@@ -91,6 +91,20 @@ void test_social_skip_lets_app_greeting_play() {
   TEST_ASSERT_FALSE(homeModeSkipsSocial(false, true));
 }
 
+// The compositor's per-behavior decision.
+void test_home_mode_tick() {
+  // Home mode off: everything runs.
+  TEST_ASSERT_TRUE(homeModeTick(false, true, true, false, true) == HomeModeTick::Run);
+  // A social behavior with social off is cancelled, unless the app's greeting plays.
+  TEST_ASSERT_TRUE(homeModeTick(true, true, true, false, false) == HomeModeTick::Cancel);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, true, true, false) == HomeModeTick::Run);
+  TEST_ASSERT_TRUE(homeModeTick(true, false, true, false, false) == HomeModeTick::Run);
+  // An expression of a home-disabled type is skipped, social on or off.
+  TEST_ASSERT_TRUE(homeModeTick(true, false, false, false, true) == HomeModeTick::Skip);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, false, false, true) == HomeModeTick::Skip);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, false, false, false) == HomeModeTick::Run);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_null_id_not_skipped);
@@ -106,5 +120,6 @@ int main(int, char**) {
   RUN_TEST(test_remote_blocked_only_home_and_social_off);
   RUN_TEST(test_local_never_blocked);
   RUN_TEST(test_social_skip_lets_app_greeting_play);
+  RUN_TEST(test_home_mode_tick);
   return UNITY_END();
 }

@@ -539,8 +539,14 @@ void ExpressionManager::gcTransients() {
     if (it->expression && compositor_ && compositor_->discardsRemote(it->source)) {
       it->expression->retire();
     }
-    const bool complete = it->expression && (it->expression->isAnimationComplete() ||
-                                             it->expression->retired());
+    // A transient home mode skips by type would freeze mid-animation and
+    // resume when home mode ends; outside the preview it is reaped instead.
+    const bool skippedAtHome = compositor_ &&
+                               compositor_->discardsRemote(TransientSource::Remote) &&
+                               compositor_->homeModeSkipsType(it->type);
+    const bool complete = skippedAtHome ||
+                          (it->expression && (it->expression->isAnimationComplete() ||
+                                              it->expression->retired()));
     const bool expired = nowMs - it->createdMs >= kTransientMaxLifetimeMs;
     if (complete || expired) {
       if (expired && !complete) {

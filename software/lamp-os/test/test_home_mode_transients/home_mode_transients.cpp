@@ -30,7 +30,7 @@ TxCredit EspNowLink::s_txCredit;
 std::vector<AnimatedBehavior*> s_registered;
 
 // Registers into the shared context exactly as compositor.cpp's does, without
-// its render dependencies; the home-mode setters store what compositor.cpp's do.
+// its render dependencies; the policy setter stores what compositor.cpp's does.
 Compositor::Compositor() { context_.compositor = this; }
 void Compositor::addBehavior(AnimatedBehavior* b) {
   b->setBehaviorContext(&context_);
@@ -43,9 +43,6 @@ void Compositor::removeBehavior(AnimatedBehavior* b) {
 void Compositor::setHomeModePolicy(bool socialDisabled, std::vector<std::string> disabledIds) {
   homeSocialDisabled_ = socialDisabled;
   homeDisabledExprIds_ = std::move(disabledIds);
-}
-bool Compositor::homeModeSkipsType(const std::string& type) const {
-  return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
 }
 
 bool MeshLink::sendCommand(const uint8_t*, const uint8_t*, size_t) { return true; }
@@ -251,6 +248,35 @@ void test_retiring_transient_does_not_coalesce() {
   TEST_ASSERT_EQUAL_size_t(2, s_registered.size());
 }
 
+// A Local transient of a home-disabled type (the Lioness greeting's glitch)
+// is reaped once home mode discards peers, so it neither freezes nor resumes
+// mid-animation when home mode ends; the preview leaves it be.
+static size_t typeSkippedTransientsLeft(bool preview) {
+  Rig r;
+  r.compositor.setHomeModePolicy(/*socialDisabled=*/true, {"probe"});
+  if (!r.invoke(TransientSource::Local)) return 99;
+  r.compositor.homeMode = true;
+  r.compositor.homePreview = preview;
+  r.manager.gcTransients();
+  return s_registered.size();
+}
+
+void test_type_skipped_transient_reaped_at_home() {
+  TEST_ASSERT_EQUAL_size_t(0, typeSkippedTransientsLeft(false));
+}
+
+void test_type_skipped_transient_kept_in_preview() {
+  TEST_ASSERT_EQUAL_size_t(1, typeSkippedTransientsLeft(true));
+}
+
+void test_listed_type_untouched_outside_home_mode() {
+  Rig r;
+  r.compositor.setHomeModePolicy(/*socialDisabled=*/true, {"probe"});
+  TEST_ASSERT_TRUE(r.invoke(TransientSource::Local));
+  r.manager.gcTransients();
+  TEST_ASSERT_EQUAL_size_t(1, s_registered.size());
+}
+
 // Bloom paints its swell through the same contribution scale, so a retired
 // bloom fades with the rest.
 void test_retired_bloom_paints_nothing() {
@@ -322,6 +348,9 @@ int main(int, char**) {
   RUN_TEST(test_echo_books_nothing_at_home_or_in_preview);
   RUN_TEST(test_manager_ignores_peers_in_home_and_preview);
   RUN_TEST(test_retiring_transient_does_not_coalesce);
+  RUN_TEST(test_type_skipped_transient_reaped_at_home);
+  RUN_TEST(test_type_skipped_transient_kept_in_preview);
+  RUN_TEST(test_listed_type_untouched_outside_home_mode);
   RUN_TEST(test_retiring_glitch_releases_the_background);
   return UNITY_END();
 }

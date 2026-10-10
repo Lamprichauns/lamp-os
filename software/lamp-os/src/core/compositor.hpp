@@ -38,8 +38,12 @@ class Compositor {
   bool homeSocialDisabled_ = true;
   std::vector<std::string> homeDisabledExprIds_ = {"glitchy"};
 
-  // Returns true if `b` should be skipped during a home-mode tick.
-  bool homeModeSkips(AnimatedBehavior* b) const;
+  // homeModeTick for `b` under this compositor's home state and policy.
+  HomeModeTick homeModeTickFor(AnimatedBehavior* b) const {
+    return homeModeTick(homeMode, homeSocialDisabled_, b->isSocialBehavior(),
+                        b->playsAppGreeting(),
+                        homeModeExpressionSkips(b->homeModeExpressionId(), homeDisabledExprIds_));
+  }
 
   // true once a quiet-mode frame has painted; the next false->true edge on
   // ota_quiet_mode::isQuiet() signals ota_indicator::paint() to (re)init its
@@ -144,7 +148,9 @@ class Compositor {
    * a home-disabled cascade at receipt instead of creating a squatting
    * transient the render gate then refuses to draw.
    */
-  bool homeModeSkipsType(const std::string& type) const;
+  bool homeModeSkipsType(const std::string& type) const {
+    return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
+  }
 
   // homeModeBlocksRemote over this compositor's live home state and policy.
   bool blocksRemote(TransientSource source) const {
