@@ -13,6 +13,7 @@
 #include "../../src/util/color.cpp"
 #include "../../src/util/fade.cpp"
 #include "../../src/util/gradient.cpp"
+#include "../../src/core/frame_buffer.cpp"
 
 lamp::FirmwareReceiver firmwareReceiver;
 
@@ -126,6 +127,43 @@ void test_no_peer_picked_after_app_greeting_while_ignoring() {
   TEST_ASSERT_FALSE(greetsPeerAfterAppGreeting(true));
 }
 
+// While home mode ignores peers the greeting takes no peer colour info, the
+// app's own greeting in the preview included, matching snafu: it shows the
+// peer's base colour without its palette.
+static bool greetingShowsPeerPalette(bool ignoring) {
+  FrameBuffer fb;
+  fb.pixelCount = 4;
+  fb.buffer.assign(4, Color());
+  BehaviorContext ctx;
+  SocialBehavior social(&fb, 1200);
+  social.setBehaviorContext(&ctx);
+  PeerView p = peer();
+  p.baseColor = Color(0, 0x80, 0, 0);
+  social.triggerGreeting(p);
+  social.easeInFrames = 0;  // the stub tuning is all zero: hold for 100 frames
+  social.holdFrames = 100;
+  social.frames = 100;
+
+  g_ignore = ignoring;
+  social.onColorInfo(kPeerMac, {Color(0xF0, 0, 0, 0)}, {});
+  bool red = false;
+  for (int i = 0; i < 40; ++i) {
+    fb.buffer.assign(4, Color());
+    social.frame = 1;
+    social.draw();
+    for (const Color& c : fb.buffer) red = red || c.r > 0;
+  }
+  return red;
+}
+
+void test_greeting_takes_peer_palette_outside_home_mode() {
+  TEST_ASSERT_TRUE(greetingShowsPeerPalette(false));
+}
+
+void test_greeting_takes_no_peer_palette_while_ignoring() {
+  TEST_ASSERT_FALSE(greetingShowsPeerPalette(true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cancel_ends_greeting_and_tells_app_once);
@@ -133,5 +171,7 @@ int main(int, char**) {
   RUN_TEST(test_app_greeting_is_marked_until_it_ends);
   RUN_TEST(test_peer_greeted_after_app_greeting_outside_home_mode);
   RUN_TEST(test_no_peer_picked_after_app_greeting_while_ignoring);
+  RUN_TEST(test_greeting_takes_peer_palette_outside_home_mode);
+  RUN_TEST(test_greeting_takes_no_peer_palette_while_ignoring);
   return UNITY_END();
 }
