@@ -38,6 +38,32 @@ void main() {
     expect(await _stored(ble, 'lamp'), '!');
   });
 
+  test('an edit after an empty read is not written', () async {
+    final ble = await _lampAnswering('lamp', '');
+    final container =
+        ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
+    addTearDown(container.dispose);
+    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    addTearDown(sub.close);
+    await container.read(dispositionsProvider('lamp').future);
+    container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    expect(await _stored(ble, 'lamp'), '');
+  });
+
+  test('an edit after a null map (released firmware, no entries) is written', () async {
+    final ble = await _lampAnswering('lamp', 'null');
+    final container =
+        ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
+    addTearDown(container.dispose);
+    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    addTearDown(sub.close);
+    await container.read(dispositionsProvider('lamp').future);
+    container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    expect(jsonDecode(await _stored(ble, 'lamp')), {'AA:BB:CC:DD:EE:FF': 5});
+  });
+
   test('an edit after a read map is written whole', () async {
     final ble = await _lampAnswering('lamp', '{"11:22:33:44:55:66":2}');
     final container =
