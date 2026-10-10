@@ -132,11 +132,11 @@ class ScanCallbacks : public NimBLEScanCallbacks {
                       ? Color(data[5], data[6], data[7], 0)
                       : Color(0, 0, 0, 0);
 
-    // NimBLEAddress::toString() is lowercase colon-hex; the roster parses
-    // it case-insensitively and stores address bytes.
-    lampRoster.addOrUpdateFromBle(advertisedDevice->getName(),
-                                   advertisedDevice->getAddress().toString(),
-                                   base, shade,
+    // NimBLE holds the address least significant byte first.
+    const uint8_t* le = advertisedDevice->getAddress().getVal();
+    const uint8_t addr[6] = {le[5], le[4], le[3], le[2], le[1], le[0]};
+    const std::string name = advertisedDevice->getName();
+    lampRoster.addOrUpdateFromBle(name.c_str(), addr, base, shade,
                                    static_cast<int8_t>(advertisedDevice->getRSSI()));
   };
 

@@ -134,9 +134,15 @@ void LampRoster::addOrUpdateFromBle(const std::string& name,
                                     const std::string& bleAddr,
                                     const Color& base, const Color& shade,
                                     int8_t rssi) {
-  uint32_t now = millis();
   uint8_t ble[6];
   if (!parseBdAddr(bleAddr.c_str(), ble)) return;
+  addOrUpdateFromBle(name.c_str(), ble, base, shade, rssi);
+}
+
+void LampRoster::addOrUpdateFromBle(const char* name, const uint8_t ble[6],
+                                    const Color& base, const Color& shade,
+                                    int8_t rssi) {
+  uint32_t now = millis();
   uint8_t recoveredMac[6];
   meshMacFromBleAddr(ble, recoveredMac);
   xSemaphoreTake(mutex_, portMAX_DELAY);
@@ -144,7 +150,7 @@ void LampRoster::addOrUpdateFromBle(const std::string& name,
   if (idx == count_) {
     evictOldestIfFullLocked();
     RosterEntry e;
-    copyName(e.name, name.c_str());
+    copyName(e.name, name);
     std::memcpy(e.mac, recoveredMac, 6);
     e.hasMac = true;
     e.baseColor = base;
@@ -155,7 +161,7 @@ void LampRoster::addOrUpdateFromBle(const std::string& name,
   } else {
     // Empty name from a nameless BLE adv must not erase a known display name
     // on the merged entry.
-    if (!name.empty()) copyName(store_[idx].name, name.c_str());
+    if (name[0] != '\0') copyName(store_[idx].name, name);
     store_[idx].baseColor = base;
     store_[idx].shadeColor = shade;
     store_[idx].lastSeenNearMs = now;

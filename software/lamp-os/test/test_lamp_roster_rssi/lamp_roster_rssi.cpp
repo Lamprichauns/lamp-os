@@ -80,6 +80,17 @@ void test_ble_scan_updates_last_rssi_on_existing_entry() {
   TEST_ASSERT_EQUAL_INT8(-75, lastRssiByName(r, "jacko"));
 }
 
+// The scan callback passes raw address bytes in display order; they key the
+// same entry the colon-hex form does.
+void test_ble_scan_raw_address_merges_with_colon_hex() {
+  LampRoster r;
+  const uint8_t addr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+  r.addOrUpdateFromBle("jacko", addr, kNoColor, kNoColor, -60);
+  r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -61);
+  TEST_ASSERT_EQUAL_UINT(1u, r.getAll().size());
+  TEST_ASSERT_EQUAL_INT8(-61, lastRssiByName(r, "jacko"));
+}
+
 void test_ble_scan_sentinel_does_not_clobber_existing_value() {
   LampRoster r;
   r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -72);
@@ -242,6 +253,7 @@ int main(int argc, char** argv) {
 
   RUN_TEST(test_ble_scan_sets_last_rssi_on_insert);
   RUN_TEST(test_ble_scan_updates_last_rssi_on_existing_entry);
+  RUN_TEST(test_ble_scan_raw_address_merges_with_colon_hex);
   RUN_TEST(test_ble_scan_sentinel_does_not_clobber_existing_value);
   RUN_TEST(test_esp_now_does_not_write_last_rssi);
   RUN_TEST(test_esp_now_only_peer_has_sentinel_last_rssi);

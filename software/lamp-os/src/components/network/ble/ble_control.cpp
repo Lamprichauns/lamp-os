@@ -1191,6 +1191,12 @@ void tick() {
   // task (Core 0) rarely serialises JSON inside a NimBLE callback. Only while
   // a client holds the link: a mesh cascade dirties the expressions section
   // with no reader, and a rebuild per cascade is pure heap churn.
+  // notifyStateChange skips with no client, so the characteristic may hold a
+  // stale greeting; refresh it once on connect.
+  static bool s_wasConnected = false;
+  if (s_clientConnected && !s_wasConnected) notifyStateChange();
+  s_wasConnected = s_clientConnected;
+
   if (s_clientConnected) {
     s_config->lampSectionRebuildIfDirty();
     s_config->baseSectionRebuildIfDirty();
@@ -1206,7 +1212,9 @@ void setGreetingStateProvider(std::function<lamp::GreetingState()> fn) {
 }
 
 void notifyStateChange() {
-  if (!s_stateNotify) return;
+  // A greeting edge fires this with no phone attached; the payload has no
+  // reader then, and a connecting client reads the state fresh.
+  if (!s_stateNotify || !s_clientConnected) return;
   const bool preview = ::expressionManager.isAnyTestActive();
   std::string payload = "{\"previewActive\":";
   payload += preview ? "true" : "false";

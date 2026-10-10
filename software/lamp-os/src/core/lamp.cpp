@@ -200,11 +200,10 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
 #endif
     pendingTriggers.erase(pendingTriggers.begin());
   }
-  DelayedInvocation d;
+  DelayedInvocation& d = pendingTriggers.emplace_back();
   d.inv = inv;
   d.fireAtMs = millis() + delayMs;
   std::memcpy(d.srcMac, srcMac, 6);
-  pendingTriggers.push_back(d);
 }
 }  // namespace lamp
 

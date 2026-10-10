@@ -175,14 +175,18 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
     return;
   }
 
+  // One document and one string serve every peer; only delayMs differs, and
+  // serializeJson keeps the string's capacity between peers.
+  JsonDocument doc;
+  invocationToJson(inv, doc);
+  std::string json;
   size_t sent = 0;
   size_t dropped = 0;
   size_t overLen = 0;
   for (size_t i = 0; i < targets.size(); ++i) {
     const uint32_t d = static_cast<uint32_t>(i + 1) * staggerMs;
-    inv.delayMs = d > kMaxDelayMs ? kMaxDelayMs : d;
-    std::string json;
-    serializeInvocation(inv, json);
+    doc["delayMs"] = d > kMaxDelayMs ? kMaxDelayMs : d;
+    serializeJson(doc, json);
     if (json.size() > lamp_protocol::COMMAND_MAX_PAYLOAD) {
       ++dropped;
       overLen = json.size();

@@ -59,6 +59,9 @@ std::map<std::string, uint32_t> parametersWithoutCascadeKeys(
 // ("rrggbbww" per color, no '#', no separators); the key is omitted when
 // empty. Packed keeps the worst-case config inside COMMAND_MAX_PAYLOAD.
 void serializeInvocation(const ExpressionInvocation& inv, std::string& out);
+// The document serializeInvocation writes, for a fan-out that re-serializes it
+// once per peer with only `delayMs` changed.
+void invocationToJson(const ExpressionInvocation& inv, JsonDocument& doc);
 
 // Parse an ExpressionInvocation payload (an ArduinoJson object extracted from
 // an incoming MSG_COMMAND or MSG_EVENT frame) into `out`. Returns false if
