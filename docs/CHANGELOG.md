@@ -36,6 +36,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   without changing anything afterwards. Your own expressions, the app's Test
   button and your wisp keep working, and your lamp still passes messages
   along so the lamps around it keep talking.
+- **A staff lamp blooms for every friend in a big crowd.** With more than 16
+  lamps nearby, friends past the sixteenth used to arrive without a bloom.
 - **Crowd dimming follows the crowd right away.** When a lamp decided to dim
   or brighten for a change in the crowd, the change could wait until the next
   unrelated brightness change to show. It now eases in within a moment.
