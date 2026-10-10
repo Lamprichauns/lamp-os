@@ -1161,6 +1161,8 @@ void test_whisper_start_thresholds() {
       {kDispositionSmitten, -70, now, true},  {kDispositionSmitten, -71, now, false},
       {kDispositionFond, -62, now, true},     {kDispositionFond, -63, now, false},
       {kDispositionNeutral, -30, now, false}, {kDispositionSmitten, -40, now - 15001, false},
+      // Stamped by the BLE task just after the loop read the clock.
+      {kDispositionSmitten, -40, now + 5, true},
   };
   for (const Case& c : cases) {
     std::vector<NearbyCopy> peers = {peerOf(1, c.rssi, c.seenMs)};
@@ -1270,6 +1272,15 @@ void test_encode_refuses_a_short_buffer() {
   TEST_ASSERT_EQUAL_CHAR('#', exact[0]);
 }
 
+void test_encode_clamps_the_hop_count_with_the_list() {
+  MomentFrame f;
+  f.kind = MomentKind::Whisper;
+  f.seed = 1;
+  f.hop = kWhisperMaxHops + 1;
+  const MomentFrame back = decodeSent(encode(f));
+  TEST_ASSERT_EQUAL_UINT8(kWhisperMaxHops, back.hop);
+}
+
 void test_heartbeat_settles_when_the_peer_fades() {
   Rig r;
   r.host.like(30, kDispositionSmitten);
@@ -1370,6 +1381,7 @@ int main(int, char**) {
   RUN_TEST(test_a_greeting_does_not_block_joining_or_accepting);
   RUN_TEST(test_backoff_expiry_rechecks_before_starting);
   RUN_TEST(test_encode_refuses_a_short_buffer);
+  RUN_TEST(test_encode_clamps_the_hop_count_with_the_list);
   RUN_TEST(test_heartbeat_settles_when_the_peer_fades);
   RUN_TEST(test_heartbeat_ignores_presence_without_a_ble_sighting);
   RUN_TEST(test_heartbeat_starts_at_minus_sixty_five);
