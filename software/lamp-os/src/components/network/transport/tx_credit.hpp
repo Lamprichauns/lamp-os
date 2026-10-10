@@ -28,7 +28,10 @@ class TxCredit {
       cur = 0;
     }
     while (true) {
-      if (cur >= kMaxInFlight) return false;
+      if (cur >= kMaxInFlight) {
+        refused_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+      }
       if (inFlight_.compare_exchange_weak(cur, static_cast<uint16_t>(cur + 1),
                                           std::memory_order_relaxed)) {
         // The stall clock restarts with the first frame out after an idle
@@ -49,6 +52,9 @@ class TxCredit {
   uint16_t inFlight() const { return inFlight_.load(std::memory_order_relaxed); }
   // Times the count was presumed lost and reset.
   uint32_t stalls() const { return stalls_.load(std::memory_order_relaxed); }
+  // Sends refused for want of a credit: a mesh resend or any other send that
+  // does not wait on a free credit first, and is dropped.
+  uint32_t refused() const { return refused_.load(std::memory_order_relaxed); }
 
  private:
   static int32_t elapsedSince(uint32_t thenMs, uint32_t nowMs) {
@@ -71,6 +77,7 @@ class TxCredit {
   std::atomic<uint16_t> inFlight_{0};
   std::atomic<uint32_t> lastProgressMs_{0};
   std::atomic<uint32_t> stalls_{0};
+  std::atomic<uint32_t> refused_{0};
 };
 
 // One submit under a credit: `send()` hands the frame to the driver and

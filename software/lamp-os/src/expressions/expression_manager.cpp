@@ -10,7 +10,6 @@
 
 #include "components/network/protocol/lamp_protocol.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
-#include "components/network/transport/tx_credit.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "core/behavior_context.hpp"
 #include "core/compositor.hpp"
@@ -124,8 +123,6 @@ void ExpressionManager::setCompositor(Compositor* compositor) {
 
 static_assert(CascadeScheduler::kMaxPeers == LampRoster::kCapacity,
               "a cascade holds every peer the roster can");
-static_assert(CascadeScheduler::kBatchSize <= TxCredit::kMaxInFlight,
-              "a cascade pass fits the driver's TX credits");
 
 void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
                                      const uint8_t* excludeMac) {
@@ -207,16 +204,15 @@ void ExpressionManager::maybeCascade(const ExpressionEntry& entry,
     Serial.printf("[cascade] type=%s replaced a waiting cascade\n", entry.type.c_str());
   }
   // Unconditional: a refused cascade silently fails on deployed lamps; this
-  // is the only signal.
+  // is the only signal. Each line stays under Print's 64-byte stack buffer
+  // with the longest type id, so logging it takes no heap.
   if (queued == CascadeScheduler::Begin::TooLong) {
-    Serial.printf("[cascade] ERR payload %uB over %uB cap, dropped type=%s\n",
-                  (unsigned)json.size(), (unsigned)CascadeScheduler::kMaxPayloadLen,
-                  entry.type.c_str());
+    Serial.printf("[cascade] ERR %uB > %uB, dropped %s\n", (unsigned)json.size(),
+                  (unsigned)CascadeScheduler::kMaxPayloadLen, entry.type.c_str());
     return;
   }
   if (queued == CascadeScheduler::Begin::NoDelayField) {
-    Serial.printf("[cascade] ERR payload has no delayMs, dropped type=%s\n",
-                  entry.type.c_str());
+    Serial.printf("[cascade] ERR no delayMs, dropped %s\n", entry.type.c_str());
     return;
   }
   for (const MeshPeer& peer : targets) cascade_.addPeer(peer.mac);

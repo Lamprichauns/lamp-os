@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "components/network/transport/tx_credit.hpp"
 #include "expressions/expression_invocation.hpp"
 
 namespace lamp {
@@ -112,5 +113,8 @@ class CascadeScheduler {
   bool fillingValid_ = false;
   uint32_t overflowDrops_ = 0;
 };
+
+static_assert(CascadeScheduler::kBatchSize <= TxCredit::kMaxInFlight,
+              "a cascade pass fits the driver's TX credits");
 
 }  // namespace lamp
