@@ -267,10 +267,10 @@ void test_level_change_resumes_dithering_a_settled_pixel() {
 // A settled pixel that starts moving again dithers exactly as a freshly begun
 // buffer would, whatever its carries ran through before it settled.
 void test_resumed_pixels_dither_like_a_fresh_begin() {
-  const uint16_t n = 4;
+  const uint16_t n = 8;
   FrameBuffer fb;
   fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, n}});
-  fb.buffer.assign(n, Color(40, 0, 0, 0));  // fraction 17/256 walks the carries
+  fb.buffer.assign(n, Color(45, 0, 0, 0));  // fraction 206/256 walks the carries
   for (int f = 0; f <= FrameBuffer::kDitherHoldFrames; f++) fb.flush();
 
   FrameBuffer fresh;
