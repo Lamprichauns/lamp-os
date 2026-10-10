@@ -289,11 +289,22 @@ void test_retiring_glitch_releases_the_background() {
   TEST_ASSERT_EQUAL_UINT8(0, r.shade.buffer[0].w);  // running: snapshot holds
 
   glitch.retire();
+  // Early in the fade the snapshot still dominates; late, the live scene does.
+  set_mock_millis(10000 + Expression::kRetireFadeMs / 10);
+  r.shade.buffer.assign(4, live);
+  glitch.draw();
+  TEST_ASSERT_TRUE(r.shade.buffer[0].w < 0x40);
+
   set_mock_millis(10000 + Expression::kRetireFadeMs / 2);
   r.shade.buffer.assign(4, live);
   glitch.draw();
   TEST_ASSERT_TRUE(r.shade.buffer[0].w > 0x30);
   TEST_ASSERT_TRUE(r.shade.buffer[0].w < 0xFF);
+
+  set_mock_millis(10000 + Expression::kRetireFadeMs * 9 / 10);
+  r.shade.buffer.assign(4, live);
+  glitch.draw();
+  TEST_ASSERT_TRUE(r.shade.buffer[0].w > 0xB0);
 }
 
 int main(int, char**) {
