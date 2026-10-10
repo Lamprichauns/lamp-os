@@ -3,8 +3,8 @@
 // Lamp-side gossip-OTA distributor: single-peer-at-a-time state machine that
 // pushes this lamp's running firmware image to one nearby stale peer per
 // session (Idle -> OfferSent -> Streaming -> Finalizing -> Done/Failed -> Idle).
-// Targeting is event-driven: SocialBehavior::control calls considerPeerForOta
-// for each nearby below-version peer; no periodic scan.
+// Targeting is event-driven: tickOtaOffers (ota_offer.hpp) calls
+// considerPeerForOta for each reachable ESP-NOW peer once a second.
 //
 // Three contexts touch session state, all serialized by portMUX_TYPE stateMux_:
 // the WiFi recv task (Core 0) parses ACCEPT/REQ/RESULT and pivots state; the
@@ -86,8 +86,8 @@ class FirmwareDistributor {
   // Drive the state machine. Called every loop() on Core 1; cheap when Idle.
   void tick(uint32_t nowMs);
 
-  // Idempotent peer-trigger. Called from SocialBehavior::control on Core 1 per
-  // nearby peer. No-op unless state == Idle, peer is below FIRMWARE_VERSION,
+  // Idempotent peer-trigger. Called from tickOtaOffers on Core 1 per
+  // reachable peer. No-op unless state == Idle, peer is below FIRMWARE_VERSION,
   // and the peer isn't in the backoff ring; otherwise transitions Idle ->
   // OfferSent, sends OFFER, kicks the streaming task. Additional gates (mesh
   // quiesce, receiver-busy) live in the wiring layer.

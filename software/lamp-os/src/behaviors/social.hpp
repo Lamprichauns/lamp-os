@@ -108,14 +108,6 @@ class SocialBehavior : public AnimatedBehavior, public Greetable {
   // `mac` is the peer's raw 6-byte mesh MAC.
   void markGreeted(const uint8_t mac[6], uint32_t nowMs);
 
-  // Throttle the gossip-OTA peer scan to this cadence. Lamps emit HELLO
-  // every 1-2s, so 1s catches every fresh sighting while halving the
-  // getMesh snapshot rate that control() would otherwise pay per frame.
-  // Skipped entirely while distributor.isInProgress(); the single-source
-  // mutex blocks a second concurrent session anyway, so there's nothing
-  // useful to scan for.
-  static constexpr uint32_t kOtaScanIntervalMs  = 1000;
-
  private:
   static constexpr size_t MAX_GREETED_TRACKED = 32;
   // Must exceed the longest greeting animation (~23.75s for Effusive) or
@@ -152,11 +144,6 @@ class SocialBehavior : public AnimatedBehavior, public Greetable {
   static constexpr uint8_t kGradientBlendStep = 21;  // ~255 over ~12 frames
   uint8_t greetedBlend_ = 0;
   std::vector<Color> gradientCache_;
-
-  // Last time the OTA peer-scan block in control() actually walked the
-  // ESP-NOW roster. Throttled by kOtaScanIntervalMs to amortize the
-  // vector allocation across many frames.
-  uint32_t lastOtaScanMs_      = 0;
 };
 
 }  // namespace lamp

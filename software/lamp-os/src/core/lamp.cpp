@@ -65,6 +65,7 @@
 #include <lampos/blended_identity.hpp>
 #include <lampos/led_power.hpp>
 #include "components/firmware/ota_quiet_mode.hpp"
+#include "components/firmware/ota_offer.hpp"
 #include "core/pending_json_slot.hpp"
 #include "core/pending_typed_slot.hpp"
 #include "core/pending_slot_aggregate.hpp"
@@ -242,7 +243,7 @@ lamp::SocialEchoObserver socialEchoObserver(config, expressionManager, meshLink)
 // arrive via pendingFirmwareControl and are drained on Core 1.
 lamp::FirmwareReceiver    firmwareReceiver;
 // firmwareDistributor's global instance lives in firmware_distributor.cpp
-// (extern decl in firmware_distributor.hpp) so SocialBehavior can reference
+// (extern decl in firmware_distributor.hpp) so the offer scan can reference
 // it as `lamp::firmwareDistributor` from any TU.
 
 // Post-OTA "mark this app valid" state.
@@ -1161,6 +1162,7 @@ void lamp::Lamp::tick() {
   firmwareReceiver.tick(millis());
   lamp::firmwareDistributor.tick(millis());
   fs_ota::tick(millis());
+  lamp::tickOtaOffers(millis());
   // Post-OTA self-health check. After 30 seconds of steady-state loop
   // iteration, if BLE is up and the loop has been iterating (trivially true
   // inside it), call mark_app_valid so the next OTA can succeed. If the lamp
