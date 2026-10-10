@@ -246,9 +246,9 @@ ahead of that frame's flush.
 up gamma 2.6 (the curve of `Adafruit_NeoPixel::gamma8`) in 8.8 fixed point
 (`kGamma88`, `util/dither.hpp`), scales by the surface's `level` (0..255, 255
 verbatim), and runs one temporal-dither step against a per-pixel, per-channel
-carry byte: the emitted bytes average to the 8.8 target, so a fade toward dark
-moves every frame instead of sitting on one gamma8 code for several (codes 0-23
-all round to 0, 24-35 to 1). Exact zero emits 0 and a whole target emits its
+carry byte: the emitted bytes average to the 8.8 target, so the light a fade
+toward dark gives follows each content step instead of sitting on one gamma8
+code across several (codes 0-23 all round to 0, 24-35 to 1). Exact zero emits 0 and a whole target emits its
 byte, whatever the carry holds, so black never shimmers and full stays exact.
 The carries are sized once in `begin()` (four bytes a pixel) with staggered
 seeds, so a uniform fractional level does not pulse every pixel on the same
@@ -257,13 +257,16 @@ frame.
 Only a changing pixel dithers. A per-pixel hold counter (one byte a pixel, also
 sized once in `begin()`, five bytes a pixel in all) counts flushes whose colour
 and `level` match the last fully shown frame (`previousBuffer`,
-`previousLevel`). After `FrameBuffer::kDitherHoldFrames` (12, about 200 ms at
-60 Hz) the pixel shows its nearest whole drive level (`roundedLevel`) and stops
+`previousLevel`). After `FrameBuffer::kDitherHoldFrames` (60 flushes, about 1 s:
+960 ms at the compositor's 16 ms frame floor and longer when frames run slower)
+the pixel shows its nearest whole drive level (`roundedLevel`) and stops
 dithering, so a static scene at any brightness, dim and night levels included,
-settles whole and stops sparkling. A settled pixel's carries are reseeded, so
-when its colour or the level next moves it resumes staggered, within one step of
-the level it held. A skipped segment leaves `previousBuffer` behind, which only
-holds a pixel dithering longer.
+settles whole and stops sparkling. A fade that moves its content byte at least
+once a second, such as a 60 s breath at 40% (17-18 frames a byte), keeps
+dithering through its descent and never snaps between steps. A settled pixel's
+carries are reseeded, so when its colour or the level next moves it resumes
+staggered, within one step of the level it held. A skipped segment leaves
+`previousBuffer` behind, which only holds a pixel dithering longer.
 
 The level is folded in here, never through the NeoPixel `setBrightness`: the
 drivers stay at their unscaled default, since the driver scaler truncates after
