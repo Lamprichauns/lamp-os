@@ -182,12 +182,13 @@ void test_changing_pixels_dither_independently_and_staggered() {
   for (uint16_t i = 0; i < n; i++) TEST_ASSERT_EQUAL_UINT32(896, redSum[i]);
 }
 
-// A pixel held still dithers through the hold, then shows its rounded level
+// Pixels held still dither through the hold, then show their rounded level
 // and the dedup stops pushing; a new colour resumes the push.
-void test_static_pixel_settles_to_rounded_level_and_dedups() {
+void test_static_pixels_settle_to_rounded_level_and_dedup() {
+  const uint16_t n = 4;
   FrameBuffer fb;
-  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
-  fb.buffer = {Color(49, 0, 0, 0)};  // 3.5 drive levels, rounds to 4
+  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, n}});
+  fb.buffer.assign(n, Color(49, 0, 0, 0));  // 3.5 drive levels, rounds to 4
   bool sawThree = false;
   bool sawFour = false;
   for (int f = 0; f < FrameBuffer::kDitherHoldFrames; f++) {
@@ -202,14 +203,14 @@ void test_static_pixel_settles_to_rounded_level_and_dedups() {
   neo0.reset();
   fb.flush();
   TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
-  TEST_ASSERT_EQUAL_UINT32(4u << 16, neo0.pixelCalls[0].c);
+  for (uint16_t i = 0; i < n; i++) TEST_ASSERT_EQUAL_UINT32(4u << 16, neo0.pixelCalls[i].c);
   for (int f = 0; f < 50; f++) {
     neo0.reset();
     fb.flush();
     TEST_ASSERT_EQUAL_INT(0, neo0.showCount);
   }
 
-  fb.buffer = {Color(50, 0, 0, 0)};
+  fb.buffer.assign(n, Color(50, 0, 0, 0));
   neo0.reset();
   fb.flush();
   TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
@@ -218,21 +219,31 @@ void test_static_pixel_settles_to_rounded_level_and_dedups() {
   TEST_ASSERT_EQUAL_INT(1, neo0.showCount);
 }
 
-// A fade to black is exactly off from the frame it reaches zero, and full stays
-// exact, through the fade, the hold and after it.
+// A fade to black is exactly off from the frame it reaches zero, through the
+// hold and after it; full stays exact while dithering and once settled.
 void test_zero_stays_off_and_full_stays_exact() {
-  FrameBuffer fb;
-  fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 2}});
-  const Color full(255, 255, 255, 255);
+  FrameBuffer fade;
+  fade.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
   for (int v = 60; v >= -40; v--) {
-    fb.buffer = {Color(v > 0 ? v : 0, 0, 0, 0), full};
+    fade.buffer = {Color(v > 0 ? v : 0, 0, 0, 0)};
     neo0.reset();
-    fb.flush();
-    if (neo0.pixelCalls.empty()) continue;
-    if (v <= 0) TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c);
-    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, neo0.pixelCalls[1].c);
+    fade.flush();
+    if (v <= 0 && !neo0.pixelCalls.empty()) TEST_ASSERT_EQUAL_UINT32(0, neo0.pixelCalls[0].c);
   }
   TEST_ASSERT_TRUE(neo0.pixelCalls.empty());
+
+  FrameBuffer full;
+  full.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
+  full.buffer = {Color(49, 255, 255, 255)};  // red keeps it pushing until it settles
+  int pushes = 0;
+  for (int f = 0; f < 40; f++) {
+    neo0.reset();
+    full.flush();
+    if (neo0.pixelCalls.empty()) continue;
+    pushes++;
+    TEST_ASSERT_EQUAL_UINT32(0xFF00FFFFu, neo0.pixelCalls[0].c & 0xFF00FFFFu);
+  }
+  TEST_ASSERT_EQUAL_INT(FrameBuffer::kDitherHoldFrames + 1, pushes);
 }
 
 // reversed=true flips pixel order; reversed=false is byte-identical to before.
@@ -276,7 +287,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_skipped_segment_leaves_previous_buffer_unadvanced);
   RUN_TEST(test_level_change_forces_full_repush);
   RUN_TEST(test_changing_pixels_dither_independently_and_staggered);
-  RUN_TEST(test_static_pixel_settles_to_rounded_level_and_dedups);
+  RUN_TEST(test_static_pixels_settle_to_rounded_level_and_dedup);
   RUN_TEST(test_zero_stays_off_and_full_stays_exact);
   RUN_TEST(test_reversed_segment_flips_pixel_order);
   return UNITY_END();
