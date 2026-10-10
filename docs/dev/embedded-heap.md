@@ -135,7 +135,7 @@ page and the whole fits at the caps (`config/config_types.hpp`):
 
 | Key | Content | Worst case | Entries |
 |---|---|---|---|
-| `x0`..`x23` | one expression each, compact record (`encodeExpression`) | 141 B | 24 x 7 = 168 |
+| `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 141 B | 21 x 7 = 147 |
 | `xn` | expression count | 1 B | 3 |
 | `ko` | knockout level per pixel | 255 B | 10 |
 | `cfg` | the rest as JSON (`toStoredJson`) | about 1.85 KB | 60 |
@@ -145,8 +145,9 @@ page and the whole fits at the caps (`config/config_types.hpp`):
 Outside it: PHY calibration (a 1904-byte blob plus two small keys, 66 entries),
 the WiFi driver's namespace (at most 64; the lamp now keeps WiFi config in RAM,
 so it only shrinks), the crash record (4) and four namespace entries. The
-rewrite copy of the largest item adds 60. Total 463 of 504, measured by
-`test_config_records`. A record stores parameter keys as indexes into
+rewrite copy of the largest item adds 60. Total 442 of 504 at the caps, and 421
+for the standard variant's real worst case (its six types at every target),
+both measured by `test_config_records`. A record stores parameter keys as indexes into
 `kExpressionParamKeys`, which is append-only and pinned by
 `test_builtin_descriptors`; a key no expression reads is dropped at parse.
 
@@ -165,6 +166,43 @@ later BLE start instead of faulting in `NimBLEServer::start`.
 Saves go through the `nvs_*` API, never `Preferences`: Preferences logs a
 failed write through a formatting path that faulted on a starved heap.
 
+A reset at any point of a save leaves a whole config. The order is fixed:
+the records, then their count, then the erase of records past it, then
+`ko`, then `cfg` (which carries the legacy expression list until that last
+write, so a first save after an update that is cut short still loads the old
+form). An edit rewrites one record and NVS skips the unchanged ones; a remove
+shifts later records down a slot, so a reset mid-shift can leave one record in
+two slots, and the load keeps the first of any repeated (type, target). A
+record that fails to read drops only itself, logged as
+`[cfg] expression record xN unreadable`. `test_config_records` resets the store
+at every write of a remove, an add-and-edit and a first migration. The boot
+log's `[cfg] expressions=N from records|cfg json` is the loaded count; the
+`cfg_bytes` on the line before is the "cfg" JSON alone.
+
+## What expressions cost at runtime
+
+Measured with the xtensa compiler (`sizeof`) and the buffers each type keeps,
+on the standard variant's 38-pixel shade; every heap block also pays about 12
+bytes (TLSF header plus light poisoning):
+
+| Type | Object | Buffers | Heap per instance |
+|---|---|---|---|
+| glitchy | 112 B | colours 32, saved pixels 152 | about 330 B |
+| pulse | 132 B | colours 32 | about 190 B |
+| breathing | 108 B | colours 32 | about 165 B |
+| shifty | 148 B | colours 32, saved pixels 152, fill offsets 152 (directional fills only) | about 390-540 B |
+| spotty | 112 B | colours 32, 5 spots 60 | about 240 B |
+| flicker (shimmer) | 176 B | colours 32, a cell per zone pixel 304 | about 550 B |
+
+A target-both expression is two instances. Each configured expression adds
+its `Config::expressions` slot (140 B, grown four slots at a time) and colour
+list (about 44 B), and a 32-byte manager entry. The standard worst case (six
+types at every target: 18 configs, 24 instances) is about 8.1 KB of instances,
+2.7 KB of config, 0.8 KB of colours and 1 KB of entries: about 12.6 KB, against
+about 18.4 KB before entries stopped copying parameters, the config vector
+stopped doubling and shifty dropped its two per-pixel fade buffers. Up to four
+transients come on top (a shifty pair is about 1 KB).
+
 ## What a crowd drives with no phone attached
 
 A lamp in a crowd allocates on its own, with no app and no wisp. These paths
@@ -172,21 +210,24 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
 
 - **Cascade transients.** Every accepted MSG_COMMAND or MSG_EVENT invocation can
   start a one-shot heap Expression per target, alive until its animation
-  completes (up to 180 s). At most `ExpressionManager::kMaxTransients` (8) are in
-  flight; a cascade past that is dropped. The vector is reserved at
+  completes (up to 180 s). At most `ExpressionManager::kMaxTransients` (4) are in
+  flight, and one is skipped unless the largest free block holds 2 KB plus the
+  headroom; a cascade past either is dropped. The vector is reserved at
   `ExpressionManager::begin`, and the compositor reserves 16 behavior slots
   past its boot list for transients and live upserts.
 - **Expression parameters live inline.** `ExpressionParams` holds one
   optional `uint32_t` per `kExpressionParamKeys` slot (88 bytes), so a config,
   an invocation, a transient and a manager entry carry their parameters with
   no heap node per key, and copying them allocates nothing. Each expression's
-  stored config exists once, in `Config::expressions`; a manager entry keeps
-  only its type and that inline parameter copy, since entries built from a
-  relayed op or an invocation have no Config entry to point at.
+  config exists once, in `Config::expressions`; a manager entry (32 bytes)
+  holds its Expression and type and reads the parameters from Config by
+  (type, target). Only an entry with no Config entry behind it (a relayed op,
+  an invocation) keeps its own copy.
 - **Peer-supplied expression data.** An invocation keeps at most 8 colours and
   16 parameter keys; an expression upsert (app, or a relayed `expressionOp`)
   is rejected outside targets 1-3 and held to the same colour and parameter
-  caps, and the stored list to 32 entries (`config/config_types.hpp`). A stored
+  caps, and the stored list to 21 entries (`config/config_types.hpp`). An
+  upsert of a type the variant does not register is rejected. A stored
   config over the caps is truncated on load with a `[cfg]` line and saved
   truncated on the next save; a stored out-of-range target is kept, since
   `remove` matches it exactly.
@@ -202,6 +243,16 @@ scale with the number of peers or the mesh's message rate, so each is bounded:
 - **OTA sessions.** The receiver's chunk bitmap (up to 8 KB per OFFER) is
   allocated only when `heapCanSpare` allows it; otherwise the OFFER is declined
   busy and the sender retries.
+
+## The console lock
+
+Lamp logs go through `Serial`, never stdout, so the first stdout write would be
+an IDF driver's own log line, the WiFi and coex drivers logging from the
+`esp_timer` task on core 0. The UART VFS driver creates its write lock (a
+FreeRTOS mutex) on that first write, and newlib aborts when the allocation
+fails, so on a starved heap a driver's error line crashed the lamp in
+`lock_init_generic`. `setup()` writes one newline to stdout while the heap is
+whole, which creates the lock at boot.
 
 ## Reading a crash record
 

@@ -40,7 +40,7 @@ source file is where the tag's format strings live.
 | `[ble_control]` | `components/network/ble/ble_control.cpp` | GATT client connect / disconnect / auth, edit-session, home-mode focus, knockout write, settings_blob write, page CTRL/DATA, GATT binding + service start/stop, OTA pause/resume |
 | `[wisp_state]` | `components/network/ble/ble_control.cpp`, `core/lamp_behaviors.cpp` | Wisp-state notify to app (controllingBase/Shade, preview) + provider active toggle |
 | `[nvs]` | `config/config.cpp`, `config/disposition_store.cpp`, `config/nvs_config_store.cpp` | Config save (`via=`); a failed config save or dispositions flush with its cause and retry wait; a failed NVS open/set/commit with its error code; an NVS partition erased at boot (failures log on every build) |
-| `[cfg]` | `config/config.cpp` | Config load / parse-failure (serving defaults); stored expressions truncated to the caps on load |
+| `[cfg]` | `config/config.cpp` | Config load (`cfg_bytes` is the "cfg" JSON alone) / parse-failure (serving defaults); `expressions=N from records|cfg json`, the loaded count, every build; an unreadable expression record dropped; stored expressions truncated to the caps on load |
 | `[drain]` | `core/lamp_drains.cpp` | Core 0→1 drain of brightness / colors / edit-session |
 | `[webapp]` | `components/webapp/webapp.cpp` | softAP web-config server up / failed, with the AP's `auth=` and boot window |
 | `[fwdist]` | `components/firmware/firmware_distributor.cpp` | Firmware OTA distribution state (disabled reasons, offer/serve) |
