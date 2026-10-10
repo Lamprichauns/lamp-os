@@ -87,29 +87,16 @@ void settleBrightnessFade() {
 
 // Crowd-dim micro-fade. PersonalityEngine commits a new crowdDimFactor()
 // when its smoothed weighted-peer count crosses the deadband (>= 2/100
-// change). The factor is a hard step: without interpolation a deadband
-// crossing snaps brightness by >= 2 levels in one frame, visible at low
-// overall brightness. CrowdDimFade ramps between successive targets, re-arming
-// only when the TARGET factor changes (not when raw brightness changes), so it
-// stays out of the OTA pulse multiplier's way. Distinct from the user-write
-// micro-fade (s_userBrightness*), which BLE writes drive.
-static constexpr uint16_t kCrowdDimFadeMs = 80;
-// Home mode switching crowd-dim off or back on moves the factor a long way at
-// once, so it ramps over a second rather than the deadband's 80 ms.
-static constexpr uint16_t kCrowdDimHomeFadeMs = 1000;
-static lamp::CrowdDimFade s_crowdDim;
-static bool s_crowdDimIgnored = false;
+// change). The factor is a hard step; CrowdDim ramps between successive
+// targets, re-arming only when the TARGET factor changes (not when raw
+// brightness changes), so it stays out of the OTA pulse multiplier's way.
+// Lamp::tick reapplies brightness while crowdDimFading(). Distinct from the
+// user-write micro-fade (s_userBrightness*), which BLE writes drive.
+static lamp::CrowdDim s_crowdDim;
 
 static float currentCrowdDimFactor(uint32_t nowMs) {
-  const bool homeActive = compositor.homeMode;
-  const bool socialDisabled = config.homeMode.socialDisabled;
-  const bool ignored =
-      lamp::homeModeBlocksRemote(homeActive, socialDisabled, lamp::TransientSource::Remote);
-  const uint32_t fadeMs = ignored != s_crowdDimIgnored ? kCrowdDimHomeFadeMs : kCrowdDimFadeMs;
-  s_crowdDimIgnored = ignored;
-  const float target = lamp::crowdDimTarget(lamp::personalityEngine.crowdDimFactor(),
-                                            homeActive, socialDisabled);
-  return s_crowdDim.at(target, fadeMs, nowMs);
+  return s_crowdDim.at(lamp::personalityEngine.crowdDimFactor(),
+                       compositor.blocksRemote(lamp::TransientSource::Remote), nowMs);
 }
 
 namespace lamp {

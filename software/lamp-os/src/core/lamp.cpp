@@ -1122,10 +1122,18 @@ void lamp::Lamp::tick() {
     // reads a consistent post-fade view this tick. Cheap when nothing's
     // changed (1 Hz internal cadence). consumePendingApply() trips the
     // applyEffectiveBrightness pump when the crowd-dim factor crosses the
-    // deadband, or when SocialMode changes the dim regime.
+    // deadband, or when SocialMode changes the dim regime. The crowd-dim
+    // ramp then reapplies every pass until it lands; the slider's own
+    // micro-fade owns the strip while it runs, and OTA quiet mode holds it.
     lamp::personalityEngine.tick(now);
-    if (lamp::personalityEngine.consumePendingApply() || lamp::crowdDimFading(now)) {
+    if (lamp::personalityEngine.consumePendingApply()) {
       pendingApplyEffectiveBrightness = true;
+    }
+    const bool userFading = !lamp::overrides.brightness.isActive() &&
+                            lamp::brightnessFadeSeeded() &&
+                            lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
+    if (lamp::crowdDimFading(now) && !userFading && !lamp::ota_quiet_mode::isQuiet()) {
+      lamp::applyEffectiveBrightness();
     }
   }
 
