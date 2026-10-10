@@ -23,6 +23,15 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   the wisp is painting, while you preview in the app, or in home mode with
   social off. Lamps on older firmware just ignore them.
 
+### Fixed
+- **Fades into the dark are smooth.** Breathing and every other fade toward
+  black no longer step down in visible jumps near the bottom; the lamp now
+  blends between its dimmest levels while the light is changing. Once a light
+  has held still for a second it settles on the nearest level, so a steady dim
+  or night scene stays perfectly still. A fade that lingers on one level for
+  over a second, like the bottom of a very slow breath, can still show a small
+  step there, at worst dropping briefly to off right at the bottom.
+
 ## 1.2.8
 
 ### Added
