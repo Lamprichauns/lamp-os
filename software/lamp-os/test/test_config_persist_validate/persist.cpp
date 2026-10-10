@@ -27,6 +27,9 @@
 using namespace lamp;
 using config_codec::SaveResult;
 
+// The web PUT's body limit (webapp.cpp's kMaxSettingsBody).
+constexpr size_t kMaxSettingsBodyForTest = 16 * 1024;
+
 // Heap use while a web document is saved, counted on the host: the parse
 // through a counting ArduinoJson allocator, the model through operator new.
 // Host slots and pools are larger than the ESP32's (64-bit pointers), so the
@@ -211,6 +214,11 @@ ExpressionConfig full(const char* type, uint8_t target) {
 // when the document carries none (GET redacts it), a named lamp is marked
 // named, and an over-long password or SSID is refused.
 void test_web_document_fixups() {
+  {
+    InMemoryConfigStore unnamed;
+    TEST_ASSERT_TRUE(persist(unnamed, R"({"lamp":{}})") == SaveResult::Ok);
+    TEST_ASSERT_EQUAL_STRING("false", storedField(unnamed, "named").c_str());
+  }
   InMemoryConfigStore s;
   TEST_ASSERT_TRUE(persist(s, R"({"lamp":{"name":"jacko"}})", "secret") == SaveResult::Ok);
   TEST_ASSERT_EQUAL_STRING("secret", storedField(s, "password").c_str());
@@ -246,25 +254,75 @@ std::string document(size_t n, size_t nameLen = 8) {
 
 }  // namespace
 
+// A lamp at every cap: 21 full expressions, 4 base and 4 shade segments of 8
+// colours with 16-byte names, 252 knockout levels and a full disabled list.
+std::string atCapsDocument() {
+  LampSettings lamp;
+  lamp.name = std::string(kMaxLampNameLen, 'n');
+  lamp.password = std::string(kMaxPasswordLen, 'p');
+  BaseSettings base;
+  ShadeSettings shade;
+  for (auto* segs : {&base.segments, &shade.segments}) {
+    segs->clear();
+    for (size_t i = 0; i < kMaxSegments; ++i) {
+      SegmentSettings seg;
+      seg.name = std::string(kMaxSegmentNameLen, 's');
+      seg.px = 63;
+      seg.colors.assign(kMaxSurfaceColors, Color(255, 255, 255, 255));
+      segs->push_back(seg);
+    }
+  }
+  base.knockoutPixels.assign(252, 100);
+  HomeModeSettings homeMode;
+  homeMode.ssid = std::string(kMaxSsidLen, 'w');
+  homeMode.disabledExpressionTypes.assign(kMaxDisabledExpressionTypes,
+                                          std::string(kMaxExpressionTypeLen, 't'));
+  ExpressionSettings expressions;
+  for (size_t i = 0; i < kMaxExpressions; ++i) {
+    expressions.expressions.push_back(full("pulse", 1 + i % 3));
+  }
+  JsonDocument doc;
+  config_codec::toJson(doc.to<JsonObject>(), lamp, base, shade, expressions, homeMode);
+  std::string out;
+  serializeJson(doc, out);
+  return out;
+}
+
 // The gate is set from these: a typical document (about 5 KB), the standard
-// variant's 18 full expressions, every expression the caps allow, and the
-// 12 KB the web PUT accepts made of the smallest elements (the most slots per
-// byte) and of one long string (the largest single block).
+// variant's 18 full expressions, every expression the caps allow, a lamp at
+// every cap, and the 16 KB the web PUT accepts made of the smallest elements
+// (the most slots per byte), of distinct short strings as values and as keys
+// (the most strings per byte) and of one long string (the largest block).
 void test_raw_save_heap_figures_stay_inside_the_gate() {
-  constexpr size_t kMaxBody = 12 * 1024;
-  std::vector<std::string> docs = {document(10), document(18), document(kMaxExpressions)};
+  const size_t maxBody = kMaxSettingsBodyForTest;
+  std::vector<std::string> docs = {document(10), document(18), document(kMaxExpressions),
+                                   atCapsDocument()};
   std::string slots = "{\"lamp\":{},\"x\":[";
-  while (slots.size() < kMaxBody - 4) slots += "0,";
+  while (slots.size() < maxBody - 4) slots += "0,";
   slots += "0]}";
   docs.push_back(slots);
-  docs.push_back("{\"lamp\":{\"name\":\"" + std::string(kMaxBody - 24, 'n') + "\"}}");
+  char name[8];
+  std::string values = "{\"lamp\":{},\"x\":[";
+  std::string keys = "{\"lamp\":{},\"x\":{";
+  for (unsigned i = 0; values.size() < maxBody - 10; ++i) {
+    std::snprintf(name, sizeof(name), "%04x", i & 0xffff);
+    values += std::string(i ? "," : "") + "\"" + name + "\"";
+  }
+  for (unsigned i = 0; keys.size() < maxBody - 12; ++i) {
+    std::snprintf(name, sizeof(name), "%04x", i & 0xffff);
+    keys += std::string(i ? "," : "") + "\"" + name + "\":0";
+  }
+  docs.push_back(values + "]}");
+  docs.push_back(keys + "}}");
+  docs.push_back("{\"lamp\":{\"name\":\"" + std::string(maxBody - 24, 'n') + "\"}}");
   bool inside = true;
   for (const auto& json : docs) {
     const Measured m = measure(json);
     const auto shape = config_codec::scanRawJson(json.c_str());
-    printf("[raw] %zu B, %zu tokens, longest string %zu: peak %zu of %zu, largest %zu of %zu\n",
-           m.len, shape.tokens, shape.longest, m.peak, shape.heapBytes(), m.largest,
-           shape.largestBlock());
+    printf("[raw] %zu B, %zu tokens, %zu distinct strings, longest %zu: peak %zu of %zu, "
+           "largest %zu of %zu\n",
+           m.len, shape.tokens, shape.distinct, shape.longest, m.peak, shape.heapBytes(),
+           m.largest, shape.largestBlock());
     inside &= m.peak <= shape.heapBytes() && m.largest <= shape.largestBlock();
   }
   TEST_ASSERT_TRUE(inside);

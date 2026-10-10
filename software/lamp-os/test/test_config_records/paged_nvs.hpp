@@ -120,7 +120,10 @@ class PagedNvs : public ConfigStore {
 
   // Storage::init after a reset: eraseMismatchedBlobIndexes drops an index
   // whose chunks are missing, and eraseOrphanDataBlobs every chunk no index
-  // names.
+  // names. Not modelled: IDF counts every chunk of the index's version family
+  // (up to the next version's offset) and compares the summed data size with
+  // the index; this counts the index's own range only, which no save here can
+  // tell apart.
   void boot() {
     for (auto& page : pages_) {
       for (auto& index : page.items) {
@@ -407,6 +410,9 @@ class PagedNvs : public ConfigStore {
       }
       return fail();
     }
+    // The previous version goes whole (eraseMultiPageBlob on its offset):
+    // every chunk outside the new version's range, which also takes orphans
+    // of the old range; orphans in the new range stay, as on the device.
     eraseWhere(key, [&](const Item& item) {
       if (item.kind == Kind::BlobIndex) return item.chunk != start;
       if (item.kind == Kind::BlobData) return item.chunk < start || item.chunk >= start + 128;

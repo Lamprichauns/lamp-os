@@ -150,15 +150,17 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
 
 // Heap a raw save takes beside its document, bounded from the host
 // measurements in test_config_persist_validate (64-bit, so its slots and
-// pools are twice the ESP32's) with margin, over every document up to the
-// web PUT's 12 KB. In all, the parse and the model take at most
-// kRawSlotBytes per structural token (`{`, `[`, `:`, `,`), a byte per
-// document byte, kRawLongestPerByte per byte of the longest string (grown
-// while it is parsed, kept, and copied into the model) and kRawModelBytes for
-// the model at the caps. The largest single block is a pool of slots, at most
-// kRawPoolBytes, or the longest string's growth, at most twice it plus
-// kRawStringSlack.
+// pools are twice the ESP32's) with margin, over the documents that test
+// builds, up to the web PUT's 16 KB. In all, the parse and the model take at
+// most kRawSlotBytes per structural token (`{`, `[`, `:`, `,`), a byte per
+// document byte, kRawStringBytes per distinct string (ArduinoJson stores each
+// distinct key or value once), kRawLongestPerByte per byte of the longest
+// string (grown while it is parsed, kept, and copied into the model) and
+// kRawModelBytes for the model at the caps, which carries some slack. The
+// largest single block is a pool of slots, at most kRawPoolBytes, or the
+// longest string's growth, at most twice it plus kRawStringSlack.
 constexpr size_t kRawSlotBytes = 15;
+constexpr size_t kRawStringBytes = 24;
 constexpr size_t kRawLongestPerByte = 3;
 constexpr size_t kRawModelBytes = 4096;
 constexpr size_t kRawPoolBytes = 4096;
@@ -169,6 +171,7 @@ struct RawJsonShape {
   size_t len = 0;
   size_t tokens = 0;    // structural characters, counted inside strings too
   size_t longest = 0;   // the longest string's raw length
+  size_t distinct = 0;  // strings, keys included, not seen just before
   size_t heapBytes() const;
   size_t largestBlock() const;
 };

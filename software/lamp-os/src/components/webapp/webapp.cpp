@@ -23,6 +23,7 @@
 #include "components/network/ble/ble_control.hpp"
 #include "behaviors/fade_out.hpp"
 #include "components/network/transport/wifi.hpp"
+#include "components/webapp/settings_body.hpp"
 #include "components/webapp/webapp_deadline.hpp"
 #include "config/config_types.hpp"
 #include "core/pending_json_slot.hpp"
@@ -246,42 +247,32 @@ static void drainWebSave() {
   xSemaphoreGive(s_webSaveDone);
 }
 
-// The settings body, gathered as it arrives into one block the loop takes.
-// The document at every cap is about 10.5 KB.
-static constexpr size_t kMaxSettingsBody = 12 * 1024;
-
 static void collectSettingsBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                                 size_t index, size_t total) {
-  if (total > kMaxSettingsBody) return;
-  if (index == 0 && req->_tempObject == nullptr && lamp::heapCanSpare(total + 1)) {
-    req->_tempObject = calloc(total + 1, 1);
-  }
-  if (req->_tempObject != nullptr && index + len <= total) {
-    std::memcpy(static_cast<char*>(req->_tempObject) + index, data, len);
-  }
+  collectBodyPiece(req->_tempObject, data, len, index, total, kMaxSettingsBody,
+                   lamp::heapCanSpare);
 }
 
 // Whole-document replace: the body must be the full config (the GET doc,
-// mutated and sent back in its entirety). The loop parses it once and
-// refuses one with no `lamp` object, an over-long password or SSID (400),
-// keeps the stored password when the body carries none (GET redacts it), and
-// stamps a named lamp (config_codec::saveRawJson).
+// mutated and sent back in its entirety). The loop parses it once
+// (config_codec::saveRawJson) and refuses one with no `lamp` object or an
+// over-long password or SSID; that answers 400 while this handler still
+// waits, and is logged after a 202. A missing password keeps the stored one
+// (GET redacts it), and a body carrying a name marks the lamp named.
 static void handlePutSettings(AsyncWebServerRequest* req) {
   bumpDeadline();
   if (webSurfaceReadOnly()) {
     req->send(403, "application/json", "{\"ok\":false}");
     return;
   }
-  if (req->contentLength() > kMaxSettingsBody) {
-    req->send(413, "application/json", "{\"ok\":false}");
+  const int status = settingsBodyStatus(req->contentType().startsWith("application/json"),
+                                        req->contentLength(), req->_tempObject,
+                                        kMaxSettingsBody);
+  if (status != 0) {
+    req->send(status, "application/json", "{\"ok\":false}");
     return;
   }
-  char* body = static_cast<char*>(req->_tempObject);
-  if (body == nullptr) {
-    req->send(500, "application/json", "{\"ok\":false}");
-    return;
-  }
-  req->_tempObject = nullptr;  // the loop frees it
+  char* body = takeBody(req->_tempObject);  // the loop frees it
   // A landed save arms its own reboot (drainWebSave): the constructor
   // re-parses the new config on boot, and drain-level side-effects in
   // apply::settingsBlobLocal() do not run inline for web saves. The 1.5 s

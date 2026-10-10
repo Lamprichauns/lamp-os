@@ -828,33 +828,56 @@ LoadedRecords loadStoredConfig(ConfigStore& store, JsonObject root, LampSettings
 }
 
 RawJsonShape scanRawJson(const char* json) {
+  // The last kSeen short strings, compared byte for byte: a string seen
+  // there is one ArduinoJson already holds and costs no new block. Raw bytes
+  // that differ (escapes) count twice, which errs high.
+  constexpr size_t kSeen = 32;
+  constexpr size_t kSeenLen = 15;
+  char seen[kSeen][kSeenLen + 1] = {};
+  size_t nextSeen = 0;
   RawJsonShape shape;
   bool inString = false;
-  size_t run = 0;
+  const char* start = nullptr;
   for (const char* c = json; *c; ++c, ++shape.len) {
     if (*c == '{' || *c == '[' || *c == ':' || *c == ',') ++shape.tokens;
-    if (inString) {
-      if (*c == '\\' && c[1]) {
-        ++c;
-        ++shape.len;
-        run += 2;
-      } else if (*c == '"') {
-        inString = false;
-        shape.longest = std::max(shape.longest, run);
-      } else {
-        ++run;
+    if (!inString) {
+      if (*c == '"') {
+        inString = true;
+        start = c + 1;
       }
+      continue;
+    }
+    if (*c == '\\' && c[1]) {
+      ++c;
+      ++shape.len;
     } else if (*c == '"') {
-      inString = true;
-      run = 0;
+      inString = false;
+      const size_t run = static_cast<size_t>(c - start);
+      shape.longest = std::max(shape.longest, run);
+      bool repeat = false;
+      if (run <= kSeenLen) {
+        for (size_t i = 0; i < kSeen && !repeat; ++i) {
+          repeat = std::strlen(seen[i]) == run && std::memcmp(seen[i], start, run) == 0;
+        }
+        if (!repeat) {
+          std::memcpy(seen[nextSeen], start, run);
+          seen[nextSeen][run] = '\0';
+          nextSeen = (nextSeen + 1) % kSeen;
+        }
+      }
+      if (!repeat) ++shape.distinct;
     }
   }
-  if (inString) shape.longest = std::max(shape.longest, run);
+  if (inString) {
+    shape.longest = std::max(shape.longest, static_cast<size_t>(shape.len - (start - json)));
+    ++shape.distinct;
+  }
   return shape;
 }
 
 size_t RawJsonShape::heapBytes() const {
-  return kRawSlotBytes * (tokens + 1) + len + kRawLongestPerByte * longest + kRawModelBytes;
+  return kRawSlotBytes * (tokens + 1) + len + kRawStringBytes * distinct +
+         kRawLongestPerByte * longest + kRawModelBytes;
 }
 
 size_t RawJsonShape::largestBlock() const {
@@ -879,6 +902,7 @@ SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
       std::strlen(doc["homeMode"]["ssid"] | "") > kMaxSsidLen) {
     return SaveResult::Invalid;
   }
+  const bool bodyNamed = (doc["lamp"]["name"] | "")[0] != '\0';
   LampSettings lamp;
   BaseSettings base;
   ShadeSettings shade;
@@ -886,9 +910,10 @@ SaveResult saveRawJson(ConfigStore& store, const char* json, char* cfgBuffer,
   HomeModeSettings homeMode;
   fromJson(doc.as<JsonObject>(), lamp, base, shade, expressions, homeMode);
   // The GET document redacts the password, so a body without one keeps the
-  // stored one; a body carrying a name is an explicit configuration.
+  // stored one; a body carrying a name (one left after fromJson normalizes
+  // it) is an explicit configuration.
   if (lamp.password.empty()) lamp.password = keptPassword;
-  if (!lamp.name.empty()) lamp.named = true;
+  if (bodyNamed && !lamp.name.empty()) lamp.named = true;
   return saveConfig(store, lamp, base, shade, expressions, homeMode, cfgBuffer, cfgBufferLen);
 }
 
