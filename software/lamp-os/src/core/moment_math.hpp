@@ -73,8 +73,6 @@ uint32_t likedFingerprint(const std::vector<NearbyCopy>& peers, Disposition disp
   return (count << 24) ^ mix;
 }
 
-// --- Fireflies -------------------------------------------------------------
-
 inline constexpr uint16_t kFirefliesBlinks = 120;
 inline constexpr uint16_t kFirefliesScatterBlinks = 8;
 inline constexpr int32_t kFirefliesNudgePermille = 60;
@@ -94,12 +92,8 @@ uint8_t firefliesOpacity(uint16_t blink);
 // Stars lit by one blink on a shade of `shadePixels`.
 uint16_t firefliesStars(uint16_t shadePixels);
 
-// --- Heartbeat -------------------------------------------------------------
-
 uint32_t heartbeatPeriodMs(float rssiEma);
 float heartbeatEma(float ema, int8_t rssi);
-
-// --- Selection -------------------------------------------------------------
 
 // The fresh peer a Whisper may start toward: Smitten at or above -70 dBm, or
 // Fond at or above -62 dBm.
@@ -164,8 +158,6 @@ bool selectWhisperHop(const std::vector<NearbyCopy>& peers, uint32_t nowMs,
   for (int i = 0; i < 6; ++i) out[i] = best->mac[i];
   return true;
 }
-
-// --- Wire ------------------------------------------------------------------
 
 inline constexpr uint32_t kMomentMaxAgeMs = 2000;
 

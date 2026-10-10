@@ -23,7 +23,7 @@
 namespace lamp {
 
 // Everything the director reads from or does to the lamp. The firmware binds
-// it to the live globals (moments_host.cpp); the native suite to fakes.
+// it to the live globals (lamp_moments.cpp); the native suite to fakes.
 class MomentHost {
  public:
   virtual ~MomentHost() = default;
