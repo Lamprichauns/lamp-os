@@ -220,8 +220,9 @@ void test_static_pixels_settle_to_rounded_level_and_dedup() {
 }
 
 // A slow fade holding each content byte for 17 to 30 flushes never settles
-// mid-fade: every flush still pushes a dithered frame. The last byte, held,
-// settles after exactly the hold.
+// mid-fade: every flush still pushes a dithered frame. The last byte keeps
+// dithering through 60 unchanged flushes (1 s at 16 ms) and settles on the
+// next, so 61 pushes in all.
 void test_slow_fade_keeps_dithering_between_steps() {
   FrameBuffer fb;
   fb.begin({}, std::vector<StripSegment>{{&neo0, "s0", 0, 1}});
@@ -238,12 +239,12 @@ void test_slow_fade_keeps_dithering_between_steps() {
   fb.buffer = {Color(40, 0, 0, 0)};
   TEST_ASSERT_NOT_EQUAL(0, kGamma88[40] & 0xFF);
   int pushes = 0;
-  for (int f = 0; f < 3 * FrameBuffer::kDitherHoldFrames; f++) {
+  for (int f = 0; f < 200; f++) {
     neo0.reset();
     fb.flush();
     pushes += neo0.showCount;
   }
-  TEST_ASSERT_EQUAL_INT(FrameBuffer::kDitherHoldFrames + 1, pushes);
+  TEST_ASSERT_EQUAL_INT(61, pushes);
 }
 
 // A strip-level change over a settled scene resumes dithering at the new level.
