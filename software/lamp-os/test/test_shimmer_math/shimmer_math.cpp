@@ -307,6 +307,20 @@ void test_burst_spark_rises_visible_and_ends_dark() {
   }
 }
 
+// A tinted star starts from the colour under it and reaches the tint's own
+// ramp at the hottest spark.
+void test_tinted_burst_fades_from_the_anchor_to_the_tint() {
+  const FireStyle twinkle = fireStyle(0);
+  const Color anchor(200, 40, 0, 0);
+  const Color tint(0, 0, 220, 0);
+  const Color cool = tintedBurstPaint(anchor, tint, kBurstPaintHeat, twinkle);
+  TEST_ASSERT_TRUE(cool == anchor);
+  const Color hot = tintedBurstPaint(anchor, tint, 1.0f, twinkle);
+  TEST_ASSERT_TRUE(hot == shimmerPaint(tint, 1.0f, twinkle, 1.0f));
+  const Color mid = tintedBurstPaint(anchor, tint, 0.7f, twinkle);
+  TEST_ASSERT_TRUE(mid.b > 0 && mid.b < hot.b);
+}
+
 void test_burst_length_clamps() {
   TEST_ASSERT_EQUAL_UINT32(kBurstMinMs, clampBurstMs(1));
   TEST_ASSERT_EQUAL_UINT32(kBurstMaxMs, clampBurstMs(60000));
@@ -342,6 +356,7 @@ int main(int, char**) {
   RUN_TEST(test_spark_target_lands_in_the_spark_band);
   RUN_TEST(test_burst_threshold_paints_the_anchor);
   RUN_TEST(test_burst_spark_rises_visible_and_ends_dark);
+  RUN_TEST(test_tinted_burst_fades_from_the_anchor_to_the_tint);
   RUN_TEST(test_burst_length_clamps);
   return UNITY_END();
 }

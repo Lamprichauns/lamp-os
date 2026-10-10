@@ -195,4 +195,12 @@ inline bool burstDone(uint32_t elapsedMs, uint32_t burstMs) {
   return elapsedMs >= burstMs;
 }
 
+// A tinted burst cell: the tint's warmth ramp, blended in from none at
+// kBurstPaintHeat to full at the hottest spark, so a tinted star still fades
+// in and out of whatever lies under it.
+inline Color tintedBurstPaint(Color anchor, Color tint, float heat, const FireStyle& s) {
+  const float weight = clampUnit((heat - kBurstPaintHeat) / (1.0f - kBurstPaintHeat));
+  return mixColorWeight(anchor, shimmerPaint(tint, heat, s, 1.0f), weight);
+}
+
 }  // namespace lamp

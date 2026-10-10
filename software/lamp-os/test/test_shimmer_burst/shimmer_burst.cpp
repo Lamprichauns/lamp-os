@@ -27,7 +27,7 @@ constexpr uint8_t kPixels = 24;
 constexpr uint32_t kStars = 5;
 constexpr uint32_t kBurstMs = 400;
 constexpr uint32_t kFrameMs = 16;
-const Color kAnchor(120, 60, 30, 0);
+const Color kAnchor(120, 60, 0, 0);
 
 struct Surfaces {
   FrameBuffer shade;
@@ -42,8 +42,13 @@ struct Surfaces {
   }
 };
 
-void burstOn(ShimmerExpression& e, Surfaces& s, bool transient) {
-  e.configure({}, 60, 900, TARGET_SHADE);
+// The anchor carries no blue, and Twinkle's warmth ramp never adds any, so
+// blue on the surface can only come from a tint.
+const Color kBlueTint(0, 0, 255, 0);
+
+void burstOn(ShimmerExpression& e, Surfaces& s, bool transient,
+             std::vector<Color> colors = {}) {
+  e.configure(colors, 60, 900, TARGET_SHADE);
   e.configureFromParameters(
       {{"fire", 0}, {"count", kStars}, {"durationMax", kBurstMs}, {"opacity", 100}});
   e.autoTriggerEnabled = !transient;
@@ -112,10 +117,44 @@ void test_a_configured_flicker_with_burst_keys_stays_continuous() {
   TEST_ASSERT_EQUAL_UINT32(kPixels, widest);
 }
 
+size_t bluestPixel(ShimmerExpression& e, Surfaces& s, uint32_t spanMs) {
+  e.trigger();
+  uint8_t blue = 0;
+  for (uint32_t now = 1000; now < 1000 + spanMs; now += kFrameMs) {
+    frame(e, s, now);
+    for (const Color& c : s.shade.buffer) blue = c.b > blue ? c.b : blue;
+  }
+  return blue;
+}
+
+void test_a_burst_paints_its_tint() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true, {kBlueTint});
+  TEST_ASSERT_TRUE(bluestPixel(e, s, kBurstMs) > 0);
+}
+
+void test_an_untinted_burst_paints_the_colour_under_it() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/true);
+  TEST_ASSERT_EQUAL_UINT8(0, bluestPixel(e, s, kBurstMs));
+}
+
+void test_a_configured_flicker_ignores_a_tint() {
+  Surfaces s;
+  ShimmerExpression e(&s.shade);
+  burstOn(e, s, /*transient=*/false, {kBlueTint});
+  TEST_ASSERT_EQUAL_UINT8(0, bluestPixel(e, s, 5 * kBurstMs));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_a_transient_burst_completes_for_the_gc);
   RUN_TEST(test_only_sparked_cells_ever_paint);
   RUN_TEST(test_a_configured_flicker_with_burst_keys_stays_continuous);
+  RUN_TEST(test_a_burst_paints_its_tint);
+  RUN_TEST(test_an_untinted_burst_paints_the_colour_under_it);
+  RUN_TEST(test_a_configured_flicker_ignores_a_tint);
   return UNITY_END();
 }

@@ -59,6 +59,8 @@ void ShimmerExpression::onTrigger() {
   cells_.resize(regionSize);
   if (bursting()) {
     burstStartMs_ = millis();
+    burstTinted_ = !colors.empty();
+    if (burstTinted_) burstTint_ = getRandomColor();
     // Selection sampling: exactly burstCount_ distinct cells spark, so a
     // full-count burst lights every one.
     uint16_t remaining = burstCount_;
@@ -123,7 +125,9 @@ void ShimmerExpression::drawBurst() {
       const float heat = clampUnit(cells_[static_cast<uint16_t>(i - zone_.posMin)].heat);
       if (heat < kBurstPaintHeat) continue;
       const Color anchor = fb->buffer[i];
-      fb->buffer[i] = mixColorWeight(anchor, shimmerPaint(anchor, heat, style_, 1.0f), wispWeight);
+      const Color painted = burstTinted_ ? tintedBurstPaint(anchor, burstTint_, heat, style_)
+                                         : shimmerPaint(anchor, heat, style_, 1.0f);
+      fb->buffer[i] = mixColorWeight(anchor, painted, wispWeight);
     }
   }
 
