@@ -8,6 +8,19 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 ## Unreleased
 
 ### Added
+- **Moments.** Once in a long while a room of lamps that like each other
+  shares a moment, with nothing to set up. **Fireflies**: when three or more
+  lamps a lamp is fond of have stayed together for ten minutes, the room
+  starts sparkling faintly with stars, scattered at first, then drawing into
+  one shared beat for a couple of minutes. **Whisper**: a soft glow travels
+  across the lamp and is handed on to the friendliest lamp nearby, lamp to
+  lamp, up to eight hops. **Heartbeat**: a lamp beats gently when a lamp it
+  is smitten with comes close, quickening as it nears and settling when it
+  leaves. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
+  more it takes part (back to normal after a restart), Extroverts start them
+  more often and Introverts less, and nothing happens during an update, while
+  the wisp is painting, while you preview in the app, or in home mode with
+  social off. Lamps on older firmware just ignore them.
 - **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
   source in the app and choose which of Straylight's palettes to follow —
   Primary, Secondary, Tertiary or Fill. The wisp takes it over USB or the

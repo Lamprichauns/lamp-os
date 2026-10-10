@@ -395,8 +395,9 @@ surface(1) + sourceKind(1) + fadeDurationMs(2 LE)
 - **No relay**: nearby-scoped by design — lamps only observe expressions they can physically hear.
 - **Auth**: `command_auth::verify()` runs before dedup-record, so an unauthenticated frame is dropped before it consumes a dedup slot. See the command_auth section below.
 - **Dedup**: `eventDedup_` 32-slot ring per `(sourceMac, seq)`. Originator pre-records its own seq so the broadcast echo does not re-deliver via observers.
-- **Drain**: Core 1 loop via `PendingEvent` slot → `Lamp::drainEvent()` → `ExpressionObserverRegistry::fanOut()`.
+- **Drain**: Core 1 loop via `PendingEvent` slot → `Lamp::drainEvent()` → `deliverEvent()` (`core/moments.cpp`): a payload carrying `mo` goes to the Moment director, anything else to `ExpressionObserverRegistry::fanOut()`.
 - **Payload**: `ExpressionInvocation` JSON (cascade keys stripped, colors packed — see MSG_COMMAND). `delayMs` is carried but not acted on by the receiver; observers interpret it as they see fit.
+- **Moment frames**: `{"type":"moment","mo":{...}}`, a sentinel invocation carrying one extra top-level object, `mo`: `k` kind (1 Fireflies, 2 Whisper; any other is ignored), `s` uint32 seed, `a` age in ms (0 to 2000), and for a Whisper `h` hops (1 to 8), `to` the next hop's MAC and `v` the visited MACs (12 uppercase hex each, no separators, exactly `12*h` chars, origin first). Every frame is sent twice 200 ms apart. The worst case is under 190 B. A frame carrying `mo` never reaches the mirror. An older lamp parses it as an invocation of the unknown type `moment` and renders nothing; no variant registers that id. No protocol bump: the key is additive and `parseInvocation` ignores unknown keys. Contract: [`moments.md`](moments.md).
 
 **`MSG_COMMAND` (0x31)**, shared-key-authenticated, targeted expression invocation from one lamp to a specific nearby lamp.
 
