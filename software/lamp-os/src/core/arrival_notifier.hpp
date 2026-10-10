@@ -33,8 +33,8 @@ class ArrivalNotifier {
   using Callback = std::function<void(const PeerView&)>;
 
   static constexpr size_t kMaxObservers = 4;
-  // Equal to LampRoster::kCapacity (static_assert in the .cpp), so every
-  // near peer has a slot and a silenced pass marks the whole room.
+  // Equal to LampRoster::kCapacity, so every near peer has a slot and a
+  // silenced pass marks the whole room.
   static constexpr size_t kMaxFired = 50;
   // A sighting older than this is "been around", not a fresh arrival.
   static constexpr uint32_t kArrivalMaxAgeMs = 5000;
@@ -45,7 +45,7 @@ class ArrivalNotifier {
   // Near-set diff. `nearWindowMs` is the departure hysteresis: a fired peer
   // re-arms once its last near sighting falls outside it, distinct from the
   // short kArrivalMaxAgeMs that bounds a fresh arrival. No-op when no observer
-  // is registered. `pass` decides what a new near peer gets (ArrivalPass).
+  // is registered. `pass` decides what a new near peer gets; see ArrivalPass.
   void tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs,
             ArrivalPass pass = ArrivalPass::Fire);
 
