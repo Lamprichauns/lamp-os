@@ -6,6 +6,9 @@
   "scripts": {
     "lamp:build": "cd software/lamp-os && LAMP_FIRMWARE_CHANNEL=dev pio run -e upesy_wroom_${VARIANT:-standard}",
     "ui:build": "cd software/lamp-ui && npm ci && npm run build",
+    "//ui:dev": "Web UI dev server with hot reload. Run with LAMP_HOST=<lamp ip> to drive a real lamp (proxies /api and /ws to it): LAMP_HOST=192.168.4.1 npm run ui:dev. The laptop must be joined to the lamp's setup Wi-Fi (softAP, normally 192.168.4.1). Set \"Keep Setup Available\" in the Setup tab so the AP doesn't expire mid-session.",
+    "ui:dev": "cd software/lamp-ui && npm run dev",
+    "ui:test": "cd software/lamp-ui && npm test",
     "lamp:buildfs": "npm run ui:build && cd software/lamp-os && LAMP_FIRMWARE_CHANNEL=dev pio run -e upesy_wroom_${VARIANT:-standard} -t buildfs",
     "lamp:flashfs": "npm run ui:build && cd software/lamp-os && LAMP_FIRMWARE_CHANNEL=dev ${PORT:+env PLATFORMIO_UPLOAD_PORT=$PORT} pio run -e upesy_wroom_${VARIANT:-standard} -t uploadfs",
     "//lamp:flash": "DEV/BENCH TESTING ONLY: builds + flashes an unsigned dev image (LAMP_DEBUG on) AND the filesystem (web UI SPIFFS), so a bench lamp is left complete, not with stale SPIFFS. To flash a lamp with signed release firmware, use lamp:flash:release.",

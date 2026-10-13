@@ -64,6 +64,8 @@ All tasks run from the repo root.
 | `npm run lamp:monitor` | Serial monitor on the connected lamp — first stop for crashes/reset reasons |
 | `npm run lamp:buildfs` / `lamp:flashfs` | Build / flash the SPIFFS web-config UI (runs `ui:build` first) |
 | `npm run ui:build` | Build the lamp-ui web app |
+| `npm run ui:dev` | lamp-ui dev server with hot reload. `LAMP_HOST=<lamp ip>` proxies `/api` and `/ws` to a real lamp: join its setup Wi-Fi (softAP, normally `192.168.4.1`) and set Keep Setup Available in the Setup tab so the AP doesn't expire |
+| `npm run ui:test` | lamp-ui unit and component tests (vitest) |
 | `npm run wisp:build` / `wisp:flash` / `wisp:test` / `wisp:monitor` | Same as the lamp tasks, for the wisp node |
 
 ## Flash a lamp
