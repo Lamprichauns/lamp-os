@@ -12,6 +12,7 @@ import RangeSlider from '../RangeSlider.vue'
 import SegmentedControl from '../SegmentedControl.vue'
 import { resolveBound } from './catalog'
 import { formatDuration } from '../../utils/duration'
+import { SURFACE_TARGET_OPTIONS } from '../../utils/surfaceTarget'
 import type { Expression, ExpressionDescriptor, CatalogParam, CatalogEnumOption } from '../../types'
 
 // Catalog units are 's' or 'ms' (raw slider value in that unit); anything
@@ -40,12 +41,6 @@ const emit = defineEmits<{
   preview: [colors: string[]]
   'preview-end': []
 }>()
-
-const targetOptions = [
-  { value: 1, label: 'Shade' },
-  { value: 2, label: 'Base' },
-  { value: 3, label: 'Both' },
-]
 
 const pixelCount = computed(() =>
   props.expression.target === 1 ? props.shadePx : props.basePx,
@@ -146,7 +141,7 @@ const onDurationMax = (value: number) => {
     >
       <SegmentedControl
         :model-value="expression.target"
-        :options="targetOptions"
+        :options="SURFACE_TARGET_OPTIONS"
         :disabled="disabled"
         @update:model-value="(value) => emit('update', { target: value })"
       />

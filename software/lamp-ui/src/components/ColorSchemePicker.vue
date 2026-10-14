@@ -3,7 +3,7 @@
     <SegmentedControl
       v-if="shadeEditable && baseEditable"
       v-model="target"
-      :options="targetOptions"
+      :options="SURFACE_TARGET_OPTIONS"
       :disabled="disabled"
     />
 
@@ -31,19 +31,17 @@
 
 <script lang="ts">
 import { schemeById } from '../utils/colorHarmony'
-
-// 1 = Shade, 2 = Base, 3 = Both, as in Expression.target.
-export type SchemeTarget = 1 | 2 | 3
+import { TARGET_BASE, TARGET_SHADE, type SurfaceTarget } from '../utils/surfaceTarget'
 
 export function schemeSelection(
   shadeScheme: number,
   baseScheme: number,
-  target: SchemeTarget,
+  target: SurfaceTarget,
 ): { selectedId: number | null } {
   const shadeId = schemeById(shadeScheme).id
   const baseId = schemeById(baseScheme).id
-  if (target === 1) return { selectedId: shadeId }
-  if (target === 2) return { selectedId: baseId }
+  if (target === TARGET_SHADE) return { selectedId: shadeId }
+  if (target === TARGET_BASE) return { selectedId: baseId }
   return { selectedId: shadeId === baseId ? shadeId : null }
 }
 </script>
@@ -53,6 +51,7 @@ import { computed, ref } from 'vue'
 import SegmentedControl from './SegmentedControl.vue'
 import { COLOR_SCHEMES, harmonyColors, type ColorScheme } from '../utils/colorHarmony'
 import { createGradientFromHexww } from '../utils/colorUtils'
+import { SURFACE_TARGET_OPTIONS, TARGET_BOTH } from '../utils/surfaceTarget'
 
 interface Props {
   shadeScheme: number
@@ -69,22 +68,18 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  pick: [target: SchemeTarget, schemeId: number]
+  pick: [target: SurfaceTarget, schemeId: number]
 }>()
 
-const targetOptions = [
-  { value: 1, label: 'Shade' },
-  { value: 2, label: 'Base' },
-  { value: 3, label: 'Both' },
-]
-
 const target = ref<number>(
-  schemeSelection(props.shadeScheme, props.baseScheme, 3).selectedId === null ? 1 : 3,
+  schemeSelection(props.shadeScheme, props.baseScheme, TARGET_BOTH).selectedId === null
+    ? TARGET_SHADE
+    : TARGET_BOTH,
 )
 
-const activeTarget = computed<SchemeTarget>(() => {
-  if (props.shadeEditable && props.baseEditable) return target.value as SchemeTarget
-  return props.baseEditable ? 2 : 1
+const activeTarget = computed<SurfaceTarget>(() => {
+  if (props.shadeEditable && props.baseEditable) return target.value as SurfaceTarget
+  return props.baseEditable ? TARGET_BASE : TARGET_SHADE
 })
 
 const selectedId = computed(
@@ -92,18 +87,18 @@ const selectedId = computed(
 )
 
 const previewPrimary = computed(() =>
-  activeTarget.value === 2 ? props.basePrimary : props.shadePrimary,
+  activeTarget.value === TARGET_BASE ? props.basePrimary : props.shadePrimary,
 )
 
 const mixedNote = computed(() =>
-  activeTarget.value === 3 && selectedId.value === null
+  activeTarget.value === TARGET_BOTH && selectedId.value === null
     ? `Shade uses ${schemeById(props.shadeScheme).name}, Base uses ${schemeById(props.baseScheme).name}. Picking a scheme sets both.`
     : '',
 )
 
 const swatchBackground = (scheme: ColorScheme) =>
   createGradientFromHexww(
-    harmonyColors(previewPrimary.value, scheme.id, scheme.naturalCount),
+    harmonyColors(previewPrimary.value, scheme.id, scheme.naturalCount).reverse(),
     'to right',
   )
 </script>
@@ -130,7 +125,7 @@ const swatchBackground = (scheme: ColorScheme) =>
   text-align: left;
   font: inherit;
   background: rgba(255, 255, 255, 0.05);
-  color: var(--brand-light-grey);
+  color: var(--color-text);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   cursor: pointer;

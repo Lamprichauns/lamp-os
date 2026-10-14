@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ColorSchemePicker, { schemeSelection } from './ColorSchemePicker.vue'
 import SegmentedControl from './SegmentedControl.vue'
+import { harmonyColors } from '../utils/colorHarmony'
+import { createGradientFromHexww } from '../utils/colorUtils'
 
 const SHADE = '#3A7BD5C8'
 const BASE = '#F4A6B800'
@@ -113,11 +115,27 @@ describe('ColorSchemePicker', () => {
     expect(wrapper.emitted('pick')).toEqual([[1, 2]])
   })
 
-  it('previews the targeted surface primary in each swatch', async () => {
-    const wrapper = mountPicker({ shadeScheme: 0, baseScheme: 1 })
-    const shadeSwatch = wrapper.get('.scheme-swatch').attributes('style')
-    await wrapper.findAll('.target')[1].trigger('click')
-    expect(wrapper.get('.scheme-swatch').attributes('style')).not.toBe(shadeSwatch)
+  describe('swatch', () => {
+    const expected = (primary: string) =>
+      createGradientFromHexww(harmonyColors(primary, 0, 3).reverse(), 'to right')
+    const swatch = (wrapper: ReturnType<typeof mountPicker>) =>
+      (wrapper.get('.scheme-swatch').element as HTMLElement).style.background
+
+    it('previews the Shade primary when Shade is targeted', () => {
+      const wrapper = mountPicker({ shadeScheme: 0, baseScheme: 1 })
+      expect(swatch(wrapper)).toBe(expected(SHADE))
+    })
+
+    it('previews the Base primary after switching to Base', async () => {
+      const wrapper = mountPicker({ shadeScheme: 0, baseScheme: 1 })
+      await wrapper.findAll('.target')[1].trigger('click')
+      expect(swatch(wrapper)).toBe(expected(BASE))
+    })
+
+    it('previews the Shade primary when Both is targeted', () => {
+      const wrapper = mountPicker({ shadeScheme: 0, baseScheme: 0 })
+      expect(swatch(wrapper)).toBe(expected(SHADE))
+    })
   })
 
   it('disables the options when disabled', async () => {

@@ -8,7 +8,7 @@ import CritterIcon from './components/CritterIcon.vue'
 import FormField from './components/FormField.vue'
 import BrightnessSlider from './components/BrightnessSlider.vue'
 import ColorGradient from './components/ColorGradient.vue'
-import ColorSchemePicker, { type SchemeTarget } from './components/ColorSchemePicker.vue'
+import ColorSchemePicker from './components/ColorSchemePicker.vue'
 import TextInput from './components/TextInput.vue'
 import BooleanInput from './components/BooleanInput.vue'
 import NumberInput from './components/NumberInput.vue'
@@ -22,6 +22,7 @@ import {
 } from './utils/configShape'
 import { blendedIdentity, hexwwToRgb } from './utils/colorUtils'
 import { harmonizePalette } from './utils/colorHarmony'
+import { TARGET_BASE, TARGET_SHADE, type SurfaceTarget } from './utils/surfaceTarget'
 import { toTitleCase } from './utils/stringCase'
 
 // Firmware does a full-replace on PUT: any field omitted from the body resets
@@ -258,14 +259,14 @@ const shadeColorsEditable = computed(() => cfg.value.shade.colorsEditable !== fa
 // the same color the device actually shows for a multi-stop base.
 const blendedBaseColor = computed(() => blendedIdentity(baseColors.value) ?? SAFE_COLOR)
 
-const pickColorScheme = (target: SchemeTarget, schemeId: number) => {
-  if (target !== 2 && shadeColorsEditable.value) {
+const pickColorScheme = (target: SurfaceTarget, schemeId: number) => {
+  if (target !== TARGET_BASE && shadeColorsEditable.value) {
     cfg.value.shade.colorScheme = schemeId
     if (cfg.value.shade.autoColors) {
       shadeColors.value = harmonizePalette(shadeColors.value, schemeId)
     }
   }
-  if (target !== 1 && baseColorsEditable.value) {
+  if (target !== TARGET_SHADE && baseColorsEditable.value) {
     cfg.value.base.colorScheme = schemeId
     if (cfg.value.base.autoColors) {
       baseColors.value = harmonizePalette(baseColors.value, schemeId)
@@ -879,11 +880,7 @@ onUnmounted(() => {
 
             <template v-if="shadeColorsEditable || baseColorsEditable">
               <h1 class="gold">Color Harmony</h1>
-              <FormField
-                label="Scheme"
-                id="colorScheme"
-                help-text="The scheme Auto-pick colors uses on the Home tab."
-              >
+              <FormField label="Scheme" id="colorScheme">
                 <ColorSchemePicker
                   :shade-scheme="cfg.shade.colorScheme ?? 0"
                   :base-scheme="cfg.base.colorScheme ?? 0"
@@ -894,6 +891,7 @@ onUnmounted(() => {
                   :disabled="disabled"
                   @pick="pickColorScheme"
                 />
+                <div class="info-text">The scheme Auto-pick colors uses on the Home tab.</div>
               </FormField>
             </template>
 
