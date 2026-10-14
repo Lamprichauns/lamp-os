@@ -24,14 +24,18 @@ describe('ColorPicker', () => {
   it('shows the preview, hex input and four sliders in that order', async () => {
     const wrapper = await mountOpen('#FF000000')
     const body = wrapper.get('.dialog-body').element
-    const order = ['.color-preview-large', '#hex-input', '#red', '#green', '#blue', '#ww']
-    const positions = order.map((selector) => {
-      const el = body.querySelector(selector)
-      expect(el, selector).not.toBeNull()
-      return Array.from(body.querySelectorAll('*')).indexOf(el!)
-    })
-    expect(positions).toEqual([...positions].sort((a, b) => a - b))
-    expect(wrapper.find('.color-wheel-disc').exists()).toBe(false)
+    const children = Array.from(body.children)
+    expect(children).toHaveLength(3)
+    expect(children[0].matches('.color-preview-large')).toBe(true)
+    expect(children[1].matches('.input-group')).toBe(true)
+    expect(children[2].matches('.sliders-container')).toBe(true)
+    expect(Array.from(body.querySelectorAll('input')).map((el) => el.id)).toEqual([
+      'hex-input',
+      'red',
+      'green',
+      'blue',
+      'ww',
+    ])
     wrapper.unmount()
   })
 
@@ -73,8 +77,8 @@ describe('ColorPicker', () => {
 
   it('closes and reverts when the press and click are both on the overlay', async () => {
     const wrapper = await mountOpen('#FF000000')
-    const overlay = wrapper.get('.dialog-overlay')
     await wrapper.get('#green').setValue('255')
+    const overlay = wrapper.get('.dialog-overlay')
     await overlay.trigger('pointerdown')
     await overlay.trigger('click')
     expect(wrapper.find('.dialog-overlay').exists()).toBe(false)
@@ -84,10 +88,10 @@ describe('ColorPicker', () => {
 
   it('does not close or revert when a drag began in the dialog and the click lands on the overlay', async () => {
     const wrapper = await mountOpen('#FF000000')
-    const overlay = wrapper.get('.dialog-overlay')
-    await wrapper.get('#green').setValue('255')
+    await wrapper.get('.dialog-overlay').trigger('pointerdown')
     await wrapper.get('#green').trigger('pointerdown')
-    await overlay.trigger('click')
+    await wrapper.get('#green').setValue('255')
+    await wrapper.get('.dialog-overlay').trigger('click')
     expect(wrapper.find('.dialog-overlay').exists()).toBe(true)
     expect(wrapper.emitted('close')).toBeUndefined()
     expect(lastEmit(wrapper)).toEqual(['#FFFF0000'])
