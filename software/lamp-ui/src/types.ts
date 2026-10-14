@@ -53,12 +53,18 @@ export interface BaseConfig {
   colorsEditable?: boolean
   // NeoPixel channel order; absent = the variant's StripSpec default.
   byteOrder?: string
+  // Color harmony auto-pick state; see docs/dev/color-harmony.md.
+  autoColors?: boolean
+  colorScheme?: number
 }
 
 export interface ShadeConfig {
   segments?: Segment[]
   colorsEditable?: boolean
   byteOrder?: string
+  // Color harmony auto-pick state; see docs/dev/color-harmony.md.
+  autoColors?: boolean
+  colorScheme?: number
 }
 
 // target: 1 = Shade, 2 = Base, 3 = Both.

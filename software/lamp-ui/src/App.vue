@@ -36,8 +36,17 @@ const defaultConfig = (): Config => ({
     socialMode: 1,
     apBootMinutes: 2,
   },
-  base: { segments: [{ px: 0, colors: [SAFE_COLOR] }], knockout: [] },
-  shade: { segments: [{ px: 0, colors: [SAFE_COLOR] }] },
+  base: {
+    segments: [{ px: 0, colors: [SAFE_COLOR] }],
+    knockout: [],
+    autoColors: false,
+    colorScheme: 0,
+  },
+  shade: {
+    segments: [{ px: 0, colors: [SAFE_COLOR] }],
+    autoColors: false,
+    colorScheme: 0,
+  },
   expressions: [],
   homeMode: {
     ssid: '',
@@ -474,6 +483,10 @@ onMounted(async () => {
     baseColors.value = paletteFromSegments(cfg.value.base.segments)
     basePx.value = pxFromSegments(cfg.value.base.segments)
     shadeColors.value = paletteFromSegments(cfg.value.shade.segments)
+    for (const surface of [cfg.value.base, cfg.value.shade]) {
+      surface.autoColors ??= false
+      surface.colorScheme ??= 0
+    }
     if (!Array.isArray(cfg.value.base.knockout)) cfg.value.base.knockout = []
     if (!Array.isArray(cfg.value.expressions)) cfg.value.expressions = []
     if (!Array.isArray(cfg.value.homeMode.disabledExpressionTypes))
@@ -581,8 +594,11 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="shadeColorsEditable"
                 v-model="shadeColors"
+                v-model:auto-colors="cfg.shade.autoColors"
+                :scheme="cfg.shade.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
+                @open-scheme-settings="activeTab = 'lamp-setup'"
                 @edit-session="(open) => sendEditSession(2, open)"
               />
               <div v-else class="info-text">Shade color is set by firmware.</div>
@@ -592,8 +608,11 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="baseColorsEditable"
                 v-model="baseColors"
+                v-model:auto-colors="cfg.base.autoColors"
+                :scheme="cfg.base.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
+                @open-scheme-settings="activeTab = 'lamp-setup'"
                 @edit-session="(open) => sendEditSession(1, open)"
               />
               <div v-else class="info-text">Base color is set by firmware.</div>

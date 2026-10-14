@@ -5,41 +5,59 @@
       <span class="indicator-right">Top</span>
     </div>
     <div class="color-list">
-      <div
-        v-for="(color, index) in localColors.slice().reverse()"
-        :key="localColors.length - 1 - index"
-        class="color-item"
-      >
-        <div class="color-swatch-group">
-          <ColorPicker
-            v-model="localColors[localColors.length - 1 - index]"
-            @update:model-value="updateColor(localColors.length - 1 - index, $event)"
-            @open="emit('edit-session', true)"
-            @close="emit('edit-session', false)"
-            :disabled="disabled"
-          />
+      <template v-for="(storageIndex, row) in rowIndices" :key="storageIndex">
+        <div class="color-item">
+          <div class="color-swatch-group">
+            <ColorPicker
+              v-model="localColors[storageIndex]"
+              @update:model-value="updateColor(storageIndex, $event)"
+              @open="emit('edit-session', true)"
+              @close="emit('edit-session', false)"
+              :disabled="disabled || isDerived(storageIndex)"
+            />
+          </div>
+
+          <div class="color-actions">
+            <IconButton
+              v-if="localColors.length < props.maxColors"
+              icon="clone"
+              variant="clone"
+              title="Clone color"
+              :disabled="disabled || autoColors"
+              @click="cloneColor(storageIndex)"
+            />
+
+            <IconButton
+              v-if="localColors.length > 1 && (!autoColors || isDerived(storageIndex))"
+              icon="remove"
+              variant="remove"
+              title="Remove color"
+              :disabled="disabled"
+              @click="removeColor(storageIndex)"
+            />
+          </div>
         </div>
 
-        <div class="color-actions">
-          <IconButton
-            v-if="localColors.length < props.maxColors"
-            icon="clone"
-            variant="clone"
-            title="Clone color"
-            :disabled="disabled"
-            @click="cloneColor(localColors.length - 1 - index)"
-          />
-
-          <IconButton
-            v-if="localColors.length > 1"
-            icon="remove"
-            variant="remove"
-            title="Remove color"
-            :disabled="disabled"
-            @click="removeColor(localColors.length - 1 - index)"
-          />
+        <div v-if="row === 0" class="auto-pick-row">
+          <div class="auto-pick-header">
+            <span class="auto-pick-label">Auto-pick colors</span>
+            <BooleanInput
+              :model-value="autoColors"
+              :disabled="disabled"
+              @update:model-value="setAutoColors"
+            />
+          </div>
+          <div class="auto-pick-help">
+            <template v-if="autoColors && primaryIsNeutral">
+              Pick a more colorful primary to vary the other colors.
+            </template>
+            <template v-else>
+              {{ schemeName }} &middot;
+              <button type="button" class="auto-pick-link" @click="emit('open-scheme-settings')">change in Setup</button>
+            </template>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <div v-if="props.showAddButton" class="add-button-container">
@@ -58,13 +76,17 @@
 import { ref, watch, computed } from 'vue'
 import ColorPicker from './ColorPicker.vue'
 import IconButton from './IconButton.vue'
-import { createGradientFromHexww } from '../utils/colorUtils'
+import BooleanInput from './BooleanInput.vue'
+import { createGradientFromHexww, parseHexww, rgbToHsv } from '../utils/colorUtils'
+import { harmonizePalette, schemeById } from '../utils/colorHarmony'
 
 interface Props {
   modelValue: string[]
   showAddButton?: boolean
   maxColors?: number
   disabled?: boolean
+  autoColors?: boolean
+  scheme?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -72,11 +94,15 @@ const props = withDefaults(defineProps<Props>(), {
   showAddButton: true,
   maxColors: 5,
   disabled: false,
+  autoColors: false,
+  scheme: 0,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
   'edit-session': [open: boolean]
+  'update:autoColors': [value: boolean]
+  'open-scheme-settings': []
 }>()
 
 const localColors = ref<string[]>([...props.modelValue])
@@ -94,12 +120,48 @@ const gradientStyle = computed(() => {
   }
 })
 
+const rowIndices = computed(() =>
+  localColors.value.map((_, row) => localColors.value.length - 1 - row),
+)
+
+const isDerived = (storageIndex: number) =>
+  props.autoColors && storageIndex !== localColors.value.length - 1
+
+const schemeName = computed(() => schemeById(props.scheme).name)
+
+const primaryIsNeutral = computed(() => {
+  const { red, green, blue } = parseHexww(localColors.value[localColors.value.length - 1])
+  const { s, v } = rgbToHsv(red, green, blue)
+  return s === 0 || v === 0
+})
+
+const regenerate = (count = localColors.value.length) => {
+  localColors.value = harmonizePalette(localColors.value, props.scheme, count)
+}
+
+const setAutoColors = (value: boolean) => {
+  emit('update:autoColors', value)
+  if (!value) return
+  regenerate(
+    localColors.value.length === 1
+      ? schemeById(props.scheme).naturalCount
+      : localColors.value.length,
+  )
+  emit('update:modelValue', [...localColors.value])
+}
+
 const updateColor = (index: number, value: string) => {
   localColors.value[index] = value
+  if (props.autoColors) regenerate()
   emit('update:modelValue', [...localColors.value])
 }
 
 const addColor = () => {
+  if (props.autoColors) {
+    regenerate(localColors.value.length + 1)
+    emit('update:modelValue', [...localColors.value])
+    return
+  }
   const firstColor = localColors.value[0] || '#FF000000'
   localColors.value.unshift(firstColor)
   emit('update:modelValue', [...localColors.value])
@@ -107,7 +169,8 @@ const addColor = () => {
 
 const removeColor = (index: number) => {
   if (localColors.value.length > 1) {
-    localColors.value.splice(index, 1)
+    if (props.autoColors) regenerate(localColors.value.length - 1)
+    else localColors.value.splice(index, 1)
     emit('update:modelValue', [...localColors.value])
   }
 }
@@ -188,6 +251,48 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.auto-pick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  background: rgba(253, 253, 253, 0.02);
+  border-radius: 6px;
+}
+
+.auto-pick-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auto-pick-header :deep(.boolean-input-container) {
+  width: auto;
+}
+
+.auto-pick-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--brand-fog-grey);
+}
+
+.auto-pick-help {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--brand-slate-grey);
+}
+
+.auto-pick-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--brand-glow-pink);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .add-button-container {
