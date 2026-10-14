@@ -1,0 +1,165 @@
+# Color harmony
+
+The harmony generator derives a palette's other colors from its primary, the
+top color in the list, using a color-harmony scheme. This doc is the contract
+for that generator: the scheme ids, the derived-color table, the math, and the
+golden fixture it is checked against. The web UI implements it in TypeScript.
+The Flutter app's port must produce the same output. Generation is client-side
+only. The firmware never computes a harmony color.
+
+Files:
+
+| File | Purpose |
+|---|---|
+| `software/lamp-ui/src/utils/colorHarmony.ts` | `COLOR_SCHEMES`, `schemeById`, `harmonyColors`, `harmonizePalette` |
+| `software/lamp-ui/src/utils/colorUtils.ts` | `parseHexww`, `formatHexww`, `rgbToHsv`, `hsvToRgb` |
+| `software/lamp-ui/src/utils/colorHarmony.test.ts` | Hand-checked vectors, edge cases, the golden test |
+| `software/lamp-ui/src/utils/colorHarmony.golden.json` | The golden fixture |
+
+## Schemes
+
+| id | key | Name | Natural count | One-line description (UI copy) |
+|---|---|---|---|---|
+| 0 | `analogous` | Analogous | 3 | Neighboring hues. Smooth, calm blends. |
+| 1 | `monochromatic` | Monochromatic | 3 | One hue, fading toward pastel. |
+| 2 | `complementary` | Complementary | 2 | The primary and its opposite. High contrast. |
+| 3 | `splitComplementary` | Split complementary | 3 | The primary plus the two hues beside its opposite. |
+| 4 | `triadic` | Triadic | 3 | Three hues evenly spaced around the wheel. |
+| 5 | `square` | Square | 4 | Four hues evenly spaced around the wheel. |
+
+Natural count is the palette size a scheme is designed around. Id 0 is the
+default, both when no scheme is stored and for ids not in this table. Ids are
+what gets stored, so they never change. A new scheme takes the next id.
+
+### Why Analogous is the default
+
+The firmware blends linearly in RGB between adjacent stops along the strip
+(`software/lamp-os/src/util/gradient.cpp`). Adjacent stops with opposite hues
+pass through a grey band, so contrast schemes look muddier on a lamp than
+analogous or monochromatic ones. The tint entries in the table below are there
+to soften those transitions.
+
+## Derived-color table
+
+`harmonyColors(primary, scheme, count)` returns colors **top→bottom**. Index 0
+is the primary itself: the normalized input string, never round-tripped through
+HSV. Each derived entry is `(Δh, s×)`:
+
+- hue becomes `(h + Δh) mod 360`;
+- saturation becomes `s × s×`;
+- V (brightness) is the primary's V, unchanged;
+- WW is the primary's WW byte.
+
+| Scheme | count 2 | count 3 | count 4 | count 5 |
+|---|---|---|---|---|
+| Analogous | (30,1) | (30,1) (60,1) | (30,1) (60,1) (90,1) | (30,1) (60,1) (90,1) (120,1) |
+| Monochromatic | (0,½) | (0,⅔) (0,⅓) | (0,¾) (0,½) (0,¼) | (0,0.8) (0,0.6) (0,0.4) (0,0.2) |
+| Complementary | (180,1) | (0,½) (180,1) | (0,½) (180,½) (180,1) | (0,½) (0,0) (180,½) (180,1) |
+| Split complementary | (150,1) | (150,1) (210,1) | (0,½) (150,1) (210,1) | (0,½) (150,1) (210,1) (210,½) |
+| Triadic | (120,1) | (120,1) (240,1) | (0,½) (120,1) (240,1) | (0,½) (120,1) (240,1) (240,½) |
+| Square | (180,1) | (90,1) (180,1) | (90,1) (180,1) (270,1) | (0,½) (90,1) (180,1) (270,1) |
+
+Two rules generate whole rows:
+
+- Analogous entry `k` (1-based) is `(30k, 1)`.
+- Monochromatic entry `k` is `(0, 1 − k/N)`, where N is the count. The code
+  evaluates the rule, so the fractions above are shorthand for its double
+  results.
+
+Count is an integer clamped to `[1, 5]`. A count of 1 returns `[primary]`.
+
+## Math rules
+
+Exact, so a port matches bit-for-bit.
+
+- **Parsing.** Use `parseHexww`: an optional `#`, then six digits (WW is 0) or
+  eight. Unparsable input reads as `#FFFFFF00`. RGB is converted to floats in
+  `[0, 1]` as `byte / 255`.
+- **`mod`.** `mod(x, m)` is `((x % m) + m) % m`, with `%` the truncating
+  remainder (JS `%`, Dart `remainder`). Apply it literally, even to values
+  already in range. The addition rounds, so a plain remainder can differ in the
+  last bit, and one golden case (Monochromatic, count 4, `#3A7BD5C8`) depends
+  on it.
+- **RGB→HSV.**
+  - `max`/`min` are taken over r, g, b; `d = max − min`.
+  - `v = max`.
+  - `s = max == 0 ? 0 : d / max`.
+  - `h = 0` when `d == 0`. Otherwise:
+    - `max == r` → `60 × mod((g − b) / d, 6)`
+    - `max == g` → `60 × ((b − r) / d + 2)`
+    - `max == b` → `60 × ((r − g) / d + 4)`
+  - Normalize h to `[0, 360)` with `mod(h, 360)`.
+- **HSV→RGB.**
+  - `h` is first reduced with `mod(h, 360)`, so any finite hue is valid. The
+    generator passes `h + Δh` unreduced, which makes this the one
+    `(h + Δh) mod 360` the table calls for. Reduce it exactly once.
+  - `c = v × s`, `h' = h / 60`, `x = c × (1 − |mod(h', 2) − 1|)`, `m = v − c`.
+  - The sector `⌊h'⌋` picks `(r, g, b)` from these, then `m` is added to each:
+
+    | Sector | (r, g, b) |
+    |---|---|
+    | 0 | (c, x, 0) |
+    | 1 | (x, c, 0) |
+    | 2 | (0, c, x) |
+    | 3 | (0, x, c) |
+    | 4 | (x, 0, c) |
+    | 5 | (c, 0, x) |
+
+  - Each channel byte is `round((value + m) × 255)`, clamped to 0–255. Halves
+    round up (`Math.round`; Dart `round()` agrees for non-negative values).
+- **Ties.** Some outputs land exactly on a rounding tie, a channel of `k + 0.5`
+  in byte space (for example `#3A7BD5C8` shifted by 30°). Which way a tie rounds
+  depends on the operation order, so implement the formulas in the order
+  written. A platform HSV conversion can disagree on ties.
+- **Output format.** Every output is 8-digit uppercase `#RRGGBBWW`.
+- **Neutral primary.** When the primary has no hue (`s == 0` or `v == 0`; white,
+  grey, black, or pure warm white), hue rotation and saturation scaling change
+  nothing, so every derived color equals the primary. This is expected, not an
+  error. Callers can detect it with `rgbToHsv` and tell the user.
+
+## Hand-checked vectors
+
+These must pass.
+
+| Primary | Scheme | Count | Expected (top→bottom) |
+|---|---|---|---|
+| `#FF000000` | complementary | 2 | `#FF000000 #00FFFF00` |
+| `#FF000000` | triadic | 3 | `#FF000000 #00FF0000 #0000FF00` |
+| `#FF000000` | analogous | 3 | `#FF000000 #FF800000 #FFFF0000` |
+| `#FF000000` | square | 4 | `#FF000000 #80FF0000 #00FFFF00 #8000FF00` |
+| `#FF000000` | splitComplementary | 3 | `#FF000000 #00FF8000 #0080FF00` |
+| `#FF000000` | monochromatic | 2 | `#FF000000 #FF808000` |
+| `#FF000000` | complementary | 5 | `#FF000000 #FF808000 #FFFFFF00 #80FFFF00 #00FFFF00` |
+| `#FF0000C8` | complementary | 2 | `#FF0000C8 #00FFFFC8` (WW copied) |
+| `#FFFFFF00` | triadic | 3 | `#FFFFFF00 #FFFFFF00 #FFFFFF00` (neutral) |
+
+## Orientation adapter
+
+`harmonizePalette(palette, scheme, count = palette.length)` takes a palette in
+**storage order** (bottom→top) and reads the primary from its last index. It
+returns `harmonyColors(primary, scheme, count)` reversed, so the primary stays
+at the last index. Components use this adapter. Only the spec and tests use
+`harmonyColors` directly.
+
+## Golden fixture
+
+`software/lamp-ui/src/utils/colorHarmony.golden.json` pins the generator's
+output as `{ "cases": [{ "primary", "scheme", "count", "expected" }] }`. It
+covers every scheme × count 2–5 for the primaries `#FF000000`, `#3A7BD5C8`,
+`#F4A6B800`, and `#FFFFFF00` (96 cases). `scheme` is the numeric id, the value
+that gets stored, so the fixture also pins the id mapping. `expected` is
+`harmonyColors` output, top→bottom.
+
+`colorHarmony.test.ts` asserts the generator reproduces the file. After a
+deliberate table change, change this doc and the table constant in
+`colorHarmony.ts` together, then regenerate from the repo root:
+
+```sh
+UPDATE_HARMONY_GOLDEN=1 npm run ui:test
+```
+
+Rerunning the command leaves git clean. Review the diff before committing.
+
+The Flutter port must pass the same fixture, case for case.
+
+## Storage
