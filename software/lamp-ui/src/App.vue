@@ -8,6 +8,7 @@ import CritterIcon from './components/CritterIcon.vue'
 import FormField from './components/FormField.vue'
 import BrightnessSlider from './components/BrightnessSlider.vue'
 import ColorGradient from './components/ColorGradient.vue'
+import ColorSchemePicker, { type SchemeTarget } from './components/ColorSchemePicker.vue'
 import TextInput from './components/TextInput.vue'
 import BooleanInput from './components/BooleanInput.vue'
 import NumberInput from './components/NumberInput.vue'
@@ -20,6 +21,7 @@ import {
   segmentsFromPalette,
 } from './utils/configShape'
 import { blendedIdentity, hexwwToRgb } from './utils/colorUtils'
+import { harmonizePalette } from './utils/colorHarmony'
 import { toTitleCase } from './utils/stringCase'
 
 // Firmware does a full-replace on PUT: any field omitted from the body resets
@@ -255,6 +257,21 @@ const shadeColorsEditable = computed(() => cfg.value.shade.colorsEditable !== fa
 // Matches the lamp's own blendedIdentity() so the favicon + nameplate glow
 // the same color the device actually shows for a multi-stop base.
 const blendedBaseColor = computed(() => blendedIdentity(baseColors.value) ?? SAFE_COLOR)
+
+const pickColorScheme = (target: SchemeTarget, schemeId: number) => {
+  if (target !== 2 && shadeColorsEditable.value) {
+    cfg.value.shade.colorScheme = schemeId
+    if (cfg.value.shade.autoColors) {
+      shadeColors.value = harmonizePalette(shadeColors.value, schemeId)
+    }
+  }
+  if (target !== 1 && baseColorsEditable.value) {
+    cfg.value.base.colorScheme = schemeId
+    if (cfg.value.base.autoColors) {
+      baseColors.value = harmonizePalette(baseColors.value, schemeId)
+    }
+  }
+}
 
 const nameValid = computed(() => {
   const n = cfg.value.lamp.name.trim()
@@ -859,6 +876,26 @@ onUnmounted(() => {
                 </FormField>
               </div>
             </div>
+
+            <template v-if="shadeColorsEditable || baseColorsEditable">
+              <h1 class="gold">Color Harmony</h1>
+              <FormField
+                label="Scheme"
+                id="colorScheme"
+                help-text="The scheme Auto-pick colors uses on the Home tab."
+              >
+                <ColorSchemePicker
+                  :shade-scheme="cfg.shade.colorScheme ?? 0"
+                  :base-scheme="cfg.base.colorScheme ?? 0"
+                  :shade-primary="shadeColors[shadeColors.length - 1]"
+                  :base-primary="baseColors[baseColors.length - 1]"
+                  :shade-editable="shadeColorsEditable"
+                  :base-editable="baseColorsEditable"
+                  :disabled="disabled"
+                  @pick="pickColorScheme"
+                />
+              </FormField>
+            </template>
 
             <h1 class="green">Lamp Base LED Profile</h1>
             <FormField label="Base LED Count" id="baseLeds">

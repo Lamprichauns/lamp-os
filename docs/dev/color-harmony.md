@@ -138,8 +138,9 @@ These must pass.
 `harmonizePalette(palette, scheme, count = palette.length)` takes a palette in
 **storage order** (bottom→top) and reads the primary from its last index. It
 returns `harmonyColors(primary, scheme, count)` reversed, so the primary stays
-at the last index. Components use this adapter. Only the spec and tests use
-`harmonyColors` directly.
+at the last index. Code that writes a palette uses this adapter. A display-only
+preview, such as the Setup tab's scheme swatches, calls `harmonyColors`
+directly.
 
 ## Golden fixture
 
