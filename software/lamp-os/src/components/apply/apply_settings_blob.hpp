@@ -13,24 +13,10 @@
 #include "components/apply/apply_shade_colors.hpp"
 #include "components/apply/apply_base_colors.hpp"
 #include "components/apply/apply_pixel_format.hpp"
+#include "components/apply/apply_color_harmony.hpp"
 
 namespace lamp {
 namespace apply {
-
-// Absent or invalid keys leave the field alone, so a partial blob from a client
-// that never sends them can't reset what another client set.
-template <typename Surface>
-inline void colorHarmonyLocal(JsonObjectConst section, Surface& surf) {
-  if (section["autoColors"].is<bool>()) {
-    surf.autoColors = section["autoColors"].as<bool>();
-  }
-  if (section["colorScheme"].is<int>()) {
-    const int scheme = section["colorScheme"].as<int>();
-    if (scheme >= 0 && scheme <= 255) {
-      surf.colorScheme = static_cast<uint8_t>(scheme);
-    }
-  }
-}
 
 // Dispatches each top-level section in the incoming blob to its
 // applyXxxLocal handler. Returns whether the caller should reboot
