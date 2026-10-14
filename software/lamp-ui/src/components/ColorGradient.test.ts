@@ -63,6 +63,15 @@ describe('ColorGradient auto-pick', () => {
     expect(palette).toEqual(harmonizePalette([BLUE], 0, 3))
   })
 
+  it('toggling on uses the scheme natural count', async () => {
+    const wrapper = mountGradient({ modelValue: [BLUE], scheme: 5 })
+    await wrapper.get('.boolean-input').trigger('click')
+    const palette = lastPalette(wrapper)
+    expect(palette).toHaveLength(4)
+    expect(palette[3]).toBe(BLUE)
+    expect(palette).toEqual(harmonizePalette([BLUE], 5, 4))
+  })
+
   it('toggling on with four colors overwrites colors 2 to 4 and keeps the count', async () => {
     const wrapper = mountGradient({ modelValue: MANUAL, scheme: 2 })
     await wrapper.get('.boolean-input').trigger('click')
@@ -151,5 +160,31 @@ describe('ColorGradient auto-pick', () => {
     await wrapper.setProps({ scheme: 3 })
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     expect(pickers(wrapper)[0].props('modelValue')).toBe('#070809FF')
+    expect(pickers(wrapper).map((p) => p.props('modelValue'))).toEqual([
+      '#070809FF',
+      '#040506FF',
+      '#010203FF',
+    ])
+  })
+
+  it('disables the Setup link when the component is disabled', () => {
+    const wrapper = mountGradient({ modelValue: [BLUE], disabled: true })
+    expect(wrapper.get('.auto-pick-link').attributes('disabled')).toBeDefined()
+  })
+
+  it('keeps the auto-pick switch mounted and focused when the count changes', async () => {
+    const wrapper = mount(ColorGradient, {
+      props: { modelValue: [BLUE] },
+      attachTo: document.body,
+      global: { stubs: { teleport: true } },
+    })
+    const toggle = wrapper.get('.boolean-input').element as HTMLElement
+    toggle.focus()
+    await wrapper.get('.boolean-input').trigger('click')
+    expect(lastPalette(wrapper)).toHaveLength(3)
+    await wrapper.setProps({ modelValue: lastPalette(wrapper) })
+    expect(wrapper.get('.boolean-input').element).toBe(toggle)
+    expect(document.activeElement).toBe(toggle)
+    wrapper.unmount()
   })
 })

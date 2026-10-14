@@ -5,7 +5,7 @@
       <span class="indicator-right">Top</span>
     </div>
     <div class="color-list">
-      <template v-for="(storageIndex, row) in rowIndices" :key="storageIndex">
+      <template v-for="(storageIndex, row) in rowIndices" :key="row === 0 ? 'primary' : storageIndex">
         <div class="color-item">
           <div class="color-swatch-group">
             <ColorPicker
@@ -53,7 +53,12 @@
             </template>
             <template v-else>
               {{ schemeName }} &middot;
-              <button type="button" class="auto-pick-link" @click="emit('open-scheme-settings')">change in Setup</button>
+              <button
+                type="button"
+                class="auto-pick-link"
+                :disabled="disabled"
+                @click="emit('open-scheme-settings')"
+              >change in Setup</button>
             </template>
           </div>
         </div>
@@ -293,6 +298,11 @@ watch(
   color: var(--brand-glow-pink);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.auto-pick-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .add-button-container {

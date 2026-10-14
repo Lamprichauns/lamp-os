@@ -62,7 +62,6 @@ export interface ShadeConfig {
   segments?: Segment[]
   colorsEditable?: boolean
   byteOrder?: string
-  // Color harmony auto-pick state; see docs/dev/color-harmony.md.
   autoColors?: boolean
   colorScheme?: number
 }
