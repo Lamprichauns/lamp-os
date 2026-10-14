@@ -11,7 +11,7 @@ Files:
 
 | File | Purpose |
 |---|---|
-| `software/lamp-ui/src/utils/colorHarmony.ts` | `COLOR_SCHEMES`, `schemeById`, `harmonyColors`, `harmonizePalette` |
+| `software/lamp-ui/src/utils/colorHarmony.ts` | `COLOR_SCHEMES`, `schemeById`, `harmonyColors`, `harmonizePalette`, `autoPickPalette` |
 | `software/lamp-ui/src/utils/colorUtils.ts` | `parseHexww`, `formatHexww`, `rgbToHsv`, `hsvToRgb` |
 | `software/lamp-ui/src/utils/colorHarmony.test.ts` | Hand-checked vectors, edge cases, the golden test |
 | `software/lamp-ui/src/utils/colorHarmony.golden.json` | The golden fixture |
@@ -153,6 +153,40 @@ at the last index. Code that writes a palette uses this adapter. A display-only
 preview, such as the Setup tab's scheme swatches, calls `harmonyColors`
 directly.
 
+## Web UI
+
+Auto-pick is configured on the Setup tab and shown on the Home tab.
+
+- **Setup, Color Harmony section.** Shown when at least one surface's colors
+  are editable. `ColorSchemePicker.vue` holds the controls:
+  - "Auto-pick colors for" is a multi-select chip group, one chip per editable
+    surface (Shade, Base). Each chip sets that surface's `autoColors`
+    independently.
+  - "Scheme" is one scheme shared by both surfaces. It starts as a summary row
+    (the scheme's name and swatch) with a Change / Hide button that opens or
+    closes the scheme list. The list is a radio group and a pick keeps it open.
+    The summary reads "Mixed" with a note when both surfaces are editable and
+    their schemes differ after `schemeById`. An unknown id counts as Analogous,
+    so stored ids 0 and 99 match and the summary shows Analogous with no note.
+    With one editable surface, that surface's scheme is shown.
+    Swatches preview the first surface whose chip is on, Shade before Base.
+- **Home, color strips.** Home only shows the state. A surface with Auto-pick on locks
+  every row but the primary and shows an "Auto-picked" note with a link to the
+  Setup tab. A neutral primary shows "pick a more colorful top color" instead.
+
+Regeneration runs only in these handlers, never in a watcher:
+
+| Trigger | Result |
+|---|---|
+| Chip turned on | `autoPickPalette`: a single color grows to the scheme's natural count, otherwise the count is kept, then the palette is regenerated from its primary. |
+| Chip turned off | `autoColors` is cleared and the colors stay as they are. |
+| Scheme pick | `colorScheme` is written on every editable surface. Surfaces with Auto-pick on regenerate with `harmonizePalette`; the others keep their colors. |
+| Primary edited on Home | Derived colors regenerate. |
+| Color added or removed on Home | Regenerates at the new count. |
+
+The shared color picker has no harmony controls. It edits one color through the
+hex input and the R, G, B, and Warm White sliders.
+
 ## Golden fixture
 
 `software/lamp-ui/src/utils/colorHarmony.golden.json` pins the generator's
@@ -178,7 +212,7 @@ The Flutter port must pass the same fixture, case for case, and every hand-check
 ## Storage
 
 The firmware stores two keys per surface, inside both the `base` and `shade`
-objects of the settings JSON. `autoColors` is the surface's Auto-pick toggle and
+objects of the settings JSON. `autoColors` is whether Auto-pick is on for the surface and
 `colorScheme` is a scheme id from the table above. The firmware never acts on
 either. Generated colors are ordinary entries in `segments[].colors`, so a
 generated palette renders like a manual one.
