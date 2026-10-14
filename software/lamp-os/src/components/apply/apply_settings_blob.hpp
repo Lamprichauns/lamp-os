@@ -17,6 +17,21 @@
 namespace lamp {
 namespace apply {
 
+// Absent or invalid keys leave the field alone, so a partial blob from a client
+// that never sends them can't reset what another client set.
+template <typename Surface>
+inline void colorHarmonyLocal(JsonObjectConst section, Surface& surf) {
+  if (section["autoColors"].is<bool>()) {
+    surf.autoColors = section["autoColors"].as<bool>();
+  }
+  if (section["colorScheme"].is<int>()) {
+    const int scheme = section["colorScheme"].as<int>();
+    if (scheme >= 0 && scheme <= 255) {
+      surf.colorScheme = static_cast<uint8_t>(scheme);
+    }
+  }
+}
+
 // Dispatches each top-level section in the incoming blob to its
 // applyXxxLocal handler. Returns whether the caller should reboot
 // after persisting. `expressions` is INTENTIONALLY SKIPPED: the
@@ -39,6 +54,7 @@ inline bool settingsBlobLocal(JsonObject doc, uint8_t maxBrightness) {
   if (doc["base"].is<JsonObject>()) {
     JsonObject baseObj = doc["base"].as<JsonObject>();
     apply::pixelFormatLocal(baseObj, ::config.base);
+    apply::colorHarmonyLocal(baseObj, ::config.base);
     if (baseObj["colors"].is<JsonArray>()) {
       apply::baseColorsToConfig(baseObj["colors"].as<JsonArray>());
     }
@@ -49,6 +65,7 @@ inline bool settingsBlobLocal(JsonObject doc, uint8_t maxBrightness) {
   if (doc["shade"].is<JsonObject>()) {
     JsonObject shadeObj = doc["shade"].as<JsonObject>();
     apply::pixelFormatLocal(shadeObj, ::config.shade);
+    apply::colorHarmonyLocal(shadeObj, ::config.shade);
     if (shadeObj["colors"].is<JsonArray>()) {
       apply::shadeColorsToConfig(shadeObj["colors"].as<JsonArray>());
     }

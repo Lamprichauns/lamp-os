@@ -114,8 +114,8 @@ Two properties make it lethal:
    page): the expression records and knockout are written from stack buffers, and the
    JSON streams through `JsonWriter` (`util/json_writer.hpp`, compact JSON
    straight into a fixed buffer, byte-identical to ArduinoJson) into a
-   1792-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above both a
-   whole config's 1759-byte ceiling and the split rest's 1746-byte worst case
+   1856-byte buffer reserved in .bss (`kMaxStoredCfgJsonLen`, above both a
+   whole config's 1759-byte ceiling and the split rest's 1821-byte worst case
    with every free-text field fully escaped and every number at its widest).
    A whole web document is parsed once, on the loop: the web PUT gathers the
    body (at most 16 KB, `kMaxSettingsBody`; a lamp at every cap sends about
@@ -203,8 +203,8 @@ Two placement rules make the entry count alone overstate the room
 - **Whole**, up to 1759 bytes (`kMaxWholeCfgLen`, 56 entries): one `cfg`
   string that carries the expressions and the knockout levels too. Every
   firmware reads this form, so a lamp flashed back to an older release keeps
-  everything. Two expressions with every colour and parameter at its cap
-  fit; smaller ones fit more.
+  everything. One expression with every colour and parameter at its cap
+  fits; smaller ones fit more.
 - **Split**, for anything bigger. Every value but one small string is a blob,
   at the caps (`config/config_types.hpp`):
 
@@ -213,7 +213,7 @@ Two placement rules make the entry count alone overstate the room
 | `x0`..`x20` | one expression each, compact record (`encodeExpression`) | 121 B | 21 x 6 = 126 |
 | `xn` | expression count, a decimal string | 2 B | 2 |
 | `ko` | knockout level per pixel | 255 B | 10 |
-| `cfgb` or `cfgc` | base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1746 B fully escaped | 57 |
+| `cfgb` or `cfgc` | base, shade and home mode as JSON (`writeStoredJson` without the lamp section) | 1821 B fully escaped | 59 |
 | `cfg` | the lamp section as a JSON string, the one an older release reads | 376 B fully escaped | 13 |
 | `cfgl` | the lamp section, staged while `cfg` is replaced | 376 B | 14 while it exists |
 | `disp` | dispositions, `[mac:6][value:1]` per peer | 701 B | 24 |
@@ -242,14 +242,14 @@ The arithmetic, every case with at least 32 entries to spare
   or staged blob 57 = 249. The bound for 56 entries is 4 x 70 + 3 = 283:
   34 spare.
 - **Lamp string.** Live beside every split key at its cap: 166 + 2 + 24 +
-  126 + 2 + 10 + 57 + its old copy or `cfgl` 14 = 401. The bound for 13 is
-  455: 54 spare.
+  126 + 2 + 10 + 59 + its old copy or `cfgl` 14 = 403. The bound for 13 is
+  455: 52 spare.
 - **Small blobs.** The largest is a dispositions blob just under 400 bytes,
-  14 entries, at 400 live: bound 451, 51 spare. Records (6), `ko` (10) and
+  14 entries, at 402 live: bound 451, 49 spare. Records (6), `ko` (10) and
   `cfgl` (14) are no larger.
-- **Entries.** The split store holds 400; rewriting its largest blob, PHY
-  calibration (62) or the rest (57), peaks at 462 of 504. Switching from
-  whole peaks at 457 (every split key, the staged lamp section and the new
+- **Entries.** The split store holds 402; rewriting its largest blob, PHY
+  calibration (62) or the rest (59), peaks at 464 of 504. Switching from
+  whole peaks at 459 (every split key, the staged lamp section and the new
   rest blob beside the whole string), and so does staging a whole config
   beside the split store.
 - **The first save after an update.** An older release's `cfg` string can
@@ -259,7 +259,7 @@ The arithmetic, every case with at least 32 entries to spare
   only what the string held: a string full of fully escaped rest leaves room
   for few expressions, and one full of expressions has a short rest. Over
   every legacy shape up to 4,000 bytes, saved split and trimmed to whole, the
-  page model leaves 91 entries spare at the tightest
+  page model leaves 92 entries spare at the tightest
   (`test_the_first_save_after_an_update_fits`).
 
 Those bounds hold for any arrangement of entries across the pages. The

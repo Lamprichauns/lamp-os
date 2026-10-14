@@ -163,3 +163,47 @@ Rerunning the command leaves git clean. Review the diff before committing.
 The Flutter port must pass the same fixture, case for case.
 
 ## Storage
+
+The firmware stores two keys per surface, inside both the `base` and `shade`
+objects of the settings JSON. `autoColors` is the surface's Auto-pick toggle and
+`colorScheme` is a scheme id from the table above. The firmware never acts on
+either. Generated colors are ordinary entries in `segments[].colors`, so a
+generated palette renders like a manual one.
+
+| Key | Type | Default when absent | Rule |
+|---|---|---|---|
+| `autoColors` | bool | `false` | A value that isn't a bool reads as `false`. |
+| `colorScheme` | integer | `0` | Stored verbatim as a uint8. Anything but an integer in 0–255 loads as `0`. |
+
+`colorScheme` is not checked against the scheme table, so a client can store an
+id this doc doesn't list yet and adding a scheme needs no firmware change.
+Clients validate: an unknown id generates and displays as Analogous, and the
+stored value stays until the user picks a scheme.
+
+The keys ride inside the existing settings payloads. There is no
+`PROTOCOL_VERSION` bump and no `kGattLayout` change. Older firmware ignores the
+keys and leaves them out of its reads, so clients treat an absent key as
+`false` / `0`.
+
+Both keys flow through every path:
+
+| Path | Where | Behavior |
+|---|---|---|
+| NVS persistence | `fromJson` and the stored-shape writers `toStoredJson` / `writeStoredJson` in `software/lamp-os/src/config/config_codec.cpp` | `fromJson` applies the defaults above. Both writers always write both keys inside `base` and `shade`, so a split save carries them in the rest blob (`docs/dev/embedded-heap.md`). |
+| `GET /api/settings` | `Config::asJsonDocument()`, which calls `toJson` | Both keys on both surfaces. |
+| BLE section reads | `Config::asBaseJson()` / `asShadeJson()` in `software/lamp-os/src/config/config.cpp` | Both keys on both surfaces, served through the page protocol. A `settings_blob` write invalidates the section cache. |
+| BLE `settings_blob` writes | `apply::settingsBlobLocal` in `software/lamp-os/src/components/apply/apply_settings_blob.hpp` | A key applies only when present and valid: `autoColors` as a bool, `colorScheme` as an integer in 0–255. Otherwise the stored value stays. |
+
+The last row matters. A client that doesn't know the keys, such as an older
+app, writes blobs without them, and those writes must not reset what another
+client saved.
+
+`PUT /api/settings` (`handlePutSettings` in
+`software/lamp-os/src/components/webapp/webapp.cpp`) hands the posted document
+to the loop, where `config_codec::saveRawJson` parses it once through `fromJson`
+and writes it with `saveConfig`; the lamp then reboots and the constructor
+loads the stored config. The keys are validated at that save by the rules
+above. The web UI sends back the document it read from GET, so the keys
+travel with it. A release before 1.2.8 reads only the whole `cfg` string, so
+on a split store it loads the base and shade sections as defaults, these keys
+included.

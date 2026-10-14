@@ -66,6 +66,8 @@ Model worstCaseModel(char fill = 'z') {
   m.lamp.socialMode = SocialMode::Extrovert;
   m.lamp.setup = m.lamp.named = m.lamp.advancedEnabled = m.lamp.webappEnabled = false;
   m.base.colorsEditable = m.shade.colorsEditable = false;
+  m.base.autoColors = m.shade.autoColors = false;
+  m.base.colorScheme = m.shade.colorScheme = 255;
   m.homeMode.brightness = 255;
   m.homeMode.enabled = m.homeMode.networkBound = m.homeMode.socialDisabled = false;
   m.lamp.lampType = "standard";
@@ -931,7 +933,7 @@ Model largestWholeModel() {
       break;
     }
   }
-  TEST_ASSERT_TRUE(m.expressions.expressions.size() > 1);
+  TEST_ASSERT_TRUE(!m.expressions.expressions.empty());
   return m;
 }
 

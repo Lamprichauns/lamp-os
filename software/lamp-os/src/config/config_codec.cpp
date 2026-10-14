@@ -155,6 +155,11 @@ bool parseExpression(JsonObject node, ExpressionConfig& out, bool enabledDefault
   return withinCaps;
 }
 
+static uint8_t parseColorScheme(JsonObject node) {
+  const int raw = node["colorScheme"] | 0;
+  return raw >= 0 && raw <= 255 ? static_cast<uint8_t>(raw) : 0;
+}
+
 bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
               ShadeSettings& shade, ExpressionSettings& expressions,
               HomeModeSettings& homeMode) {
@@ -191,6 +196,8 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
 
   JsonObject baseNode = root["base"];
   base.byteOrder = storableByteOrder(baseNode["byteOrder"] | "");
+  base.autoColors = baseNode["autoColors"] | false;
+  base.colorScheme = parseColorScheme(baseNode);
   parseSegments(baseNode, base.segments, kBaseDefaultColor, "Base");
   clampSumPx(base.segments);
   // Keep knockoutPixels in sync with the active pixel count. Drops stale
@@ -210,6 +217,8 @@ bool fromJson(JsonObject root, LampSettings& lamp, BaseSettings& base,
 
   JsonObject shadeNode = root["shade"];
   shade.byteOrder = storableByteOrder(shadeNode["byteOrder"] | "");
+  shade.autoColors = shadeNode["autoColors"] | false;
+  shade.colorScheme = parseColorScheme(shadeNode);
   parseSegments(shadeNode, shade.segments, kShadeDefaultColor, "Shade");
   clampSumPx(shade.segments);
   // colorsEditable is firmware-owned (set by Lamp subclass defaults via
@@ -362,6 +371,10 @@ void writeStoredJson(JsonWriter& w, const LampSettings* lamp, const BaseSettings
   }
   w.key("colorsEditable");
   w.value(base.colorsEditable);
+  w.key("autoColors");
+  w.value(base.autoColors);
+  w.key("colorScheme");
+  w.value(static_cast<uint32_t>(base.colorScheme));
   writeSegmentsJson(w, base.segments);
   if (whole) {
     w.key("knockout");
@@ -378,6 +391,10 @@ void writeStoredJson(JsonWriter& w, const LampSettings* lamp, const BaseSettings
   }
   w.key("colorsEditable");
   w.value(shade.colorsEditable);
+  w.key("autoColors");
+  w.value(shade.autoColors);
+  w.key("colorScheme");
+  w.value(static_cast<uint32_t>(shade.colorScheme));
   writeSegmentsJson(w, shade.segments);
   w.endObject();
   w.key("homeMode");
@@ -436,11 +453,15 @@ void toStoredJson(JsonObject root, const LampSettings& lamp,
   JsonObject baseNode = root["base"].to<JsonObject>();
   if (!base.byteOrder.empty()) baseNode["byteOrder"] = base.byteOrder;
   baseNode["colorsEditable"] = base.colorsEditable;
+  baseNode["autoColors"] = base.autoColors;
+  baseNode["colorScheme"] = base.colorScheme;
   writeSegments(baseNode, base.segments);
 
   JsonObject shadeNode = root["shade"].to<JsonObject>();
   if (!shade.byteOrder.empty()) shadeNode["byteOrder"] = shade.byteOrder;
   shadeNode["colorsEditable"] = shade.colorsEditable;
+  shadeNode["autoColors"] = shade.autoColors;
+  shadeNode["colorScheme"] = shade.colorScheme;
   writeSegments(shadeNode, shade.segments);
 
   JsonObject homeModeNode = root["homeMode"].to<JsonObject>();
