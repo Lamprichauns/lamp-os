@@ -197,7 +197,7 @@ Both keys flow through every path:
 | NVS persistence | `fromJson` and the stored-shape writers `toStoredJson` / `writeStoredJson` in `software/lamp-os/src/config/config_codec.cpp` | `fromJson` applies the defaults above. Both writers always write both keys inside `base` and `shade`, so a split save carries them in the rest blob (`docs/dev/embedded-heap.md`). |
 | `GET /api/settings` | `Config::asJsonDocument()`, which calls `toJson` | Both keys on both surfaces. |
 | BLE section reads | `Config::asBaseJson()` / `asShadeJson()` in `software/lamp-os/src/config/config.cpp` | Both keys on both surfaces, served through the page protocol. A `settings_blob` write invalidates the section cache. |
-| BLE `settings_blob` writes | `apply::settingsBlobLocal` in `software/lamp-os/src/components/apply/apply_settings_blob.hpp` | A key applies only when present and valid: `autoColors` as a bool, `colorScheme` as an integer in 0–255. Otherwise the stored value stays. |
+| BLE `settings_blob` writes | `apply::colorHarmonyLocal` in `software/lamp-os/src/components/apply/apply_color_harmony.hpp`, called from `settingsBlobLocal` | A key applies only when present and valid: `autoColors` as a bool, `colorScheme` as an integer in 0–255. Otherwise the stored value stays. |
 
 The last row matters. A client that doesn't know the keys, such as an older
 app, writes blobs without them, and those writes must not reset what another
