@@ -16,6 +16,13 @@ describe('paletteFromSegments', () => {
     expect(paletteFromSegments(segs)).toEqual(['#11223300', '#44556600'])
   })
 
+  it('uppercases lowercase firmware colors', () => {
+    expect(paletteFromSegments([{ px: 0, colors: ['#943ad5c8', '#3a7bd5c8'] }])).toEqual([
+      '#943AD5C8',
+      '#3A7BD5C8',
+    ])
+  })
+
   it('falls back when segments are missing or empty', () => {
     expect(paletteFromSegments(undefined)).toEqual([SAFE_COLOR])
     expect(paletteFromSegments([])).toEqual([SAFE_COLOR])

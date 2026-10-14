@@ -11,7 +11,8 @@ export function paletteFromSegments(
   fallback: string = SAFE_COLOR,
 ): string[] {
   const colors = segments?.[0]?.colors
-  return colors && colors.length ? [...colors] : [fallback]
+  // Uppercase like the picker and harmony generator emit; App's change detection compares palettes as strings.
+  return colors && colors.length ? colors.map((c) => c.toUpperCase()) : [fallback]
 }
 
 export function pxFromSegments(segments: Segment[] | undefined): number {
