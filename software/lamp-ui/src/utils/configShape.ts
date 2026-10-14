@@ -11,7 +11,8 @@ export function paletteFromSegments(
   fallback: string = SAFE_COLOR,
 ): string[] {
   const colors = segments?.[0]?.colors
-  // Uppercase like the picker and harmony generator emit; App's change detection compares palettes as strings.
+  // Uppercase to match the picker and harmony generator. App detects edits by
+  // comparing palettes as strings.
   return colors && colors.length ? colors.map((c) => c.toUpperCase()) : [fallback]
 }
 

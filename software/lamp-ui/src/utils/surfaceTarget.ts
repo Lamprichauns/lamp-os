@@ -1,7 +1,7 @@
 // Values match Expression.target.
 export const TARGET_SHADE = 1
 export const TARGET_BASE = 2
-export const TARGET_BOTH = 3
+const TARGET_BOTH = 3
 
 export type Surface = typeof TARGET_SHADE | typeof TARGET_BASE
 
