@@ -253,7 +253,7 @@ const parseHexwwValue = (value: string) => {
   syncHsvFromRgb()
 }
 
-// Hue and saturation are undefined for grey and black, so the thumb keeps its place.
+// Hue is undefined for grey and black, and saturation for black, so those keep their last values.
 const syncHsvFromRgb = () => {
   const { red, green, blue } = colorValues.value
   const hsv = rgbToHsv(red, green, blue)
@@ -464,7 +464,7 @@ onUnmounted(() => {
 }
 
 .wheel-section {
-  margin-bottom: 24px;
+  margin: 24px 0;
 }
 
 .wheel-section .input-group {

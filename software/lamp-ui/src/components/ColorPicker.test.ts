@@ -22,6 +22,8 @@ describe('ColorPicker wheel', () => {
     document.body.innerHTML = ''
     HTMLElement.prototype.setPointerCapture = vi.fn()
     HTMLElement.prototype.releasePointerCapture = vi.fn()
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 240, height: 240 }) as DOMRect
   })
 
   it('renders a wheel in the dialog', async () => {
@@ -63,23 +65,24 @@ describe('ColorPicker wheel', () => {
     wrapper.unmount()
   })
 
-  it('keeps hue and saturation when brightness reaches zero', async () => {
+  it('keeps hue and saturation when the color turns black', async () => {
     const wrapper = await mountOpen('#FF800000')
-    await wrapper.get('#color-brightness').setValue('0')
-    await wrapper.get('#red').setValue('0')
+    await wrapper.get('#hex-input').setValue('#00000000')
+    await wrapper.get('#hex-input').trigger('blur')
     const wheel = wrapper.findComponent(ColorWheel)
     expect(wheel.props('hue')).toBeCloseTo(30, 0)
-    expect(wheel.props('saturation')).toBeGreaterThan(0.9)
+    expect(wheel.props('saturation')).toBe(1)
     wrapper.unmount()
   })
 
   it('does not close when a press began on the wheel and the click lands on the overlay', async () => {
     const wrapper = await mountOpen('#FF000000')
     const overlay = wrapper.get('.dialog-overlay')
-    await wrapper.get('.color-wheel-disc').trigger('pointerdown', { button: 0, pointerId: 1, clientX: 0, clientY: 0 })
+    await wrapper.get('.color-wheel-disc').trigger('pointerdown', { button: 0, pointerId: 1, clientX: 240, clientY: 120 })
     await overlay.trigger('click')
     expect(wrapper.find('.dialog-overlay').exists()).toBe(true)
     expect(wrapper.emitted('close')).toBeUndefined()
+    expect(lastEmit(wrapper)).toEqual(['#80FF0000'])
     wrapper.unmount()
   })
 
