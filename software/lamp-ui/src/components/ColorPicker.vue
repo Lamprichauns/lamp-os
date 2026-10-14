@@ -5,7 +5,12 @@
 
     <!-- Color Picker Dialog -->
     <Teleport to="body">
-      <div v-if="isDialogOpen" class="dialog-overlay" @click="closeDialog">
+      <div
+        v-if="isDialogOpen"
+        class="dialog-overlay"
+        @pointerdown="onOverlayPointerDown"
+        @click="onOverlayClick"
+      >
         <div class="dialog-content" @click.stop>
           <div class="dialog-header">
             <h3>Color Picker</h3>
@@ -15,6 +20,22 @@
           <div class="dialog-body">
             <!-- Color Preview -->
             <ColorPreview :hex-value="hexwwValue" size="large" />
+
+            <div class="wheel-section" @pointerdown.capture="blurHexInput">
+              <ColorWheel :hue="hue" :saturation="saturation" @change="onWheelChange" />
+              <div class="input-group">
+                <label for="color-brightness">Brightness</label>
+                <NumberSlider
+                  id="color-brightness"
+                  :model-value="brightness"
+                  :min="0"
+                  :max="100"
+                  append="%"
+                  color="#FDFDFD"
+                  @update:model-value="onBrightnessChange"
+                />
+              </div>
+            </div>
 
             <!-- Hex Input -->
             <div class="input-group">
@@ -33,25 +54,25 @@
             <!-- Sliders -->
             <div class="sliders-container" @pointerdown.capture="blurHexInput">
               <NumberSlider
-                v-model="colorValues.red"
+                :model-value="colorValues.red"
                 label="Red"
                 id="red"
                 color="#FF0000"
-                @update:model-value="updateColor"
+                @update:model-value="onRgbChange('red', $event)"
               />
               <NumberSlider
-                v-model="colorValues.green"
+                :model-value="colorValues.green"
                 label="Green"
                 id="green"
                 color="#00FF00"
-                @update:model-value="updateColor"
+                @update:model-value="onRgbChange('green', $event)"
               />
               <NumberSlider
-                v-model="colorValues.blue"
+                :model-value="colorValues.blue"
                 label="Blue"
                 id="blue"
                 color="#0000FF"
-                @update:model-value="updateColor"
+                @update:model-value="onRgbChange('blue', $event)"
               />
               <NumberSlider
                 v-model="colorValues.warmWhite"
@@ -78,6 +99,8 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import ColorPreview from './ColorPreview.vue'
 import NumberSlider from './NumberSlider.vue'
+import ColorWheel, { type HueSat } from './ColorWheel.vue'
+import { hsvToRgb, rgbToHsv } from '../utils/colorUtils'
 
 interface ColorValues {
   red: number
@@ -106,6 +129,22 @@ const hexInputEl = ref<HTMLInputElement | null>(null)
 // A slider drag must not hand focus to the hex field, it pops the OS
 // keyboard mid-drag on mobile. Blur it before the drag's own focus lands.
 const blurHexInput = () => hexInputEl.value?.blur()
+
+// A wheel or slider drag can end over the overlay and fire a click there.
+// Only a press that also began on the overlay closes the dialog.
+let pressBeganOnOverlay = false
+const onOverlayPointerDown = (event: PointerEvent) => {
+  pressBeganOnOverlay = event.target === event.currentTarget
+}
+const onOverlayClick = (event: MouseEvent) => {
+  const closes = pressBeganOnOverlay && event.target === event.currentTarget
+  pressBeganOnOverlay = false
+  if (closes) closeDialog()
+}
+
+const hue = ref(0)
+const saturation = ref(0)
+const brightness = ref(100)
 
 const colorValues = ref<ColorValues>({
   red: 255,
@@ -208,7 +247,45 @@ const parseHexwwValue = (value: string) => {
       blue: parseInt(hex.substring(4, 6), 16),
       warmWhite: 0, // Assume 00 for warm white when not specified
     }
+  } else {
+    return
   }
+  syncHsvFromRgb()
+}
+
+// Hue and saturation are undefined for grey and black, so the thumb keeps its place.
+const syncHsvFromRgb = () => {
+  const { red, green, blue } = colorValues.value
+  const hsv = rgbToHsv(red, green, blue)
+  if (hsv.s > 0 && hsv.v > 0) hue.value = hsv.h
+  if (hsv.v > 0) saturation.value = hsv.s
+  brightness.value = Math.round(hsv.v * 100)
+}
+
+const applyHsv = () => {
+  const { red, green, blue } = hsvToRgb(hue.value, saturation.value, brightness.value / 100)
+  colorValues.value = { ...colorValues.value, red, green, blue }
+  updateColor()
+}
+
+const onWheelChange = (value: HueSat) => {
+  hue.value = value.hue
+  saturation.value = value.saturation
+  applyHsv()
+}
+
+// NumberSlider re-emits every prop change, so a value equal to the current one is an echo.
+const onBrightnessChange = (value: number) => {
+  if (value === brightness.value) return
+  brightness.value = value
+  applyHsv()
+}
+
+const onRgbChange = (channel: 'red' | 'green' | 'blue', value: number) => {
+  if (value === colorValues.value[channel]) return
+  colorValues.value[channel] = value
+  syncHsvFromRgb()
+  updateColor()
 }
 
 const updateColor = () => {
@@ -384,6 +461,14 @@ onUnmounted(() => {
   border-color: var(--brand-aurora-blue);
   background-color: var(--color-background-mute);
   box-shadow: 0 0 0 3px rgba(68, 108, 156, 0.2);
+}
+
+.wheel-section {
+  margin-bottom: 24px;
+}
+
+.wheel-section .input-group {
+  margin: 24px 0 0;
 }
 
 .sliders-container {
