@@ -2,7 +2,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { COLOR_SCHEMES, harmonizePalette, harmonyColors, schemeById } from './colorHarmony'
+import {
+  COLOR_SCHEMES,
+  autoPickPalette,
+  harmonizePalette,
+  harmonyColors,
+  schemeById,
+} from './colorHarmony'
 import { formatHexww, hsvToRgb, parseHexww, rgbToHsv } from './colorUtils'
 
 const SCHEME_ID = Object.fromEntries(COLOR_SCHEMES.map(({ key, id }) => [key, id]))
@@ -139,6 +145,34 @@ describe('harmonizePalette', () => {
     expect(shrunk).toHaveLength(2)
     expect(grown[3]).toBe('#3A7BD5C8')
     expect(shrunk[1]).toBe('#3A7BD5C8')
+  })
+})
+
+describe('autoPickPalette', () => {
+  const blue = '#3A7BD5C8'
+
+  it('raises a single color to the scheme natural count with the primary last', () => {
+    const out = autoPickPalette([blue], SCHEME_ID.square, true)
+    expect(out).toEqual(harmonizePalette([blue], SCHEME_ID.square, 4))
+    expect(out[3]).toBe(blue)
+  })
+
+  it('keeps the count when there is more than one color', () => {
+    const manual = ['#111111FF', '#222222FF', blue]
+    expect(autoPickPalette(manual, SCHEME_ID.complementary, true)).toEqual(
+      harmonizePalette(manual, SCHEME_ID.complementary, 3),
+    )
+  })
+
+  it('keeps the colors when the chip turns off', () => {
+    const manual = ['#111111FF', '#222222FF', blue]
+    const single = [blue]
+    expect(autoPickPalette(manual, SCHEME_ID.complementary, false)).toBe(manual)
+    expect(autoPickPalette(single, SCHEME_ID.square, false)).toBe(single)
+  })
+
+  it('treats an unknown scheme id as Analogous', () => {
+    expect(autoPickPalette([blue], 99, true)).toEqual(harmonizePalette([blue], 0, 3))
   })
 })
 

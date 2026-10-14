@@ -21,8 +21,8 @@ import {
   segmentsFromPalette,
 } from './utils/configShape'
 import { blendedIdentity, hexwwToRgb } from './utils/colorUtils'
-import { harmonizePalette } from './utils/colorHarmony'
-import { TARGET_BASE, TARGET_SHADE, type SurfaceTarget } from './utils/surfaceTarget'
+import { autoPickPalette, harmonizePalette } from './utils/colorHarmony'
+import { TARGET_SHADE, type Surface } from './utils/surfaceTarget'
 import { toTitleCase } from './utils/stringCase'
 
 // Firmware does a full-replace on PUT: any field omitted from the body resets
@@ -259,14 +259,21 @@ const shadeColorsEditable = computed(() => cfg.value.shade.colorsEditable !== fa
 // the same color the device actually shows for a multi-stop base.
 const blendedBaseColor = computed(() => blendedIdentity(baseColors.value) ?? SAFE_COLOR)
 
-const pickColorScheme = (target: SurfaceTarget, schemeId: number) => {
-  if (target !== TARGET_BASE && shadeColorsEditable.value) {
+const setAutoPick = (surface: Surface, on: boolean) => {
+  const settings = surface === TARGET_SHADE ? cfg.value.shade : cfg.value.base
+  const colors = surface === TARGET_SHADE ? shadeColors : baseColors
+  settings.autoColors = on
+  colors.value = autoPickPalette(colors.value, settings.colorScheme ?? 0, on)
+}
+
+const pickColorScheme = (schemeId: number) => {
+  if (shadeColorsEditable.value) {
     cfg.value.shade.colorScheme = schemeId
     if (cfg.value.shade.autoColors) {
       shadeColors.value = harmonizePalette(shadeColors.value, schemeId)
     }
   }
-  if (target !== TARGET_SHADE && baseColorsEditable.value) {
+  if (baseColorsEditable.value) {
     cfg.value.base.colorScheme = schemeId
     if (cfg.value.base.autoColors) {
       baseColors.value = harmonizePalette(baseColors.value, schemeId)
@@ -612,7 +619,7 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="shadeColorsEditable"
                 v-model="shadeColors"
-                v-model:auto-colors="cfg.shade.autoColors"
+                :auto-colors="cfg.shade.autoColors ?? false"
                 :scheme="cfg.shade.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
@@ -626,7 +633,7 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="baseColorsEditable"
                 v-model="baseColors"
-                v-model:auto-colors="cfg.base.autoColors"
+                :auto-colors="cfg.base.autoColors ?? false"
                 :scheme="cfg.base.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
@@ -880,19 +887,23 @@ onUnmounted(() => {
 
             <template v-if="shadeColorsEditable || baseColorsEditable">
               <h1 class="gold">Color Harmony</h1>
-              <FormField label="Scheme" id="colorScheme">
-                <ColorSchemePicker
-                  :shade-scheme="cfg.shade.colorScheme ?? 0"
-                  :base-scheme="cfg.base.colorScheme ?? 0"
-                  :shade-primary="shadeColors[shadeColors.length - 1]"
-                  :base-primary="baseColors[baseColors.length - 1]"
-                  :shade-editable="shadeColorsEditable"
-                  :base-editable="baseColorsEditable"
-                  :disabled="disabled"
-                  @pick="pickColorScheme"
-                />
-                <div class="info-text">The scheme Auto-pick colors uses on the Home tab.</div>
-              </FormField>
+              <div class="info-text">
+                Auto-pick fills in a surface's other colors from its top color. Pick the surfaces,
+                then the scheme.
+              </div>
+              <ColorSchemePicker
+                :shade-auto="cfg.shade.autoColors ?? false"
+                :base-auto="cfg.base.autoColors ?? false"
+                :shade-scheme="cfg.shade.colorScheme ?? 0"
+                :base-scheme="cfg.base.colorScheme ?? 0"
+                :shade-primary="shadeColors[shadeColors.length - 1]"
+                :base-primary="baseColors[baseColors.length - 1]"
+                :shade-editable="shadeColorsEditable"
+                :base-editable="baseColorsEditable"
+                :disabled="disabled"
+                @auto-pick="setAutoPick"
+                @pick="pickColorScheme"
+              />
             </template>
 
             <h1 class="green">Lamp Base LED Profile</h1>

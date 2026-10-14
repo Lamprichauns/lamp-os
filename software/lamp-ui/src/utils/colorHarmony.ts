@@ -174,3 +174,9 @@ export function harmonizePalette(
 ): string[] {
   return harmonyColors(palette[palette.length - 1], schemeId, count).reverse()
 }
+
+export function autoPickPalette(palette: string[], schemeId: number, on: boolean): string[] {
+  if (!on) return palette
+  const count = palette.length === 1 ? schemeById(schemeId).naturalCount : palette.length
+  return harmonizePalette(palette, schemeId, count)
+}

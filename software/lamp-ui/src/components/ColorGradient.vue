@@ -38,29 +38,19 @@
           </div>
         </div>
 
-        <div v-if="row === 0" class="auto-pick-row">
-          <div class="auto-pick-header">
-            <span class="auto-pick-label">Auto-pick colors</span>
-            <BooleanInput
-              :model-value="autoColors"
+        <div v-if="row === 0 && autoColors" class="auto-pick-note">
+          <template v-if="primaryIsNeutral">
+            Auto-picked &middot; pick a more colorful top color
+          </template>
+          <template v-else>
+            Auto-picked &middot;
+            <button
+              type="button"
+              class="auto-pick-link"
               :disabled="disabled"
-              @update:model-value="setAutoColors"
-            />
-          </div>
-          <div class="auto-pick-help">
-            <template v-if="autoColors && primaryIsNeutral">
-              Pick a more colorful primary to vary the other colors.
-            </template>
-            <template v-else>
-              {{ schemeName }} &middot;
-              <button
-                type="button"
-                class="auto-pick-link"
-                :disabled="disabled"
-                @click="emit('open-scheme-settings')"
-              >change in Setup</button>
-            </template>
-          </div>
+              @click="emit('open-scheme-settings')"
+            >{{ schemeName }}</button>
+          </template>
         </div>
       </template>
     </div>
@@ -81,7 +71,6 @@
 import { ref, watch, computed } from 'vue'
 import ColorPicker from './ColorPicker.vue'
 import IconButton from './IconButton.vue'
-import BooleanInput from './BooleanInput.vue'
 import { createGradientFromHexww, parseHexww, rgbToHsv } from '../utils/colorUtils'
 import { harmonizePalette, schemeById } from '../utils/colorHarmony'
 
@@ -106,7 +95,6 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
   'edit-session': [open: boolean]
-  'update:autoColors': [value: boolean]
   'open-scheme-settings': []
 }>()
 
@@ -142,17 +130,6 @@ const primaryIsNeutral = computed(() => {
 
 const regenerate = (count = localColors.value.length) => {
   localColors.value = harmonizePalette(localColors.value, props.scheme, count)
-}
-
-const setAutoColors = (value: boolean) => {
-  emit('update:autoColors', value)
-  if (!value) return
-  regenerate(
-    localColors.value.length === 1
-      ? schemeById(props.scheme).naturalCount
-      : localColors.value.length,
-  )
-  emit('update:modelValue', [...localColors.value])
 }
 
 const updateColor = (index: number, value: string) => {
@@ -258,33 +235,7 @@ watch(
   gap: 8px;
 }
 
-.auto-pick-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 8px;
-  background: rgba(253, 253, 253, 0.02);
-  border-radius: 6px;
-}
-
-.auto-pick-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.auto-pick-header :deep(.boolean-input-container) {
-  width: auto;
-}
-
-.auto-pick-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--brand-fog-grey);
-}
-
-.auto-pick-help {
+.auto-pick-note {
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--brand-slate-grey);

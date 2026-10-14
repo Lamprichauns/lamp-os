@@ -1,13 +1,31 @@
-<script setup lang="ts">
-defineProps<{
-  modelValue: number
+<script setup lang="ts" generic="T extends number | number[]">
+import { computed } from 'vue'
+
+const props = defineProps<{
+  modelValue: T
   options: { value: number; label: string }[]
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: number]
+  'update:modelValue': [value: T]
 }>()
+
+const multiple = computed(() => Array.isArray(props.modelValue))
+
+const isActive = (value: number) =>
+  Array.isArray(props.modelValue) ? props.modelValue.includes(value) : props.modelValue === value
+
+const select = (value: number) => {
+  if (!Array.isArray(props.modelValue)) {
+    emit('update:modelValue', value as T)
+    return
+  }
+  const next = props.modelValue.includes(value)
+    ? props.modelValue.filter((selected) => selected !== value)
+    : [...props.modelValue, value]
+  emit('update:modelValue', next as T)
+}
 </script>
 
 <template>
@@ -17,9 +35,10 @@ const emit = defineEmits<{
       :key="opt.value"
       type="button"
       class="target"
-      :class="{ active: modelValue === opt.value }"
+      :class="{ active: isActive(opt.value) }"
+      :aria-pressed="multiple ? isActive(opt.value) : undefined"
       :disabled="disabled"
-      @click="emit('update:modelValue', opt.value)"
+      @click="select(opt.value)"
     >
       {{ opt.label }}
     </button>

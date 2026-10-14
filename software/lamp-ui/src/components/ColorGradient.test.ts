@@ -21,71 +21,62 @@ const button = (wrapper: ReturnType<typeof mountGradient>, title: string) =>
   wrapper.findAll(`button[title="${title}"]`)
 
 describe('ColorGradient auto-pick', () => {
-  it('renders the primary, the auto-pick row, then the remaining rows', () => {
+  it('has no toggle row and renders one row per color', () => {
     const wrapper = mountGradient({ modelValue: MANUAL })
     const rows = wrapper.get('.color-list').element.children
     expect([...rows].map((row) => row.className)).toEqual([
       'color-item',
-      'auto-pick-row',
       'color-item',
       'color-item',
       'color-item',
     ])
+    expect(wrapper.find('.boolean-input').exists()).toBe(false)
     expect(pickers(wrapper)[0].props('modelValue')).toBe(BLUE)
   })
 
-  it('keeps the auto-pick row visible with one color', () => {
-    const wrapper = mountGradient({ modelValue: [BLUE] })
-    expect(wrapper.find('.auto-pick-row').exists()).toBe(true)
+  it('shows no note while auto is off', () => {
+    const wrapper = mountGradient({ modelValue: [BLUE], scheme: 2 })
+    expect(wrapper.find('.auto-pick-note').exists()).toBe(false)
   })
 
-  it('shows the scheme name and a link that opens scheme settings', async () => {
-    const wrapper = mountGradient({ modelValue: [BLUE], scheme: 2 })
-    expect(wrapper.get('.auto-pick-help').text()).toBe('Complementary · change in Setup')
+  it('shows one note under the primary while auto is on, linking to Setup', async () => {
+    const wrapper = mountGradient({ modelValue: MANUAL, scheme: 2, autoColors: true })
+    const rows = wrapper.get('.color-list').element.children
+    expect([...rows].map((row) => row.className)).toEqual([
+      'color-item',
+      'auto-pick-note',
+      'color-item',
+      'color-item',
+      'color-item',
+    ])
+    expect(wrapper.get('.auto-pick-note').text()).toBe('Auto-picked · Complementary')
     await wrapper.get('.auto-pick-link').trigger('click')
     expect(wrapper.emitted('open-scheme-settings')).toHaveLength(1)
   })
 
-  it('asks for a more colorful primary when auto is on and the primary is neutral', () => {
+  it('names the scheme in the link and treats an unknown id as Analogous', () => {
+    const wrapper = mountGradient({ modelValue: [BLUE], scheme: 99, autoColors: true })
+    expect(wrapper.get('.auto-pick-link').text()).toBe('Analogous')
+  })
+
+  it('asks for a more colorful top color, with no link, when the primary is neutral', () => {
     const wrapper = mountGradient({ modelValue: ['#808080FF'], autoColors: true })
-    expect(wrapper.get('.auto-pick-help').text()).toBe(
-      'Pick a more colorful primary to vary the other colors.',
+    expect(wrapper.get('.auto-pick-note').text()).toBe(
+      'Auto-picked · pick a more colorful top color',
     )
+    expect(wrapper.find('.auto-pick-link').exists()).toBe(false)
   })
 
-  it('toggling on with one color emits the natural count with the primary last', async () => {
-    const wrapper = mountGradient({ modelValue: [BLUE] })
-    await wrapper.get('.boolean-input').trigger('click')
-    expect(wrapper.emitted('update:autoColors')).toEqual([[true]])
-    const palette = lastPalette(wrapper)
-    expect(palette).toHaveLength(3)
-    expect(palette[2]).toBe(BLUE)
-    expect(palette).toEqual(harmonizePalette([BLUE], 0, 3))
-  })
-
-  it('toggling on uses the scheme natural count', async () => {
-    const wrapper = mountGradient({ modelValue: [BLUE], scheme: 5 })
-    await wrapper.get('.boolean-input').trigger('click')
-    const palette = lastPalette(wrapper)
-    expect(palette).toHaveLength(4)
-    expect(palette[3]).toBe(BLUE)
-    expect(palette).toEqual(harmonizePalette([BLUE], 5, 4))
-  })
-
-  it('toggling on with four colors overwrites colors 2 to 4 and keeps the count', async () => {
-    const wrapper = mountGradient({ modelValue: MANUAL, scheme: 2 })
-    await wrapper.get('.boolean-input').trigger('click')
-    const palette = lastPalette(wrapper)
-    expect(palette).toHaveLength(4)
-    expect(palette[3]).toBe(BLUE)
-    expect(palette.slice(0, 3)).not.toEqual(MANUAL.slice(0, 3))
-    expect(palette).toEqual(harmonizePalette(MANUAL, 2))
-  })
-
-  it('toggling off emits the flag and no palette change', async () => {
+  it('removes the note when auto turns off', async () => {
     const wrapper = mountGradient({ modelValue: MANUAL, autoColors: true })
-    await wrapper.get('.boolean-input').trigger('click')
-    expect(wrapper.emitted('update:autoColors')).toEqual([[false]])
+    await wrapper.setProps({ autoColors: false })
+    expect(wrapper.find('.auto-pick-note').exists()).toBe(false)
+  })
+
+  it('emits no palette when auto turns on or off', async () => {
+    const wrapper = mountGradient({ modelValue: MANUAL })
+    await wrapper.setProps({ autoColors: true })
+    await wrapper.setProps({ autoColors: false })
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
@@ -168,23 +159,15 @@ describe('ColorGradient auto-pick', () => {
   })
 
   it('disables the Setup link when the component is disabled', () => {
-    const wrapper = mountGradient({ modelValue: [BLUE], disabled: true })
+    const wrapper = mountGradient({ modelValue: [BLUE], autoColors: true, disabled: true })
     expect(wrapper.get('.auto-pick-link').attributes('disabled')).toBeDefined()
   })
 
-  it('keeps the auto-pick switch mounted and focused when the count changes', async () => {
-    const wrapper = mount(ColorGradient, {
-      props: { modelValue: [BLUE] },
-      attachTo: document.body,
-      global: { stubs: { teleport: true } },
-    })
-    const toggle = wrapper.get('.boolean-input').element as HTMLElement
-    toggle.focus()
-    await wrapper.get('.boolean-input').trigger('click')
-    expect(lastPalette(wrapper)).toHaveLength(3)
-    await wrapper.setProps({ modelValue: lastPalette(wrapper) })
-    expect(wrapper.get('.boolean-input').element).toBe(toggle)
-    expect(document.activeElement).toBe(toggle)
-    wrapper.unmount()
+  it('keeps the primary picker mounted when the count changes', async () => {
+    const wrapper = mountGradient({ modelValue: [BLUE] })
+    const primary = pickers(wrapper)[0].element
+    await wrapper.setProps({ autoColors: true, modelValue: harmonizePalette([BLUE], 0, 3) })
+    expect(pickers(wrapper)).toHaveLength(3)
+    expect(pickers(wrapper)[0].element).toBe(primary)
   })
 })
