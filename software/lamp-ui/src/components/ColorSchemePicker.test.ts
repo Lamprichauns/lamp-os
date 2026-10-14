@@ -27,10 +27,10 @@ type Picker = ReturnType<typeof mountPicker>
 
 const chips = (wrapper: Picker) => wrapper.findAll('.target')
 
-const toggle = (wrapper: Picker) => wrapper.get('button.change')
+const toggleButton = (wrapper: Picker) => wrapper.get('button.change')
 
-const open = async (wrapper: Picker) => {
-  await toggle(wrapper).trigger('click')
+const clickToggle = async (wrapper: Picker) => {
+  await toggleButton(wrapper).trigger('click')
 }
 
 const options = (wrapper: Picker) => wrapper.findAll('[role="radio"]')
@@ -111,27 +111,27 @@ describe('ColorSchemePicker scheme list', () => {
   it('starts collapsed with a Change button', () => {
     const wrapper = mountPicker({ shadeScheme: 2, baseScheme: 2 })
     expect(wrapper.find('[role="radiogroup"]').exists()).toBe(false)
-    expect(toggle(wrapper).text()).toBe('Change')
-    expect(toggle(wrapper).attributes('aria-expanded')).toBe('false')
+    expect(toggleButton(wrapper).text()).toBe('Change')
+    expect(toggleButton(wrapper).attributes('aria-expanded')).toBe('false')
     expect(wrapper.get('.scheme-summary-name').text()).toBe('Complementary')
   })
 
   it('opens on Change and closes on Hide', async () => {
     const wrapper = mountPicker()
-    await open(wrapper)
-    expect(toggle(wrapper).text()).toBe('Hide')
-    expect(toggle(wrapper).attributes('aria-expanded')).toBe('true')
+    await clickToggle(wrapper)
+    expect(toggleButton(wrapper).text()).toBe('Hide')
+    expect(toggleButton(wrapper).attributes('aria-expanded')).toBe('true')
     expect(options(wrapper)).toHaveLength(6)
     expect(options(wrapper)[0].text()).toContain('Analogous')
     expect(options(wrapper)[0].text()).toContain('Neighboring hues. Smooth, calm blends.')
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(wrapper.find('[role="radiogroup"]').exists()).toBe(false)
-    expect(toggle(wrapper).text()).toBe('Change')
+    expect(toggleButton(wrapper).text()).toBe('Change')
   })
 
   it('emits the scheme id and keeps the list open on a pick', async () => {
     const wrapper = mountPicker({ shadeScheme: 2, baseScheme: 2 })
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(checked(wrapper)).toEqual(['false', 'false', 'true', 'false', 'false', 'false'])
     await options(wrapper)[4].trigger('click')
     expect(wrapper.emitted('pick')).toEqual([[4]])
@@ -145,7 +145,7 @@ describe('ColorSchemePicker scheme list', () => {
     expect(wrapper.get('.scheme-note').text()).toBe(
       'Shade uses Monochromatic, Base uses Triadic. Picking a scheme sets both.',
     )
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(checked(wrapper).every((value) => value === 'false')).toBe(true)
     await options(wrapper)[3].trigger('click')
     expect(wrapper.emitted('pick')).toEqual([[3]])
@@ -154,7 +154,7 @@ describe('ColorSchemePicker scheme list', () => {
   it('shows an unknown scheme id as Analogous', async () => {
     const wrapper = mountPicker({ shadeScheme: 99, baseScheme: 99 })
     expect(wrapper.get('.scheme-summary-name').text()).toBe('Analogous')
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(checked(wrapper)[0]).toBe('true')
   })
 
@@ -162,7 +162,7 @@ describe('ColorSchemePicker scheme list', () => {
     const wrapper = mountPicker({ shadeEditable: false, shadeScheme: 1, baseScheme: 4 })
     expect(wrapper.get('.scheme-summary-name').text()).toBe('Triadic')
     expect(wrapper.find('.scheme-note').exists()).toBe(false)
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(checked(wrapper)).toEqual(['false', 'false', 'false', 'false', 'true', 'false'])
     await options(wrapper)[2].trigger('click')
     expect(wrapper.emitted('pick')).toEqual([[2]])
@@ -176,9 +176,9 @@ describe('ColorSchemePicker scheme list', () => {
 
   it('disables Change and the options when disabled', async () => {
     const wrapper = mountPicker({ disabled: true })
-    expect(toggle(wrapper).attributes('disabled')).toBeDefined()
+    expect(toggleButton(wrapper).attributes('disabled')).toBeDefined()
     const opened = mountPicker()
-    await open(opened)
+    await clickToggle(opened)
     await opened.setProps({ disabled: true })
     expect(options(opened).every((o) => o.attributes('disabled') !== undefined)).toBe(true)
     await options(opened)[1].trigger('click')
@@ -223,7 +223,7 @@ describe('ColorSchemePicker swatch', () => {
 
   it('draws the list swatches from the same primary', async () => {
     const wrapper = mountPicker({ baseAuto: true })
-    await open(wrapper)
+    await clickToggle(wrapper)
     expect(listSwatch(wrapper)).toBe(expected(BASE))
   })
 })
