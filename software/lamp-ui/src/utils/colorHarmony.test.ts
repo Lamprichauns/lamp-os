@@ -31,6 +31,9 @@ const VECTORS: [primary: string, scheme: string, count: number, expected: string
   ['#000B0100', 'analogous', 2, '#000B0100 #000B0700'],
   ['#00010500', 'splitComplementary', 2, '#00010500 #05010000'],
   ['#01011700', 'monochromatic', 4, '#01011700 #06061700 #0C0C1700 #12121700'],
+  ['#000A2100', 'analogous', 2, '#000A2100 #07002100'],
+  ['#00001A00', 'monochromatic', 4, '#00001A00 #06061A00 #0D0D1A00 #14141A00'],
+  ['#01012000', 'analogous', 2, '#01012000 #10012000'],
 ]
 
 interface GoldenCase {
