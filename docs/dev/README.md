@@ -80,6 +80,9 @@ it back upstream, see [Contributing](../../README.md#contributing).
 - [`utilities.md`](utilities.md), the mechanical helper toolbox
   expression/behavior authors call (color math, fades, randomness, the pixel
   buffer, peer queries, disposition lookups).
+- [`color-harmony.md`](color-harmony.md), the web UI's color-harmony
+  auto-pick: scheme ids, the derived-color table, the HSV math, the golden
+  fixture, and how `autoColors` / `colorScheme` are stored per surface.
 
 ### Protocol reference
 - [`networking.md`](networking.md), the authoritative wire-format spec for the
