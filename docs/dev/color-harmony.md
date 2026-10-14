@@ -186,6 +186,10 @@ The keys ride inside the existing settings payloads. There is no
 keys and leaves them out of its reads, so clients treat an absent key as
 `false` / `0`.
 
+The firmware writes colors as lowercase hex and the generator writes uppercase,
+so compare colors case-insensitively. The web UI uppercases each palette when it
+loads, so regenerating an unchanged palette doesn't read as an edit.
+
 Both keys flow through every path:
 
 | Path | Where | Behavior |
