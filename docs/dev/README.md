@@ -82,7 +82,8 @@ it back upstream, see [Contributing](../../README.md#contributing).
   buffer, peer queries, disposition lookups).
 - [`color-harmony.md`](color-harmony.md), the web UI's color-harmony
   auto-pick: scheme ids, the derived-color table, the HSV math, the golden
-  fixture, and how `autoColors` / `colorScheme` are stored per surface.
+  fixture, how `autoColors` / `colorScheme` are stored per surface, and where
+  the web UI's Auto-pick controls live and what regenerates a palette.
 
 ### Protocol reference
 - [`networking.md`](networking.md), the authoritative wire-format spec for the

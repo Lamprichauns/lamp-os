@@ -7,6 +7,9 @@ golden fixture it is checked against. The web UI implements it in TypeScript.
 The Flutter app's port must produce the same output. Generation is client-side
 only. The firmware never computes a harmony color.
 
+The last two sections cover how the firmware stores each surface's Auto-pick
+state and how the web UI exposes it.
+
 Files:
 
 | File | Purpose |
@@ -46,7 +49,8 @@ is the primary itself: the normalized input string, never round-tripped through
 HSV. Each derived entry is `(Δh, s×)`:
 
 - hue becomes `(h + Δh) mod 360`;
-- saturation becomes `s × s×`, and HSV→RGB takes that product as its `s`, so its chroma is `v × (s × s×)`;
+- saturation becomes `s × s×`, and HSV→RGB takes that product as its `s`, so
+  its chroma is `v × (s × s×)`;
 - V (brightness) is the primary's V, unchanged;
 - WW is the primary's WW byte.
 
@@ -109,8 +113,8 @@ Exact, so a port matches bit-for-bit.
     | 5 | (c, 0, x) |
 
   - Each channel byte is `round((value + m) × 255)`, where value is that
-    channel's entry from the table, clamped to 0–255. Halves
-    round up (`Math.round`; Dart `round()` agrees for non-negative values).
+    channel's entry from the table, clamped to 0–255. Halves round up
+    (`Math.round`; Dart `round()` agrees for non-negative values).
 - **Ties.** Some outputs land exactly on a rounding tie, a channel of `k + 0.5`
   in byte space (for example `#3A7BD5C8` shifted by 30°). Which way a tie rounds
   depends on the operation order, so implement the formulas in the order
@@ -143,6 +147,9 @@ These must pass.
 | `#000B0100` | analogous | 2 | `#000B0100 #000B0700` (a plain remainder for HSV→RGB's `mod(h, 360)` gives `#000B0600`) |
 | `#00010500` | splitComplementary | 2 | `#00010500 #05010000` (a plain remainder for `mod(h', 2)` gives `#05020000`) |
 | `#01011700` | monochromatic | 4 | `#01011700 #06061700 #0C0C1700 #12121700` (chroma as `(v × s) × s×` gives `#07071700` second) |
+| `#000A2100` | analogous | 2 | `#000A2100 #07002100` (hue from raw bytes instead of `byte / 255` gives `#06002100`) |
+| `#00001A00` | monochromatic | 4 | `#00001A00 #06061A00 #0D0D1A00 #14141A00` (`m = v × (1 − s)` instead of `v − c` gives `#07071A00` second) |
+| `#01012000` | analogous | 2 | `#01012000 #10012000` (`round(value × 255 + m × 255)` gives `#11012000`) |
 
 ## Orientation adapter
 
@@ -152,40 +159,6 @@ returns `harmonyColors(primary, scheme, count)` reversed, so the primary stays
 at the last index. Code that writes a palette uses this adapter. A display-only
 preview, such as the Setup tab's scheme swatches, calls `harmonyColors`
 directly.
-
-## Web UI
-
-Auto-pick is configured on the Setup tab and shown on the Home tab.
-
-- **Setup, Color Harmony section.** Shown when at least one surface's colors
-  are editable. `ColorSchemePicker.vue` holds the controls:
-  - "Auto-pick colors for" is a multi-select chip group, one chip per editable
-    surface (Shade, Base). Each chip sets that surface's `autoColors`
-    independently.
-  - "Scheme" is one scheme shared by both surfaces. It starts as a summary row
-    (the scheme's name and swatch) with a Change / Hide button that opens or
-    closes the scheme list. The list is a radio group and a pick keeps it open.
-    The summary reads "Mixed" with a note when both surfaces are editable and
-    their schemes differ after `schemeById`. An unknown id counts as Analogous,
-    so stored ids 0 and 99 match and the summary shows Analogous with no note.
-    With one editable surface, that surface's scheme is shown.
-    Swatches preview the first surface whose chip is on, Shade before Base.
-- **Home, color strips.** Home only shows the state. A surface with Auto-pick on locks
-  every row but the primary and shows an "Auto-picked" note with a link to the
-  Setup tab. A neutral primary shows "pick a more colorful top color" instead.
-
-Regeneration runs only in these handlers, never in a watcher:
-
-| Trigger | Result |
-|---|---|
-| Chip turned on | `autoPickPalette`: a single color grows to the scheme's natural count, otherwise the count is kept, then the palette is regenerated from its primary. |
-| Chip turned off | `autoColors` is cleared and the colors stay as they are. |
-| Scheme pick | `colorScheme` is written on every editable surface. Surfaces with Auto-pick on regenerate with `harmonizePalette`; the others keep their colors. |
-| Primary edited on Home | Derived colors regenerate. |
-| Color added or removed on Home | Regenerates at the new count. |
-
-The shared color picker has no harmony controls. It edits one color through the
-hex input and the R, G, B, and Warm White sliders.
 
 ## Golden fixture
 
@@ -207,15 +180,18 @@ UPDATE_HARMONY_GOLDEN=1 npm run ui:test
 The output is deterministic, so with no table change the command leaves git
 clean. After a table change, review the golden diff before committing.
 
-The Flutter port must pass the same fixture, case for case, and every hand-checked vector. Passing them doesn't prove parity. Reordering a formula can flip a tie that neither catches, so implement each formula in the order written.
+The Flutter port must pass the same fixture, case for case, and every
+hand-checked vector. Passing them doesn't prove parity. Reordering a formula
+can flip a tie that neither catches, so implement each formula in the order
+written.
 
 ## Storage
 
 The firmware stores two keys per surface, inside both the `base` and `shade`
-objects of the settings JSON. `autoColors` is whether Auto-pick is on for the surface and
-`colorScheme` is a scheme id from the table above. The firmware never acts on
-either. Generated colors are ordinary entries in `segments[].colors`, so a
-generated palette renders like a manual one.
+objects of the settings JSON. `autoColors` is whether Auto-pick is on for the
+surface and `colorScheme` is a scheme id from the table above. The firmware
+never acts on either. Generated colors are ordinary entries in
+`segments[].colors`, so a generated palette renders like a manual one.
 
 | Key | Type | Default when absent | Rule |
 |---|---|---|---|
@@ -258,3 +234,49 @@ above. The web UI sends back the document it read from GET, so the keys
 travel with it. A release before 1.2.8 reads only the whole `cfg` string, so
 on a split store it loads the base and shade sections as defaults, these keys
 included.
+
+## Web UI
+
+Auto-pick is configured on the Setup tab and shown on the Home tab.
+
+- **Setup, Color Harmony section.** Shown when at least one surface's colors
+  are editable. `software/lamp-ui/src/components/ColorSchemePicker.vue` holds
+  the controls:
+  - "Auto-pick colors for" is a multi-select chip group, one chip per editable
+    surface (Shade, Base). Each chip sets that surface's `autoColors`
+    independently.
+  - "Scheme" shows one scheme for both surfaces. It starts as a summary row
+    (the scheme's name and swatch) with a Change / Hide button that opens or
+    closes the scheme list. The list is a radio group and a pick keeps it open.
+    A pick writes the id to `colorScheme` on every editable surface. Until
+    then, each surface generates with its own stored `colorScheme`.
+  - The summary reads "Mixed" with a note when both surfaces are editable and
+    their schemes differ after `schemeById`. An unknown id counts as Analogous,
+    so stored ids 0 and 99 match and the summary shows Analogous with no note.
+    With one editable surface, that surface's scheme is shown.
+  - Swatches preview the first editable surface whose chip is on, Shade before
+    Base. With no chip on, they preview Shade's primary when Shade is editable,
+    otherwise Base's.
+- **Home, color strips.** Home has no Auto-pick control. While a surface's
+  Auto-pick is on, its derived rows' pickers are disabled, Clone is disabled on
+  every row, and the primary has no Remove. A note under the primary reads
+  "Auto-picked · <scheme name>", and the name links to the Setup tab. A neutral
+  primary reads "Auto-picked · pick a more colorful top color" with no link.
+  With Auto-pick off there is no note.
+
+Regeneration runs only in these handlers, never in a watcher, and always with
+the surface's own stored `colorScheme`.
+
+| Trigger | Result |
+|---|---|
+| Chip turned on | `autoPickPalette`: a single color grows to the scheme's natural count, otherwise the count is kept, then the palette is regenerated from its primary. |
+| Chip turned off | `autoColors` is cleared and the colors stay as they are. |
+| Scheme pick | `colorScheme` is written on every editable surface. Surfaces with Auto-pick on regenerate with `harmonizePalette`; the others keep their colors. |
+| Primary edited on Home while Auto-pick is on | Derived colors regenerate. |
+| Color added or removed on Home while Auto-pick is on | Regenerates at the new count. |
+
+Regeneration caps the count at 5, so a longer palette, which another client can
+write, shrinks to 5 the first time it regenerates.
+
+The shared color picker has no harmony controls. It edits one color through the
+hex input and the R, G, B, and Warm White sliders.
