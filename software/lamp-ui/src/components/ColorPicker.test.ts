@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import ColorPicker from './ColorPicker.vue'
-import ColorWheel from './ColorWheel.vue'
 
 const mountOpen = async (modelValue: string) => {
   const wrapper = mount(ColorPicker, {
@@ -17,83 +16,88 @@ const mountOpen = async (modelValue: string) => {
 const lastEmit = (wrapper: Awaited<ReturnType<typeof mountOpen>>) =>
   wrapper.emitted('update:modelValue')!.at(-1)
 
-describe('ColorPicker wheel', () => {
+describe('ColorPicker', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    HTMLElement.prototype.setPointerCapture = vi.fn()
-    HTMLElement.prototype.releasePointerCapture = vi.fn()
-    HTMLElement.prototype.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, width: 240, height: 240 }) as DOMRect
   })
 
-  it('renders a wheel in the dialog', async () => {
+  it('shows the preview, hex input and four sliders in that order', async () => {
     const wrapper = await mountOpen('#FF000000')
-    expect(wrapper.findComponent(ColorWheel).exists()).toBe(true)
+    const body = wrapper.get('.dialog-body').element
+    const order = ['.color-preview-large', '#hex-input', '#red', '#green', '#blue', '#ww']
+    const positions = order.map((selector) => {
+      const el = body.querySelector(selector)
+      expect(el, selector).not.toBeNull()
+      return Array.from(body.querySelectorAll('*')).indexOf(el!)
+    })
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    expect(wrapper.find('.color-wheel-disc').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('sets RGB from a wheel change and preserves warm white', async () => {
+  it('emits the new color and a preview from a slider and keeps the other channels', async () => {
     const wrapper = await mountOpen('#FF0000C8')
-    wrapper.findComponent(ColorWheel).vm.$emit('change', { hue: 120, saturation: 1 })
-    expect(lastEmit(wrapper)).toEqual(['#00FF00C8'])
-    expect(wrapper.emitted('preview')!.at(-1)).toEqual(['#00FF00C8'])
+    await wrapper.get('#green').setValue('128')
+    expect(lastEmit(wrapper)).toEqual(['#FF8000C8'])
+    expect(wrapper.emitted('preview')!.at(-1)).toEqual(['#FF8000C8'])
     wrapper.unmount()
   })
 
-  it('scales RGB from the Brightness slider and preserves warm white', async () => {
-    const wrapper = await mountOpen('#FF0000C8')
-    await wrapper.get('#color-brightness').setValue('50')
-    expect(lastEmit(wrapper)).toEqual(['#800000C8'])
-    wrapper.unmount()
-  })
-
-  it('moves the wheel and Brightness when an RGB slider changes', async () => {
-    const wrapper = await mountOpen('#FF000000')
-    await wrapper.get('#green').setValue('255')
-    await wrapper.get('#red').setValue('0')
-    expect(wrapper.findComponent(ColorWheel).props()).toMatchObject({ hue: 120, saturation: 1 })
-    expect((wrapper.get('#color-brightness').element as HTMLInputElement).value).toBe('100')
-    wrapper.unmount()
-  })
-
-  it('keeps the hue when the color turns grey', async () => {
-    const wrapper = await mountOpen('#0000FF00')
+  it('preserves warm white through RGB edits and edits it on its own', async () => {
+    const wrapper = await mountOpen('#10203040')
     await wrapper.get('#red').setValue('255')
-    await wrapper.get('#green').setValue('255')
-    expect(wrapper.findComponent(ColorWheel).props('saturation')).toBe(0)
-    expect(wrapper.findComponent(ColorWheel).props('hue')).toBe(300)
+    expect(lastEmit(wrapper)).toEqual(['#FF203040'])
+    await wrapper.get('#ww').setValue('0')
+    expect(lastEmit(wrapper)).toEqual(['#FF203000'])
     wrapper.unmount()
   })
 
-  it('keeps hue and saturation when the color turns black', async () => {
-    const wrapper = await mountOpen('#FF800000')
-    await wrapper.get('#hex-input').setValue('#00000000')
-    await wrapper.get('#hex-input').trigger('blur')
-    const wheel = wrapper.findComponent(ColorWheel)
-    expect(wheel.props('hue')).toBeCloseTo(30, 0)
-    expect(wheel.props('saturation')).toBe(1)
-    wrapper.unmount()
-  })
-
-  it('does not close when a press began on the wheel and the click lands on the overlay', async () => {
+  it('reverts to the original color on Cancel', async () => {
     const wrapper = await mountOpen('#FF000000')
-    const overlay = wrapper.get('.dialog-overlay')
-    await wrapper.get('.color-wheel-disc').trigger('pointerdown', { button: 0, pointerId: 1, clientX: 240, clientY: 120 })
-    await overlay.trigger('click')
-    expect(wrapper.find('.dialog-overlay').exists()).toBe(true)
-    expect(wrapper.emitted('close')).toBeUndefined()
-    expect(lastEmit(wrapper)).toEqual(['#80FF0000'])
+    await wrapper.get('#blue').setValue('255')
+    await wrapper.get('.btn-cancel').trigger('click')
+    expect(lastEmit(wrapper)).toEqual(['#FF000000'])
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(wrapper.find('.dialog-overlay').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the edit on OK', async () => {
+    const wrapper = await mountOpen('#FF000000')
+    await wrapper.get('#blue').setValue('255')
+    await wrapper.get('.btn-ok').trigger('click')
+    expect(lastEmit(wrapper)).toEqual(['#FF00FF00'])
+    expect(wrapper.find('.dialog-overlay').exists()).toBe(false)
     wrapper.unmount()
   })
 
   it('closes and reverts when the press and click are both on the overlay', async () => {
     const wrapper = await mountOpen('#FF000000')
     const overlay = wrapper.get('.dialog-overlay')
-    wrapper.findComponent(ColorWheel).vm.$emit('change', { hue: 120, saturation: 1 })
+    await wrapper.get('#green').setValue('255')
     await overlay.trigger('pointerdown')
     await overlay.trigger('click')
     expect(wrapper.find('.dialog-overlay').exists()).toBe(false)
     expect(lastEmit(wrapper)).toEqual(['#FF000000'])
+    wrapper.unmount()
+  })
+
+  it('does not close or revert when a drag began in the dialog and the click lands on the overlay', async () => {
+    const wrapper = await mountOpen('#FF000000')
+    const overlay = wrapper.get('.dialog-overlay')
+    await wrapper.get('#green').setValue('255')
+    await wrapper.get('#green').trigger('pointerdown')
+    await overlay.trigger('click')
+    expect(wrapper.find('.dialog-overlay').exists()).toBe(true)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(lastEmit(wrapper)).toEqual(['#FFFF0000'])
+    wrapper.unmount()
+  })
+
+  it('does not close on a click with no press on the overlay', async () => {
+    const wrapper = await mountOpen('#FF000000')
+    await wrapper.get('.dialog-overlay').trigger('click')
+    expect(wrapper.find('.dialog-overlay').exists()).toBe(true)
     wrapper.unmount()
   })
 })
@@ -101,8 +105,6 @@ describe('ColorPicker wheel', () => {
 describe('ColorPicker with the real Teleport', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    HTMLElement.prototype.setPointerCapture = vi.fn()
-    HTMLElement.prototype.releasePointerCapture = vi.fn()
   })
 
   const mountReal = async (modelValue: string) => {
@@ -111,24 +113,49 @@ describe('ColorPicker with the real Teleport', () => {
     return wrapper
   }
 
-  it('does not feed the wheel back through RGB rounding', async () => {
-    const wrapper = await mountReal('#FF000000')
-    wrapper.findComponent(ColorWheel).vm.$emit('change', { hue: 200.3, saturation: 0.437 })
+  const teleported = (selector: string) => new DOMWrapper(document.querySelector(selector)!)
+
+  it('emits nothing on open', async () => {
+    const wrapper = await mountReal('#10203040')
     await flushPromises()
-    expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
-    expect(wrapper.findComponent(ColorWheel).props()).toMatchObject({
-      hue: 200.3,
-      saturation: 0.437,
-    })
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('preview')).toBeUndefined()
     wrapper.unmount()
   })
 
-  it('returns to the same color after Brightness sweeps down and back up', async () => {
-    const wrapper = await mountReal('#FF800000')
-    const slider = new DOMWrapper(document.querySelector('#color-brightness')!)
-    for (let v = 99; v >= 1; v--) await slider.setValue(String(v))
-    for (let v = 2; v <= 100; v++) await slider.setValue(String(v))
-    expect(wrapper.emitted('update:modelValue')!.at(-1)).toEqual(['#FF800000'])
+  it('emits once for a hex edit that changes every channel', async () => {
+    const wrapper = await mountReal('#10203040')
+    const input = teleported('#hex-input')
+    await input.setValue('#A1B2C3D4')
+    await input.trigger('blur')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toEqual([['#A1B2C3D4']])
+    expect(wrapper.emitted('preview')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('emits once for a slider change', async () => {
+    const wrapper = await mountReal('#10203040')
+    await teleported('#blue').setValue('200')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toEqual([['#1020C840']])
+    expect(wrapper.emitted('preview')).toEqual([['#1020C840']])
+    wrapper.unmount()
+  })
+
+  it('shows the hex edit on the sliders', async () => {
+    const wrapper = await mountReal('#10203040')
+    const input = teleported('#hex-input')
+    await input.setValue('#A1B2C3D4')
+    await input.trigger('blur')
+    await flushPromises()
+    const value = (selector: string) => (teleported(selector).element as HTMLInputElement).value
+    expect([value('#red'), value('#green'), value('#blue'), value('#ww')]).toEqual([
+      '161',
+      '178',
+      '195',
+      '212',
+    ])
     wrapper.unmount()
   })
 })
