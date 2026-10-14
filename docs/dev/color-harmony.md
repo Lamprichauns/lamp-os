@@ -46,7 +46,7 @@ is the primary itself: the normalized input string, never round-tripped through
 HSV. Each derived entry is `(Δh, s×)`:
 
 - hue becomes `(h + Δh) mod 360`;
-- saturation becomes `s × s×`;
+- saturation becomes `s × s×`, and HSV→RGB takes that product as its `s`, so its chroma is `v × (s × s×)`;
 - V (brightness) is the primary's V, unchanged;
 - WW is the primary's WW byte.
 
@@ -77,13 +77,12 @@ Exact, so a port matches bit-for-bit.
   contract and its output is unspecified. RGB is converted to floats in
   `[0, 1]` as `byte / 255`.
 - **`mod`.** `mod(x, m)` is `((x % m) + m) % m`, with `%` the truncating
-  remainder (JS `%`, Dart `remainder`). Apply it literally, even to values
-  already in range. The addition rounds, so a plain remainder can differ in the
-  last bit, and one golden case (Monochromatic, count 4, `#3A7BD5C8`) depends
-  on it. Dart's `%` operator is the Euclidean modulo, not the truncating
-  remainder, so it can't stand in for `%` here: a `mod` built from it passes the
-  golden fixture but rounds some colors differently (the `#23000500` vector
-  below).
+  remainder (JS `%`, Dart `remainder`). Apply it literally at all four uses
+  below, even to values already in range. The addition rounds, so a plain
+  remainder can differ in the last bit. Dart's `%` operator is the Euclidean
+  modulo, which equals a plain remainder for non-negative x, so it can't stand
+  in for `mod` or for the `%` inside it. A slip at any one use passes the golden
+  fixture. The hand-checked vectors below catch each one.
 - **RGB→HSV.**
   - `max`/`min` are taken over r, g, b; `d = max − min`.
   - `v = max`.
@@ -139,6 +138,11 @@ These must pass.
 | `#FF0000C8` | complementary | 2 | `#FF0000C8 #00FFFFC8` (WW copied) |
 | `#FFFFFF00` | triadic | 3 | `#FFFFFF00 #FFFFFF00 #FFFFFF00` (neutral) |
 | `#23000500` | analogous | 2 | `#23000500 #230C0000` (rounding tie; Dart `%` in `mod` gives `#230D0000`) |
+| `#07010000` | analogous | 2 | `#07010000 #07050000` (a plain remainder for `mod((g − b) / d, 6)` gives `#07040000`) |
+| `#00010B00` | complementary | 4 | `#00010B00 #06060B00 #0B0A0600 #0B0A0000` (skipping RGB→HSV's `mod(h, 360)` gives `#0B0B0600` third) |
+| `#000B0100` | analogous | 2 | `#000B0100 #000B0700` (a plain remainder for HSV→RGB's `mod(h, 360)` gives `#000B0600`) |
+| `#00010500` | splitComplementary | 2 | `#00010500 #05010000` (a plain remainder for `mod(h', 2)` gives `#05020000`) |
+| `#01011700` | monochromatic | 4 | `#01011700 #06061700 #0C0C1700 #12121700` (chroma as `(v × s) × s×` gives `#07071700` second) |
 
 ## Orientation adapter
 
@@ -169,7 +173,7 @@ UPDATE_HARMONY_GOLDEN=1 npm run ui:test
 The output is deterministic, so with no table change the command leaves git
 clean. After a table change, review the golden diff before committing.
 
-The Flutter port must pass the same fixture, case for case.
+The Flutter port must pass the same fixture, case for case, and every hand-checked vector. Passing them doesn't prove parity. Reordering a formula can flip a tie that neither catches, so implement each formula in the order written.
 
 ## Storage
 

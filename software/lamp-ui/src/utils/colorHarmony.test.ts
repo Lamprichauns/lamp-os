@@ -20,6 +20,11 @@ const VECTORS: [primary: string, scheme: string, count: number, expected: string
   ['#FF0000C8', 'complementary', 2, '#FF0000C8 #00FFFFC8'],
   ['#FFFFFF00', 'triadic', 3, '#FFFFFF00 #FFFFFF00 #FFFFFF00'],
   ['#23000500', 'analogous', 2, '#23000500 #230C0000'],
+  ['#07010000', 'analogous', 2, '#07010000 #07050000'],
+  ['#00010B00', 'complementary', 4, '#00010B00 #06060B00 #0B0A0600 #0B0A0000'],
+  ['#000B0100', 'analogous', 2, '#000B0100 #000B0700'],
+  ['#00010500', 'splitComplementary', 2, '#00010500 #05010000'],
+  ['#01011700', 'monochromatic', 4, '#01011700 #06061700 #0C0C1700 #12121700'],
 ]
 
 interface GoldenCase {
