@@ -72,14 +72,18 @@ Count is an integer clamped to `[1, 5]`. A count of 1 returns `[primary]`.
 
 Exact, so a port matches bit-for-bit.
 
-- **Parsing.** Use `parseHexww`: an optional `#`, then six digits (WW is 0) or
-  eight. Unparsable input reads as `#FFFFFF00`. RGB is converted to floats in
+- **Parsing.** Inputs are hex `#RRGGBB` or `#RRGGBBWW`, in either case. Six
+  digits mean WW is 0. Parse with `parseHexww`. Any other string is outside this
+  contract and its output is unspecified. RGB is converted to floats in
   `[0, 1]` as `byte / 255`.
 - **`mod`.** `mod(x, m)` is `((x % m) + m) % m`, with `%` the truncating
   remainder (JS `%`, Dart `remainder`). Apply it literally, even to values
   already in range. The addition rounds, so a plain remainder can differ in the
   last bit, and one golden case (Monochromatic, count 4, `#3A7BD5C8`) depends
-  on it.
+  on it. Dart's `%` operator is the Euclidean modulo, not the truncating
+  remainder, so it can't stand in for `%` here: a `mod` built from it passes the
+  golden fixture but rounds some colors differently (the `#23000500` vector
+  below).
 - **RGB→HSV.**
   - `max`/`min` are taken over r, g, b; `d = max − min`.
   - `v = max`.
@@ -94,7 +98,7 @@ Exact, so a port matches bit-for-bit.
     generator passes `h + Δh` unreduced, which makes this the one
     `(h + Δh) mod 360` the table calls for. Reduce it exactly once.
   - `c = v × s`, `h' = h / 60`, `x = c × (1 − |mod(h', 2) − 1|)`, `m = v − c`.
-  - The sector `⌊h'⌋` picks `(r, g, b)` from these, then `m` is added to each:
+  - The sector `⌊h'⌋` picks `(r, g, b)` from these:
 
     | Sector | (r, g, b) |
     |---|---|
@@ -105,13 +109,15 @@ Exact, so a port matches bit-for-bit.
     | 4 | (x, 0, c) |
     | 5 | (c, 0, x) |
 
-  - Each channel byte is `round((value + m) × 255)`, clamped to 0–255. Halves
+  - Each channel byte is `round((value + m) × 255)`, where value is that
+    channel's entry from the table, clamped to 0–255. Halves
     round up (`Math.round`; Dart `round()` agrees for non-negative values).
 - **Ties.** Some outputs land exactly on a rounding tie, a channel of `k + 0.5`
   in byte space (for example `#3A7BD5C8` shifted by 30°). Which way a tie rounds
   depends on the operation order, so implement the formulas in the order
   written. A platform HSV conversion can disagree on ties.
-- **Output format.** Every output is 8-digit uppercase `#RRGGBBWW`.
+- **Output format.** Every output for an input in the contract is 8-digit
+  uppercase `#RRGGBBWW`.
 - **Neutral primary.** When the primary has no hue (`s == 0` or `v == 0`; white,
   grey, black, or pure warm white), hue rotation and saturation scaling change
   nothing, so every derived color equals the primary. This is expected, not an
@@ -132,6 +138,7 @@ These must pass.
 | `#FF000000` | complementary | 5 | `#FF000000 #FF808000 #FFFFFF00 #80FFFF00 #00FFFF00` |
 | `#FF0000C8` | complementary | 2 | `#FF0000C8 #00FFFFC8` (WW copied) |
 | `#FFFFFF00` | triadic | 3 | `#FFFFFF00 #FFFFFF00 #FFFFFF00` (neutral) |
+| `#23000500` | analogous | 2 | `#23000500 #230C0000` (rounding tie; Dart `%` in `mod` gives `#230D0000`) |
 
 ## Orientation adapter
 
@@ -159,7 +166,8 @@ deliberate table change, change this doc and the table constant in
 UPDATE_HARMONY_GOLDEN=1 npm run ui:test
 ```
 
-Rerunning the command leaves git clean. Review the diff before committing.
+The output is deterministic, so with no table change the command leaves git
+clean. After a table change, review the golden diff before committing.
 
 The Flutter port must pass the same fixture, case for case.
 

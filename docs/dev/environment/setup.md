@@ -4,8 +4,9 @@
 
 1. **Node.js** — every dev task is an `npm run …` script from the repo root.
    macOS: `brew install node`; Windows: `winget install OpenJS.NodeJS` (or nvm).
-   The root `package.json` has no dependencies — no `npm install` step, Node
-   itself is enough.
+   The root `package.json` has no dependencies, so the root needs no
+   `npm install`. The lamp-ui web app has its own, which `npm run ui:build`
+   installs (`npm ci`).
 2. **VS Code** + the [Flutter extension](https://marketplace.visualstudio.com/items?itemName=Dart-Code.flutter) — installs the Flutter/Dart SDK automatically. Google any gaps; the extension's "Getting Started" is the canonical source.
 3. **Android Studio** — for the Android SDK and an API 34 emulator image. Install via the Android Studio IDE manager or `sdkmanager`.
 4. **Python** (≥3.10) — the bridge and firmware tooling. On macOS use a brew-
@@ -64,8 +65,8 @@ All tasks run from the repo root.
 | `npm run lamp:monitor` | Serial monitor on the connected lamp — first stop for crashes/reset reasons |
 | `npm run lamp:buildfs` / `lamp:flashfs` | Build / flash the SPIFFS web-config UI (runs `ui:build` first) |
 | `npm run ui:build` | Build the lamp-ui web app |
-| `npm run ui:dev` | lamp-ui dev server with hot reload. `LAMP_HOST=<lamp ip>` proxies `/api` and `/ws` to a real lamp: join its setup Wi-Fi (softAP, normally `192.168.4.1`) and set Keep Setup Available in the Setup tab so the AP doesn't expire |
-| `npm run ui:test` | lamp-ui unit and component tests (vitest) |
+| `npm run ui:dev` | lamp-ui dev server with hot reload. `LAMP_HOST=<lamp ip>` proxies `/api` and `/ws` to a real lamp: join its setup Wi-Fi (softAP, normally `192.168.4.1`) and set Keep Setup Available in the Setup tab so the AP doesn't expire. Run `npm run ui:build` once first; it installs lamp-ui's dependencies. |
+| `npm run ui:test` | lamp-ui unit and component tests (vitest). Run `npm run ui:build` once first; it installs lamp-ui's dependencies. |
 | `npm run wisp:build` / `wisp:flash` / `wisp:test` / `wisp:monitor` | Same as the lamp tasks, for the wisp node |
 
 ## Flash a lamp
