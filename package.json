@@ -6,7 +6,7 @@
   "scripts": {
     "lamp:build": "cd software/lamp-os && LAMP_FIRMWARE_CHANNEL=dev pio run -e upesy_wroom_${VARIANT:-standard}",
     "ui:build": "cd software/lamp-ui && npm ci && npm run build",
-    "//ui:dev": "Web UI dev server with hot reload. Run with LAMP_HOST=<lamp ip> to drive a real lamp (proxies /api and /ws to it): LAMP_HOST=192.168.4.1 npm run ui:dev. The laptop must be joined to the lamp's setup Wi-Fi (softAP, normally 192.168.4.1). Set \"Keep Setup Available\" in the Setup tab so the AP doesn't expire mid-session.",
+    "//ui:dev": "Web UI dev server with hot reload. Run with LAMP_HOST=<lamp ip> to drive a real lamp (proxies /api and /ws to it): LAMP_HOST=192.168.4.1 npm run ui:dev. The laptop must be joined to the lamp's setup Wi-Fi (softAP, normally 192.168.4.1). A dev build keeps the AP up; on a beta or stable lamp, set \"Keep Setup Available\" in the Setup tab so it doesn't expire mid-session.",
     "ui:dev": "cd software/lamp-ui && npm run dev",
     "ui:test": "cd software/lamp-ui && npm test",
     "lamp:buildfs": "npm run ui:build && cd software/lamp-os && LAMP_FIRMWARE_CHANNEL=dev pio run -e upesy_wroom_${VARIANT:-standard} -t buildfs",

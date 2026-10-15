@@ -7,6 +7,15 @@
 // Boot-window softAP-served fallback config for colors + name.
 namespace webapp {
 
+// Dev-channel builds start the setup softAP at every boot and never expire it,
+// whatever Web Config and the boot window say, so the web UI can be tested
+// without the app. A BLE client's connect still drops it to free heap for BLE.
+#ifdef LAMP_DEBUG
+constexpr bool kDevBuildKeepsSetupAp = true;
+#else
+constexpr bool kDevBuildKeepsSetupAp = false;
+#endif
+
 // Must be called after wifi::begin so the WiFi stack is initialised.
 void begin(lamp::Config& config);
 void tick();
