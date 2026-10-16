@@ -26,6 +26,9 @@ class ColorHarmonyScreen extends ConsumerStatefulWidget {
 }
 
 class _ColorHarmonyScreenState extends ConsumerState<ColorHarmonyScreen> {
+  // Each action restores its starting state when its write fails, so an
+  // overlapping action would undo the other's unconfirmed change.
+  bool _busy = false;
   bool _open = false;
 
   ControlNotifier _notifier() =>
@@ -35,28 +38,40 @@ class _ColorHarmonyScreenState extends ConsumerState<ColorHarmonyScreen> {
     Set<HarmonySurface> previous,
     Set<HarmonySurface> next,
   ) async {
-    final n = _notifier();
-    for (final surface in HarmonySurface.values) {
-      final on = next.contains(surface);
-      if (on == previous.contains(surface)) continue;
-      try {
-        await n.setAutoPick(surface, on);
-      } catch (_) {
-        if (mounted) {
-          AppSnackbar.error(context, "Couldn't update Auto-pick. Try again.");
+    if (_busy) return;
+    _busy = true;
+    try {
+      final n = _notifier();
+      for (final surface in HarmonySurface.values) {
+        final on = next.contains(surface);
+        if (on == previous.contains(surface)) continue;
+        try {
+          await n.setAutoPick(surface, on);
+        } catch (_) {
+          if (mounted) {
+            AppSnackbar.error(context, "Couldn't update Auto-pick. Try again.");
+          }
+          return;
         }
-        return;
       }
+    } finally {
+      _busy = false;
     }
   }
 
   Future<void> _onSchemePicked(int schemeId) async {
+    if (_busy) return;
+    _busy = true;
     try {
-      await _notifier().pickColorScheme(schemeId);
-    } catch (_) {
-      if (mounted) {
-        AppSnackbar.error(context, "Couldn't change the scheme. Try again.");
+      try {
+        await _notifier().pickColorScheme(schemeId);
+      } catch (_) {
+        if (mounted) {
+          AppSnackbar.error(context, "Couldn't change the scheme. Try again.");
+        }
       }
+    } finally {
+      _busy = false;
     }
   }
 
@@ -200,6 +215,8 @@ class _ColorHarmonyScreenState extends ConsumerState<ColorHarmonyScreen> {
             ListTile(
               key: Key('harmony-scheme-${scheme.key}'),
               contentPadding: EdgeInsets.zero,
+              selected: scheme.id == selectedId,
+              selectedColor: colorScheme.onSurface,
               title: Text(scheme.name, style: textTheme.bodyMedium),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

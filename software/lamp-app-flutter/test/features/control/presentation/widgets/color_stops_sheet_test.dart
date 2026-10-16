@@ -400,7 +400,7 @@ void main() {
 
     testWidgets('locks derived rows and the primary row remove button',
         (tester) async {
-      final changes = await openSheet(tester);
+      await openSheet(tester);
 
       await tester.tap(find.byKey(const ValueKey('color-stop-1')));
       await tester.pumpAndSettle();
@@ -425,12 +425,7 @@ void main() {
       expect(handles, hasLength(opened.length));
       expect(handles.every((h) => !h.enabled), isTrue);
 
-      // Screen-reader Move actions reach onReorderItem past the handles.
-      tester
-          .widget<ReorderableListView>(find.byType(ReorderableListView))
-          .onReorderItem!(0, 1);
-      await tester.pumpAndSettle();
-      expect(changes, isEmpty);
+      expect(find.byType(ReorderableListView), findsNothing);
 
       // The primary's empty trailing slot keeps its hex aligned with the rest.
       expect(

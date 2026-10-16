@@ -47,8 +47,8 @@ to soften those transitions.
 
 ## Derived-color table
 
-`harmonyColors(primary, scheme, count)` returns colors **top→bottom**. Index 0
-is the primary itself: the normalized input string, never round-tripped through
+`harmonyColors(primary, scheme, count)` returns the primary first. Index 0 is
+the primary itself: the normalized input string, never round-tripped through
 HSV. Each derived entry is `(Δh, s×)`:
 
 - hue becomes `(h + Δh) mod 360`;
@@ -133,7 +133,7 @@ Exact, so a port matches bit-for-bit.
 
 These must pass.
 
-| Primary | Scheme | Count | Expected (top→bottom) |
+| Primary | Scheme | Count | Expected (primary first) |
 |---|---|---|---|
 | `#FF000000` | complementary | 2 | `#FF000000 #00FFFF00` |
 | `#FF000000` | triadic | 3 | `#FF000000 #00FF0000 #0000FF00` |
@@ -157,11 +157,16 @@ These must pass.
 ## Orientation adapter
 
 `harmonizePalette(palette, scheme, count = palette.length)` takes a palette in
-**storage order** (bottom→top) and reads the primary from its last index. It
-returns `harmonyColors(primary, scheme, count)` reversed, so the primary stays
-at the last index. Code that writes a palette uses this adapter. A display-only
-preview, such as the Setup tab's scheme swatches, calls `harmonyColors`
-directly.
+**storage order** and reads the primary from its last index. It returns
+`harmonyColors(primary, scheme, count)` reversed, so the primary stays at the
+last index. Which physical end that is depends on the surface. Shade index 0 is
+the bottom of the strip, so the Shade's primary is its top color. On lamps
+whose Base strip is declared `reversed` (standard, staff, snafu), Base index 0
+is the top of the base, so the Base's primary is its bottom color. The Flutter
+client's Orientation bullet has the details.
+
+Code that writes a palette uses this adapter. A display-only preview, such as
+the Setup tab's scheme swatches, calls `harmonyColors` directly.
 
 ## Golden fixture
 
@@ -170,7 +175,7 @@ output as `{ "cases": [{ "primary", "scheme", "count", "expected" }] }`. It
 covers every scheme × count 2–5 for the primaries `#FF000000`, `#3A7BD5C8`,
 `#F4A6B800`, and `#FFFFFF00` (96 cases). `scheme` is the numeric id, the value
 that gets stored, so the fixture also pins the id mapping. `expected` is
-`harmonyColors` output, top→bottom.
+`harmonyColors` output, primary first.
 
 `colorHarmony.test.ts` and `color_harmony_test.dart` both assert their
 generator reproduces the file; the Dart test reads it in place as
@@ -335,6 +340,8 @@ every hand-checked vector above (`color_harmony_test.dart`).
   settings_blob per user action with `reboot: false`, carrying only the
   harmony keys of the affected surfaces. The firmware keeps one pending
   settings_blob payload, so two back-to-back writes could drop the first.
+  The screen ignores chip and scheme taps while an earlier change is still
+  writing.
   When a change regenerates colors, the colors stream over the surface's
   colors characteristic first, then the flags go, then one `commit()`
   persists the colors. If the flag write fails, the flags revert, the

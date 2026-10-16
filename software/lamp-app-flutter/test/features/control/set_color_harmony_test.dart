@@ -22,6 +22,7 @@ const _devId = 'lamp-a';
 Future<(ProviderContainer, InMemoryBleClient)> _build({
   String baseKnockoutJson = '[]',
   String shadeColorsJson = '["#000000FF"]',
+  String baseColorsJson = '["#300783FF"]',
   bool? shadeAutoColors,
   bool? baseAutoColors,
   int? baseColorScheme,
@@ -34,6 +35,7 @@ Future<(ProviderContainer, InMemoryBleClient)> _build({
     deviceId: _devId,
     baseKnockoutJson: baseKnockoutJson,
     shadeColorsJson: shadeColorsJson,
+    baseColorsJson: baseColorsJson,
     shadeAutoColors: shadeAutoColors,
     baseAutoColors: baseAutoColors,
     baseColorScheme: baseColorScheme,
@@ -191,6 +193,7 @@ void main() {
         () async {
       final (c, ble) = await _build(
         shadeColorsJson: '["#00FF00C8","#0000FFC8","#FF0000C8"]',
+        baseColorsJson: '["#123456C8","#FF8000C8"]',
         shadeAutoColors: true,
         baseAutoColors: true,
       );
@@ -198,6 +201,8 @@ void main() {
       final before = _state(c);
       expect(harmonizePalette(before.shade.colors, 4),
           isNot(before.shade.colors));
+      expect(harmonizePalette(before.base.colors, 4),
+          isNot(before.base.colors));
 
       ble.scheduleEncryptionFailure(
           _devId, BleUuids.controlService, BleUuids.settingsBlob);

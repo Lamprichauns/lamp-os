@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +28,28 @@ import '../../_support/seed.dart';
 const _devId = 'lamp-x';
 const _red = '#FF0000C8';
 
+class _HoldingBle extends InMemoryBleClient {
+  Completer<void>? holdSettingsBlob;
+
+  @override
+  Future<void> write(
+    String d,
+    String s,
+    String c,
+    Uint8List v, {
+    bool withoutResponse = false,
+    bool allowLongWrite = false,
+  }) async {
+    final hold = holdSettingsBlob;
+    if (c == BleUuids.settingsBlob && hold != null) {
+      holdSettingsBlob = null;
+      await hold.future;
+    }
+    return super.write(d, s, c, v,
+        withoutResponse: withoutResponse, allowLongWrite: allowLongWrite);
+  }
+}
+
 Future<(ProviderContainer, InMemoryBleClient)> _build({
   String shadeColorsJson = '["#000000FF"]',
   bool? shadeAutoColors,
@@ -34,9 +58,10 @@ Future<(ProviderContainer, InMemoryBleClient)> _build({
   bool? baseAutoColors,
   int? baseColorScheme,
   bool? baseColorsEditable,
+  InMemoryBleClient? ble,
 }) async {
   SharedPreferences.setMockInitialValues({});
-  final ble = InMemoryBleClient();
+  ble ??= InMemoryBleClient();
   await seedControlBle(
     ble,
     deviceId: _devId,
@@ -273,6 +298,61 @@ void main() {
     expect(find.byIcon(Icons.check), findsOneWidget);
     expect(_inSummary(find.text('Triadic')), findsOneWidget);
     await _drain(tester);
+  });
+
+  testWidgets('a second scheme tap is ignored while the first is writing',
+      (tester) async {
+    final held = _HoldingBle();
+    final (c, ble) = await _build(
+      ble: held,
+      shadeColorsJson: '["#00FF00C8","#0000FFC8","#FF0000C8"]',
+      shadeAutoColors: true,
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    final before = _state(c).shade.colors;
+
+    await tester.tap(find.byKey(const Key('scheme-toggle')));
+    await tester.pump();
+    final hold = held.holdSettingsBlob = Completer<void>();
+    await tester.tap(find.byKey(const Key('harmony-scheme-triadic')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('harmony-scheme-square')));
+    await tester.pump();
+    hold.complete();
+    await _drain(tester);
+
+    expect(_blobs(ble), [
+      {
+        'shade': {'colorScheme': 4},
+        'base': {'colorScheme': 4},
+        'reboot': false,
+      },
+    ]);
+    expect(_state(c).shade.colorScheme, 4);
+    expect(_lastColors(ble, BleUuids.shadeColors), harmonizePalette(before, 4));
+    expect(ble.writesTo(_devId, BleUuids.commit), hasLength(1));
+  });
+
+  testWidgets('the checked scheme row is selected for screen readers',
+      (tester) async {
+    final (c, _) = await _build();
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    final semantics = tester.ensureSemantics();
+
+    await tester.tap(find.byKey(const Key('scheme-toggle')));
+    await tester.pump();
+
+    Finder titleOf(String key, String name) => find.descendant(
+          of: find.byKey(Key('harmony-scheme-$key')),
+          matching: find.text(name),
+        );
+    expect(tester.getSemantics(titleOf('analogous', 'Analogous')),
+        isSemantics(isSelected: true));
+    expect(tester.getSemantics(titleOf('triadic', 'Triadic')),
+        isSemantics(isSelected: false));
+    semantics.dispose();
   });
 
   testWidgets('differing schemes show Mixed until a pick', (tester) async {

@@ -70,24 +70,32 @@ void main() {
   for (final segIdx in [0, 1]) {
     testWidgets('segment $segIdx sheet lists the top of the shade first',
         (tester) async {
-      final (:container, :ble) = await _buildContainer();
+      final (:container, :ble) = await _buildContainer(
+        shadeSegmentsJson:
+            '[{"name":"A","px":12,"colors":["#300783FF","#FF0000FF"]},'
+            '{"name":"B","px":12,"colors":["#00FF00FF","#0000FFFF"]},'
+            '{"name":"C","px":14,"colors":["#000000FF"]}]',
+      );
       addTearDown(container.dispose);
 
       await tester.pumpWidget(_wrap(container, segIdx: segIdx));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
+      final (top, bottom) = segIdx == 0
+          ? ('#FF0000', '#300783')
+          : ('#0000FF', '#00FF00');
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('color-stop-0')),
-          matching: find.text('#FF0000'),
+          matching: find.text(top),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('color-stop-1')),
-          matching: find.text('#300783'),
+          matching: find.text(bottom),
         ),
         findsOneWidget,
       );

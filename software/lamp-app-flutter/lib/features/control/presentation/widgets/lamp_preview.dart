@@ -143,7 +143,7 @@ class _LampPreviewState extends ConsumerState<LampPreview> {
 
   // Single-entry memoization for `renderLampPreviewSvg`. Each rebuild that
   // hits the same shade + base color set returns the cached SVG string instead
-  // of running three regex passes again. The cache key is the joined hex of
+  // of running both regex passes again. The cache key is the joined hex of
   // the inputs; values are cheap to compute and short.
   String? _memoKey;
   String? _memoRendered;

@@ -184,8 +184,6 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
   }
 
   void _reorder(int oldIndex, int newIndex) {
-    // The list's semantics actions still offer Move up / down on locked rows.
-    if (_autoPick != null) return;
     final next = widget.topFirst ? _colors.reversed.toList() : [..._colors];
     next.insert(newIndex, next.removeAt(oldIndex));
     _apply(widget.topFirst ? next.reversed.toList() : next);
@@ -316,7 +314,7 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
               ],
               const SizedBox(height: AppSpace.md),
               Expanded(
-                child: widget.reorderable
+                child: widget.reorderable && _autoPick == null
                     ? ReorderableListView.builder(
                         itemCount: _colors.length,
                         onReorderItem: _reorder,
