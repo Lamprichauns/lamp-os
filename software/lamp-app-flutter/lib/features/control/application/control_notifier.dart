@@ -40,6 +40,19 @@ enum EditSurface {
   final int bit;
 }
 
+/// A surface that carries its own color harmony settings. The name is the
+/// settings_blob section key.
+enum HarmonySurface { shade, base }
+
+/// Auto-pick eligibility for a [ControlState]; see
+/// [BaseSection.harmonyEligible].
+extension HarmonyEligibility on ControlState {
+  bool isHarmonyEligible(HarmonySurface surface) => switch (surface) {
+        HarmonySurface.shade => shade.harmonyEligible,
+        HarmonySurface.base => base.harmonyEligible,
+      };
+}
+
 /// Marker error type set by ControlNotifier.factoryReset so callers can
 /// distinguish "user reset this lamp" from genuine BLE / parse failures.
 class FactoryResetSentinel implements Exception {
@@ -982,15 +995,7 @@ class ControlNotifier extends _$ControlNotifier {
     _knockoutTimers.clear();
     _knockoutPending.clear();
     state = AsyncData(cur.copyWith(
-      base: BaseSection(
-        px: cur.base.px,
-        bpp: cur.base.bpp,
-        byteOrder: cur.base.byteOrder,
-        colors: cur.base.colors,
-        knockout: const {},
-        colorsEditable: cur.base.colorsEditable,
-        segments: cur.base.segments,
-      ),
+      base: cur.base.copyWith(knockout: const {}),
     ));
     // Serialize the per-pixel writes so the queue stays shallow.
     // Worst case is the full 144 pixels at ~30 ms each ≈ 4.5 s; only
@@ -1085,6 +1090,47 @@ class ControlNotifier extends _$ControlNotifier {
         await writeSettingsBlob(
             {'lamp': {'socialMode': mode.wire}}, reboot: false);
       },
+    );
+  }
+
+  /// Sets the color harmony flags on every surface in [surfaces] as one user
+  /// action: one optimistic update and one settings_blob write carrying only
+  /// the non-null values. Reverts and rethrows when the write fails.
+  Future<void> setColorHarmony({
+    required Set<HarmonySurface> surfaces,
+    bool? autoColors,
+    int? colorScheme,
+  }) async {
+    assert(surfaces.isNotEmpty, 'setColorHarmony needs a surface');
+    assert(
+      autoColors != null || colorScheme != null,
+      'setColorHarmony needs autoColors or colorScheme',
+    );
+    await _mutate(
+      (s) => s.copyWith(
+        shade: surfaces.contains(HarmonySurface.shade)
+            ? s.shade.copyWith(
+                autoColors: autoColors,
+                colorScheme: colorScheme,
+              )
+            : s.shade,
+        base: surfaces.contains(HarmonySurface.base)
+            ? s.base.copyWith(
+                autoColors: autoColors,
+                colorScheme: colorScheme,
+              )
+            : s.base,
+      ),
+      () => writeSettingsBlob(
+        {
+          for (final surface in surfaces)
+            surface.name: {
+              'autoColors': ?autoColors,
+              'colorScheme': ?colorScheme,
+            },
+        },
+        reboot: false,
+      ),
     );
   }
 

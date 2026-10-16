@@ -21,11 +21,12 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 ## Phase 2
 
 - Task-F01: Toolchain and prerequisite gate, baseline - `dad5acc6`
-- Task-F02: Port the harmony generator to Dart
+- Task-F02: Port the harmony generator to Dart - `f8e73f84`
+- Task-F03: Section fields, `setColorHarmony`, seed support
 
 ## Current Iteration
 
-- Phase 2 activated 2026-10-15. Task-F02 done (Dart generator in `lib/features/control/domain/color_harmony.dart`, 63 tests). Next: Task-F03 (section fields, `setColorHarmony`, seed support).
+- Phase 2 activated 2026-10-15. Task-F03 done (section fields, `setColorHarmony`, eligibility, seed support; 16 tests). Next: Task-F04 (top-first orientation for Shade and Base, P1).
 
 ## Blockers
 
@@ -102,3 +103,9 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F02: tests (63) in `test/features/control/domain/color_harmony_test.dart`: 18 doc vectors (scheme keys mapped through `kHarmonySchemes`), the golden read in place from `../lamp-ui/src/utils/colorHarmony.golden.json` (numeric `scheme` passed straight through; asserts 96 cases), scheme table and descriptions, clamping, unknown ids, neutral primaries (`#FFFFFF00`, `#808080A0`, `#00000000`, `#000000FF`), W copy, `harmonizePalette`, `autoPickPalette`, `isNeutralColor`, `sharedSchemeId`, and the TS file's direct rgbToHsv / hsvToRgb cases including the 16^3 RGB grid round-trip.
 - Task-F02: mutation-checked (each reverted): Dart `%` inside `_mod` fails `#23000500`; a single Euclidean `x % m` for `_mod` fails 4 vectors and the golden; a plain remainder at each of the four sites, and skipping RGB→HSV's `mod(h, 360)`, each fail their doc vector. The doc's per-slip claims hold for the Dart port.
 - Task-F02: app:test single file 63/63; full suite 891 passed, 6 failed (the F01 baseline six, 828 + 63). One earlier full run showed 888 / 9 failed under load; two reruns gave the baseline six. app:analyze 18 issues, same as the F01 baseline. No doc/TS discrepancy found.
+- Task-F03: `BaseSection` / `ShadeSection` gain `autoColors` (default false) and `colorScheme` (default 0) plus `bool get harmonyEligible => colorsEditable && segments.length <= 1`. Parse rule: `autoColors` is `raw is bool && raw`; `colorScheme` is `raw is int && 0 <= raw <= 255`, else 0 (so `3.0` loads as 0, matching ArduinoJson `is<int>()` in `apply_color_harmony.hpp`). Contract is on the `BaseSection` declarations; `ShadeSection` points to them. No `toJson`.
+- Task-F03: `enum HarmonySurface { shade, base }` and `extension HarmonyEligibility on ControlState { isHarmonyEligible(surface) }` sit beside `EditSurface` in `control_notifier.dart`. The settings_blob section key is `surface.name`, so the enum names must stay `shade` / `base`.
+- Task-F03: `setColorHarmony({required Set<HarmonySurface> surfaces, bool? autoColors, int? colorScheme})` does one `_mutate` and one `writeSettingsBlob(..., reboot: false)`; payload uses null-aware map entries (`'autoColors': ?autoColors`), so a null value is neither sent nor changed in state. Asserts non-empty `surfaces` and at least one non-null value. It does no color regeneration and no `commit()`; F07 owns the P5 colors-then-flags-then-commit flow.
+- Task-F03: `clearKnockout` now uses `cur.base.copyWith(knockout: const {})`, so it keeps `autoColors`, `colorScheme`, `drawIdleMa`, `drawFullMa`.
+- Task-F03: `seedControlBle` gains `shadeAutoColors`, `shadeColorScheme`, `shadeColorsEditable`, `baseAutoColors`, `baseColorScheme`, `baseColorsEditable`, appended to the shade / base JSON only when non-null (helper `_surfaceTail`); existing seeds are byte-identical.
+- Task-F03: tests: `sections_test.dart` +7 (group 'color harmony fields', 49 total), new `test/features/control/set_color_harmony_test.dart` 9 (passwordless InventoryLamp, decodes `[0x01 | json]`; failure via `scheduleEncryptionFailure` on settingsBlob, asserts `BleEncryptionRequired` rethrown and whole state restored). Full suite 907 passed, 6 failed (the F01 baseline six; 891 + 16). app:analyze 18 issues, the F01 baseline. No codegen; no generated file changed.
