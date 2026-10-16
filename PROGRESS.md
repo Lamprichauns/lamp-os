@@ -22,15 +22,17 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 
 - Task-F01: Toolchain and prerequisite gate, baseline - `dad5acc6`
 - Task-F02: Port the harmony generator to Dart - `f8e73f84`
-- Task-F03: Section fields, `setColorHarmony`, seed support
+- Task-F03: Section fields, `setColorHarmony`, seed support - `95808d05`
+- Task-F05: Swipe-dismiss reverts like Cancel
 
 ## Current Iteration
 
-- Phase 2 activated 2026-10-15. Task-F03 done (section fields, `setColorHarmony`, eligibility, seed support; 16 tests). Next: Task-F04 (top-first orientation for Shade and Base, P1).
+- Phase 2 activated 2026-10-15. Task-F05 done (swipe-down on a modified stops sheet reverts like Cancel; 2 tests). Next: Task-F07, then F08. F04, F06, F09 and F10 wait for the Base-orientation decision (see Blockers).
 
 ## Blockers
 
-- None. The user settled Revision 1 on 2026-10-14: no wheel or Brightness slider in the picker; Auto-pick moves to Setup as independent Shade / Base chips with one shared, collapsible scheme list; Home shows a one-line note while Auto-pick is on. That retires the open questions about the wheel at Brightness 0 and the unrunnable snafu step (the PRD's manual step 6 is rewritten).
+- Base orientation (awaiting the user, raised 2026-10-15): firmware evidence predicts P1's Base check fails. The Base strip is declared `reversed` on the standard, staff and snafu lamps; `buildGradientWithStops` puts palette index 0 on logical pixel 0 and `reversed` applies only at flush (`frame_buffer.cpp`); docs/dev/expressions.md (Pulse row, from the bench fixes 672f6d8b and 6a17e921) says base logical 0 is its top. So Base Stop 1 lights the top of the base and D1's primary (the last index) its bottom, while the Shade matches D1. Until the user decides, the coordinator runs the orientation-independent tasks first (F05, F07, F08) and holds F04, F06, F09 and F10. Don't start those, and don't flip or relabel Base orientation in any task.
+- Revision 1 settled with the user on 2026-10-14: no wheel or Brightness slider in the picker; Auto-pick moves to Setup as independent Shade / Base chips with one shared, collapsible scheme list; Home shows a one-line note while Auto-pick is on. That retires the open questions about the wheel at Brightness 0 and the unrunnable snafu step (the PRD's manual step 6 is rewritten).
 
 ## Notes
 
@@ -109,3 +111,8 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F03: `clearKnockout` now uses `cur.base.copyWith(knockout: const {})`, so it keeps `autoColors`, `colorScheme`, `drawIdleMa`, `drawFullMa`.
 - Task-F03: `seedControlBle` gains `shadeAutoColors`, `shadeColorScheme`, `shadeColorsEditable`, `baseAutoColors`, `baseColorScheme`, `baseColorsEditable`, appended to the shade / base JSON only when non-null (helper `_surfaceTail`); existing seeds are byte-identical.
 - Task-F03: tests: `sections_test.dart` +7 (group 'color harmony fields', 49 total), new `test/features/control/set_color_harmony_test.dart` 9 (passwordless InventoryLamp, decodes `[0x01 | json]`; failure via `scheduleEncryptionFailure` on settingsBlob, asserts `BleEncryptionRequired` rethrown and whole state restored). Full suite 907 passed, 6 failed (the F01 baseline six; 891 + 16). app:analyze 18 issues, the F01 baseline. No codegen; no generated file changed.
+- Task-F05: premise check passed on Flutter 3.47.7. With the two new tests run against the unmodified sheet, dragging the title 400 px down closed the modified sheet with no discard dialog, and only the `changes.last` (onChanged) assertion failed. The unmodified-sheet swipe test passed before the fix.
+- Task-F05: fix is in `ColorStopsSheet`'s `onPopInvokedWithResult`: on `didPop` with `!_allowPop && _dirty`, it calls `onChanged(_original)`. Cancel and Save set `_allowPop` before popping, so they send no second revert; back on a modified sheet still gets `didPop == false` and the discard prompt. Every `showColorStopsSheet` caller gets it, including the expression Colors and wisp manual-palette drafts. The `_close` comment is unchanged.
+- Task-F05: tests open the sheet through `showColorStopsSheet` (default `reorderable: true`) via a local `openPaletteSheet` helper in `color_stops_sheet_test.dart`, which returns the `onChanged` log. color_stops_sheet_test 6/6. Full suite 909 passed, 6 failed (the F01 baseline six; 907 + 2). One full run also failed `reaching_lamp_gate_test.dart` "overlay shown while the control provider is loading"; it passed 3/3 alone and the next full run was back to the baseline six, so it's a load flake. app:analyze 18 issues, the F01 baseline.
+- Task-F05: known edge case, not handled. If a declarative route change removes the lamp page while a modified stops sheet is open (for example the reaching-lamp gate's "Pick another" runs go(myLamps)), Flutter pops the sheet with didPop == true inside Navigator.didUpdateWidget, so the revert's onChanged runs during build. Every caller writes Riverpod state synchronously there, so debug builds throw flutter_riverpod's "Tried to modify a provider while the widget tree was building". Release builds just run the revert. The code keeps the PRD's predicate. Don't fix it by deferring the swipe-path revert to a post-frame callback: the expression editor's finally restore would run first and then be overwritten.
+- Task-F05 fix round 1: test comment reworded to drop the clause-splicing colon; recorded the declarative-pop-during-build edge case above (no code change).

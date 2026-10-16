@@ -192,7 +192,11 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
     return PopScope(
       canPop: _allowPop || !_dirty,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop) {
+          // A swipe-down pops without consulting canPop, so revert here.
+          if (!_allowPop && _dirty) widget.onChanged?.call(List.of(_original));
+          return;
+        }
         final discard = await confirmDiscard(context);
         if (discard) _close(revert: true);
       },

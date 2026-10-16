@@ -125,4 +125,59 @@ void main() {
     expect(lastPreview!.length, 2);
     expect(find.text('Palette'), findsNothing);
   });
+
+  Future<List<List<LampColor>>> openPaletteSheet(WidgetTester tester) async {
+    final changes = <List<LampColor>>[];
+    await tester.pumpWidget(MaterialApp(
+      theme: appTheme,
+      home: Builder(
+        builder: (ctx) => Scaffold(
+          body: TextButton(
+            onPressed: () => showColorStopsSheet(
+              ctx,
+              initial: const [_red, _green],
+              title: 'Palette',
+              max: 4,
+              onChanged: changes.add,
+              onSave: (_) async {},
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    return changes;
+  }
+
+  testWidgets(
+      'ColorStopsSheet swipe-down on a modified sheet reverts like Cancel',
+      (tester) async {
+    final changes = await openPaletteSheet(tester);
+
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    expect(changes.last, const [_red]);
+
+    // A drag that starts on the list goes to its scroll recognizer and the
+    // sheet never moves, so drag from the title.
+    await tester.drag(find.text('Palette'), const Offset(0, 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Palette'), findsNothing);
+    expect(find.text('Discard changes?'), findsNothing);
+    expect(changes.last, const [_red, _green]);
+  });
+
+  testWidgets('ColorStopsSheet swipe-down on an unmodified sheet sends nothing',
+      (tester) async {
+    final changes = await openPaletteSheet(tester);
+
+    await tester.drag(find.text('Palette'), const Offset(0, 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Palette'), findsNothing);
+    expect(changes, isEmpty);
+  });
 }
