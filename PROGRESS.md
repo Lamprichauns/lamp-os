@@ -26,11 +26,12 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F05: Swipe-dismiss reverts like Cancel - `2a495086`
 - Task-F04: Top-first orientation for the Shade (P1) - `6e32379a`
 - Task-F06: Auto-pick lock in ColorStopsSheet and the editors (D5, P6) - `6f4c0e3f`
-- Task-F07: Color harmony screen under Setup › LEDs (R2, R3, R5)
+- Task-F07: Color harmony screen under Setup › LEDs (R2, R3, R5) - `5dbb2eaf`
+- Task-F08: Home card Auto-pick note (R6)
 
 ## Current Iteration
 
-- Phase 2 activated 2026-10-15. Task-F07 done (`ColorHarmonyScreen` at `AppRoutes.colorHarmony(id)` behind a Setup › LEDs row; `ControlNotifier.setAutoPick` / `pickColorScheme`; 17 tests). Next: Task-F08, then F09, F10.
+- Phase 2 activated 2026-10-15. Task-F08 done (Home `ShadeCard` / `BaseCard` show the Auto-pick note via the shared `AutoPickNote`; 10 tests). Next: Task-F09, then F10.
 
 ## Blockers
 
@@ -137,3 +138,7 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F07: Setup row sits after "LED setup", shown when either surface is `harmonyEligible`; subtitle helper `_colorHarmonySubtitle` in `setup_screen.dart` compares the on surfaces with `sharedSchemeId`. F08's Home note can reuse `harmonySchemeById(...).name`; the route is `AppRoutes.colorHarmony(id)`.
 - Task-F07: tests (+17): `color_harmony_screen_test.dart` 9 (passwordless lamp, 800x1600 view; default seed, chip on/off, scheme pick, Mixed, unknown id, ineligible Base preview, failed chip write + snackbar, empty state); `setup_screen_test.dart` +6 (group 'Color harmony row', GoRouter stub route for the push); `set_color_harmony_test.dart` +2 (setAutoPick and pickColorScheme failure restore; plain `test()`, real 100 ms then 600 ms delays so the coalescer and seen flush run before dispose). Mutation-checked: dropping the snapshot restore fails both failure tests (the pick test seeds a 3-color shade because a 1-color palette regenerates to itself). Full suite 952 passed, 6 failed (the F01 baseline six; 935 + 17) on two runs; a third run also hit the known `reaching_lamp_gate_test` load flake, which passed 18/18 alone. app:analyze 18 issues, the F01 baseline. No codegen; no generated file changed.
 - Task-F07 fix round 1: dropped the PRD labels (D4)/(D7) from the `setAutoPick` / `pickColorScheme` doc comments and the `// --- Color harmony ---` divider added in `setup_screen_test.dart`. Comment-only; no code change.
+- Task-F08: new `AutoPickNote({lampId, primary, schemeId, primaryPosition})` in `lib/features/control/presentation/widgets/auto_pick_note.dart`, shared by both cards ("top" Shade, "bottom" Base). Neutral primary (`isNeutralColor`) gives the plain text line; otherwise a `Wrap` of 'Auto-picked · ' plus a `TextButton` (`Key('auto-pick-link')`, zero padding, `minimumSize: Size.zero`, compact density, bodySmall) that `context.push`es `AppRoutes.colorHarmony(lampId)`. `minimumSize: Size.zero` is beyond the PRD so a short name doesn't sit in a 56 px box; the padded tap target still gives a 40 x 40 px minimum hit area (48 minus the compact density's 8).
+- Task-F08: `_ShadeSlice` / `_BaseSlice` (in the card files, not `control_screen.dart`) gain `harmonyEligible`, `autoColors`, `colorScheme`; null state reads false / false / 0. The note shows when `harmonyEligible && autoColors` and the card's colors are non-empty; primary is `colors.lastOrNull` (D1; the Shade uses `spec.selectColors`, segment 0's list). The title is now a `Column(mainAxisSize: min)` with the note under it. `control_screen.dart` needed no change.
+- Task-F08: tests (+10): `shade_card_test` group 'Auto-pick note' (7: link + push via GoRouter stub, body still opens `ShadeEditorSheet`, neutral, last-index primary, auto off, three-segment shade, 360x800 no overflow); `base_card_test` group 'Auto-pick note' (3: link + push + body `onTap`, neutral bottom line with a two-color palette, auto off). Mutation-checked: a `Row` in place of the `Wrap` overflows by 211 px at 360 dp and fails the wrap test. widgets/ 85/85; full suite 962 passed, 6 failed (the F01 baseline six; 952 + 10); one earlier run also hit the known `reaching_lamp_gate_test` load flake (18/18 alone). app:analyze 18 issues, the F01 baseline.
+- Task-F08 fix round 1: changed the AutoPickNote doc comment to use a period instead of a clause-splicing colon; corrected the tap-target figure above (compact density gives 40 px, not 48). No behavior change.
