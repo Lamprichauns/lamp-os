@@ -1,9 +1,9 @@
 # Progress Log
 
-Active PRD: `prd/PRD-color-harmony.md`
+Active PRD: `prd/PRD-color-harmony-flutter.md`
 Repo: `/Users/mikebartlett/Developer/GitHub/lamp-os` (main checkout, not a worktree)
-Branch: `feature/color-wheel-addition`
-Base commit: `ca6bebcd`
+Branch: `feature/color-harmony`
+Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 
 ## Completed
 
@@ -18,11 +18,13 @@ Base commit: `ca6bebcd`
 - Task-009: Auto-pick moves to Setup: chips, one scheme, collapsible list (R2-R6) - `98962115`
 - Task-010: Revision docs and integration check - `cba315e5`
 
+## Phase 2
+
+- Task-F01: Toolchain and prerequisite gate, baseline
+
 ## Current Iteration
 
-- Iteration: 10
-- Working on: Revision 1 complete (Tasks 008-010). Tasks 001-007 and the first whole-branch review are done at `878e12ef`. Remaining: the user's manual lamp check.
-- Started: 2026-10-13
+- Phase 2 activated 2026-10-15. Task-F01 done (baseline recorded). Next: Task-F02 (port the harmony generator to Dart).
 
 ## Blockers
 
@@ -82,3 +84,12 @@ Base commit: `ca6bebcd`
 - Branch review fixes (web-ui:utils): `TARGET_BOTH` is module-private in `surfaceTarget.ts`; the `configShape.ts` uppercase comment is wrapped into two sentences. ui:test 172/172, ui:build ok; no firmware change.
 - Branch review fixes (docs, round 3): three hand-checked vectors added to `color-harmony.md` and `VECTORS` (hue from raw bytes, `m = v × (1 − s)`, `round(value × 255 + m × 255)`). The Web UI section moved after Storage and now states the no-chip swatch fallback, Home's locked rows, the Auto-pick-only regeneration rows, the per-surface stored scheme and the 5-color cap; intro and long lines rewrapped; README index entry extended. Golden and PRD unchanged. No firmware change.
 - Revision 1 final state at `9028c78e` (after the second whole-branch review: 0 blocking, 9 minor fixes): ui:test 175/175, ui:build ok, lamp:test 1204/1204, lamp:build standard and snafu ok, lamp:buildfs ok, golden checker PASS, comment sweep clean, dependencies only `vue`, no VERSION / CHANGELOG / protocol / GATT change. Final gzip bundle 50129 bytes (baseline 47364, +2765). Next: the user's manual lamp check (PRD manual steps, as revised), then re-plan phase 2 (`prd/PRD-color-harmony-flutter.md`: drop F03/F04 wheel tasks, redo F08/F09 for Setup chips and the shared scheme).
+- P1 not checked: on 2026-10-15 the user chose to build phase 2 with P1 as drafted (Shade/Base top-first), unconfirmed. Manual verification step 2 (Orientation) is the check. This line satisfies Task-F01's P1 gate; never rewrite it as "P1 confirmed" from inference.
+- Phase-1 manual lamp check is not signed off: on 2026-10-15 the user directed phase 2 to start before it (the base-strand flashing interrupted that check).
+- Phase 2 commits go on `feature/color-harmony` in this main checkout (the user's choice, 2026-10-15). The working tree carries the user's unrelated uncommitted edits: `docs/CHANGELOG.md`, `docs/dev/building-custom-lamps.md`, `docs/dev/environment/setup.md`, `docs/dev/networking.md`, `package.json`, `prd/PRD-color-harmony-flutter.md`, and files under `software/lamp-os/src/components/firmware/`, `software/lamp-os/src/components/webapp/`, `software/lamp-os/src/core/lamp.cpp`, `software/lamp-os/test/test_ota_channel/`. Never stage, restore or stash them.
+- Flutter SDK installed 2026-10-15 at the user's request (Homebrew cask, analytics off). Any flutter run rewrites `software/lamp-app-flutter/pubspec.lock` and adds `build/**`, `android/**`, `ios/**` to the analyzer excludes in `software/lamp-app-flutter/analysis_options.yaml`. Leave both unstaged in every commit.
+- Task-F01: toolchain Flutter 3.47.7 (stable) / Dart 3.13.5 at `/opt/homebrew/bin/flutter`. Phase-2 base commit `69ca8b0e` (full `69ca8b0e0a07c1d5d31627bf7c9cb27d62a0356a`); `git merge-base --is-ancestor origin/dev HEAD` passes.
+- Task-F01: phase-1 outputs present: `color-harmony.md` has Storage and Web UI sections; golden has 96 cases; `colorHarmony.ts` exports `autoPickPalette`; `colorUtils.ts` exports `rgbToHsv` / `hsvToRgb`; `config.cpp` emits both keys in `asBaseJson()` and `asShadeJson()`; `apply_color_harmony.hpp` exists. No `autoColors` / `harmony` identifiers in the app's `lib/` or `test/`; every `colorScheme` hit is Material's theme `ColorScheme`.
+- Task-F01: analyzer baseline is 18 issues (exits 1), all pre-existing, none to fix: warning `invalid_null_aware_operator` `lib/core/routing/router.dart:40` (F07 edits this file); warnings `unused_import` + `unnecessary_cast` `test/core/theme/brand_extras_test.dart`; info `deprecated_member_use` x2 `test/core/theme/app_typography_test.dart`; info `unnecessary_underscores` x12 (4 each in `test/features/control/presentation/widgets/base_editor_sheet_test.dart`, `shade_editor_sheet_test.dart`, `test/features/social/dispositions_notifier_test.dart`); info `prefer_const_constructors` x1 `test/features/social/greeting_highlight_test.dart:42`. "No issues beyond the baseline" means exactly these 18.
+- Task-F01: app:test baseline 828 passed, 6 failed, all pre-existing and outside this feature: `battery_saver_test.dart` "Battery Saver estimate renders and updates on Bright" and "batteryEstimateLabel interpolates sensibly for a known triple" (expect '20 Ah battery', label says '20000 mAh bank'); `wisp_config_tabs_test.dart` "WispConfigScreen tabs renders Palette source, Settings, and Lamps tabs in order" (no 'Palette source' text); `wisp_notifier_palette_test.dart` "manual palette draft unconfirmed palette write resends then surfaces failure + stays dirty" and "setSource resends then surfaces failure when the wisp never confirms" (error stays null); `wisp_op_sealing_test.dart` "wire framing setManualPalette always plaintext even when password is cached" (`List.last` on no writes).
+- Task-F01: confirmed the SDK side effects: `pubspec.lock` rewritten (matcher 0.12.20, meta 1.19.0, test 1.31.1, test_api 0.7.12, test_core 0.6.18, vector_math 2.4.3) and `analysis_options.yaml` gains the `build/**`, `android/**`, `ios/**` excludes. Both left unstaged. The working tree also carries the user's `software/lamp-os/src/components/network/mesh/lamp_roster.hpp`; never stage it either.
