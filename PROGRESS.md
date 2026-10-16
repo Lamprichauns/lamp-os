@@ -27,11 +27,12 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F04: Top-first orientation for the Shade (P1) - `6e32379a`
 - Task-F06: Auto-pick lock in ColorStopsSheet and the editors (D5, P6) - `6f4c0e3f`
 - Task-F07: Color harmony screen under Setup › LEDs (R2, R3, R5) - `5dbb2eaf`
-- Task-F08: Home card Auto-pick note (R6)
+- Task-F08: Home card Auto-pick note (R6) - `8ca50754`
+- Task-F09: Older-firmware and reconnect behavior
 
 ## Current Iteration
 
-- Phase 2 activated 2026-10-15. Task-F08 done (Home `ShadeCard` / `BaseCard` show the Auto-pick note via the shared `AutoPickNote`; 10 tests). Next: Task-F09, then F10.
+- Phase 2 activated 2026-10-15. Task-F09 done (older-firmware, reconnect and web-parity behavior pinned by 4 tests; no production change). Next: Task-F10.
 
 ## Blockers
 
@@ -142,3 +143,7 @@ Base commit: `ca6bebcd` (phase 1); phase 2: `69ca8b0e`
 - Task-F08: `_ShadeSlice` / `_BaseSlice` (in the card files, not `control_screen.dart`) gain `harmonyEligible`, `autoColors`, `colorScheme`; null state reads false / false / 0. The note shows when `harmonyEligible && autoColors` and the card's colors are non-empty; primary is `colors.lastOrNull` (D1; the Shade uses `spec.selectColors`, segment 0's list). The title is now a `Column(mainAxisSize: min)` with the note under it. `control_screen.dart` needed no change.
 - Task-F08: tests (+10): `shade_card_test` group 'Auto-pick note' (7: link + push via GoRouter stub, body still opens `ShadeEditorSheet`, neutral, last-index primary, auto off, three-segment shade, 360x800 no overflow); `base_card_test` group 'Auto-pick note' (3: link + push + body `onTap`, neutral bottom line with a two-color palette, auto off). Mutation-checked: a `Row` in place of the `Wrap` overflows by 211 px at 360 dp and fails the wrap test. widgets/ 85/85; full suite 962 passed, 6 failed (the F01 baseline six; 952 + 10); one earlier run also hit the known `reaching_lamp_gate_test` load flake (18/18 alone). app:analyze 18 issues, the F01 baseline.
 - Task-F08 fix round 1: changed the AutoPickNote doc comment to use a period instead of a clause-splicing colon; corrected the tap-target figure above (compact density gives 40 px, not 48). No behavior change.
+- Task-F09: no production change; every new test passed on first run against the F08 code.
+- Task-F09: `reconnect_mirrors_firmware_test.dart` (+2, group 'Auto-pick after a reconnect'): the file now has helpers `_connect` (passwordless `controlPassword: ''`, so blobs decode as `[0x01 | json]`), `_reconnect` (disconnect, pump, connect, pump) and `_autoPickBase` (`setAutoPick(base, true)`, real 600 ms drain, asserts the single `{'base': {'autoColors': true}, 'reboot': false}` blob); the fwVersion test uses them unchanged in substance. Re-seeding with `seedControlBle(..., baseAutoColors: true)` before the reconnect keeps true; re-seeding without the keys keeps true across the drop and reads false / 0 after the restore. The header comment was widened to cover both concerns.
+- Task-F09: `color_harmony_screen_test.dart` (+2): 'older firmware' (default seed with a red shade; Setup row 'Auto-pick off' via a new `_pumpSetup`; both surfaces load false / 0; Shade chip streams `autoPickPalette([red], 0, on: true)` (3 colors), one `{'shade': {'autoColors': true}}` blob, a commit; chip still on after the drain) and 'web parity' (shade `["#00FF00C8", red]`, `shadeAutoColors: true`, both schemes 2; chip on, summary 'Complementary', check on `harmony-scheme-complementary`; the shade editor via new `_openShadeEditor` shows red at `color-stop-0` and green at `color-stop-1`, tapping row 1 opens no picker, and no shadeColors or settingsBlob write happens; colors unchanged). Mutation-checked: with `shadeAutoColors: false` the row-1 tap opens the picker and the test fails. Both tests `c.listen` the control provider so it survives the `pumpWidget` swaps.
+- Task-F09: the existing 'Shade chip on ...' screen test already ran on a keyless seed; the older-firmware test adds the explicit load, Setup row and still-on-after-drain assertions. Full suite 966 passed, 6 failed (the F01 baseline six; 962 + 4). app:analyze 18 issues, the F01 baseline.

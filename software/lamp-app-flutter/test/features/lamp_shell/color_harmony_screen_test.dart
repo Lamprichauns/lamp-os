@@ -13,9 +13,11 @@ import 'package:lamp_app/features/control/application/control_state.dart';
 import 'package:lamp_app/features/control/domain/color_harmony.dart';
 import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/control/presentation/widgets/lamp_color_swatch.dart';
+import 'package:lamp_app/features/control/presentation/widgets/shade_editor_sheet.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
 import 'package:lamp_app/features/inventory/domain/inventory_lamp.dart';
 import 'package:lamp_app/features/lamp_shell/presentation/color_harmony_screen.dart';
+import 'package:lamp_app/features/lamp_shell/presentation/setup_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_support/in_memory_ble_client.dart';
@@ -77,6 +79,48 @@ Future<void> _pumpScreen(WidgetTester tester, ProviderContainer c) async {
     }
   }
 }
+
+Future<void> _pumpSetup(WidgetTester tester, ProviderContainer c) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(UncontrolledProviderScope(
+    container: c,
+    child: MaterialApp(
+      theme: appTheme,
+      home: const Scaffold(body: SetupScreen(lampId: _devId)),
+    ),
+  ));
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+    if (find.text('Color harmony').evaluate().isNotEmpty) return;
+  }
+}
+
+Future<void> _openShadeEditor(WidgetTester tester, ProviderContainer c) async {
+  await tester.pumpWidget(UncontrolledProviderScope(
+    container: c,
+    child: MaterialApp(
+      theme: appTheme,
+      home: Builder(
+        builder: (ctx) => Scaffold(
+          body: TextButton(
+            onPressed: () => showShadeEditorSheet(ctx,
+                lampId: _devId, spec: shadeSegmentSpec(0, 'Shade')),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ),
+  ));
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+}
+
+Finder _rowHex(int position, String hex) => find.descendant(
+      of: find.byKey(ValueKey('color-stop-$position')),
+      matching: find.text(hex),
+    );
 
 /// Lets the colors coalescer and the inventory "seen" flush run out.
 Future<void> _drain(WidgetTester tester) =>
@@ -304,6 +348,81 @@ void main() {
     await _drain(tester);
     await tester.pump(AppSnackbar.errorDuration);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'older firmware: absent keys read off and Analogous; a chip still '
+      'regenerates and writes', (tester) async {
+    final (c, ble) = await _build(shadeColorsJson: '["$_red"]');
+    addTearDown(c.dispose);
+    c.listen(controlNotifierProvider(_devId), (_, _) {});
+    await _pumpSetup(tester, c);
+
+    expect(find.text('Auto-pick off'), findsOneWidget);
+    final loaded = _state(c);
+    expect(loaded.shade.autoColors, isFalse);
+    expect(loaded.shade.colorScheme, 0);
+    expect(loaded.base.autoColors, isFalse);
+    expect(loaded.base.colorScheme, 0);
+
+    await _pumpScreen(tester, c);
+    expect(_selected(tester), isEmpty);
+    expect(_inSummary(find.text('Analogous')), findsOneWidget);
+
+    await _tapAndWrite(tester, find.text('Shade'));
+
+    final expected =
+        autoPickPalette([LampColor.fromHex(_red)], 0, on: true);
+    expect(expected, hasLength(3));
+    expect(_lastColors(ble, BleUuids.shadeColors), expected);
+    expect(_blobs(ble), [
+      {
+        'shade': {'autoColors': true},
+        'reboot': false,
+      },
+    ]);
+    expect(ble.writesTo(_devId, BleUuids.commit), isNotEmpty);
+    await _drain(tester);
+    expect(_selected(tester), {HarmonySurface.shade});
+    expect(_state(c).shade.autoColors, isTrue);
+  });
+
+  testWidgets(
+      'web parity: a web-saved seed opens on and Complementary, and the '
+      'shade editor opens locked without writing', (tester) async {
+    const seeded = '["#00FF00C8","$_red"]';
+    final (c, ble) = await _build(
+      shadeColorsJson: seeded,
+      shadeAutoColors: true,
+      shadeColorScheme: 2,
+      baseColorScheme: 2,
+    );
+    addTearDown(c.dispose);
+    c.listen(controlNotifierProvider(_devId), (_, _) {});
+    await _pumpScreen(tester, c);
+
+    expect(_selected(tester), {HarmonySurface.shade});
+    expect(_inSummary(find.text('Complementary')), findsOneWidget);
+    expect(find.textContaining('Picking a scheme sets both'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('scheme-toggle')));
+    await tester.pumpAndSettle();
+    expect(_checkIn('complementary'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+
+    await _openShadeEditor(tester, c);
+    expect(_rowHex(0, '#FF0000'), findsOneWidget);
+    expect(_rowHex(1, '#00FF00'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('color-stop-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Done'), findsNothing);
+
+    expect(ble.writesTo(_devId, BleUuids.shadeColors), isEmpty);
+    expect(ble.writesTo(_devId, BleUuids.settingsBlob), isEmpty);
+    expect(_state(c).shade.colors, [
+      LampColor.fromHex('#00FF00C8'),
+      LampColor.fromHex(_red),
+    ]);
   });
 
   testWidgets('no eligible surface shows the empty state', (tester) async {
