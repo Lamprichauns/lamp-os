@@ -16,6 +16,7 @@ import '../../inventory/application/inventory_notifier.dart';
 import '../data/catalog_store.dart';
 import 'advanced_session.dart';
 import '../../lamp_shell/domain/expression_catalog.dart';
+import '../domain/color_harmony.dart';
 import '../domain/lamp_color.dart';
 import '../domain/sections.dart';
 import '../../social/domain/social_mode.dart';
@@ -1133,6 +1134,96 @@ class ControlNotifier extends _$ControlNotifier {
       ),
     );
   }
+
+  /// Turns Auto-pick on or off for [surface] as one user action. On streams
+  /// the auto-picked palette, writes the flag, then commits; off writes
+  /// the flag only and keeps the colors. When the flag write fails, the
+  /// colors stream back, nothing commits, and the error rethrows.
+  Future<void> setAutoPick(HarmonySurface surface, bool on) async {
+    final cur = state.value;
+    if (cur == null) return;
+    if (!on) {
+      await setColorHarmony(surfaces: {surface}, autoColors: false);
+      return;
+    }
+    final snapshot = _surfaceColors(cur, surface);
+    await _streamSurfaceColors(
+      surface,
+      autoPickPalette(snapshot, _surfaceScheme(cur, surface), on: true),
+    );
+    await _writeHarmonyOrRestore(
+      {surface: snapshot},
+      () => setColorHarmony(surfaces: {surface}, autoColors: true),
+    );
+    await commit();
+  }
+
+  /// Writes [schemeId] to every eligible surface in one settings_blob,
+  /// after streaming a regenerated palette for each eligible surface whose
+  /// Auto-pick is on; commits only if anything regenerated. Failure handling
+  /// matches [setAutoPick].
+  Future<void> pickColorScheme(int schemeId) async {
+    final cur = state.value;
+    if (cur == null) return;
+    final eligible = {
+      for (final s in HarmonySurface.values)
+        if (cur.isHarmonyEligible(s)) s,
+    };
+    if (eligible.isEmpty) return;
+    final snapshots = {
+      for (final s in eligible)
+        if (_surfaceAutoColors(cur, s)) s: _surfaceColors(cur, s),
+    };
+    for (final MapEntry(key: surface, value: colors) in snapshots.entries) {
+      await _streamSurfaceColors(surface, harmonizePalette(colors, schemeId));
+    }
+    await _writeHarmonyOrRestore(
+      snapshots,
+      () => setColorHarmony(surfaces: eligible, colorScheme: schemeId),
+    );
+    if (snapshots.isNotEmpty) await commit();
+  }
+
+  Future<void> _writeHarmonyOrRestore(
+    Map<HarmonySurface, List<LampColor>> snapshots,
+    Future<void> Function() write,
+  ) async {
+    try {
+      await write();
+    } catch (_) {
+      for (final MapEntry(key: surface, value: colors) in snapshots.entries) {
+        await _streamSurfaceColors(surface, colors);
+      }
+      rethrow;
+    }
+  }
+
+  List<LampColor> _surfaceColors(ControlState s, HarmonySurface surface) =>
+      switch (surface) {
+        HarmonySurface.shade => s.shade.colors,
+        HarmonySurface.base => s.base.colors,
+      };
+
+  bool _surfaceAutoColors(ControlState s, HarmonySurface surface) =>
+      switch (surface) {
+        HarmonySurface.shade => s.shade.autoColors,
+        HarmonySurface.base => s.base.autoColors,
+      };
+
+  int _surfaceScheme(ControlState s, HarmonySurface surface) =>
+      switch (surface) {
+        HarmonySurface.shade => s.shade.colorScheme,
+        HarmonySurface.base => s.base.colorScheme,
+      };
+
+  Future<void> _streamSurfaceColors(
+    HarmonySurface surface,
+    List<LampColor> colors,
+  ) =>
+      switch (surface) {
+        HarmonySurface.shade => setShadeColors(colors),
+        HarmonySurface.base => setBaseColors(colors),
+      };
 
   /// Wipe the lamp back to factory defaults. Writes the
   /// `{factoryReset: true}` sentinel to settings_blob (encrypted with the

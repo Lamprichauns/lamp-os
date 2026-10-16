@@ -9,6 +9,7 @@ import '../../features/inventory/presentation/my_lamps_screen.dart';
 import '../../features/lamp_shell/presentation/add_expression_picker_screen.dart';
 import '../../features/lamp_shell/presentation/advanced_leds_screen.dart';
 import '../../features/lamp_shell/presentation/bt_only_lamp_screen.dart';
+import '../../features/lamp_shell/presentation/color_harmony_screen.dart';
 import '../../features/lamp_shell/presentation/expression_editor_screen.dart';
 import '../../features/lamp_shell/presentation/home_mode_screen.dart';
 import '../../features/lamp_shell/presentation/lamp_shell.dart';
@@ -134,6 +135,11 @@ GoRouter appRouter(Ref ref) {
         path: '/lamp/:id/setup/advanced-leds',
         builder: (_, state) =>
             AdvancedLedsScreen(lampId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/lamp/:id/setup/color-harmony',
+        builder: (_, state) =>
+            ColorHarmonyScreen(lampId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/onboarding/add',

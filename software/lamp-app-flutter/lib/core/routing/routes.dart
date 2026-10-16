@@ -22,4 +22,5 @@ abstract class AppRoutes {
   static String homeWifi(String id) => '/lamp/$id/setup/wifi';
   static String homeMode(String id) => '/lamp/$id/setup/home-mode';
   static String advancedLeds(String id) => '/lamp/$id/setup/advanced-leds';
+  static String colorHarmony(String id) => '/lamp/$id/setup/color-harmony';
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_support/in_memory_ble_client.dart';
@@ -23,6 +24,12 @@ Future<ProviderContainer> _makeContainer({
   bool? hasPassword,
   int basePx = 35,
   int shadePx = 38,
+  bool? shadeAutoColors,
+  int? shadeColorScheme,
+  bool? shadeColorsEditable,
+  bool? baseAutoColors,
+  int? baseColorScheme,
+  bool? baseColorsEditable,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final ble = InMemoryBleClient();
@@ -34,6 +41,12 @@ Future<ProviderContainer> _makeContainer({
     hasPassword: hasPassword,
     basePx: basePx,
     shadePx: shadePx,
+    shadeAutoColors: shadeAutoColors,
+    shadeColorScheme: shadeColorScheme,
+    shadeColorsEditable: shadeColorsEditable,
+    baseAutoColors: baseAutoColors,
+    baseColorScheme: baseColorScheme,
+    baseColorsEditable: baseColorsEditable,
   );
   final c = ProviderContainer(
     overrides: [bleClientProvider.overrideWithValue(ble)],
@@ -328,5 +341,121 @@ void main() {
 
     expect(webConfigDy, greaterThan(connectivityDy));
     expect(webConfigDy, lessThan(ledsDy));
+  });
+
+  group('Color harmony row', () {
+    void tallView(WidgetTester tester) {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+    }
+
+    Future<void> expectSubtitle(
+      WidgetTester tester,
+      String subtitle, {
+      bool? shadeAutoColors,
+      int? shadeColorScheme,
+      bool? baseAutoColors,
+      int? baseColorScheme,
+    }) async {
+      tallView(tester);
+      final c = await _makeContainer(
+        shadeAutoColors: shadeAutoColors,
+        shadeColorScheme: shadeColorScheme,
+        baseAutoColors: baseAutoColors,
+        baseColorScheme: baseColorScheme,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(_wrap(c));
+      await _pumpToData(tester);
+      expect(find.text('Color harmony'), findsOneWidget);
+      expect(find.text(subtitle), findsOneWidget);
+    }
+
+    testWidgets('shows "Auto-pick off" under LEDs with the default seed',
+        (tester) async {
+      await expectSubtitle(tester, 'Auto-pick off');
+      expect(
+        tester.getTopLeft(find.text('Color harmony')).dy,
+        greaterThan(tester.getTopLeft(find.text('LED setup')).dy),
+      );
+    });
+
+    testWidgets('is absent when neither surface is editable', (tester) async {
+      tallView(tester);
+      final c = await _makeContainer(
+        shadeColorsEditable: false,
+        baseColorsEditable: false,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(_wrap(c));
+      await _pumpToData(tester);
+      expect(find.text('LED setup'), findsOneWidget);
+      expect(find.text('Color harmony'), findsNothing);
+    });
+
+    testWidgets('names the on surface and its scheme', (tester) async {
+      await expectSubtitle(
+        tester,
+        'Shade · Triadic',
+        shadeAutoColors: true,
+        shadeColorScheme: 4,
+      );
+    });
+
+    testWidgets('names each scheme when the on surfaces differ',
+        (tester) async {
+      await expectSubtitle(
+        tester,
+        'Shade · Triadic, Base · Square',
+        shadeAutoColors: true,
+        shadeColorScheme: 4,
+        baseAutoColors: true,
+        baseColorScheme: 5,
+      );
+    });
+
+    testWidgets('an unknown scheme id compares as Analogous', (tester) async {
+      await expectSubtitle(
+        tester,
+        'Shade, Base · Analogous',
+        shadeAutoColors: true,
+        shadeColorScheme: 0,
+        baseAutoColors: true,
+        baseColorScheme: 99,
+      );
+    });
+
+    testWidgets('tapping the row pushes the Color harmony route',
+        (tester) async {
+      tallView(tester);
+      final c = await _makeContainer();
+      addTearDown(c.dispose);
+      final router = GoRouter(
+        initialLocation: '/lamp/$_devId/setup',
+        routes: [
+          GoRoute(
+            path: '/lamp/:id/setup',
+            builder: (_, state) => Scaffold(
+              body: SetupScreen(lampId: state.pathParameters['id']!),
+            ),
+          ),
+          GoRoute(
+            path: '/lamp/:id/setup/color-harmony',
+            builder: (_, _) => const Scaffold(body: Text('harmony-stub')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: c,
+        child: MaterialApp.router(theme: appTheme, routerConfig: router),
+      ));
+      await _pumpToData(tester);
+
+      await tester.tap(find.text('Color harmony'));
+      await tester.pumpAndSettle();
+      expect(find.text('harmony-stub'), findsOneWidget);
+    });
   });
 }

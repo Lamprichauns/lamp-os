@@ -8,6 +8,8 @@ import 'package:lamp_app/core/ble/lamp_crypto.dart';
 import 'package:lamp_app/core/ble/uuids.dart';
 import 'package:lamp_app/features/control/application/control_notifier.dart';
 import 'package:lamp_app/features/control/application/control_state.dart';
+import 'package:lamp_app/features/control/domain/color_harmony.dart';
+import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
 import 'package:lamp_app/features/inventory/domain/inventory_lamp.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +21,8 @@ const _devId = 'lamp-a';
 
 Future<(ProviderContainer, InMemoryBleClient)> _build({
   String baseKnockoutJson = '[]',
+  String shadeColorsJson = '["#000000FF"]',
+  bool? shadeAutoColors,
   bool? baseAutoColors,
   int? baseColorScheme,
   bool? baseColorsEditable,
@@ -29,6 +33,8 @@ Future<(ProviderContainer, InMemoryBleClient)> _build({
     ble,
     deviceId: _devId,
     baseKnockoutJson: baseKnockoutJson,
+    shadeColorsJson: shadeColorsJson,
+    shadeAutoColors: shadeAutoColors,
     baseAutoColors: baseAutoColors,
     baseColorScheme: baseColorScheme,
     baseColorsEditable: baseColorsEditable,
@@ -58,6 +64,11 @@ List<Map<String, dynamic>> _blobs(InMemoryBleClient ble) =>
       expect(w[0], LampCrypto.magicPlaintext);
       return jsonDecode(utf8.decode(w.sublist(1))) as Map<String, dynamic>;
     }).toList();
+
+List<LampColor> _lastColors(InMemoryBleClient ble, String charUuid) =>
+    (jsonDecode(utf8.decode(ble.writesTo(_devId, charUuid).last)) as List)
+        .map((h) => LampColor.fromHex(h as String))
+        .toList();
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -151,6 +162,57 @@ void main() {
       );
 
       expect(_state(c), before);
+    });
+  });
+
+  group('Auto-pick failure', () {
+    test('setAutoPick streams the seed back and skips commit', () async {
+      final (c, ble) = await _build(shadeColorsJson: '["#FF0000C8"]');
+      addTearDown(c.dispose);
+      final before = _state(c);
+
+      ble.scheduleEncryptionFailure(
+          _devId, BleUuids.controlService, BleUuids.settingsBlob);
+
+      await expectLater(
+        () => _notifier(c).setAutoPick(HarmonySurface.shade, true),
+        throwsA(isA<BleEncryptionRequired>()),
+      );
+
+      expect(_state(c).shade.colors, before.shade.colors);
+      expect(_state(c).shade.autoColors, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(_lastColors(ble, BleUuids.shadeColors), before.shade.colors);
+      expect(ble.writesTo(_devId, BleUuids.commit), isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+
+    test('pickColorScheme streams every snapshot back and skips commit',
+        () async {
+      final (c, ble) = await _build(
+        shadeColorsJson: '["#00FF00C8","#0000FFC8","#FF0000C8"]',
+        shadeAutoColors: true,
+        baseAutoColors: true,
+      );
+      addTearDown(c.dispose);
+      final before = _state(c);
+      expect(harmonizePalette(before.shade.colors, 4),
+          isNot(before.shade.colors));
+
+      ble.scheduleEncryptionFailure(
+          _devId, BleUuids.controlService, BleUuids.settingsBlob);
+
+      await expectLater(
+        () => _notifier(c).pickColorScheme(4),
+        throwsA(isA<BleEncryptionRequired>()),
+      );
+
+      expect(_state(c), before);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(_lastColors(ble, BleUuids.shadeColors), before.shade.colors);
+      expect(_lastColors(ble, BleUuids.baseColors), before.base.colors);
+      expect(ble.writesTo(_devId, BleUuids.commit), isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
     });
   });
 
