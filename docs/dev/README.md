@@ -80,10 +80,12 @@ it back upstream, see [Contributing](../../README.md#contributing).
 - [`utilities.md`](utilities.md), the mechanical helper toolbox
   expression/behavior authors call (color math, fades, randomness, the pixel
   buffer, peer queries, disposition lookups).
-- [`color-harmony.md`](color-harmony.md), the web UI's color-harmony
-  auto-pick: scheme ids, the derived-color table, the HSV math, the golden
-  fixture, how `autoColors` / `colorScheme` are stored per surface, and where
-  the web UI's Auto-pick controls live and what regenerates a palette.
+- [`color-harmony.md`](color-harmony.md), color-harmony auto-pick in the web
+  UI and the Flutter app: scheme ids, the derived-color table, the HSV math,
+  the golden fixture both generators pass, how `autoColors` / `colorScheme`
+  are stored per surface, and, for each client, where the Auto-pick controls
+  live and what regenerates a palette. The Flutter client section also covers
+  the app's orientation and eligibility rules.
 
 ### Protocol reference
 - [`networking.md`](networking.md), the authoritative wire-format spec for the

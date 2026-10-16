@@ -1,14 +1,15 @@
 # Color harmony
 
 The harmony generator derives a palette's other colors from its primary, the
-top color in the list, using a color-harmony scheme. This doc is the contract
-for that generator: the scheme ids, the derived-color table, the math, and the
-golden fixture it is checked against. The web UI implements it in TypeScript.
-The Flutter app's port must produce the same output. Generation is client-side
-only. The firmware never computes a harmony color.
+palette's last stored color, using a color-harmony scheme. This doc is the
+contract for that generator: the scheme ids, the derived-color table, the math,
+and the golden fixture it is checked against. Two clients implement it: the web
+UI in TypeScript and the Flutter app in Dart. Both must pass the same golden
+fixture and hand-checked vectors. Generation is client-side only. The firmware
+never computes a harmony color.
 
-The last two sections cover how the firmware stores each surface's Auto-pick
-state and how the web UI exposes it.
+The last three sections cover how the firmware stores each surface's Auto-pick
+state, how the web UI exposes it, and how the Flutter app does.
 
 Files:
 
@@ -18,6 +19,8 @@ Files:
 | `software/lamp-ui/src/utils/colorUtils.ts` | `parseHexww`, `formatHexww`, `rgbToHsv`, `hsvToRgb` |
 | `software/lamp-ui/src/utils/colorHarmony.test.ts` | Hand-checked vectors, edge cases, the golden test |
 | `software/lamp-ui/src/utils/colorHarmony.golden.json` | The golden fixture |
+| `software/lamp-app-flutter/lib/features/control/domain/color_harmony.dart` | Dart generator: `kHarmonySchemes`, `harmonySchemeById`, `rgbToHsv`, `hsvToRgb`, `harmonyColors`, `harmonizePalette`, `autoPickPalette`, `isNeutralColor`, `sharedSchemeId` |
+| `software/lamp-app-flutter/test/features/control/domain/color_harmony_test.dart` | The same vectors and edge cases, plus the golden test reading the fixture in place |
 
 ## Schemes
 
@@ -169,18 +172,24 @@ covers every scheme × count 2–5 for the primaries `#FF000000`, `#3A7BD5C8`,
 that gets stored, so the fixture also pins the id mapping. `expected` is
 `harmonyColors` output, top→bottom.
 
-`colorHarmony.test.ts` asserts the generator reproduces the file. After a
-deliberate table change, change this doc and the table constant in
-`colorHarmony.ts` together, then regenerate from the repo root:
+`colorHarmony.test.ts` and `color_harmony_test.dart` both assert their
+generator reproduces the file; the Dart test reads it in place as
+`../lamp-ui/src/utils/colorHarmony.golden.json` from the Flutter package root.
+After a deliberate table change, change this doc, the table constant in
+`colorHarmony.ts` and `_derivedTable` in `color_harmony.dart` in the same
+commit, then regenerate from the repo root:
 
 ```sh
 UPDATE_HARMONY_GOLDEN=1 npm run ui:test
 ```
 
 The output is deterministic, so with no table change the command leaves git
-clean. After a table change, review the golden diff before committing.
+clean. After a table change, review the golden diff, then run
+`npm run app:test` and confirm the Dart generator passes the regenerated
+fixture before committing. No CI job runs `ui:test` or `app:test`, so these
+local runs are the only gate.
 
-The Flutter port must pass the same fixture, case for case, and every
+Both generators must pass the same fixture, case for case, and every
 hand-checked vector. Passing them doesn't prove parity. Reordering a formula
 can flip a tie that neither catches, so implement each formula in the order
 written.
@@ -280,3 +289,78 @@ write, shrinks to 5 the first time it regenerates.
 
 The shared color picker has no harmony controls. It edits one color through the
 hex input and the R, G, B, and Warm White sliders.
+
+Known issue: the Base strip on Home lists the last index first, labels that
+end of its gradient preview "Top", and its neutral note asks for a "top
+color". On lamps whose Base strip is declared `reversed` (standard, staff,
+snafu), Base index 0 is the top of the base, so the last index marks the
+bottom of the base. The primary is still the last index, as in the Flutter
+app, so only the labels are wrong.
+
+## Flutter client
+
+The Flutter app implements the same feature with the same keys, so either
+client can change what the other shows.
+
+| What | Where (under `software/lamp-app-flutter/lib/features/`) |
+|---|---|
+| Generator | `control/domain/color_harmony.dart` |
+| Section fields and eligibility | `autoColors`, `colorScheme` and `harmonyEligible` on `BaseSection` / `ShadeSection` in `control/domain/sections.dart` |
+| Writes | `setColorHarmony`, `setAutoPick` and `pickColorScheme` on `ControlNotifier` in `control/application/control_notifier.dart` |
+| Color harmony screen | `lamp_shell/presentation/color_harmony_screen.dart`, a "Color harmony" row under the LEDs heading of the Setup tab (`setup_screen.dart`) |
+| Editor lock | `AutoPickConfig` and `ColorStopsSheet.autoPick` in `control/presentation/widgets/color_stops_sheet.dart`, passed by `shade_editor_sheet.dart` and `base_editor_sheet.dart` |
+| Home note | `AutoPickNote` in `control/presentation/widgets/auto_pick_note.dart`, under the title of `ShadeCard` and `BaseCard` |
+
+The Dart generator is checked against the golden fixture, read in place, and
+every hand-checked vector above (`color_harmony_test.dart`).
+
+- **Orientation.** The Shade lists top-first: its sheets, `ShadeCard` and the
+  critter preview show the last index first, because Shade index 0 is the
+  bottom of the strip. The Base lists index 0 first, which is the top of the
+  base on reversed-Base lamps. The primary is the last index on both
+  surfaces, so it is the Shade's first row and the Base's last row, and Base
+  copy says "bottom color" where Shade copy says "top color".
+- **Eligibility.** A surface takes part in Auto-pick when its colors are
+  editable and it has at most one segment (`harmonyEligible`). The Setup row,
+  the screen's chips, the Home note and the editor lock all follow it. A
+  multi-segment shade (snafu) has one palette per segment, so it gets none of
+  them; the web UI gates on editability alone, so on a multi-segment editable
+  surface it shows controls the app omits.
+- **Color harmony screen.** "Auto-pick colors for" is a multi-select
+  `SegmentedButton` with one segment per eligible surface. "Scheme" is a
+  summary row with a Change / Hide button over the scheme list; a pick keeps
+  the list open, and open or closed is never stored. "Mixed" and the swatch
+  preview follow the web UI's rules above, over eligible surfaces.
+- **Persistence.** Every chip or scheme change writes immediately, one
+  settings_blob per user action with `reboot: false`, carrying only the
+  harmony keys of the affected surfaces. The firmware keeps one pending
+  settings_blob payload, so two back-to-back writes could drop the first.
+  When a change regenerates colors, the colors stream over the surface's
+  colors characteristic first, then the flags go, then one `commit()`
+  persists the colors. If the flag write fails, the flags revert, the
+  pre-regeneration colors stream back, nothing commits, and the screen shows
+  an error snackbar.
+- **Editor lock.** While a surface is on, its derived rows are dimmed and open
+  no picker, the primary row has no remove button, reorder is off, and Add
+  hides at 5. The sheet takes the scheme once when it opens. It never writes
+  the flags; Save stays the ordinary colors write and commit.
+- **Home note.** While an eligible surface is on, its card shows
+  "Auto-picked · <scheme name>" under the title, and the name pushes the
+  Color harmony screen. A neutral primary reads "Auto-picked · pick a more
+  colorful top color" ("bottom color" on the Base) with no link. The card's
+  own tap still opens the editor.
+
+Regeneration runs only in these handlers, never in `build`, `initState` or a
+provider rebuild, and always with the surface's own stored `colorScheme`.
+Opening a sheet shows the saved colors exactly.
+
+| Trigger | Result |
+|---|---|
+| Chip turned on (`setAutoPick`) | `autoPickPalette` streams, `autoColors: true` is written, then a commit. |
+| Chip turned off | `autoColors: false` is written and the colors stay as they are. |
+| Scheme pick (`pickColorScheme`) | Each eligible surface with Auto-pick on streams a `harmonizePalette` result, `colorScheme` is written on every eligible surface in one settings_blob, then a commit if anything regenerated. |
+| Primary edited in the editor while Auto-pick is on | Derived colors regenerate on every live tick and on Done. Picker Cancel restores the whole list. |
+| Color added or removed in the editor while Auto-pick is on | Regenerates at the new count. |
+
+Swiping down a modified stops sheet reverts it like Cancel, so an abandoned
+generated palette never waits in lamp RAM for the next commit.

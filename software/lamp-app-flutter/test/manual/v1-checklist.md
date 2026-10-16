@@ -14,14 +14,14 @@ Hardware verification for things automated tests can't cover. Walk through this 
 - [ ] Control loads with the lamp's current brightness, shade, and base populated (not defaults).
 - [ ] Brightness slider visibly changes the lamp's brightness while dragging.
 - [ ] Releasing the slider leaves the lamp at the released value (no snap-back).
-- [ ] Tapping the Shade card opens the color picker; picking a color + Save updates the lamp's shade.
+- [ ] Tapping the Shade card opens a list of colors, top row first; tapping a row opens the color picker, and picking a color + Save updates the lamp's shade.
 - [ ] Dismissing the color picker with Cancel leaves the lamp shade unchanged.
 - [ ] Tapping the Base card opens the editor sheet.
 - [ ] Tapping a stop swatch in the editor opens the color picker; Save updates the lamp's base live.
-- [ ] Adding a stop pushes a new white stop; the lamp's gradient reflects it.
+- [ ] In the Shade list, Add inserts a copy of the bottom color at the bottom; the lamp's gradient reflects it.
+- [ ] Tapping the Base card opens a list with Stop 1 first, the top of the base on a standard lamp; Add appends a copy of the last color.
 - [ ] Reordering stops via drag changes the lamp's gradient in the new order.
 - [ ] Removing a stop down to 1 disables the ✕ on the remaining stop.
-- [ ] Tapping a stop (not its swatch) marks it as active; the active pink ring jumps to that stop.
 - [ ] Backing out of the lamp and re-entering reads the lamp's current state (no stale data).
 
 ### Failure modes
@@ -39,7 +39,7 @@ Hardware verification for things automated tests can't cover. Walk through this 
 
 ### Realtime preview
 
-- [ ] Open shade picker, drag the hue ring → lamp shade changes live while dragging (no need to tap Save).
+- [ ] Open the shade picker, drag any slider → the lamp shade changes live while dragging (no need to tap Save).
 - [ ] Tap Cancel in the shade picker → lamp reverts to the previous shade.
 - [ ] Open base editor, tap a stop, drag in the color picker → that stop on the lamp updates live.
 - [ ] Cancel in the per-stop picker → that stop reverts on the lamp.
@@ -81,6 +81,37 @@ Hardware verification for things automated tests can't cover. Walk through this 
 - [ ] Walk back into range → banner clears within a few seconds; the lamp catches up to the last local values without losing the user's session.
 - [ ] After reconnect, any unsaved edits from before the drop are still present and Save re-enables.
 - [ ] Power-cycle the lamp manually → banner appears on the immediate disconnect, persists through the ~5 s boot, then clears once the lamp re-advertises.
+
+## Color harmony (Auto-pick)
+
+Use a single-segment lamp with editable colors (a standard lamp). Seed the Shade with one colorful color first; a white, grey or black primary can't seed a scheme.
+
+### Color harmony screen
+
+- [ ] Setup shows a "Color harmony" row under the LEDs heading; its subtitle reads "Auto-pick off".
+- [ ] Tap the Shade chip on → the lamp's shade fills in the scheme's colors at once; the Setup row's subtitle reads "Shade · <scheme>".
+- [ ] Tap the Shade chip again to turn it off → the colors stay as they are.
+- [ ] Shade and Base chips are independent: try each alone and both.
+- [ ] The scheme list starts collapsed; Change opens it, Hide closes it. A pick keeps the list open, and every surface whose chip is on updates on the lamp at once.
+- [ ] On a snafu, the row shows and the screen offers only the Base chip.
+
+### Home note
+
+- [ ] With the Shade chip on, the Shade card reads "Auto-picked · <scheme>" under its title. Tapping the scheme name opens Color harmony; tapping the rest of the card opens the editor.
+- [ ] With a white Shade primary, the note reads "Auto-picked · pick a more colorful top color" with no link. The Base's note says "bottom color".
+- [ ] Turning the chip off removes the note.
+
+### Editor lock
+
+- [ ] With the Shade chip on, the Shade editor's top row is the primary and has no ✕. The other rows are dimmed, don't open the picker, and can't be dragged.
+- [ ] Drag the primary's sliders → every shade color follows live on the lamp. Cancel in the picker reverts them.
+- [ ] Add and ✕ on a derived row regenerate the palette at the new count; Add disappears at 5 colors.
+- [ ] With the Base chip on, the Base editor's last row (the bottom color) is the primary and the rows above it are locked.
+
+### Swipe revert
+
+- [ ] Edit Shade colors, then swipe the sheet down → no discard prompt, and the lamp reverts to the colors from before the sheet opened.
+- [ ] Same on the Base sheet, and on an expression's Colors sheet (its draft colors revert).
 
 ## Phase 1c — Multi-lamp switching
 

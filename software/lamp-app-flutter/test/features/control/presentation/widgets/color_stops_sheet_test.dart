@@ -432,7 +432,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(changes, isEmpty);
 
-      // The primary's placeholder keeps its hex aligned with the other rows.
+      // The primary's empty trailing slot keeps its hex aligned with the rest.
       expect(
         tester.getTopRight(_rowHex(0, '#FF0000')).dx,
         tester.getTopRight(_rowHex(1, '#0000FF')).dx,
