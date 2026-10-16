@@ -66,7 +66,8 @@ const List<HarmonyScheme> kHarmonySchemes = [
   ),
 ];
 
-const _maxCount = 5;
+/// Most colors a harmony palette holds; [harmonyColors] clamps to it.
+const int kHarmonyMaxCount = 5;
 
 typedef _DerivedEntry = (double hueShift, double satScale);
 
@@ -156,7 +157,7 @@ int _unitToByte(double value) =>
 }
 
 List<LampColor> harmonyColors(LampColor primary, int schemeId, int count) {
-  final size = math.min(_maxCount, math.max(1, count));
+  final size = math.min(kHarmonyMaxCount, math.max(1, count));
   if (size == 1) return [primary];
 
   final (:h, :s, :v) = rgbToHsv(primary.r, primary.g, primary.b);

@@ -1,11 +1,24 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/confirm_discard.dart';
+import '../../domain/color_harmony.dart';
 import '../../domain/lamp_color.dart';
 import 'color_picker_sheet.dart';
+
+const double _kLockedOpacity = 0.4;
+
+/// The surface's Auto-pick is on and uses this scheme. The sheet locks the
+/// derived rows and regenerates them from the primary, the last storage
+/// index; the flags themselves change only on the Color harmony screen.
+class AutoPickConfig {
+  const AutoPickConfig({required this.schemeId});
+  final int schemeId;
+}
 
 /// Reusable bottom sheet for editing a list of color stops: full-width color
 /// bar + hex per row, add / remove / (optional) reorder, tap-a-row to edit its
@@ -24,6 +37,7 @@ class ColorStopsSheet extends StatefulWidget {
     this.reorderable = true,
     this.bpp = 4,
     this.topFirst = false,
+    this.autoPick,
     this.onChanged,
   });
 
@@ -51,6 +65,9 @@ class ColorStopsSheet extends StatefulWidget {
   /// [onChanged] and [onSave] stay in storage order.
   final bool topFirst;
 
+  /// Read once when the sheet opens; later values are ignored.
+  final AutoPickConfig? autoPick;
+
   /// Streams the working list on every edit for live preview. May be null.
   final ValueChanged<List<LampColor>>? onChanged;
 
@@ -68,9 +85,14 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
   // revert target must key off the colors the sheet opened with, not the prop.
   late final List<LampColor> _original = List.of(widget.initial);
   late List<LampColor> _colors = List.of(widget.initial);
+  late final AutoPickConfig? _autoPick = widget.autoPick;
   bool _allowPop = false;
 
   int get _minCount => widget.allowEmpty ? 0 : 1;
+
+  int get _maxCount => _autoPick == null
+      ? widget.max
+      : math.min(widget.max, kHarmonyMaxCount);
 
   bool get _dirty => !listEquals(_colors, _original);
 
@@ -80,6 +102,19 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
   void _apply(List<LampColor> next) {
     setState(() => _colors = next);
     widget.onChanged?.call(List.of(next));
+  }
+
+  void _regenerate(List<LampColor> colors, int count) =>
+      _apply(harmonizePalette(colors, _autoPick!.schemeId, count: count));
+
+  // The generator clamps to kHarmonyMaxCount, so the primary's index can shift
+  // during one picker session.
+  void _setStop(int i, LampColor color) {
+    if (_autoPick != null) {
+      _regenerate([..._colors]..[_colors.length - 1] = color, _colors.length);
+    } else if (i < _colors.length) {
+      _apply([..._colors]..[i] = color);
+    }
   }
 
   void _close({required bool revert}) {
@@ -113,25 +148,30 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
       initial: _colors[i],
       title: 'Stop ${position + 1}',
       bpp: widget.bpp,
-      onLive: (live) {
-        if (i >= _colors.length) return;
-        _apply([..._colors]..[i] = live);
-      },
+      onLive: (live) => _setStop(i, live),
     );
     if (picked == null) {
       _apply(before);
-    } else if (i < _colors.length) {
-      _apply([..._colors]..[i] = picked);
+    } else {
+      _setStop(i, picked);
     }
   }
 
   void _removeStop(int i) {
     if (_colors.length <= _minCount) return;
-    _apply([..._colors]..removeAt(i));
+    if (_autoPick == null) {
+      _apply([..._colors]..removeAt(i));
+    } else {
+      _regenerate(_colors, _colors.length - 1);
+    }
   }
 
   void _addStop() {
-    if (_colors.length >= widget.max) return;
+    if (_colors.length >= _maxCount) return;
+    if (_autoPick != null) {
+      _regenerate(_colors, _colors.length + 1);
+      return;
+    }
     // Seed from the neighbouring stop so the new one starts near a color the
     // user can tweak from.
     if (_colors.isEmpty) {
@@ -144,6 +184,8 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
   }
 
   void _reorder(int oldIndex, int newIndex) {
+    // The list's semantics actions still offer Move up / down on locked rows.
+    if (_autoPick != null) return;
     final next = widget.topFirst ? _colors.reversed.toList() : [..._colors];
     next.insert(newIndex, next.removeAt(oldIndex));
     _apply(widget.topFirst ? next.reversed.toList() : next);
@@ -154,13 +196,22 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
     final stop = _colors[i];
     final cs = Theme.of(ctx).colorScheme;
     final atMin = _colors.length <= _minCount;
-    return ListTile(
-      key: ValueKey('color-stop-$position'),
-      onTap: () => _editStop(i, position: position),
+    final locked = _autoPick != null;
+    final isPrimary = i == _colors.length - 1;
+    final derived = locked && !isPrimary;
+    final dimmed = cs.onSurfaceVariant.withValues(alpha: _kLockedOpacity);
+    final key = ValueKey('color-stop-$position');
+    final tile = ListTile(
+      key: derived ? null : key,
+      onTap: derived ? null : () => _editStop(i, position: position),
       leading: widget.reorderable
           ? ReorderableDragStartListener(
               index: position,
-              child: Icon(Icons.drag_indicator, color: cs.onSurfaceVariant),
+              enabled: !locked,
+              child: Icon(
+                Icons.drag_indicator,
+                color: locked ? dimmed : cs.onSurfaceVariant,
+              ),
             )
           : null,
       title: Row(
@@ -182,20 +233,37 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
           Text(
             '#${stop.toHex().substring(1, 7)}',
             style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
+                  color: derived ? dimmed : cs.onSurfaceVariant,
                   fontFamily: 'monospace',
                 ),
           ),
         ],
       ),
-      trailing: Tooltip(
-        message: atMin
-            ? (widget.allowEmpty ? 'Remove color' : 'Keep at least one stop')
-            : 'Remove stop',
-        child: IconButton(
-          icon: Icon(Icons.close, color: cs.onSurfaceVariant),
-          onPressed: atMin ? null : () => _removeStop(i),
-        ),
+      trailing: locked && isPrimary
+          ? const SizedBox(width: kMinInteractiveDimension)
+          : Tooltip(
+              message: atMin
+                  ? (widget.allowEmpty
+                      ? 'Remove color'
+                      : 'Keep at least one stop')
+                  : 'Remove stop',
+              child: IconButton(
+                icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+                onPressed: atMin ? null : () => _removeStop(i),
+              ),
+            ),
+    );
+    if (!derived) return tile;
+    final lockedLabel = 'Auto-picked from the '
+        '${widget.topFirst ? 'top' : 'bottom'} color. '
+        'Turn off Auto-pick in Setup to edit.';
+    return Semantics(
+      key: key,
+      label: lockedLabel,
+      child: Tooltip(
+        message: lockedLabel,
+        excludeFromSemantics: true,
+        child: tile,
       ),
     );
   }
@@ -226,7 +294,7 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
-                  if (_colors.length < widget.max)
+                  if (_colors.length < _maxCount)
                     TextButton.icon(
                       onPressed: _addStop,
                       icon: const Icon(Icons.add, size: 18),

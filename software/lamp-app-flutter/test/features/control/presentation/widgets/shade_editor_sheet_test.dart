@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,7 @@ import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/core/ble/uuids.dart';
 import 'package:lamp_app/core/theme/app_theme.dart';
 import 'package:lamp_app/features/control/application/control_notifier.dart';
+import 'package:lamp_app/features/control/domain/color_harmony.dart';
 import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/control/presentation/widgets/shade_editor_sheet.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
@@ -20,13 +23,20 @@ const _twoStops = '["#300783FF","#FF0000FF"]';
 const _baselineColor = LampColor(r: 0x30, g: 0x07, b: 0x83, w: 0xFF);
 
 Future<({ProviderContainer container, InMemoryBleClient ble})>
-    _buildContainer() async {
+    _buildContainer({
+  bool? shadeAutoColors,
+  int? shadeColorScheme,
+  String? shadeSegmentsJson,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final ble = InMemoryBleClient();
   await seedControlBle(ble,
       deviceId: _devId,
       shadeColorsJson: _twoStops,
-      shadeBpp: 4);
+      shadeBpp: 4,
+      shadeAutoColors: shadeAutoColors,
+      shadeColorScheme: shadeColorScheme,
+      shadeSegmentsJson: shadeSegmentsJson);
   final c = ProviderContainer(
     overrides: [bleClientProvider.overrideWithValue(ble)],
   );
@@ -185,5 +195,97 @@ void main() {
         container.read(controlNotifierProvider(_devId)).value!.shade.colors;
     expect(colors.length, 2);
     expect(colors.first, _baselineColor);
+  });
+
+  group('Auto-pick', () {
+    const autoPickLine = 'Auto-pick is on. The other colors follow the top '
+        'color; change the scheme in Setup.';
+
+    testWidgets('description reads the Auto-pick sentence while on',
+        (tester) async {
+      final (:container, :ble) =
+          await _buildContainer(shadeAutoColors: true, shadeColorScheme: 4);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_wrap(container));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(autoPickLine), findsOneWidget);
+      expect(
+        find.text('These colors blend into a gradient along the strip.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('description reads the gradient sentence while off',
+        (tester) async {
+      final (:container, :ble) = await _buildContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_wrap(container));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(autoPickLine), findsNothing);
+      expect(
+        find.text('These colors blend into a gradient along the strip.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'a primary edit streams the regenerated shade; Save commits without '
+        'a settings write', (tester) async {
+      final (:container, :ble) =
+          await _buildContainer(shadeAutoColors: true, shadeColorScheme: 4);
+      addTearDown(container.dispose);
+      final sub = container.listen(controlNotifierProvider(_devId), (_, _) {});
+      addTearDown(sub.close);
+
+      await tester.pumpWidget(_wrap(container));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('color-stop-0')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '#00FF00FF');
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final expected = harmonizePalette(
+        [_baselineColor, LampColor.fromHex('#00FF00FF')],
+        4,
+      ).map((c) => c.toHex()).toList();
+      final shadeWrites = ble.writesTo(_devId, BleUuids.shadeColors);
+      expect(jsonDecode(utf8.decode(shadeWrites.last)), expected);
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(ble.writesTo(_devId, BleUuids.commit), isNotEmpty);
+      expect(ble.writesTo(_devId, BleUuids.settingsBlob), isEmpty);
+      await tester.pump(const Duration(milliseconds: 600));
+    });
+
+    testWidgets('a multi-segment shade opens unlocked', (tester) async {
+      final (:container, :ble) = await _buildContainer(
+        shadeAutoColors: true,
+        shadeSegmentsJson:
+            '[{"name":"A","px":12,"colors":["#FF0000FF","#0000FFFF"]},'
+            '{"name":"B","px":12,"colors":["#000000FF"]},'
+            '{"name":"C","px":14,"colors":["#000000FF"]}]',
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_wrap(container));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('color-stop-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Done'), findsOneWidget);
+    });
   });
 }

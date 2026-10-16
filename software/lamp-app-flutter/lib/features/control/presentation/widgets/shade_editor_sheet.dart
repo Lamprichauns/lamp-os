@@ -7,8 +7,8 @@ import '../../application/control_state.dart';
 import '../../domain/lamp_color.dart';
 import 'color_stops_sheet.dart';
 
-/// Hard cap on shade gradient stops. Firmware interp handles arbitrary N; the
-/// cap is UX-only so the modal stays scannable.
+/// Hard cap on shade gradient stops. Firmware renders at most 8; 6 keeps
+/// the sheet scannable.
 const int _kMaxShadeStops = 6;
 
 /// Which color list a shared color editor drives.
@@ -56,14 +56,22 @@ class ShadeEditorSheet extends ConsumerWidget {
     if (state == null) return const SizedBox.shrink();
 
     final notifier = ref.read(controlNotifierProvider(lampId).notifier);
+    final shade = state.shade;
+    final autoPick = shade.harmonyEligible && shade.autoColors
+        ? AutoPickConfig(schemeId: shade.colorScheme)
+        : null;
     return ColorStopsSheet(
       initial: spec.selectColors(state),
       title: spec.title,
-      description: 'These colors blend into a gradient along the strip.',
+      description: autoPick != null
+          ? 'Auto-pick is on. The other colors follow the top color; change '
+              'the scheme in Setup.'
+          : 'These colors blend into a gradient along the strip.',
       max: _kMaxShadeStops,
-      bpp: state.shade.bpp,
+      bpp: shade.bpp,
       // Shade index 0 is the bottom of the strip.
       topFirst: true,
+      autoPick: autoPick,
       onChanged: (colors) => spec.setLive(notifier, colors),
       onSave: (colors) async {
         spec.setLive(notifier, colors);
