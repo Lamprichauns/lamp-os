@@ -117,6 +117,31 @@ void main() {
     expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2));
   });
 
+  testWidgets('lists storage index 0 first', (tester) async {
+    final ble = InMemoryBleClient();
+    final c = await _buildContainer(ble, stopCount: 2);
+    addTearDown(c.dispose);
+
+    await tester.pumpWidget(_wrap(c));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('color-stop-0')),
+        matching: find.text('#300783'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('color-stop-1')),
+        matching: find.text('#600F06'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Save button pops the route', (tester) async {
     final ble = InMemoryBleClient();
     final c = await _buildContainer(ble, stopCount: 2);

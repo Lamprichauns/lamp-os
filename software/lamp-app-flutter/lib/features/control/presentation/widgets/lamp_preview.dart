@@ -71,27 +71,79 @@ _PreviewSlice _previewSliceFrom(AsyncValue<ControlState> async) {
   return _PreviewSlice(state.shade.colors, state.base.colors);
 }
 
+final RegExp _shadePattern = RegExp(
+  r'<linearGradient[^>]*id="[^"]*Shade"[^>]*>.*?</linearGradient>',
+  dotAll: true,
+);
+final RegExp _bodyPattern = RegExp(
+  r'<linearGradient[^>]*id="[^"]*Body"[^>]*>.*?</linearGradient>',
+  dotAll: true,
+);
+
+/// Uses the `style="stop-color:…"` form to match the critter SVGs. flutter_svg
+/// ignores `stop-color="…"` written as a direct attribute, which would leave
+/// the gradient uncolored.
+String _stopTag(double pct, String hex) =>
+    '<stop offset="${pct.round()}%" '
+    'style="stop-color:#$hex;stop-opacity:1"/>';
+
+/// `<stop>` elements for [colors], spread evenly from 0 % to 100 % along the
+/// gradient axis.
+String _buildStops(List<LampColor> colors) {
+  if (colors.isEmpty) {
+    return _stopTag(0, '000000') + _stopTag(100, '000000');
+  }
+  if (colors.length == 1) {
+    final hex = colors.single.toRgbHex();
+    return _stopTag(0, hex) + _stopTag(100, hex);
+  }
+  final n = colors.length;
+  final buf = StringBuffer();
+  for (var i = 0; i < n; i++) {
+    final pct = i / (n - 1) * 100;
+    final hex = colors[i].toRgbHex();
+    buf.write(_stopTag(pct, hex));
+  }
+  return buf.toString();
+}
+
+/// Substitutes the `Shade` and `Body` gradient blocks in [template] with the
+/// given storage-order colors. Offset 0 % is the top of each gradient, so the
+/// shade list renders reversed (its index 0 is the bottom) and the base list
+/// renders as stored.
+@visibleForTesting
+String renderLampPreviewSvg(
+  String template,
+  List<LampColor> shadeStorage,
+  List<LampColor> baseStorage,
+) {
+  final shadeStops = _buildStops(shadeStorage.reversed.toList());
+  final bodyStops = _buildStops(baseStorage);
+
+  String rewrite(String tag, String stops) {
+    final openTag = '${tag.split('>').first}>';
+    return '$openTag$stops</linearGradient>';
+  }
+
+  var out = template;
+  out = out.replaceFirstMapped(
+      _shadePattern, (m) => rewrite(m.group(0)!, shadeStops));
+  out = out.replaceFirstMapped(
+      _bodyPattern, (m) => rewrite(m.group(0)!, bodyStops));
+  return out;
+}
+
 class _LampPreviewState extends ConsumerState<LampPreview> {
   // Cache one template per asset path so the same SVG isn't re-read each
   // time a different lamp's preview mounts.
   static final Map<String, String> _templates = {};
 
-  // Compiled once per process; the patterns are constant across builds.
-  static final RegExp _shadePattern = RegExp(
-    r'<linearGradient[^>]*id="[^"]*Shade"[^>]*>.*?</linearGradient>',
-    dotAll: true,
-  );
-  static final RegExp _bodyPattern = RegExp(
-    r'<linearGradient[^>]*id="[^"]*Body"[^>]*>.*?</linearGradient>',
-    dotAll: true,
-  );
-
   String? _localTemplate;
   String? _loadedFor; // the asset path the local template was loaded from
 
-  // Single-entry memoization for `_renderSvg`. Each rebuild that hits the
-  // same shade + base color set returns the cached SVG string instead of
-  // running three regex passes again. The cache key is the joined hex of
+  // Single-entry memoization for `renderLampPreviewSvg`. Each rebuild that
+  // hits the same shade + base color set returns the cached SVG string instead
+  // of running three regex passes again. The cache key is the joined hex of
   // the inputs; values are cheap to compute and short.
   String? _memoKey;
   String? _memoRendered;
@@ -125,52 +177,6 @@ class _LampPreviewState extends ConsumerState<LampPreview> {
       _localTemplate = s;
       _loadedFor = assetPath;
     });
-  }
-
-  /// Build replacement `<stop>` elements for [colors], spreading them evenly
-  /// from 0 % to 100 % along the gradient axis. Uses the `style="stop-color:…"`
-  /// form to match the convention in the critter SVGs. flutter_svg renders
-  /// the style-attribute form reliably but ignores `stop-color="…"` written
-  /// as a direct attribute, which would leave the gradient uncolored.
-  String _stopTag(double pct, String hex) =>
-      '<stop offset="${pct.round()}%" '
-      'style="stop-color:#$hex;stop-opacity:1"/>';
-
-  String _buildStops(List<LampColor> colors) {
-    if (colors.isEmpty) {
-      return _stopTag(0, '000000') + _stopTag(100, '000000');
-    }
-    if (colors.length == 1) {
-      final hex = colors.single.toRgbHex();
-      return _stopTag(0, hex) + _stopTag(100, hex);
-    }
-    final n = colors.length;
-    final buf = StringBuffer();
-    for (var i = 0; i < n; i++) {
-      final pct = i / (n - 1) * 100;
-      final hex = colors[i].toRgbHex();
-      buf.write(_stopTag(pct, hex));
-    }
-    return buf.toString();
-  }
-
-  /// Substitute the gradient blocks in [template] with the live colors.
-  String _renderSvg(String template, List<LampColor> shadeColors,
-      List<LampColor> baseColors) {
-    final shadeStops = _buildStops(shadeColors);
-    final bodyStops = _buildStops(baseColors);
-
-    String rewrite(String tag, String stops) {
-      final openTag = '${tag.split('>').first}>';
-      return '$openTag$stops</linearGradient>';
-    }
-
-    var out = template;
-    out = out.replaceFirstMapped(
-        _shadePattern, (m) => rewrite(m.group(0)!, shadeStops));
-    out = out.replaceFirstMapped(
-        _bodyPattern, (m) => rewrite(m.group(0)!, bodyStops));
-    return out;
   }
 
   @override
@@ -222,7 +228,8 @@ class _LampPreviewState extends ConsumerState<LampPreview> {
           _memoRendered != null) {
         rendered = _memoRendered!;
       } else {
-        rendered = _renderSvg(template, slice.shadeColors, slice.baseColors);
+        rendered = renderLampPreviewSvg(
+            template, slice.shadeColors, slice.baseColors);
         _memoFor = template;
         _memoKey = cacheKey;
         _memoRendered = rendered;

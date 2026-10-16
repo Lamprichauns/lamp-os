@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../../_support/in_memory_ble_client.dart';
 import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/features/control/application/control_notifier.dart';
+import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/control/presentation/widgets/shade_card.dart';
 import 'package:lamp_app/features/control/presentation/widgets/shade_editor_sheet.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
@@ -14,12 +15,14 @@ import '../../../../_support/seed.dart';
 
 const _devId = 'aa:bb:cc:dd:ee:ff';
 
-Future<ProviderContainer> _buildContainer() async {
+Future<ProviderContainer> _buildContainer({
+  String shadeColorsJson = '["#300783FF"]',
+}) async {
   SharedPreferences.setMockInitialValues({});
   final ble = InMemoryBleClient();
   await seedControlBle(ble,
       deviceId: _devId,
-      shadeColorsJson: '["#300783FF"]',
+      shadeColorsJson: shadeColorsJson,
       shadeBpp: 4);
   final c = ProviderContainer(
     overrides: [bleClientProvider.overrideWithValue(ble)],
@@ -75,5 +78,32 @@ void main() {
       return dec is BoxDecoration && dec.gradient is LinearGradient;
     });
     expect(hasGradientContainer, isTrue);
+  });
+
+  testWidgets('gradient puts the last stored color at the top',
+      (tester) async {
+    const red = LampColor(r: 0xFF, g: 0, b: 0, w: 0);
+    const blue = LampColor(r: 0, g: 0, b: 0xFF, w: 0);
+    final c = await _buildContainer(shadeColorsJson: '["#FF000000","#0000FF00"]');
+    addTearDown(c.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: c,
+      child: MaterialApp(
+        home: Scaffold(
+          body: ShadeCard(lampId: _devId, spec: shadeSegmentSpec(0, 'Shade')),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final gradient = tester
+        .widgetList<Container>(find.descendant(
+            of: find.byType(ShadeCard), matching: find.byType(Container)))
+        .map((c) => c.decoration)
+        .whereType<BoxDecoration>()
+        .map((d) => d.gradient)
+        .whereType<LinearGradient>()
+        .single;
+    expect(gradient.begin, Alignment.topCenter);
+    expect(gradient.colors, [blue.toSwatch(), red.toSwatch()]);
   });
 }

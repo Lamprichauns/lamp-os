@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../../_support/in_memory_ble_client.dart';
 import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/features/control/application/control_notifier.dart';
+import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/control/presentation/widgets/base_card.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
 import 'package:lamp_app/features/inventory/domain/inventory_lamp.dart';
@@ -94,5 +95,31 @@ void main() {
       return d is BoxDecoration && d.gradient is LinearGradient;
     }).toList();
     expect(hasGradient, isNotEmpty);
+  });
+
+  testWidgets('gradient puts storage index 0 at the top', (tester) async {
+    const red = LampColor(r: 0xFF, g: 0, b: 0, w: 0);
+    const blue = LampColor(r: 0, g: 0, b: 0xFF, w: 0);
+    final c = await _buildContainer(baseColorsJson: '["#FF000000","#0000FF00"]');
+    addTearDown(c.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: c,
+      child: MaterialApp(
+        home: Scaffold(
+          body: BaseCard(lampId: _devId, onTap: () {}),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final gradient = tester
+        .widgetList<Container>(find.descendant(
+            of: find.byType(BaseCard), matching: find.byType(Container)))
+        .map((c) => c.decoration)
+        .whereType<BoxDecoration>()
+        .map((d) => d.gradient)
+        .whereType<LinearGradient>()
+        .single;
+    expect(gradient.begin, Alignment.topCenter);
+    expect(gradient.colors, [red.toSwatch(), blue.toSwatch()]);
   });
 }

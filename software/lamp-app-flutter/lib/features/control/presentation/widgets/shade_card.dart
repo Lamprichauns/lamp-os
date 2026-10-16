@@ -45,12 +45,12 @@ class ShadeCard extends ConsumerWidget {
   /// overrides drop for the entire edit, not just each picker drag.
   final ValueChanged<bool>? onEditSessionChanged;
 
-  /// Returns a gradient-safe list: LinearGradient requires ≥2 stops, so a
-  /// single-color list is duplicated, and an empty list falls back to black.
-  /// (Matches `BaseCard._gradientColors`.)
+  /// Returns a gradient-safe, top-to-bottom list: storage index 0 is the
+  /// bottom of the shade, LinearGradient requires ≥2 stops so a single-color
+  /// list is duplicated, and an empty list falls back to black.
   List<Color> _gradientColors(List<LampColor> colors) {
     if (colors.isEmpty) return const [Colors.black, Colors.black];
-    final swatches = colors.map((c) => c.toSwatch()).toList();
+    final swatches = colors.reversed.map((c) => c.toSwatch()).toList();
     if (swatches.length == 1) return [swatches.first, swatches.first];
     return swatches;
   }

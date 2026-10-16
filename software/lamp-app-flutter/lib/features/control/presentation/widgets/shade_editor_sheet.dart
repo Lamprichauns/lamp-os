@@ -62,6 +62,8 @@ class ShadeEditorSheet extends ConsumerWidget {
       description: 'These colors blend into a gradient along the strip.',
       max: _kMaxShadeStops,
       bpp: state.shade.bpp,
+      // Shade index 0 is the bottom of the strip.
+      topFirst: true,
       onChanged: (colors) => spec.setLive(notifier, colors),
       onSave: (colors) async {
         spec.setLive(notifier, colors);

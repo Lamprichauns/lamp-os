@@ -40,15 +40,15 @@ Future<({ProviderContainer container, InMemoryBleClient ble})>
   return (container: c, ble: ble);
 }
 
-Widget _wrap(ProviderContainer c) => UncontrolledProviderScope(
+Widget _wrap(ProviderContainer c, {int segIdx = 0}) => UncontrolledProviderScope(
       container: c,
       child: MaterialApp(
         theme: appTheme,
         home: Builder(
           builder: (ctx) => Scaffold(
             body: TextButton(
-              onPressed: () =>
-                  showShadeEditorSheet(ctx, lampId: _devId, spec: shadeSegmentSpec(0, 'Shade')),
+              onPressed: () => showShadeEditorSheet(ctx,
+                  lampId: _devId, spec: shadeSegmentSpec(segIdx, 'Shade')),
               child: const Text('open'),
             ),
           ),
@@ -57,6 +57,33 @@ Widget _wrap(ProviderContainer c) => UncontrolledProviderScope(
     );
 
 void main() {
+  for (final segIdx in [0, 1]) {
+    testWidgets('segment $segIdx sheet lists the top of the shade first',
+        (tester) async {
+      final (:container, :ble) = await _buildContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_wrap(container, segIdx: segIdx));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('color-stop-0')),
+          matching: find.text('#FF0000'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('color-stop-1')),
+          matching: find.text('#300783'),
+        ),
+        findsOneWidget,
+      );
+    });
+  }
+
   testWidgets('Cancel reverts shade colors and closes', (tester) async {
     final (:container, :ble) = await _buildContainer();
     addTearDown(container.dispose);
@@ -70,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ShadeEditorSheet), findsOneWidget);
 
-    // Remove the second stop — shade.colors goes from 2 → 1.
+    // Remove the bottom row (stored first); shade.colors goes from 2 → 1.
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pumpAndSettle();
 

@@ -23,6 +23,7 @@ class ColorStopsSheet extends StatefulWidget {
     this.allowEmpty = false,
     this.reorderable = true,
     this.bpp = 4,
+    this.topFirst = false,
     this.onChanged,
   });
 
@@ -44,6 +45,11 @@ class ColorStopsSheet extends StatefulWidget {
   /// Strip depth for the color picker: 4 exposes the warm-white slider, 3 hides
   /// it.
   final int bpp;
+
+  /// Lists the last stored color first and adds new colors at storage index
+  /// 0, so a strip whose index 0 is its bottom reads top-down. [initial],
+  /// [onChanged] and [onSave] stay in storage order.
+  final bool topFirst;
 
   /// Streams the working list on every edit for live preview. May be null.
   final ValueChanged<List<LampColor>>? onChanged;
@@ -67,6 +73,9 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
   int get _minCount => widget.allowEmpty ? 0 : 1;
 
   bool get _dirty => !listEquals(_colors, _original);
+
+  int _storageIndex(int position) =>
+      widget.topFirst ? _colors.length - 1 - position : position;
 
   void _apply(List<LampColor> next) {
     setState(() => _colors = next);
@@ -97,12 +106,12 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
     _close(revert: false);
   }
 
-  Future<void> _editStop(int i) async {
+  Future<void> _editStop(int i, {required int position}) async {
     final before = List.of(_colors);
     final picked = await showColorPickerSheet(
       context,
       initial: _colors[i],
-      title: 'Stop ${i + 1}',
+      title: 'Stop ${position + 1}',
       bpp: widget.bpp,
       onLive: (live) {
         if (i >= _colors.length) return;
@@ -123,30 +132,34 @@ class _ColorStopsSheetState extends State<ColorStopsSheet> {
 
   void _addStop() {
     if (_colors.length >= widget.max) return;
-    // Seed from the last stop so the new one starts near a color the user can
-    // tweak from, not a jarring white.
-    final seed = _colors.isNotEmpty
-        ? _colors.last
-        : const LampColor(r: 0xFF, g: 0xFF, b: 0xFF, w: 0);
-    _apply([..._colors, seed]);
+    // Seed from the neighbouring stop so the new one starts near a color the
+    // user can tweak from.
+    if (_colors.isEmpty) {
+      _apply(const [LampColor(r: 0xFF, g: 0xFF, b: 0xFF, w: 0)]);
+    } else if (widget.topFirst) {
+      _apply([_colors.first, ..._colors]);
+    } else {
+      _apply([..._colors, _colors.last]);
+    }
   }
 
   void _reorder(int oldIndex, int newIndex) {
-    final next = [..._colors];
+    final next = widget.topFirst ? _colors.reversed.toList() : [..._colors];
     next.insert(newIndex, next.removeAt(oldIndex));
-    _apply(next);
+    _apply(widget.topFirst ? next.reversed.toList() : next);
   }
 
-  Widget _row(BuildContext ctx, int i) {
+  Widget _row(BuildContext ctx, int position) {
+    final i = _storageIndex(position);
     final stop = _colors[i];
     final cs = Theme.of(ctx).colorScheme;
     final atMin = _colors.length <= _minCount;
     return ListTile(
-      key: ValueKey('color-stop-$i'),
-      onTap: () => _editStop(i),
+      key: ValueKey('color-stop-$position'),
+      onTap: () => _editStop(i, position: position),
       leading: widget.reorderable
           ? ReorderableDragStartListener(
-              index: i,
+              index: position,
               child: Icon(Icons.drag_indicator, color: cs.onSurfaceVariant),
             )
           : null,
