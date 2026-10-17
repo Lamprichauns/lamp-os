@@ -711,8 +711,7 @@ void lamp::Lamp::setup() {
            config.lamp.setup);
 
 #if LAMP_WEBAPP_ENABLED
-  if (lamp::any(featuresEnabled(), lamp::Features::WebApp) &&
-      (config.lamp.webappEnabled || webapp::kDevBuildKeepsSetupAp)) {
+  if (lamp::any(featuresEnabled(), lamp::Features::WebApp) && config.lamp.webappEnabled) {
     webapp::begin(config);
     lamp::logHeap("webapp");
   }

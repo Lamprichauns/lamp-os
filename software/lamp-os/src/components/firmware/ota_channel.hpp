@@ -13,3 +13,6 @@ bool otaAcceptable(const char* ourChannel,
                    uint32_t    ourVersion,
                    const char* offerChannel,
                    uint32_t    offerVersion);
+
+// True for a dev channel ("{type}-dev", or a bare "dev"), a local unsigned build.
+bool isDevChannel(const char* channel);

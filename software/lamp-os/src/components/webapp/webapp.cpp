@@ -480,7 +480,7 @@ void begin(lamp::Config& config) {
   WiFi.onEvent(onApStaDisconnected, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
 
   const uint8_t bootMinutes = config.lamp.apBootMinutes;
-  s_neverExpire = kDevBuildKeepsSetupAp || bootMinutes == 0;
+  s_neverExpire = (bootMinutes == 0);
   s_deadlineMs = millis() + bootMinutes * 60000UL;
   s_rebootArmed = false;
   s_apUp = true;

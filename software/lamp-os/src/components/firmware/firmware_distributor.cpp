@@ -61,7 +61,7 @@ void FirmwareDistributor::begin(FirmwareTransport* transport) {
   }
 
   // Dev channel is USB-only; never source OTA even if a footer somehow exists.
-  if (std::strstr(lamp::FIRMWARE_CHANNEL_STR, "-dev")) {
+  if (isDevChannel(lamp::FIRMWARE_CHANNEL_STR)) {
     state_ = State::Disabled;
     FWDIST_LOGLN("[fwdist] disabled (dev channel)");
     return;
@@ -793,8 +793,8 @@ void FirmwareDistributor::considerPeerForOta(const uint8_t peerMac[6],
               peerMac[0], peerMac[1], peerMac[2],
               peerMac[3], peerMac[4], peerMac[5],
               (unsigned)peerVersion, (unsigned)lamp::FIRMWARE_VERSION);
-  // An unknown-channel peer can still reach here; the receiver's onOfferOnLoop
-  // silent-drop is the backstop (the OFFER times out into the backoff ring).
+  // An unknown-channel peer can still reach here; a receiver that can't take
+  // the image declines with DeclineAlreadyCurrent and the peer is blocklisted.
   targetProtocolVersion_ = peerProtocolVersion;
   // peerMaxChunk 0 = peer doesn't advertise HELLO_TLV_FW_MAX_CHUNK (older
   // firmware, or never-OTA-receiving peer) → the baseline every receiver

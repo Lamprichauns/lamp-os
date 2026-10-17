@@ -1,6 +1,6 @@
-// Native-host unit tests for otaAcceptable.
+// Native-host unit tests for otaAcceptable and isDevChannel.
 //
-// Exercises the full acceptance matrix from the channel-promotion plan.
+// Exercises the full acceptance matrix.
 // Links the production ota_channel.cpp directly (same pattern as
 // test_firmware_signature).
 
@@ -94,6 +94,31 @@ void test_stable_rejects_dev_offer(void) {
   TEST_ASSERT_FALSE(otaAcceptable("standard-stable", 100, "standard-dev", 101));
 }
 
+void test_dev_channel_detected_for_any_type(void) {
+  TEST_ASSERT_TRUE(isDevChannel("standard-dev"));
+  TEST_ASSERT_TRUE(isDevChannel("snafu-dev"));
+}
+
+void test_signed_channels_are_not_dev(void) {
+  TEST_ASSERT_FALSE(isDevChannel("standard-beta"));
+  TEST_ASSERT_FALSE(isDevChannel("standard-stable"));
+  TEST_ASSERT_FALSE(isDevChannel("stable"));
+}
+
+void test_bare_dev_without_a_type_is_dev(void) {
+  TEST_ASSERT_TRUE(isDevChannel("dev"));
+}
+
+void test_dev_must_be_the_whole_suffix(void) {
+  TEST_ASSERT_FALSE(isDevChannel("standard-devel"));
+  TEST_ASSERT_FALSE(isDevChannel("dev-beta"));
+}
+
+void test_empty_or_null_channel_is_not_dev(void) {
+  TEST_ASSERT_FALSE(isDevChannel(""));
+  TEST_ASSERT_FALSE(isDevChannel(nullptr));
+}
+
 // --- Empty / unknown channel reject -----------------------------------------
 
 void test_empty_offer_channel_rejected(void) {
@@ -126,6 +151,11 @@ int main(int argc, char** argv) {
   RUN_TEST(test_dev_rejects_stable_offer);
   RUN_TEST(test_beta_rejects_dev_offer);
   RUN_TEST(test_stable_rejects_dev_offer);
+  RUN_TEST(test_dev_channel_detected_for_any_type);
+  RUN_TEST(test_signed_channels_are_not_dev);
+  RUN_TEST(test_bare_dev_without_a_type_is_dev);
+  RUN_TEST(test_dev_must_be_the_whole_suffix);
+  RUN_TEST(test_empty_or_null_channel_is_not_dev);
   RUN_TEST(test_empty_offer_channel_rejected);
   RUN_TEST(test_empty_our_channel_rejected);
 

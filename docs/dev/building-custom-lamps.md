@@ -413,7 +413,8 @@ A dev binary boots and meshes normally, but its mesh role is **limited**: it is
 an OTA island. Unsigned, it carries no LSIG footer and its distributor
 self-disables at boot, so it never sources an OTA and never interoperates with
 signed peers' firmware distribution — the `{type}-{channel}` gate isolates dev
-from beta/stable in both directions. Fine for bench-testing your lamp's own
+from beta/stable in both directions. It also never asks for or accepts a peer's
+web UI image, so it keeps the one you flashed. Fine for bench-testing your lamp's own
 behavior; not a fleet-ready binary. The channel model (dev / beta / stable, and
 what each implies) is in [`CLAUDE.md`](../../CLAUDE.md) under **Build + test**.
 

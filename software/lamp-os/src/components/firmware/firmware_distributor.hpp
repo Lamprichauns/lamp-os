@@ -88,16 +88,19 @@ class FirmwareDistributor {
   void tick(uint32_t nowMs);
 
   // Idempotent peer-trigger. Called from tickOtaOffers on Core 1 per
-  // reachable peer. No-op unless state == Idle, peer is below FIRMWARE_VERSION,
-  // and the peer isn't in the backoff ring; otherwise transitions Idle ->
-  // OfferSent, sends OFFER, kicks the streaming task. Additional gates (mesh
-  // quiesce, receiver-busy) live in the wiring layer.
+  // reachable peer. No-op unless state == Idle, the peer passes the version
+  // and channel gates below, and the peer isn't in the backoff ring; otherwise
+  // transitions Idle -> OfferSent, sends OFFER, kicks the streaming task.
+  // Additional gates (mesh quiesce, receiver-busy) live in the wiring layer.
+  // The version and channel gates apply to the firmware instance only; the FS
+  // instance skips both, and fs_ota::considerPeer gates FS offers.
   //
   // peerProtocolVersion (peer's HELLO data[2]) is the wire version used for
   // every outbound OTA frame this session so old-protocol peers can parse it;
   // 0 = unknown HELLO, peer skipped. peerFwChannel is the peer's
-  // {type}-{channel} from HELLO_TLV_FW_CHANNEL: known and != ours skips the
-  // peer (no cross-variant/channel flash); unknown offers anyway.
+  // {type}-{channel} from HELLO_TLV_FW_CHANNEL: when known, a peer that would
+  // refuse this image (otaAcceptable) is skipped (no cross-variant/channel
+  // flash); when unknown, only a peer below FIRMWARE_VERSION is offered.
   // peerMaxChunk is the peer's HELLO_TLV_FW_MAX_CHUNK (0 = peer doesn't
   // advertise): the session chunk size becomes min(FW_CHUNK_SIZE_MAX,
   // peerMaxChunk) when advertised, else FW_CHUNK_SIZE_BASELINE.

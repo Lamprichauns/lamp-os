@@ -80,15 +80,17 @@ struct RosterEntry {
   // OTA; the distributor falls back to FW_CHUNK_SIZE_BASELINE for those.
   uint16_t maxChunk = 0;
   // Peer's `{type}-{channel}` slot from HELLO_TLV_FW_CHANNEL (e.g. "standard-beta").
-  // Empty on older peers that predate the TLV; OTA distributor skips cross-type OFFERs.
+  // Empty on older peers that predate the TLV. Gates firmware OFFERs (otaAcceptable)
+  // and keeps FS offers off dev peers.
   char fwChannel[lamp_protocol::HELLO_FW_CHANNEL_LEN + 1] = {0};
   // Peer's FS-image digest prefix from HELLO_TLV_FS_STATE.
   // hasFsDigest=false on older peers. The FS OTA distributor compares
   // this to the local digest to decide whether to offer the UI image.
   bool    hasFsDigest = false;
   uint8_t fsDigest[8] = {0};
-  // Peer's HELLO_TLV_NEED_FS: empty/unmountable FS at this firmware version, so
-  // it can't emit a digest. The FS distributor offers to it despite no digest.
+  // Peer's HELLO_TLV_NEED_FS: no FS digest at this firmware version (empty or
+  // unmountable SPIFFS, or an unsigned image), so it can't emit one. The FS
+  // distributor offers to it despite no digest.
   bool    needsFs = false;
   // Peer's HELLO_TLV_OTA_SENDING_TO: the mesh MAC it's OTA-distributing to.
   // hasOtaSendingTo=false unless the peer is mid-distribution. Surfaced in the

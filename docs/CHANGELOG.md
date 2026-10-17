@@ -5,6 +5,15 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Fixed
+- **A lamp running your own build keeps its web page.** A lamp running
+  firmware built on your own computer could have its web page replaced over
+  the air by a nearby lamp on the same version, which also turned its setup
+  WiFi off until a restart. Such a lamp now takes no web page updates from
+  other lamps, just as it already took no firmware from them.
+
 ## 1.2.9
 
 ### Added

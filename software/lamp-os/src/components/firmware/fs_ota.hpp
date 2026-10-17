@@ -9,6 +9,11 @@
 // fw.lsig). Inbound MSG_FS_* frames are routed here by mesh_link; outbound
 // MSG_FS_* are emitted by the FS instances. A cross-OTA busy guard keeps the
 // FS and firmware paths from running concurrently (shared erase machinery).
+//
+// A dev-channel lamp is an island here too, gated by isDevChannel because no FS
+// path runs otaAcceptable's {type}-{channel} match. It advertises no digest,
+// never asks for or accepts an image, and is never offered one, so the web UI
+// it was flashed with stays.
 
 #include <cstddef>
 #include <cstdint>
@@ -45,18 +50,21 @@ void tick(uint32_t nowMs);
 bool fsPathBusy();
 
 // 8-byte prefix of the local FS manifest digest for HELLO_TLV_FS_STATE, or
-// nullptr if not yet computed (SPIFFS unmountable / empty).
+// nullptr when there is none (SPIFFS empty / unmountable, or an unsigned image
+// with no fw.lsig) or on a dev channel.
 const uint8_t* localDigestPrefix();
 
 // True when FS-capable at the running firmware version but with no valid local
-// digest (SPIFFS unmountable / empty). Drives HELLO_TLV_NEED_FS so peers offer
-// the UI image to a lamp that can't compute a digest to advertise a mismatch.
+// digest (SPIFFS empty / unmountable, or an unsigned image with no fw.lsig).
+// Drives HELLO_TLV_NEED_FS so peers offer the UI image to a lamp that can't
+// compute a digest to advertise a mismatch. Never true on a dev channel.
 bool needsFs();
 
 // Offer the FS image to a peer if it needs it: peer at this firmware version,
 // advertising an FS digest that differs from ours, OR advertising need-FS
-// (HELLO_TLV_NEED_FS, no digest to compare). Called from the social peer loop
-// (Core 1). No digest AND not need-FS (older / FS-disabled peer) → skip.
+// (HELLO_TLV_NEED_FS, no digest to compare). Called from tickOtaOffers
+// (Core 1). No digest AND not need-FS (older / FS-disabled peer) → skip. A dev
+// peer is never offered one.
 void considerPeer(const uint8_t peerMac[6], uint32_t peerFwVersion,
                   uint8_t peerProtocolVersion, uint32_t nowMs,
                   const char* peerFwChannel, const uint8_t* peerFsDigest,
