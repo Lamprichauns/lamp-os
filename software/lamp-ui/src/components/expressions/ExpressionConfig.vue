@@ -9,8 +9,10 @@ import FormField from '../FormField.vue'
 import ColorPicker from '../ColorPicker.vue'
 import NumberSlider from '../NumberSlider.vue'
 import RangeSlider from '../RangeSlider.vue'
+import SegmentedControl from '../SegmentedControl.vue'
 import { resolveBound } from './catalog'
 import { formatDuration } from '../../utils/duration'
+import { SURFACE_TARGET_OPTIONS } from '../../utils/surfaceTarget'
 import type { Expression, ExpressionDescriptor, CatalogParam, CatalogEnumOption } from '../../types'
 
 // Catalog units are 's' or 'ms' (raw slider value in that unit); anything
@@ -39,12 +41,6 @@ const emit = defineEmits<{
   preview: [colors: string[]]
   'preview-end': []
 }>()
-
-const targetOptions = [
-  { value: 1, label: 'Shade' },
-  { value: 2, label: 'Base' },
-  { value: 3, label: 'Both' },
-]
 
 const pixelCount = computed(() =>
   props.expression.target === 1 ? props.shadePx : props.basePx,
@@ -143,19 +139,12 @@ const onDurationMax = (value: number) => {
       id="expr-target"
       help-text="Which part of the lamp shows this effect."
     >
-      <div class="targets">
-        <button
-          v-for="opt in targetOptions"
-          :key="opt.value"
-          type="button"
-          class="target"
-          :class="{ active: expression.target === opt.value }"
-          :disabled="disabled"
-          @click="emit('update', { target: opt.value })"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
+      <SegmentedControl
+        :model-value="expression.target"
+        :options="SURFACE_TARGET_OPTIONS"
+        :disabled="disabled"
+        @update:model-value="(value) => emit('update', { target: value })"
+      />
     </FormField>
 
     <FormField
@@ -234,19 +223,12 @@ const onDurationMax = (value: number) => {
       <div v-if="p.type === 'enum'" class="enum-groups">
         <div v-for="g in optionGroups(p)" :key="g.name ?? '_flat'" class="enum-group">
           <span v-if="g.name" class="enum-group-label">{{ g.name }}</span>
-          <div class="targets">
-            <button
-              v-for="opt in g.options"
-              :key="opt.value"
-              type="button"
-              class="target"
-              :class="{ active: paramValue(p) === opt.value }"
-              :disabled="disabled"
-              @click="emit('update', { [p.key]: opt.value })"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
+          <SegmentedControl
+            :model-value="paramValue(p)"
+            :options="g.options"
+            :disabled="disabled"
+            @update:model-value="(value) => emit('update', { [p.key]: value })"
+          />
         </div>
       </div>
       <div v-else class="slider-labelled">
@@ -276,32 +258,6 @@ const onDurationMax = (value: number) => {
   flex-direction: column;
   gap: 16px;
   padding-top: 12px;
-}
-
-.targets {
-  display: flex;
-  gap: 8px;
-}
-
-.target {
-  flex: 1;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--brand-light-grey);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.target.active {
-  background: rgba(64, 176, 0, 0.2);
-  color: var(--brand-lumen-green);
-  border-color: var(--brand-lumen-green);
-}
-
-.target:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .enum-groups {

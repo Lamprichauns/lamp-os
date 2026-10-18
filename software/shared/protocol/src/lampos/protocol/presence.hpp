@@ -49,8 +49,8 @@ constexpr size_t HELLO_MAX_NAME = 32;
 constexpr uint8_t HELLO_TLV_OTA_STATE = 0x01;  // value: 1 byte, 0=idle 1=sending 2=receiving
 // value: 16 bytes, the lamp's `{type}-{channel}` identity (zero-padded),
 // same string as the LSIG footer + MSG_FW_OFFER channel field. Lets the
-// distributor skip OFFERs at a peer of a different lamp-type or channel
-// instead of relying solely on the receiver's silent-drop.
+// firmware distributor skip OFFERs at a peer of a different lamp-type or
+// channel, and FS-OTA skip dev peers.
 constexpr uint8_t HELLO_TLV_FW_CHANNEL = 0x02;
 constexpr size_t  HELLO_FW_CHANNEL_LEN = 16;  // == FW_CHANNEL_LEN
 
@@ -58,8 +58,8 @@ constexpr size_t  HELLO_FW_CHANNEL_LEN = 16;  // == FW_CHANNEL_LEN
 // fs_signature.cpp logical-content digest, NOT a raw-partition SHA). Lets the
 // FS distributor decide whether a same-firmware-version peer has a stale UI
 // image (peerFsDigest != myFsDigest) without offering blindly. Absent on
-// older lamps that predate FS OTA → distributor treats absent as "don't offer
-// FS" (such a peer can't receive it anyway).
+// older lamps that predate FS OTA and on a dev channel, neither of which takes
+// an image → distributor treats absent as "don't offer FS".
 constexpr uint8_t HELLO_TLV_FS_STATE  = 0x03;
 constexpr size_t  HELLO_FS_DIGEST_LEN = 8;  // == FW_SHA256_PREFIX_LEN
 
@@ -71,10 +71,11 @@ constexpr size_t  HELLO_FS_DIGEST_LEN = 8;  // == FW_SHA256_PREFIX_LEN
 constexpr uint8_t HELLO_TLV_FW_MAX_CHUNK = 0x04;
 
 // value: 1 byte flag. Set when the peer is FS-capable and running this
-// firmware version but has no valid local FS image (SPIFFS unmountable /
-// empty), so it can't emit HELLO_TLV_FS_STATE. Distinguishes "can't compute a
-// digest, needs one" from "legacy / FS-disabled, never wants one" so the FS
-// distributor offers to the former. Re-evaluated every HELLO while no valid FS.
+// firmware version but has no valid local FS digest (SPIFFS unmountable /
+// empty, or an unsigned image with no fw.lsig), so it can't emit
+// HELLO_TLV_FS_STATE. Distinguishes "can't compute a digest, needs one" from
+// "legacy / FS-disabled, never wants one" so the FS distributor offers to the
+// former. Re-evaluated every HELLO while no valid FS. Never set on a dev channel.
 constexpr uint8_t HELLO_TLV_NEED_FS = 0x05;
 
 // value: 6 raw MAC bytes, the mesh MAC of the peer this lamp is currently
@@ -137,8 +138,8 @@ struct ParsedHello {
   // TLV looks indistinguishable from "default value" to the receiver.
   uint8_t otaState = kOtaStateIdle;  // HELLO_TLV_OTA_STATE
   // HELLO_TLV_FW_CHANNEL, the peer's `{type}-{channel}` identity. Empty
-  // when the peer doesn't emit the TLV (older firmware); the distributor
-  // treats empty as "unknown → offer anyway and let the receiver gate".
+  // when the peer doesn't emit the TLV (older firmware); the firmware
+  // distributor then falls back to a version-only gate.
   char fwChannel[HELLO_FW_CHANNEL_LEN + 1] = {0};
   // HELLO_TLV_FS_STATE, prefix of the peer's FS-image manifest digest.
   // hasFsDigest=false when absent (FS-disabled or older peer) → the FS
@@ -149,8 +150,8 @@ struct ParsedHello {
   // payload. 0 when absent (older peer, or a peer that never receives
   // firmware OTA); the distributor treats 0 as "use the baseline floor".
   uint16_t maxChunk = 0;
-  // HELLO_TLV_NEED_FS. True when the peer has no FS image but wants one at this
-  // firmware version; the FS distributor offers even though hasFsDigest=false.
+  // HELLO_TLV_NEED_FS. True when the peer has no FS digest but wants an image at
+  // this firmware version; the FS distributor offers even though hasFsDigest=false.
   bool needsFs = false;
   // HELLO_TLV_OTA_SENDING_TO, the mesh MAC of the peer this sender is OTA-ing.
   // hasOtaSendingTo=false when absent (idle sender or older firmware).

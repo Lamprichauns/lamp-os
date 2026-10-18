@@ -5,24 +5,38 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../application/control_notifier.dart';
 import '../../domain/lamp_color.dart';
+import 'auto_pick_note.dart';
 import 'shade_editor_sheet.dart';
 
-/// Slice of ControlState ShadeCard needs: colors list + colorsEditable. Used
-/// as the `.select` projection so sibling state changes don't trigger a rebuild.
-/// (Matches `_BaseSlice` in base_card.dart now that shade is a gradient too.)
+/// Slice of ControlState ShadeCard needs: colors list, colorsEditable, and the
+/// Auto-pick note's harmonyEligible, autoColors and colorScheme. Used as the
+/// `.select` projection so sibling state changes don't trigger a rebuild.
 class _ShadeSlice {
-  const _ShadeSlice(this.colors, {required this.colorsEditable});
+  const _ShadeSlice(
+    this.colors, {
+    required this.colorsEditable,
+    required this.harmonyEligible,
+    required this.autoColors,
+    required this.colorScheme,
+  });
   final List<LampColor> colors;
   final bool colorsEditable;
+  final bool harmonyEligible;
+  final bool autoColors;
+  final int colorScheme;
 
   @override
   bool operator ==(Object other) =>
       other is _ShadeSlice &&
       colorsEditable == other.colorsEditable &&
+      harmonyEligible == other.harmonyEligible &&
+      autoColors == other.autoColors &&
+      colorScheme == other.colorScheme &&
       const ListEquality<LampColor>().equals(colors, other.colors);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(colors), colorsEditable);
+  int get hashCode => Object.hash(Object.hashAll(colors), colorsEditable,
+      harmonyEligible, autoColors, colorScheme);
 }
 
 class ShadeCard extends ConsumerWidget {
@@ -45,12 +59,12 @@ class ShadeCard extends ConsumerWidget {
   /// overrides drop for the entire edit, not just each picker drag.
   final ValueChanged<bool>? onEditSessionChanged;
 
-  /// Returns a gradient-safe list: LinearGradient requires ≥2 stops, so a
-  /// single-color list is duplicated, and an empty list falls back to black.
-  /// (Matches `BaseCard._gradientColors`.)
+  /// Returns a gradient-safe, top-to-bottom list: storage index 0 is the
+  /// bottom of the shade, LinearGradient requires ≥2 stops so a single-color
+  /// list is duplicated, and an empty list falls back to black.
   List<Color> _gradientColors(List<LampColor> colors) {
     if (colors.isEmpty) return const [Colors.black, Colors.black];
-    final swatches = colors.map((c) => c.toSwatch()).toList();
+    final swatches = colors.reversed.map((c) => c.toSwatch()).toList();
     if (swatches.length == 1) return [swatches.first, swatches.first];
     return swatches;
   }
@@ -72,10 +86,14 @@ class ShadeCard extends ConsumerWidget {
         return _ShadeSlice(
           state == null ? const [] : spec.selectColors(state),
           colorsEditable: state == null || state.shade.colorsEditable,
+          harmonyEligible: state?.shade.harmonyEligible ?? false,
+          autoColors: state?.shade.autoColors ?? false,
+          colorScheme: state?.shade.colorScheme ?? 0,
         );
       }),
     );
     final cs = Theme.of(context).colorScheme;
+    final primary = slice.colors.lastOrNull;
     return InkWell(
       // Gate the tap: if the firmware marks shade as non-editable, the card
       // is still visible (shows the current gradient) but tapping does nothing.
@@ -106,9 +124,26 @@ class ShadeCard extends ConsumerWidget {
             ),
             const SizedBox(width: AppSpace.lg),
             Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  // An eligible shade has at most one segment, so this card is
+                  // its only one.
+                  if (slice.harmonyEligible &&
+                      slice.autoColors &&
+                      primary != null)
+                    AutoPickNote(
+                      lampId: lampId,
+                      primary: primary,
+                      schemeId: slice.colorScheme,
+                      primaryPosition: 'top',
+                    ),
+                ],
               ),
             ),
             if (slice.colorsEditable)

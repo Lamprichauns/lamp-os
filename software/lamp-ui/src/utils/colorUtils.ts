@@ -171,3 +171,54 @@ export function createGradientFromHexww(
   const rgbColors = colors.map((color) => hexwwToRgb(color))
   return `linear-gradient(${direction}, ${rgbColors.join(', ')})`
 }
+
+export function formatHexww({ red, green, blue, warmWhite }: ColorComponents): string {
+  return `#${toByteHex(red)}${toByteHex(green)}${toByteHex(blue)}${toByteHex(warmWhite)}`
+}
+
+export interface Hsv {
+  h: number
+  s: number
+  v: number
+}
+
+function mod(x: number, m: number): number {
+  return ((x % m) + m) % m
+}
+
+function unitToByte(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value * 255)))
+}
+
+// Hue is in degrees, saturation and value in [0, 1], RGB channels in bytes.
+// Rounding and hue normalization follow docs/dev/color-harmony.md.
+export function rgbToHsv(red: number, green: number, blue: number): Hsv {
+  const r = red / 255
+  const g = green / 255
+  const b = blue / 255
+  const max = Math.max(r, g, b)
+  const d = max - Math.min(r, g, b)
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = 60 * mod((g - b) / d, 6)
+    else if (max === g) h = 60 * ((b - r) / d + 2)
+    else h = 60 * ((r - g) / d + 4)
+  }
+  return { h: mod(h, 360), s: max === 0 ? 0 : d / max, v: max }
+}
+
+export function hsvToRgb(h: number, s: number, v: number): Omit<ColorComponents, 'warmWhite'> {
+  const c = v * s
+  const hPrime = mod(h, 360) / 60
+  const x = c * (1 - Math.abs(mod(hPrime, 2) - 1))
+  const m = v - c
+  const [r, g, b] = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ][Math.floor(hPrime)]
+  return { red: unitToByte(r + m), green: unitToByte(g + m), blue: unitToByte(b + m) }
+}

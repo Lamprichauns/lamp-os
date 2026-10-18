@@ -20,6 +20,7 @@ import '../../control/application/advanced_session.dart';
 import '../../control/application/control_notifier.dart';
 import '../../control/application/control_state.dart';
 import '../../control/application/dev_mode.dart';
+import '../../control/domain/color_harmony.dart';
 
 /// Setup tab: mobile-style row list. Tapping a row drills into a
 /// sub-pane (HomeWifi, HomeMode, AdvancedLeds, Knockout). The Home Wi-Fi
@@ -150,6 +151,13 @@ class _SetupBody extends ConsumerWidget {
           subtitle: 'Base ${state.base.px} · Shade ${state.shade.px} LEDs',
           onTap: () => context.push(AppRoutes.advancedLeds(lampId)),
         ),
+        if (state.shade.harmonyEligible || state.base.harmonyEligible)
+          SettingsRow(
+            icon: Icons.palette_outlined,
+            title: 'Color harmony',
+            subtitle: _colorHarmonySubtitle(state),
+            onTap: () => context.push(AppRoutes.colorHarmony(lampId)),
+          ),
         // Debug group appears only in advanced mode.
         if (ref.watch(effectiveAdvancedProvider(lampId))) ...[
           const SettingsGroupHeading('Debug'),
@@ -180,6 +188,23 @@ class _SetupBody extends ConsumerWidget {
       ],
     );
   }
+}
+
+String _colorHarmonySubtitle(ControlState state) {
+  final shadeOn = state.shade.harmonyEligible && state.shade.autoColors;
+  final baseOn = state.base.harmonyEligible && state.base.autoColors;
+  if (!shadeOn && !baseOn) return 'Auto-pick off';
+  final shared = sharedSchemeId(
+    shadeScheme: state.shade.colorScheme,
+    baseScheme: state.base.colorScheme,
+    shadeEligible: shadeOn,
+    baseEligible: baseOn,
+  );
+  final shadeName = harmonySchemeById(state.shade.colorScheme).name;
+  final baseName = harmonySchemeById(state.base.colorScheme).name;
+  if (shared == null) return 'Shade · $shadeName, Base · $baseName';
+  final surfaces = [if (shadeOn) 'Shade', if (baseOn) 'Base'].join(', ');
+  return '$surfaces · ${harmonySchemeById(shared).name}';
 }
 
 /// Web Config choices. null = disabled; otherwise softAP up-window in minutes

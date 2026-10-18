@@ -5,7 +5,12 @@
 
     <!-- Color Picker Dialog -->
     <Teleport to="body">
-      <div v-if="isDialogOpen" class="dialog-overlay" @click="closeDialog">
+      <div
+        v-if="isDialogOpen"
+        class="dialog-overlay"
+        @pointerdown="onOverlayPointerDown"
+        @click="onOverlayClick"
+      >
         <div class="dialog-content" @click.stop>
           <div class="dialog-header">
             <h3>Color Picker</h3>
@@ -33,32 +38,32 @@
             <!-- Sliders -->
             <div class="sliders-container" @pointerdown.capture="blurHexInput">
               <NumberSlider
-                v-model="colorValues.red"
+                :model-value="colorValues.red"
                 label="Red"
                 id="red"
                 color="#FF0000"
-                @update:model-value="updateColor"
+                @update:model-value="onChannelChange('red', $event)"
               />
               <NumberSlider
-                v-model="colorValues.green"
+                :model-value="colorValues.green"
                 label="Green"
                 id="green"
                 color="#00FF00"
-                @update:model-value="updateColor"
+                @update:model-value="onChannelChange('green', $event)"
               />
               <NumberSlider
-                v-model="colorValues.blue"
+                :model-value="colorValues.blue"
                 label="Blue"
                 id="blue"
                 color="#0000FF"
-                @update:model-value="updateColor"
+                @update:model-value="onChannelChange('blue', $event)"
               />
               <NumberSlider
-                v-model="colorValues.warmWhite"
+                :model-value="colorValues.warmWhite"
                 label="Warm White"
                 id="ww"
                 color="#FFAA00"
-                @update:model-value="updateColor"
+                @update:model-value="onChannelChange('warmWhite', $event)"
               />
             </div>
           </div>
@@ -106,6 +111,18 @@ const hexInputEl = ref<HTMLInputElement | null>(null)
 // A slider drag must not hand focus to the hex field, it pops the OS
 // keyboard mid-drag on mobile. Blur it before the drag's own focus lands.
 const blurHexInput = () => hexInputEl.value?.blur()
+
+// A slider drag can end over the overlay and fire a click there.
+// Only a press that also began on the overlay closes the dialog.
+let pressBeganOnOverlay = false
+const onOverlayPointerDown = (event: PointerEvent) => {
+  pressBeganOnOverlay = event.target === event.currentTarget
+}
+const onOverlayClick = (event: MouseEvent) => {
+  const closes = pressBeganOnOverlay && event.target === event.currentTarget
+  pressBeganOnOverlay = false
+  if (closes) closeDialog()
+}
 
 const colorValues = ref<ColorValues>({
   red: 255,
@@ -209,6 +226,13 @@ const parseHexwwValue = (value: string) => {
       warmWhite: 0, // Assume 00 for warm white when not specified
     }
   }
+}
+
+// NumberSlider re-emits every prop change, so a value equal to the current one is an echo.
+const onChannelChange = (channel: keyof ColorValues, value: number) => {
+  if (value === colorValues.value[channel]) return
+  colorValues.value[channel] = value
+  updateColor()
 }
 
 const updateColor = () => {

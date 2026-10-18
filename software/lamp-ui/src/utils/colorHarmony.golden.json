@@ -1,0 +1,1012 @@
+{
+  "cases": [
+    {
+      "primary": "#FF000000",
+      "scheme": 0,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#FF800000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 0,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#FF800000",
+        "#FFFF0000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 0,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#FF800000",
+        "#FFFF0000",
+        "#80FF0000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 0,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF800000",
+        "#FFFF0000",
+        "#80FF0000",
+        "#00FF0000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 1,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#FF808000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 1,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#FF555500",
+        "#FFAAAA00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 1,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#FF404000",
+        "#FF808000",
+        "#FFBFBF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 1,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF333300",
+        "#FF666600",
+        "#FF999900",
+        "#FFCCCC00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 2,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 2,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 2,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#80FFFF00",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 2,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#FFFFFF00",
+        "#80FFFF00",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 3,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#00FF8000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 3,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#00FF8000",
+        "#0080FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 3,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#00FF8000",
+        "#0080FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 3,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#00FF8000",
+        "#0080FF00",
+        "#80BFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 4,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#00FF0000"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 4,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#00FF0000",
+        "#0000FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 4,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#00FF0000",
+        "#0000FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 4,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#00FF0000",
+        "#0000FF00",
+        "#8080FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 5,
+      "count": 2,
+      "expected": [
+        "#FF000000",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 5,
+      "count": 3,
+      "expected": [
+        "#FF000000",
+        "#80FF0000",
+        "#00FFFF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 5,
+      "count": 4,
+      "expected": [
+        "#FF000000",
+        "#80FF0000",
+        "#00FFFF00",
+        "#8000FF00"
+      ]
+    },
+    {
+      "primary": "#FF000000",
+      "scheme": 5,
+      "count": 5,
+      "expected": [
+        "#FF000000",
+        "#FF808000",
+        "#80FF0000",
+        "#00FFFF00",
+        "#8000FF00"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 0,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#473AD5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 0,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#473AD5C8",
+        "#943AD5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 0,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#473AD5C8",
+        "#943AD5C8",
+        "#D53AC8C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 0,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#473AD5C8",
+        "#943AD5C8",
+        "#D53AC8C8",
+        "#D53A7BC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 1,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 1,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#6E99D5C8",
+        "#A1B7D5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 1,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#6191D5C8",
+        "#88A8D5C8",
+        "#AEBFD5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 1,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#598DD5C8",
+        "#789FD5C8",
+        "#97B1D5C8",
+        "#B6C3D5C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 2,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 2,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 2,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D5B588C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 2,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D5D5D5C8",
+        "#D5B588C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 3,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#D5473AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 3,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#D5473AC8",
+        "#C8D53AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 3,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D5473AC8",
+        "#C8D53AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 3,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D5473AC8",
+        "#C8D53AC8",
+        "#CFD588C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 4,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#D53A7BC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 4,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#D53A7BC8",
+        "#7BD53AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 4,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D53A7BC8",
+        "#7BD53AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 4,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D53A7BC8",
+        "#7BD53AC8",
+        "#A8D588C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 5,
+      "count": 2,
+      "expected": [
+        "#3A7BD5C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 5,
+      "count": 3,
+      "expected": [
+        "#3A7BD5C8",
+        "#D53AC8C8",
+        "#D5943AC8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 5,
+      "count": 4,
+      "expected": [
+        "#3A7BD5C8",
+        "#D53AC8C8",
+        "#D5943AC8",
+        "#3AD547C8"
+      ]
+    },
+    {
+      "primary": "#3A7BD5C8",
+      "scheme": 5,
+      "count": 5,
+      "expected": [
+        "#3A7BD5C8",
+        "#88A8D5C8",
+        "#D53AC8C8",
+        "#D5943AC8",
+        "#3AD547C8"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 0,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#F4BBA600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 0,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#F4BBA600",
+        "#F4E2A600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 0,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#F4BBA600",
+        "#F4E2A600",
+        "#DFF4A600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 0,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4BBA600",
+        "#F4E2A600",
+        "#DFF4A600",
+        "#B8F4A600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 1,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 1,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#F4C0CC00",
+        "#F4DAE000"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 1,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#F4BAC700",
+        "#F4CDD600",
+        "#F4E1E500"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 1,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4B6C400",
+        "#F4C5D000",
+        "#F4D5DC00",
+        "#F4E4E800"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 2,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 2,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 2,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#CDF4EB00",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 2,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#F4F4F400",
+        "#CDF4EB00",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 3,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#A6F4BB00"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 3,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#A6F4BB00",
+        "#A6DFF400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 3,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#A6F4BB00",
+        "#A6DFF400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 3,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#A6F4BB00",
+        "#A6DFF400",
+        "#CDEAF400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 4,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#B8F4A600"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 4,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#B8F4A600",
+        "#A6B8F400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 4,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#B8F4A600",
+        "#A6B8F400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 4,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#B8F4A600",
+        "#A6B8F400",
+        "#CDD6F400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 5,
+      "count": 2,
+      "expected": [
+        "#F4A6B800",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 5,
+      "count": 3,
+      "expected": [
+        "#F4A6B800",
+        "#DFF4A600",
+        "#A6F4E200"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 5,
+      "count": 4,
+      "expected": [
+        "#F4A6B800",
+        "#DFF4A600",
+        "#A6F4E200",
+        "#BBA6F400"
+      ]
+    },
+    {
+      "primary": "#F4A6B800",
+      "scheme": 5,
+      "count": 5,
+      "expected": [
+        "#F4A6B800",
+        "#F4CDD600",
+        "#DFF4A600",
+        "#A6F4E200",
+        "#BBA6F400"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 0,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 0,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 0,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 0,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 1,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 1,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 1,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 1,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 2,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 2,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 2,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 2,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 3,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 3,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 3,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 3,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 4,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 4,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 4,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 4,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 5,
+      "count": 2,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 5,
+      "count": 3,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 5,
+      "count": 4,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    },
+    {
+      "primary": "#FFFFFF00",
+      "scheme": 5,
+      "count": 5,
+      "expected": [
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00",
+        "#FFFFFF00"
+      ]
+    }
+  ]
+}

@@ -6,6 +6,11 @@ import 'lamp_color.dart';
 const _listEq = ListEquality<Object?>();
 const _mapEq = MapEquality<Object?, Object?>();
 
+bool _parseAutoColors(Object? raw) => raw is bool && raw;
+
+int _parseColorScheme(Object? raw) =>
+    raw is int && raw >= 0 && raw <= 255 ? raw : 0;
+
 /// CHAR_LAMP_SECTION payload, see firmware Config::asLampJson.
 ///
 /// Manually-overridden `==` / `hashCode`: Riverpod's
@@ -248,6 +253,8 @@ class BaseSection {
     this.segments = const [],
     this.drawIdleMa = 0,
     this.drawFullMa = 0,
+    this.autoColors = false,
+    this.colorScheme = 0,
   });
 
   final int px;
@@ -281,6 +288,17 @@ class BaseSection {
   /// predates the segments field; in that case `colors` and `px` are used
   /// directly. When non-empty, `px == Σ segments[*].px`.
   final List<Segment> segments;
+
+  /// Color harmony Auto-pick flag and scheme id, stored by the firmware and
+  /// written only by `ControlNotifier.setColorHarmony`. A non-bool
+  /// `autoColors` reads as false; a `colorScheme` outside 0–255 or not an
+  /// integer reads as 0. See docs/dev/color-harmony.md.
+  final bool autoColors;
+  final int colorScheme;
+
+  /// Whether Auto-pick applies to this surface: colors are editable and
+  /// there is at most one segment.
+  bool get harmonyEligible => colorsEditable && segments.length <= 1;
 
   factory BaseSection.fromJson(Map<String, dynamic> json) {
     // Knockout is a positional int array: index = pixel, value = brightness
@@ -319,6 +337,8 @@ class BaseSection {
           .toList(),
       drawIdleMa: (json['drawIdleMa'] as num?)?.toInt() ?? 0,
       drawFullMa: (json['drawFullMa'] as num?)?.toInt() ?? 0,
+      autoColors: _parseAutoColors(json['autoColors']),
+      colorScheme: _parseColorScheme(json['colorScheme']),
     );
   }
 
@@ -332,6 +352,8 @@ class BaseSection {
     List<Segment>? segments,
     int? drawIdleMa,
     int? drawFullMa,
+    bool? autoColors,
+    int? colorScheme,
   }) =>
       BaseSection(
         px: px ?? this.px,
@@ -343,6 +365,8 @@ class BaseSection {
         segments: segments ?? this.segments,
         drawIdleMa: drawIdleMa ?? this.drawIdleMa,
         drawFullMa: drawFullMa ?? this.drawFullMa,
+        autoColors: autoColors ?? this.autoColors,
+        colorScheme: colorScheme ?? this.colorScheme,
       );
 
   @override
@@ -357,7 +381,9 @@ class BaseSection {
           colorsEditable == other.colorsEditable &&
           _listEq.equals(segments, other.segments) &&
           drawIdleMa == other.drawIdleMa &&
-          drawFullMa == other.drawFullMa;
+          drawFullMa == other.drawFullMa &&
+          autoColors == other.autoColors &&
+          colorScheme == other.colorScheme;
 
   @override
   int get hashCode => Object.hash(
@@ -370,6 +396,8 @@ class BaseSection {
         _listEq.hash(segments),
         drawIdleMa,
         drawFullMa,
+        autoColors,
+        colorScheme,
       );
 }
 
@@ -382,6 +410,8 @@ class ShadeSection {
     required this.colors,
     this.colorsEditable = true,
     this.segments = const [],
+    this.autoColors = false,
+    this.colorScheme = 0,
   });
 
   final int px;
@@ -402,6 +432,13 @@ class ShadeSection {
   /// directly. When non-empty, `px == Σ segments[*].px`.
   final List<Segment> segments;
 
+  /// See [BaseSection.autoColors].
+  final bool autoColors;
+  final int colorScheme;
+
+  /// See [BaseSection.harmonyEligible].
+  bool get harmonyEligible => colorsEditable && segments.length <= 1;
+
   factory ShadeSection.fromJson(Map<String, dynamic> json) {
     final bpp = (json['bpp'] as num?)?.toInt() ?? 4;
     final byteOrder = (json['byteOrder'] as String?)?.trim().isNotEmpty == true
@@ -421,6 +458,8 @@ class ShadeSection {
           .whereType<Map<String, dynamic>>()
           .map(Segment.fromJson)
           .toList(),
+      autoColors: _parseAutoColors(json['autoColors']),
+      colorScheme: _parseColorScheme(json['colorScheme']),
     );
   }
 
@@ -431,6 +470,8 @@ class ShadeSection {
     List<LampColor>? colors,
     bool? colorsEditable,
     List<Segment>? segments,
+    bool? autoColors,
+    int? colorScheme,
   }) =>
       ShadeSection(
         px: px ?? this.px,
@@ -439,6 +480,8 @@ class ShadeSection {
         colors: colors ?? this.colors,
         colorsEditable: colorsEditable ?? this.colorsEditable,
         segments: segments ?? this.segments,
+        autoColors: autoColors ?? this.autoColors,
+        colorScheme: colorScheme ?? this.colorScheme,
       );
 
   @override
@@ -450,7 +493,9 @@ class ShadeSection {
           byteOrder == other.byteOrder &&
           _listEq.equals(colors, other.colors) &&
           colorsEditable == other.colorsEditable &&
-          _listEq.equals(segments, other.segments);
+          _listEq.equals(segments, other.segments) &&
+          autoColors == other.autoColors &&
+          colorScheme == other.colorScheme;
 
   @override
   int get hashCode => Object.hash(
@@ -460,6 +505,8 @@ class ShadeSection {
         _listEq.hash(colors),
         colorsEditable,
         _listEq.hash(segments),
+        autoColors,
+        colorScheme,
       );
 }
 

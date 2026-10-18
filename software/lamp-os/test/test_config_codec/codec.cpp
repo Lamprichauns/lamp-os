@@ -50,6 +50,17 @@ std::string expressionEntry(const char* type, int target, int colors, int params
   for (int i = 0; i < colors; ++i) e += std::string(i ? "," : "") + "\"#ff000000\"";
   return e + "]}";
 }
+
+Model roundTrip(const Model& in) {
+  JsonDocument doc;
+  config_codec::toJson(doc.to<JsonObject>(), in.lamp, in.base, in.shade,
+                       in.expressions, in.homeMode);
+  std::string serialized;
+  serializeJson(doc, serialized);
+  Model out;
+  parseInto(serialized.c_str(), out);
+  return out;
+}
 }  // namespace
 
 void test_empty_blob_uses_class_defaults() {
@@ -442,6 +453,75 @@ void test_homemode_round_trip_new_fields() {
   TEST_ASSERT_EQUAL_STRING("breathing", b.homeMode.disabledExpressionTypes[1].c_str());
 }
 
+void test_color_harmony_absent_keys_default() {
+  for (const char* json : {"{}", "{\"base\":{},\"shade\":{}}"}) {
+    Model m;
+    parseInto(json, m);
+    TEST_ASSERT_FALSE(m.base.autoColors);
+    TEST_ASSERT_EQUAL_UINT8(0, m.base.colorScheme);
+    TEST_ASSERT_FALSE(m.shade.autoColors);
+    TEST_ASSERT_EQUAL_UINT8(0, m.shade.colorScheme);
+  }
+}
+
+void test_color_harmony_round_trip() {
+  Model a;
+  a.shade.autoColors = true;
+  a.shade.colorScheme = 3;
+  a.base.autoColors = false;
+  a.base.colorScheme = 5;
+
+  Model b = roundTrip(a);
+  TEST_ASSERT_TRUE(b.shade.autoColors);
+  TEST_ASSERT_EQUAL_UINT8(3, b.shade.colorScheme);
+  TEST_ASSERT_FALSE(b.base.autoColors);
+  TEST_ASSERT_EQUAL_UINT8(5, b.base.colorScheme);
+}
+
+void test_color_harmony_keys_emitted_at_defaults() {
+  Model m;
+  JsonDocument out;
+  config_codec::toJson(out.to<JsonObject>(), m.lamp, m.base, m.shade,
+                       m.expressions, m.homeMode);
+  for (const char* surface : {"base", "shade"}) {
+    TEST_ASSERT_TRUE(out[surface]["autoColors"].is<bool>());
+    TEST_ASSERT_FALSE(out[surface]["autoColors"].as<bool>());
+    TEST_ASSERT_TRUE(out[surface]["colorScheme"].is<int>());
+    TEST_ASSERT_EQUAL_INT(0, out[surface]["colorScheme"].as<int>());
+  }
+}
+
+void test_color_scheme_200_round_trips_verbatim() {
+  Model parsed;
+  parseInto("{\"base\":{\"colorScheme\":200},\"shade\":{\"colorScheme\":200}}",
+            parsed);
+  TEST_ASSERT_EQUAL_UINT8(200, parsed.base.colorScheme);
+  TEST_ASSERT_EQUAL_UINT8(200, parsed.shade.colorScheme);
+
+  Model b = roundTrip(parsed);
+  TEST_ASSERT_EQUAL_UINT8(200, b.base.colorScheme);
+  TEST_ASSERT_EQUAL_UINT8(200, b.shade.colorScheme);
+}
+
+void test_color_scheme_255_is_the_upper_bound() {
+  Model m;
+  parseInto("{\"base\":{\"colorScheme\":255},\"shade\":{\"colorScheme\":256}}",
+            m);
+  TEST_ASSERT_EQUAL_UINT8(255, m.base.colorScheme);
+  TEST_ASSERT_EQUAL_UINT8(0, m.shade.colorScheme);
+}
+
+void test_color_scheme_out_of_range_loads_as_zero() {
+  for (const char* json :
+       {"{\"base\":{\"colorScheme\":300},\"shade\":{\"colorScheme\":300}}",
+        "{\"base\":{\"colorScheme\":-1},\"shade\":{\"colorScheme\":-1}}"}) {
+    Model m;
+    parseInto(json, m);
+    TEST_ASSERT_EQUAL_UINT8(0, m.base.colorScheme);
+    TEST_ASSERT_EQUAL_UINT8(0, m.shade.colorScheme);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_empty_blob_uses_class_defaults);
@@ -474,5 +554,11 @@ int main(int, char**) {
   RUN_TEST(test_social_disabled_absent_defaults_true);
   RUN_TEST(test_social_disabled_explicit_false);
   RUN_TEST(test_homemode_round_trip_new_fields);
+  RUN_TEST(test_color_harmony_absent_keys_default);
+  RUN_TEST(test_color_harmony_round_trip);
+  RUN_TEST(test_color_harmony_keys_emitted_at_defaults);
+  RUN_TEST(test_color_scheme_200_round_trips_verbatim);
+  RUN_TEST(test_color_scheme_255_is_the_upper_bound);
+  RUN_TEST(test_color_scheme_out_of_range_loads_as_zero);
   return UNITY_END();
 }

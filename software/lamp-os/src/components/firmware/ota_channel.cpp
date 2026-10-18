@@ -46,3 +46,9 @@ bool otaAcceptable(const char* ourChannel,
 
   return false;
 }
+
+bool isDevChannel(const char* channel) {
+  if (!channel) return false;
+  const char* dash = lastDash(channel);
+  return std::strcmp(dash ? dash + 1 : channel, "dev") == 0;
+}

@@ -4,18 +4,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../application/control_notifier.dart';
 import '../../domain/lamp_color.dart';
+import 'auto_pick_note.dart';
 
-/// Slice of ControlState BaseCard needs: colors list + colorsEditable. Used as
-/// the `.select` projection so sibling state changes don't trigger a rebuild.
+/// Slice of ControlState BaseCard needs: colors list, colorsEditable, and the
+/// Auto-pick note's harmonyEligible, autoColors and colorScheme. Used as the
+/// `.select` projection so sibling state changes don't trigger a rebuild.
 class _BaseSlice {
-  const _BaseSlice(this.colors, {required this.colorsEditable});
+  const _BaseSlice(
+    this.colors, {
+    required this.colorsEditable,
+    required this.harmonyEligible,
+    required this.autoColors,
+    required this.colorScheme,
+  });
   final List<LampColor> colors;
   final bool colorsEditable;
+  final bool harmonyEligible;
+  final bool autoColors;
+  final int colorScheme;
 
   @override
   bool operator ==(Object other) {
     if (other is! _BaseSlice) return false;
     if (colorsEditable != other.colorsEditable) return false;
+    if (harmonyEligible != other.harmonyEligible) return false;
+    if (autoColors != other.autoColors) return false;
+    if (colorScheme != other.colorScheme) return false;
     if (colors.length != other.colors.length) return false;
     for (var i = 0; i < colors.length; i++) {
       if (colors[i] != other.colors[i]) return false;
@@ -24,7 +38,8 @@ class _BaseSlice {
   }
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(colors), colorsEditable);
+  int get hashCode => Object.hash(Object.hashAll(colors), colorsEditable,
+      harmonyEligible, autoColors, colorScheme);
 }
 
 class BaseCard extends ConsumerWidget {
@@ -56,10 +71,14 @@ class BaseCard extends ConsumerWidget {
         return _BaseSlice(
           state?.base.colors ?? const [],
           colorsEditable: state?.base.colorsEditable ?? true,
+          harmonyEligible: state?.base.harmonyEligible ?? false,
+          autoColors: state?.base.autoColors ?? false,
+          colorScheme: state?.base.colorScheme ?? 0,
         );
       }),
     );
     final cs = Theme.of(context).colorScheme;
+    final primary = slice.colors.lastOrNull;
     return InkWell(
       // Gate the tap: if the firmware marks base as non-editable, the card
       // is still visible (shows the current gradient) but tapping does nothing.
@@ -90,9 +109,24 @@ class BaseCard extends ConsumerWidget {
             ),
             const SizedBox(width: AppSpace.lg),
             Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (slice.harmonyEligible &&
+                      slice.autoColors &&
+                      primary != null)
+                    AutoPickNote(
+                      lampId: lampId,
+                      primary: primary,
+                      schemeId: slice.colorScheme,
+                      primaryPosition: 'bottom',
+                    ),
+                ],
               ),
             ),
             if (slice.colorsEditable)

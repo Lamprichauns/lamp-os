@@ -325,6 +325,8 @@ JsonDocument Config::asBaseJson() {
   JsonDocument doc;
   emitRoleTopology(doc, base.segments);
   doc["byteOrder"] = base.byteOrder;
+  doc["autoColors"] = base.autoColors;
+  doc["colorScheme"] = base.colorScheme;
   // Knockout: positional uint8 array, one entry per pixel.
   //   wire shape: "knockout":[100,100,6,9,...] (length = knockoutPixels.size())
   // Index = pixel; value = brightness % (0..100). Caps the base section at
@@ -347,6 +349,8 @@ JsonDocument Config::asShadeJson() {
   JsonDocument doc;
   emitRoleTopology(doc, shade.segments);
   doc["byteOrder"] = shade.byteOrder;
+  doc["autoColors"] = shade.autoColors;
+  doc["colorScheme"] = shade.colorScheme;
   // colorsEditable is firmware-owned (set by Lamp subclass via applyDefaults).
   // Emitted so the app can hide the color picker for surfaces the subclass
   // has opted out of (e.g. SnafuLamp shade).

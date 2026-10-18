@@ -451,4 +451,92 @@ void main() {
     ) as Map<String, dynamic>);
     expect(s.colors, [const LampColor(r: 0, g: 0, b: 0, w: 0xFF)]);
   });
+
+  group('color harmony fields', () {
+    BaseSection base(Map<String, dynamic> extra) =>
+        BaseSection.fromJson({'px': 35, 'colors': ['#300783FF'], ...extra});
+    ShadeSection shade(Map<String, dynamic> extra) =>
+        ShadeSection.fromJson({'px': 38, 'colors': ['#FF0000C8'], ...extra});
+
+    test('absent keys read as false / 0', () {
+      expect(base({}).autoColors, isFalse);
+      expect(base({}).colorScheme, 0);
+      expect(shade({}).autoColors, isFalse);
+      expect(shade({}).colorScheme, 0);
+    });
+
+    test('valid values parse', () {
+      final b = base({'autoColors': true, 'colorScheme': 3});
+      final s = shade({'autoColors': true, 'colorScheme': 3});
+      expect(b.autoColors, isTrue);
+      expect(b.colorScheme, 3);
+      expect(s.autoColors, isTrue);
+      expect(s.colorScheme, 3);
+      expect(base({'colorScheme': 255}).colorScheme, 255);
+    });
+
+    test('a colorScheme outside 0-255 or not an int loads as 0', () {
+      for (final raw in <Object>[300, -1, '2', 3.0]) {
+        expect(base({'colorScheme': raw}).colorScheme, 0, reason: '$raw');
+        expect(shade({'colorScheme': raw}).colorScheme, 0, reason: '$raw');
+      }
+    });
+
+    test('a non-bool autoColors loads as false', () {
+      for (final raw in <Object>[1, 'true']) {
+        expect(base({'autoColors': raw}).autoColors, isFalse, reason: '$raw');
+        expect(shade({'autoColors': raw}).autoColors, isFalse, reason: '$raw');
+      }
+    });
+
+    test('BaseSection ==, hashCode and copyWith cover the fields', () {
+      final a = base({'autoColors': true, 'colorScheme': 4});
+      final b = base({'autoColors': true, 'colorScheme': 4});
+      expect(identical(a, b), isFalse);
+      expect(a, equals(b));
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(equals(a.copyWith(autoColors: false))));
+      expect(a, isNot(equals(a.copyWith(colorScheme: 5))));
+      expect(a.copyWith(autoColors: false).hashCode, isNot(a.hashCode));
+      expect(a.copyWith(colorScheme: 5).hashCode, isNot(a.hashCode));
+
+      final kept = a.copyWith(px: 10);
+      expect(kept.autoColors, isTrue);
+      expect(kept.colorScheme, 4);
+      final changed = a.copyWith(autoColors: false, colorScheme: 1);
+      expect(changed.autoColors, isFalse);
+      expect(changed.colorScheme, 1);
+    });
+
+    test('ShadeSection ==, hashCode and copyWith cover the fields', () {
+      final a = shade({'autoColors': true, 'colorScheme': 4});
+      final b = shade({'autoColors': true, 'colorScheme': 4});
+      expect(identical(a, b), isFalse);
+      expect(a, equals(b));
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(equals(a.copyWith(autoColors: false))));
+      expect(a, isNot(equals(a.copyWith(colorScheme: 5))));
+      expect(a.copyWith(autoColors: false).hashCode, isNot(a.hashCode));
+      expect(a.copyWith(colorScheme: 5).hashCode, isNot(a.hashCode));
+
+      final kept = a.copyWith(px: 10);
+      expect(kept.autoColors, isTrue);
+      expect(kept.colorScheme, 4);
+      final changed = a.copyWith(autoColors: false, colorScheme: 1);
+      expect(changed.autoColors, isFalse);
+      expect(changed.colorScheme, 1);
+    });
+
+    test('harmonyEligible needs editable colors and at most one segment', () {
+      const seg = {'name': 'S', 'px': 12, 'colors': ['#FF0000C8']};
+      expect(base({}).harmonyEligible, isTrue);
+      expect(base({'segments': [seg]}).harmonyEligible, isTrue);
+      expect(base({'segments': [seg, seg]}).harmonyEligible, isFalse);
+      expect(base({'colorsEditable': false}).harmonyEligible, isFalse);
+      expect(shade({}).harmonyEligible, isTrue);
+      expect(shade({'segments': [seg]}).harmonyEligible, isTrue);
+      expect(shade({'segments': [seg, seg]}).harmonyEligible, isFalse);
+      expect(shade({'colorsEditable': false}).harmonyEligible, isFalse);
+    });
+  });
 }

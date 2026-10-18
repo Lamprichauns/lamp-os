@@ -13,6 +13,7 @@
 #include "components/firmware/firmware_distributor.hpp"
 #include "components/firmware/firmware_receiver.hpp"
 #include "components/firmware/fs_signature.hpp"
+#include "components/firmware/ota_channel.hpp"
 #include "components/network/protocol/lamp_protocol.hpp"
 #include "components/webapp/webapp.hpp"
 #include "version.hpp"
@@ -129,6 +130,7 @@ const void* fsRecvPartition() {
 }
 
 bool fsShouldAccept(uint32_t offerVersion, const uint8_t* offerDigestPrefix) {
+  if (isDevChannel(lamp::FIRMWARE_CHANNEL_STR)) return false;
   // Don't overwrite the UI partition out from under a client mid-serve. An idle
   // boot-window AP doesn't block; the transfer tears the SoftAP down for coex.
   if (webapp::hasClient()) return false;
@@ -271,24 +273,22 @@ void tick(uint32_t nowMs) {
 }
 
 const uint8_t* localDigestPrefix() {
+  if (isDevChannel(lamp::FIRMWARE_CHANNEL_STR)) return nullptr;
   return s_localDigestReady ? s_localDigest : nullptr;
 }
 
 bool needsFs() {
-  // FS-capable (partition present) but no valid local digest → SPIFFS
-  // unmountable / empty. The offer a peer sends is version-coupled to its own
-  // running firmware, and this lamp runs that same version, so no extra gate is
-  // needed. A digest-having lamp advertises via FS_STATE instead.
-  return s_spiffsPart && !s_localDigestReady;
+  // Offers are version-coupled to the sender's running firmware, which this
+  // lamp also runs, so no version gate is needed.
+  return s_spiffsPart && !s_localDigestReady &&
+         !isDevChannel(lamp::FIRMWARE_CHANNEL_STR);
 }
 
 void considerPeer(const uint8_t peerMac[6], uint32_t peerFwVersion,
                   uint8_t peerProtocolVersion, uint32_t nowMs,
                   const char* peerFwChannel, const uint8_t* peerFsDigest,
                   bool peerHasFsDigest, bool peerNeedsFs, int8_t peerRssi) {
-  // A peer with no digest and no need-FS flag is legacy / FS-disabled → skip.
-  // A need-FS peer (empty/unmountable FS) has no digest to compare, so it takes
-  // the offer unconditionally below.
+  if (isDevChannel(peerFwChannel)) return;
   if ((!peerHasFsDigest && !peerNeedsFs) || !s_localDigestReady) return;
   // Self-version gate: only distribute an FS image that matches the running
   // firmware. A lamp firmware-OTA'd to vN whose SPIFFS is still the stale vN-1

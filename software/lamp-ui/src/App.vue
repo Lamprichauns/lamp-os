@@ -8,6 +8,7 @@ import CritterIcon from './components/CritterIcon.vue'
 import FormField from './components/FormField.vue'
 import BrightnessSlider from './components/BrightnessSlider.vue'
 import ColorGradient from './components/ColorGradient.vue'
+import ColorSchemePicker from './components/ColorSchemePicker.vue'
 import TextInput from './components/TextInput.vue'
 import BooleanInput from './components/BooleanInput.vue'
 import NumberInput from './components/NumberInput.vue'
@@ -20,6 +21,8 @@ import {
   segmentsFromPalette,
 } from './utils/configShape'
 import { blendedIdentity, hexwwToRgb } from './utils/colorUtils'
+import { autoPickPalette, harmonizePalette } from './utils/colorHarmony'
+import { TARGET_SHADE, type Surface } from './utils/surfaceTarget'
 import { toTitleCase } from './utils/stringCase'
 
 // Firmware does a full-replace on PUT: any field omitted from the body resets
@@ -36,8 +39,17 @@ const defaultConfig = (): Config => ({
     socialMode: 1,
     apBootMinutes: 2,
   },
-  base: { segments: [{ px: 0, colors: [SAFE_COLOR] }], knockout: [] },
-  shade: { segments: [{ px: 0, colors: [SAFE_COLOR] }] },
+  base: {
+    segments: [{ px: 0, colors: [SAFE_COLOR] }],
+    knockout: [],
+    autoColors: false,
+    colorScheme: 0,
+  },
+  shade: {
+    segments: [{ px: 0, colors: [SAFE_COLOR] }],
+    autoColors: false,
+    colorScheme: 0,
+  },
   expressions: [],
   homeMode: {
     ssid: '',
@@ -246,6 +258,28 @@ const shadeColorsEditable = computed(() => cfg.value.shade.colorsEditable !== fa
 // Matches the lamp's own blendedIdentity() so the favicon + nameplate glow
 // the same color the device actually shows for a multi-stop base.
 const blendedBaseColor = computed(() => blendedIdentity(baseColors.value) ?? SAFE_COLOR)
+
+const setAutoPick = (surface: Surface, on: boolean) => {
+  const settings = surface === TARGET_SHADE ? cfg.value.shade : cfg.value.base
+  const colors = surface === TARGET_SHADE ? shadeColors : baseColors
+  settings.autoColors = on
+  colors.value = autoPickPalette(colors.value, settings.colorScheme ?? 0, on)
+}
+
+const pickColorScheme = (schemeId: number) => {
+  if (shadeColorsEditable.value) {
+    cfg.value.shade.colorScheme = schemeId
+    if (cfg.value.shade.autoColors) {
+      shadeColors.value = harmonizePalette(shadeColors.value, schemeId)
+    }
+  }
+  if (baseColorsEditable.value) {
+    cfg.value.base.colorScheme = schemeId
+    if (cfg.value.base.autoColors) {
+      baseColors.value = harmonizePalette(baseColors.value, schemeId)
+    }
+  }
+}
 
 const nameValid = computed(() => {
   const n = cfg.value.lamp.name.trim()
@@ -474,6 +508,10 @@ onMounted(async () => {
     baseColors.value = paletteFromSegments(cfg.value.base.segments)
     basePx.value = pxFromSegments(cfg.value.base.segments)
     shadeColors.value = paletteFromSegments(cfg.value.shade.segments)
+    for (const surface of [cfg.value.base, cfg.value.shade]) {
+      surface.autoColors ??= false
+      surface.colorScheme ??= 0
+    }
     if (!Array.isArray(cfg.value.base.knockout)) cfg.value.base.knockout = []
     if (!Array.isArray(cfg.value.expressions)) cfg.value.expressions = []
     if (!Array.isArray(cfg.value.homeMode.disabledExpressionTypes))
@@ -581,8 +619,11 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="shadeColorsEditable"
                 v-model="shadeColors"
+                :auto-colors="cfg.shade.autoColors ?? false"
+                :scheme="cfg.shade.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
+                @open-scheme-settings="activeTab = 'lamp-setup'"
                 @edit-session="(open) => sendEditSession(2, open)"
               />
               <div v-else class="info-text">Shade color is set by firmware.</div>
@@ -592,8 +633,11 @@ onUnmounted(() => {
               <ColorGradient
                 v-if="baseColorsEditable"
                 v-model="baseColors"
+                :auto-colors="cfg.base.autoColors ?? false"
+                :scheme="cfg.base.colorScheme ?? 0"
                 :max-colors="5"
                 :disabled="disabled"
+                @open-scheme-settings="activeTab = 'lamp-setup'"
                 @edit-session="(open) => sendEditSession(1, open)"
               />
               <div v-else class="info-text">Base color is set by firmware.</div>
@@ -840,6 +884,27 @@ onUnmounted(() => {
                 </FormField>
               </div>
             </div>
+
+            <template v-if="shadeColorsEditable || baseColorsEditable">
+              <h1 class="gold">Color Harmony</h1>
+              <div class="info-text">
+                Auto-pick fills in a surface's other colors from its top color. Pick the surfaces,
+                then the scheme.
+              </div>
+              <ColorSchemePicker
+                :shade-auto="cfg.shade.autoColors ?? false"
+                :base-auto="cfg.base.autoColors ?? false"
+                :shade-scheme="cfg.shade.colorScheme ?? 0"
+                :base-scheme="cfg.base.colorScheme ?? 0"
+                :shade-primary="shadeColors[shadeColors.length - 1]"
+                :base-primary="baseColors[baseColors.length - 1]"
+                :shade-editable="shadeColorsEditable"
+                :base-editable="baseColorsEditable"
+                :disabled="disabled"
+                @auto-pick="setAutoPick"
+                @pick="pickColorScheme"
+              />
+            </template>
 
             <h1 class="green">Lamp Base LED Profile</h1>
             <FormField label="Base LED Count" id="baseLeds">

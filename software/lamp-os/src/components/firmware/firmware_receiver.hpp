@@ -107,9 +107,9 @@ void postPendingFirmwareControl(const PendingFirmwareControl& src);
 struct FsReceiverHooks {
   // The spiffs partition to write into (really const esp_partition_t*).
   const void* (*partition)();
-  // Accept a fresh offer? FS rule: offer.version == FIRMWARE_VERSION AND the
-  // offered digest differs from the local FS digest. (Channel/chunkSize/busy
-  // are checked by the receiver first.)
+  // Return true to accept a fresh offer. The receiver calls this in place of
+  // otaAcceptable, after its chunkSize check and before auth and busy, so no FS
+  // path gates on the offer's channel.
   bool (*shouldAccept)(uint32_t offerVersion, const uint8_t* offerDigestPrefix);
   // Verify the written partition (mount + manifest digest + ed25519 + version).
   // offerDigest is the offer-time verified 32-byte manifest digest; verify binds

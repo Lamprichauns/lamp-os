@@ -121,12 +121,17 @@ inline uint8_t segmentsSumPx(const std::vector<SegmentSettings>& segments) {
  *   Recognized: "GRBW" (4 bpp), "GRB"/"BGR" (3 bpp). Empty = use the variant
  *   StripSpec compile-time default, so old NVS payloads without the field load
  *   unchanged. Applied at boot when strips are built (byteOrderFromString).
+ * @property autoColors - client-owned flag, stored verbatim and never acted on.
+ *   See docs/dev/color-harmony.md.
+ * @property colorScheme - client-owned scheme id, same contract as autoColors.
  */
 class ShadeSettings {
  public:
   std::vector<SegmentSettings> segments = {{"Shade", 0, {kShadeDefaultColor}}};
   std::string byteOrder = "";
   bool colorsEditable = true;  // Emitted in asShadeJson; app hides color picker when false.
+  bool autoColors = false;
+  uint8_t colorScheme = 0;
 
   uint8_t sumPx() const { return segmentsSumPx(segments); }
   // Representative palette (HELLO/greet/adv): the broadcast segment, first.
@@ -139,6 +144,7 @@ class ShadeSettings {
  *        profile.
  * @property knockoutPixels - per-pixel brightness profile across the whole role
  * @property byteOrder - NeoPixel wire byte order; see ShadeSettings.
+ * @property autoColors, colorScheme - see ShadeSettings.
  */
 class BaseSettings {
  public:
@@ -146,6 +152,8 @@ class BaseSettings {
   std::vector<uint8_t> knockoutPixels = std::vector<uint8_t>(50, (uint8_t)100);
   std::string byteOrder = "";
   bool colorsEditable = true;  // Emitted in asBaseJson; app hides color picker when false.
+  bool autoColors = false;
+  uint8_t colorScheme = 0;
 
   uint8_t sumPx() const { return segmentsSumPx(segments); }
   std::vector<Color>& broadcastColors() { return segments.front().colors; }

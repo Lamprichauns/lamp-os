@@ -52,6 +52,14 @@ Future<void> seedControlBle(
   // Whether the lamp NVS has a password set. Null = older firmware that
   // doesn't emit the field.
   bool? hasPassword,
+  // Color harmony and colorsEditable keys, emitted into the shade / base JSON
+  // only when non-null so existing seeds are unchanged.
+  bool? shadeAutoColors,
+  int? shadeColorScheme,
+  bool? shadeColorsEditable,
+  bool? baseAutoColors,
+  int? baseColorScheme,
+  bool? baseColorsEditable,
 }) async {
   // Build the firmware identity JSON tail only when both fields are set.
   // Either both should be present (post-Phase-C firmware) or both absent
@@ -73,6 +81,11 @@ Future<void> seedControlBle(
   );
   final baseSegsTail =
       baseSegmentsJson != null ? ',"segments":$baseSegmentsJson' : '';
+  final baseHarmonyTail = _surfaceTail(
+    autoColors: baseAutoColors,
+    colorScheme: baseColorScheme,
+    colorsEditable: baseColorsEditable,
+  );
   ble.seedSection(
     deviceId,
     'base',
@@ -80,17 +93,22 @@ Future<void> seedControlBle(
       '{"px":$basePx,"ac":$baseAc,"bpp":$baseBpp,'
       '"colors":$baseColorsJson,"knockout":$baseKnockoutJson,'
       '"drawIdleMa":$drawIdleMa,"drawFullMa":$drawFullMa'
-      '$baseSegsTail}',
+      '$baseSegsTail$baseHarmonyTail}',
     )),
   );
   final shadeSegsTail =
       shadeSegmentsJson != null ? ',"segments":$shadeSegmentsJson' : '';
+  final shadeHarmonyTail = _surfaceTail(
+    autoColors: shadeAutoColors,
+    colorScheme: shadeColorScheme,
+    colorsEditable: shadeColorsEditable,
+  );
   ble.seedSection(
     deviceId,
     'shade',
     Uint8List.fromList(utf8.encode(
       '{"px":$shadePx,"bpp":$shadeBpp,"colors":$shadeColorsJson'
-      '$shadeSegsTail}',
+      '$shadeSegsTail$shadeHarmonyTail}',
     )),
   );
   ble.seedSection(
@@ -111,6 +129,15 @@ Future<void> seedControlBle(
     Uint8List.fromList(utf8.encode(exprcatJson)),
   );
 }
+
+String _surfaceTail({
+  bool? autoColors,
+  int? colorScheme,
+  bool? colorsEditable,
+}) =>
+    '${autoColors != null ? ',"autoColors":$autoColors' : ''}'
+    '${colorScheme != null ? ',"colorScheme":$colorScheme' : ''}'
+    '${colorsEditable != null ? ',"colorsEditable":$colorsEditable' : ''}';
 
 /// A representative catalog matching the shipped firmware descriptors, used
 /// as the default for [seedControlBle]. Structural fields only — the app's

@@ -52,6 +52,8 @@ const inlineAssetsPlugin = () => ({
   },
 })
 
+const lampHost = process.env.LAMP_HOST
+
 export default defineConfig(({ command }) => ({
   define: {
     'import.meta.env.VITE_FW_VERSION': JSON.stringify(readFwVersion()),
@@ -74,6 +76,12 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     open: true,
+    ...(lampHost && {
+      proxy: {
+        '/api': { target: `http://${lampHost}`, changeOrigin: true },
+        '/ws': { target: `ws://${lampHost}`, ws: true, changeOrigin: true },
+      },
+    }),
   },
   build: {
     minify: 'terser',
