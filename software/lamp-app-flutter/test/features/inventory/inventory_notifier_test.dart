@@ -110,4 +110,68 @@ void main() {
     expect(byId['1'], 'a2');
     expect(byId['2'], 'b2');
   });
+
+  group('recordLastSeen', () {
+    Future<ProviderContainer> withLamps(List<InventoryLamp> lamps) async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      await c.read(inventoryNotifierProvider.future);
+      for (final l in lamps) {
+        await c.read(inventoryNotifierProvider.notifier).add(l);
+      }
+      return c;
+    }
+
+    int? seenOf(ProviderContainer c, String id) => c
+        .read(inventoryNotifierProvider)
+        .value!
+        .firstWhere((l) => l.id == id)
+        .lastSeenEpochMs;
+
+    test('writes newer times, keeps older ones, ignores unpaired ids',
+        () async {
+      final c = await withLamps(const [
+        InventoryLamp(id: 'a', name: 'a', lastSeenEpochMs: 5000),
+        InventoryLamp(id: 'b', name: 'b', lastSeenEpochMs: 9000),
+        InventoryLamp(id: 'n', name: 'n'),
+      ]);
+      await c.read(inventoryNotifierProvider.notifier).recordLastSeen(
+          {'a': 7000, 'b': 8000, 'n': 1234, 'stranger': 9999});
+      expect(seenOf(c, 'a'), 7000);
+      expect(seenOf(c, 'b'), 9000);
+      expect(seenOf(c, 'n'), 1234);
+      expect(
+        c.read(inventoryNotifierProvider).value!.map((l) => l.id),
+        ['a', 'b', 'n'],
+      );
+    });
+
+    test('minStep holds back a write until the time moves by the step',
+        () async {
+      final c = await withLamps(const [
+        InventoryLamp(id: 'a', name: 'a', lastSeenEpochMs: 10000),
+      ]);
+      final inv = c.read(inventoryNotifierProvider.notifier);
+      const step = Duration(seconds: 30);
+      await inv.recordLastSeen({'a': 10000 + step.inMilliseconds - 1},
+          minStep: step);
+      expect(seenOf(c, 'a'), 10000);
+      await inv.recordLastSeen({'a': 10000 + step.inMilliseconds},
+          minStep: step);
+      expect(seenOf(c, 'a'), 10000 + step.inMilliseconds);
+    });
+
+    test('persists across a restart', () async {
+      final c1 = ProviderContainer();
+      await c1.read(inventoryNotifierProvider.future);
+      final inv = c1.read(inventoryNotifierProvider.notifier);
+      await inv.add(const InventoryLamp(id: 'a', name: 'a'));
+      await inv.recordLastSeen({'a': 4242});
+      c1.dispose();
+      final c2 = ProviderContainer();
+      addTearDown(c2.dispose);
+      final list = await c2.read(inventoryNotifierProvider.future);
+      expect(list.single.lastSeenEpochMs, 4242);
+    });
+  });
 }

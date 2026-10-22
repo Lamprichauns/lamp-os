@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/uuids.dart';
 import '../../control/domain/lamp_color.dart';
-import 'connect_with_retry.dart';
+import '../../../core/ble/connect_with_retry.dart';
 
 /// Connects to an unclaimed lamp and re-fires a `pulse` test_expression in the
 /// lamp's own shade colour on the BASE strip, so the physical lamp pulses for

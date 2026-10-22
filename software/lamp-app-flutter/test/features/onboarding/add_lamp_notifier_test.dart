@@ -472,9 +472,6 @@ class _HangingBleClient implements BleClient {
   final Set<String> _connected = {};
 
   @override
-  Future<void> prewarm(String deviceId) async {}
-
-  @override
   Future<void> connect(String deviceId) {
     _connectCount++;
     // First connect = the step-0 claim connect; let it succeed. Second
@@ -553,9 +550,6 @@ class _ResetDuringClaimBleClient implements BleClient {
   final Set<String> _connected = {};
 
   @override
-  Future<void> prewarm(String deviceId) async {}
-
-  @override
   Future<void> connect(String deviceId) async {
     _connectCount++;
     if (_connectCount == 1) onFirstConnect();
@@ -613,9 +607,6 @@ class _RecoveringBleClient implements BleClient {
   bool recovered = false;
   int _connectCount = 0;
   final Set<String> _connected = {};
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<void> connect(String deviceId) async {

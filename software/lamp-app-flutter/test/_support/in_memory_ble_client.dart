@@ -71,13 +71,6 @@ class InMemoryBleClient implements BleClient {
   }
 
   @override
-  Future<void> prewarm(String deviceId) async {
-    // No-op for tests. Production tests that want to assert pre-warm
-    // behavior can use `connect()` directly + verify isConnected — the
-    // observable side-effect is the same.
-  }
-
-  @override
   Future<void> disconnect(String deviceId) async {
     _connected.remove(deviceId);
     _ensureConnStream(deviceId).add(false);

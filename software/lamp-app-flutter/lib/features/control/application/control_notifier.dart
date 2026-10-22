@@ -8,10 +8,12 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/ble_client_provider.dart';
+import '../../../core/ble/connect_with_retry.dart';
 import '../../../core/ble/lamp_crypto.dart';
 import '../../../core/ble/uuids.dart';
 import '../../../core/ble/write_coalescer.dart';
 import '../../../core/lifecycle/app_lifecycle.dart';
+import '../../../core/utils/clock.dart';
 import '../../inventory/application/inventory_notifier.dart';
 import '../data/catalog_store.dart';
 import 'advanced_session.dart';
@@ -153,6 +155,7 @@ class ControlNotifier extends _$ControlNotifier {
   // own dispose timing.
   late BleClient _ble;
   late InventoryNotifier _inv;
+  late DateTime Function() _now;
   final _catalogStore = const CatalogStore();
 
   /// RGBW list shape persisted in inventory (and read back by
@@ -249,6 +252,12 @@ class ControlNotifier extends _$ControlNotifier {
     );
   }
 
+  /// A held link hides the lamp from the scan, so the moment it ends is the
+  /// last time the phone saw it.
+  void _recordSeenNow() => unawaited(
+        _inv.recordLastSeen({_deviceId: _now().millisecondsSinceEpoch}),
+      );
+
   /// Coalesces "last-seen color" updates into one trailing disk write.
   /// Used by `setShadeColor` and `setBaseColors` so a continuous slider
   /// drag at 60 fps doesn't translate into 60 SharedPreferences writes
@@ -277,6 +286,7 @@ class ControlNotifier extends _$ControlNotifier {
     // that can fire after this notifier's onDispose has run.
     _ble = ref.read(bleClientProvider);
     _inv = ref.read(inventoryNotifierProvider.notifier);
+    _now = ref.read(clockProvider);
     final ble = _ble;
     final inv = await ref.read(inventoryNotifierProvider.future);
     final lamp = inv.firstWhere(
@@ -284,27 +294,8 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    // Skip the cold GATT connect when a pre-warm has already established
-    // the link (BleClient.prewarm wired into the BLE adv stream; see
-    // nearby_lamps_notifier.dart). Saves the 200-500 ms `device.connect`
-    // handshake + 100-400 ms `discoverServices` round-trip on the
-    // common "user opens app, taps a nearby paired lamp" path. Cold-tap
-    // path (lamp out of range until just before the tap) still pays
-    // those costs normally.
     if (!ble.isConnected(deviceId)) {
-      try {
-        await ble.connect(deviceId);
-      } catch (e) {
-        // ESP32 BLE+WiFi coexistence intermittently drops the
-        // LL_CONNECT_IND handshake, surfacing as Android
-        // HCI_ERR_CONN_FAILED_ESTABLISHMENT (status=133). One quiet
-        // retry with a short backoff smooths over the common transient
-        // case so the user doesn't have to manually retry from the
-        // error page on a routine tap.
-        if (e is LampAuthRequiredException) rethrow;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        await ble.connect(deviceId);
-      }
+      await connectWithRetry(ble, deviceId);
     }
     // Register disconnect only after a successful connect. If connect
     // itself threw, there's nothing to tear down, and registering this
@@ -317,6 +308,7 @@ class ControlNotifier extends _$ControlNotifier {
     // ref.onDispose callbacks are called FIFO; if flush were registered
     // later it would race with the disconnect.
     ref.onDispose(() {
+      _recordSeenNow();
       _flushPendingCommit();
       ble.disconnect(deviceId);
     });
@@ -1715,6 +1707,7 @@ class ControlNotifier extends _$ControlNotifier {
       return;
     }
     if (!isConnected && cur.connected) {
+      _recordSeenNow();
       state = AsyncData(cur.copyWith(connected: false));
       ref.read(advancedSessionProvider(_deviceId).notifier).disable();
       _scheduleReconnect();

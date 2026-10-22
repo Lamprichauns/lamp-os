@@ -8,8 +8,9 @@ part of 'lamp_nearby_peers_notifier.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Per-lamp view of peers the connected lamp can hear. Reads the
-/// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+/// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+/// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+/// (push) and on a slow fallback poll.
 ///
 /// Empty list while loading. Keeps the last-good snapshot on parse
 /// errors and disconnects, only surfaces AsyncError after sustained
@@ -24,8 +25,9 @@ part of 'lamp_nearby_peers_notifier.dart';
 @ProviderFor(LampNearbyPeersNotifier)
 final lampNearbyPeersNotifierProvider = LampNearbyPeersNotifierFamily._();
 
-/// Per-lamp view of peers the connected lamp can hear. Reads the
-/// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+/// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+/// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+/// (push) and on a slow fallback poll.
 ///
 /// Empty list while loading. Keeps the last-good snapshot on parse
 /// errors and disconnects, only surfaces AsyncError after sustained
@@ -39,8 +41,9 @@ final lampNearbyPeersNotifierProvider = LampNearbyPeersNotifierFamily._();
 final class LampNearbyPeersNotifierProvider
     extends
         $AsyncNotifierProvider<LampNearbyPeersNotifier, List<LampNearbyPeer>> {
-  /// Per-lamp view of peers the connected lamp can hear. Reads the
-  /// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+  /// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+  /// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+  /// (push) and on a slow fallback poll.
   ///
   /// Empty list while loading. Keeps the last-good snapshot on parse
   /// errors and disconnects, only surfaces AsyncError after sustained
@@ -89,10 +92,11 @@ final class LampNearbyPeersNotifierProvider
 }
 
 String _$lampNearbyPeersNotifierHash() =>
-    r'b9be24ab21434a8992d3a3032282144636497418';
+    r'e88697ff31a3f21d8dd638af047140e69e680064';
 
-/// Per-lamp view of peers the connected lamp can hear. Reads the
-/// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+/// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+/// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+/// (push) and on a slow fallback poll.
 ///
 /// Empty list while loading. Keeps the last-good snapshot on parse
 /// errors and disconnects, only surfaces AsyncError after sustained
@@ -122,8 +126,9 @@ final class LampNearbyPeersNotifierFamily extends $Family
         isAutoDispose: true,
       );
 
-  /// Per-lamp view of peers the connected lamp can hear. Reads the
-  /// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+  /// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+  /// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+  /// (push) and on a slow fallback poll.
   ///
   /// Empty list while loading. Keeps the last-good snapshot on parse
   /// errors and disconnects, only surfaces AsyncError after sustained
@@ -142,8 +147,9 @@ final class LampNearbyPeersNotifierFamily extends $Family
   String toString() => r'lampNearbyPeersNotifierProvider';
 }
 
-/// Per-lamp view of peers the connected lamp can hear. Reads the
-/// `nearby` page-protocol section from CHAR_NEARBY_LAMPS every 5 s.
+/// Per-lamp view of peers the connected lamp can hear. Reads the `nearby`
+/// page-protocol section, re-reading when stateNotify's `nearbyRev` bumps
+/// (push) and on a slow fallback poll.
 ///
 /// Empty list while loading. Keeps the last-good snapshot on parse
 /// errors and disconnects, only surfaces AsyncError after sustained

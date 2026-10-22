@@ -45,9 +45,6 @@ class NetworkDevBleClient implements BleClient {
   int mtu(String deviceId) => 0;
 
   @override
-  Future<void> prewarm(String deviceId) async {}
-
-  @override
   Future<Uint8List> read(String deviceId, String serviceUuid, String charUuid) async {
     final r = await _t.request('GET', '/read/$deviceId/$serviceUuid/$charUuid');
     if (!r.ok) _throw(deviceId, r);

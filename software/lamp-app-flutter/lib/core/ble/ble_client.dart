@@ -150,14 +150,6 @@ abstract class BleClient {
   Future<void> disconnect(String deviceId);
   bool isConnected(String deviceId);
 
-  /// Best-effort: open a GATT connection to [deviceId] and prime the
-  /// service-handle cache so a later [connect] / first op skips cold-connect
-  /// latency. Fire-and-forget from the adv stream; failures are swallowed and
-  /// an already-connected / in-flight device is a no-op. Implementations MUST
-  /// keep at most ONE prewarm in flight across all device ids: it holds the
-  /// lamp's peripheral and degrades mesh airtime, so fanning out hurts the fleet.
-  Future<void> prewarm(String deviceId) async {}
-
   /// Best-effort current negotiated ATT MTU for [deviceId], or 0 if
   /// unknown (not connected yet, negotiation still in flight, or the
   /// transport doesn't expose one). Callers must treat 0 as "fall back

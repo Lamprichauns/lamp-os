@@ -12,12 +12,12 @@ part of 'scan_grace_provider.dart';
 /// provider, then `false` for as long as a watcher stays mounted.
 ///
 /// Auto-dispose so the Timer is torn down together with the widgets
-/// that care about it — without this, widget tests (which sync-dispose
+/// that care about it. Without this, widget tests (which sync-dispose
 /// the container after the test body returns) would trip on
 /// `!timersPending`. The trade-off is that if every watcher unmounts
-/// and a new one mounts later, the grace re-arms — that mirrors the
-/// user-facing intent: "we just opened a list, give a beat to hear
-/// in-range lamps before flagging them offline."
+/// and a new one mounts later, the grace re-arms; that mirrors the
+/// user-facing intent: a list just opened, give a beat to hear
+/// in-range lamps before flagging them offline.
 
 @ProviderFor(ScanGraceActive)
 final scanGraceActiveProvider = ScanGraceActiveProvider._();
@@ -26,24 +26,24 @@ final scanGraceActiveProvider = ScanGraceActiveProvider._();
 /// provider, then `false` for as long as a watcher stays mounted.
 ///
 /// Auto-dispose so the Timer is torn down together with the widgets
-/// that care about it — without this, widget tests (which sync-dispose
+/// that care about it. Without this, widget tests (which sync-dispose
 /// the container after the test body returns) would trip on
 /// `!timersPending`. The trade-off is that if every watcher unmounts
-/// and a new one mounts later, the grace re-arms — that mirrors the
-/// user-facing intent: "we just opened a list, give a beat to hear
-/// in-range lamps before flagging them offline."
+/// and a new one mounts later, the grace re-arms; that mirrors the
+/// user-facing intent: a list just opened, give a beat to hear
+/// in-range lamps before flagging them offline.
 final class ScanGraceActiveProvider
     extends $NotifierProvider<ScanGraceActive, bool> {
   /// `true` for [_scanGrace] from the moment something first watches this
   /// provider, then `false` for as long as a watcher stays mounted.
   ///
   /// Auto-dispose so the Timer is torn down together with the widgets
-  /// that care about it — without this, widget tests (which sync-dispose
+  /// that care about it. Without this, widget tests (which sync-dispose
   /// the container after the test body returns) would trip on
   /// `!timersPending`. The trade-off is that if every watcher unmounts
-  /// and a new one mounts later, the grace re-arms — that mirrors the
-  /// user-facing intent: "we just opened a list, give a beat to hear
-  /// in-range lamps before flagging them offline."
+  /// and a new one mounts later, the grace re-arms; that mirrors the
+  /// user-facing intent: a list just opened, give a beat to hear
+  /// in-range lamps before flagging them offline.
   ScanGraceActiveProvider._()
     : super(
         from: null,
@@ -77,12 +77,12 @@ String _$scanGraceActiveHash() => r'f9a29e1a45a1e86abff53cbed6b6bf4b5cb4df8b';
 /// provider, then `false` for as long as a watcher stays mounted.
 ///
 /// Auto-dispose so the Timer is torn down together with the widgets
-/// that care about it — without this, widget tests (which sync-dispose
+/// that care about it. Without this, widget tests (which sync-dispose
 /// the container after the test body returns) would trip on
 /// `!timersPending`. The trade-off is that if every watcher unmounts
-/// and a new one mounts later, the grace re-arms — that mirrors the
-/// user-facing intent: "we just opened a list, give a beat to hear
-/// in-range lamps before flagging them offline."
+/// and a new one mounts later, the grace re-arms; that mirrors the
+/// user-facing intent: a list just opened, give a beat to hear
+/// in-range lamps before flagging them offline.
 
 abstract class _$ScanGraceActive extends $Notifier<bool> {
   bool build();
