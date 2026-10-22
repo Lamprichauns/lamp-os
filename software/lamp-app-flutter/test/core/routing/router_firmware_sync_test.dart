@@ -3,12 +3,15 @@
 // to fake the docs directory.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lamp_app/core/routing/router.dart';
+import 'package:lamp_app/features/firmware/application/cached_firmware_notifier.dart';
+import 'package:lamp_app/features/firmware/data/cached_firmware.dart';
 import 'package:lamp_app/features/firmware/data/firmware_release_client.dart';
 import 'package:lamp_app/features/firmware/data/firmware_release_client_provider.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
@@ -54,6 +57,46 @@ void main() {
       await pumpEventQueue();
     }
     expect(client.calls, FirmwareChannel.values.length);
+  });
+
+  test('an empty first inventory is the launch: a lamp adopted later whose '
+      'variant is already cached fetches nothing', () async {
+    final cacheDir = Directory('${tempDir.path}/firmware-cache')..createSync();
+    File(
+      '${cacheDir.path}/lamp-firmware-snafu-stable-signed.bin',
+    ).writeAsBytesSync(Uint8List(8));
+    File(
+      '${cacheDir.path}/lamp-firmware-snafu-stable.meta.json',
+    ).writeAsStringSync(
+      jsonEncode(
+        const CachedFirmware(
+          lampType: 'snafu',
+          channel: FirmwareChannel.stable,
+          version: 0x00010203,
+          byteLength: 8,
+          fetchedAtMs: 0,
+        ).toJson(),
+      ),
+    );
+    final client = _CountingReleaseClient();
+    final inventory = _FakeInventory(const []);
+    final container = ProviderContainer(
+      overrides: [
+        inventoryNotifierProvider.overrideWith(() => inventory),
+        firmwareReleaseClientProvider.overrideWithValue(client),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(appRouterProvider);
+    await container.read(inventoryNotifierProvider.future);
+    await pumpEventQueue();
+    inventory.emit(const [
+      InventoryLamp(id: 'b', name: 'b', lampType: 'snafu'),
+    ]);
+    await container.read(cachedFirmwareNotifierProvider.future);
+    await pumpEventQueue();
+    expect(client.calls, 0);
   });
 }
 
