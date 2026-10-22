@@ -5,6 +5,18 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Fixed
+- **Wisp paints black and warm white.** A lamp the wisp paints black, or warm
+  white with no colour in it, takes that paint instead of dropping back to its
+  own colours, and warm white from a wisp palette now reaches the lamps. Black
+  needs only the wisp updated. Warm white needs both the wisp and the lamp on
+  the new firmware: an older lamp ignores the warm white and shows only the
+  colour part (so warm white alone shows as black), and an older wisp sends
+  none. The app's painted-lamps preview still shows colour only, so a lamp
+  painted black or warm white only appears there with its predicted colour.
+
 ## 1.2.9
 
 ### Added
