@@ -68,7 +68,7 @@ void StatusEmitter::pollConfig() {
   configPollDue_.store(true, std::memory_order_relaxed);
 }
 
-void StatusEmitter::pump() {
+bool StatusEmitter::pump() {
   checkConnEdges();
   const uint32_t now = millis();
   if (configPollDue_.exchange(false, std::memory_order_relaxed)) {
@@ -94,13 +94,15 @@ void StatusEmitter::pump() {
       const size_t n = buildConfig(configJson, sizeof(configJson));
       configCadence_.onStatusEmitted(
           now, fnv1a(reinterpret_cast<const uint8_t*>(configJson), n));
-      return;
+      return true;
     }
   }
   if (configCadence_.configDue(now)) {
     configCadence_.onConfigEmitted(now);
     emitConfig();
+    return true;
   }
+  return false;
 }
 
 void StatusEmitter::checkConnEdges() {

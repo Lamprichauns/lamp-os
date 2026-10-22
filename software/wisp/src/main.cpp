@@ -180,8 +180,7 @@ void loop() {
   serialConsole.pump();
   meshRouter.drainPendingOps();
   // Beacon work runs here on the 8KB loop stack; the FreeRTOS timers only flag.
-  presenceBeacon.pump();
-  statusEmitter.pump();
+  presenceBeacon.pump(statusEmitter.pump());
   // Claims are consumed on the 2 s broadcast tick; recompute at the same cadence.
   if (now - lastClaimsMs >= 2000) {
     lastClaimsMs = now;

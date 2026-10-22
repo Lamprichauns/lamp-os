@@ -57,8 +57,8 @@ class StatusEmitter {
   void pollConfig();
 
   // Runs the due wispStatus / wispConfig emit on the loop task. Cheap when
-  // nothing is due.
-  void pump();
+  // nothing is due. True when it broadcast this pass.
+  bool pump();
 
  private:
   // wifi connectivity flips flag an emit. Loop task only.

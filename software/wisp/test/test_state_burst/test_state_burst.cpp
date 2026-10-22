@@ -4,9 +4,12 @@
 //   - no window (burstUntilMs == 0) is never due,
 //   - inside the window a copy is due only after intervalMs since the last emit,
 //   - a closed window (now past burstUntilMs) is never due.
+// stateTickOffsetMs maps a random word to the tick STATE's delay after the
+// HELLO, covering [kStateOffsetMinMs, kStateOffsetMaxMs] evenly.
 
 #include <unity.h>
 
+#include <array>
 #include <cstdint>
 
 #include "status/presence_beacon.hpp"
@@ -37,6 +40,30 @@ void test_closed_window_not_due(void) {
   TEST_ASSERT_FALSE(wisp::stateBurstDue(3500, 3000, 100, kInterval));
 }
 
+constexpr uint32_t kOffsetSpan = wisp::kStateOffsetMaxMs - wisp::kStateOffsetMinMs + 1;
+
+void test_offset_stays_in_window(void) {
+  const uint32_t words[] = {0u, 1u, 599u, 600u, 601u, 12345u, 0x7FFFFFFFu,
+                            0x80000000u, 0xFFFFFFFEu, 0xFFFFFFFFu};
+  for (uint32_t w : words) {
+    const uint32_t off = wisp::stateTickOffsetMs(w);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(wisp::kStateOffsetMinMs, off);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(wisp::kStateOffsetMaxMs, off);
+  }
+}
+
+void test_offset_covers_window_evenly(void) {
+  std::array<uint32_t, kOffsetSpan> hits{};
+  const uint32_t base = 0x9E3779B9u;
+  for (uint32_t i = 0; i < 2 * kOffsetSpan; ++i) {
+    const uint32_t off = wisp::stateTickOffsetMs(base + i);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(wisp::kStateOffsetMinMs, off);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(wisp::kStateOffsetMaxMs, off);
+    ++hits[off - wisp::kStateOffsetMinMs];
+  }
+  for (uint32_t h : hits) TEST_ASSERT_EQUAL_UINT32(2, h);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -46,5 +73,7 @@ int main(int, char**) {
   RUN_TEST(test_open_window_too_soon_not_due);
   RUN_TEST(test_interval_boundary_is_due);
   RUN_TEST(test_closed_window_not_due);
+  RUN_TEST(test_offset_stays_in_window);
+  RUN_TEST(test_offset_covers_window_evenly);
   return UNITY_END();
 }

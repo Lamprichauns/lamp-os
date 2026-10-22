@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include <esp_random.h>
+
 #include <cstring>
 
 #include "paint/current_palette.hpp"
@@ -51,26 +53,30 @@ void PresenceBeacon::startTimer() {
   }
 }
 
-void PresenceBeacon::pump() {
+void PresenceBeacon::pump(bool fatFrameSentThisPass) {
   const uint32_t now = millis();
-  serviceResends(now);
-  bool emittedThisPump = false;
+  bool passBusy = serviceResends(now) || fatFrameSentThisPass;
   if (helloDue_.exchange(false, std::memory_order_relaxed)) {
     emit();
-    emittedThisPump = true;
+    passBusy = true;
   }
   if (paint_ && paint_->consumeStateDirty()) {
     stateBurstUntilMs_ = now + kStateBurstMs;
     emitStateEvent();
-  } else if (!emittedThisPump && stateBurstUntilMs_ != 0) {
-    // Skip the pump that already ran a tick emit so a burst STATE never lands
-    // in the same loop pass as the HELLO/CLAIM/STATE fat frames.
+    passBusy = true;
+  } else if (!passBusy && stateBurstUntilMs_ != 0) {
     if (stateBurstDue(now, stateBurstUntilMs_, lastStateEmitMs_,
                       kStateBurstIntervalMs)) {
       emitStateEvent();
+      passBusy = true;
     } else if (static_cast<int32_t>(now - stateBurstUntilMs_) >= 0) {
       stateBurstUntilMs_ = 0;
     }
+  }
+  if (!passBusy && statePending_ &&
+      static_cast<int32_t>(now - stateDueMs_) >= 0) {
+    statePending_ = false;
+    emitStateEvent();
   }
 }
 
@@ -134,15 +140,13 @@ void PresenceBeacon::emit() {
   mesh_->broadcast(buf, n);
   queueResend(buf, n, kHelloResends, millis());
 
-  // Alternate the two fat full-set frames so they never collide on the single
-  // core: claim on odd ticks, state on even ticks (each every 4s).
   const uint32_t t = beaconTick_++;
   if (roster_) {
-    if (t % 2 == 1) {
-      emitClaim(srcMac);
-    } else {
-      emitState(srcMac, flags);
-    }
+    if (t % 2 == 1) emitClaim(srcMac);
+    // A fixed phase behind the HELLO beats against a lamp's periodic deaf
+    // window and loses whole runs of STATEs; a random offset spreads them.
+    statePending_ = true;
+    stateDueMs_ = millis() + stateTickOffsetMs(esp_random());
   }
 
   // WiFi/source-live flips would otherwise wait up to 30s for the wispStatus
@@ -197,7 +201,7 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
       presenceFlags, stateCount > 0 ? stateEntries : nullptr,
       static_cast<uint8_t>(stateCount));
   // No resend: at up to 1459 B STATE overflows the paint-sized resend slot.
-  // Edge coverage comes from the burst window in pump(); the 4s cadence backs
+  // Edge coverage comes from the burst window in pump(); the 2s cadence backs
   // both up.
   if (stateLen) {
     mesh_->broadcast(stateBuf, stateLen);
@@ -218,15 +222,18 @@ void PresenceBeacon::queueResend(const uint8_t* frame, size_t len,
   s.nextMs = now + kResendGapMs;
 }
 
-void PresenceBeacon::serviceResends(uint32_t now) {
-  if (!mesh_) return;
+bool PresenceBeacon::serviceResends(uint32_t now) {
+  if (!mesh_) return false;
+  bool sent = false;
   for (ResendSlot& s : resends_) {
     if (s.remaining == 0) continue;
     if (static_cast<int32_t>(now - s.nextMs) < 0) continue;
     mesh_->broadcast(s.frame, s.len);
     --s.remaining;
     s.nextMs += kResendGapMs;
+    sent = true;
   }
+  return sent;
 }
 
 }  // namespace wisp

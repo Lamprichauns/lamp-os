@@ -1,12 +1,14 @@
 // PresenceBeacon broadcasts wisp presence on a 2s FreeRTOS timer.
 //
-// MSG_WISP_HELLO fires every 2s tick; the fat full-set MSG_WISP_CLAIM and
-// MSG_WISP_STATE frames alternate on odd/even ticks so two fat frames never
-// fire in the same tick on the single core. STATE is the sole paint render
-// path (per-lamp colors), so a paint-mode edge also emits STATE out of cadence
-// via PaintDistributor's dirty flag, then re-emits it a few times over a short
+// MSG_WISP_HELLO fires every 2s tick, with the fat full-set MSG_WISP_CLAIM on
+// odd ticks. The fat full-set MSG_WISP_STATE goes out every tick at a random
+// offset after the HELLO, in a loop pass of its own, so a lamp's periodic deaf
+// window cannot phase-lock against it and two fat frames never go out in one
+// pass on the single core. STATE is the sole paint render path (per-lamp
+// colors), so a paint-mode edge also emits STATE out of cadence via
+// PaintDistributor's dirty flag, then re-emits it a few times over a short
 // burst window so the take/release edge survives a coex drop instead of waiting
-// on the 4s re-cover. A WiFi/source-live flag flip triggers
+// on the 2s re-cover. A WiFi/source-live flag flip triggers
 // StatusEmitter's on-change path so the app sees it within 2s rather than
 // waiting on the 30s heartbeat. The timer only flags the emit due; pump() runs
 // the build + broadcast on the loop task, off the 2KB timer stack.
@@ -50,6 +52,15 @@ inline bool stateBurstDue(uint32_t now, uint32_t burstUntilMs,
   return (now - lastStateEmitMs) >= intervalMs;
 }
 
+constexpr uint32_t kStateOffsetMinMs = 200;
+constexpr uint32_t kStateOffsetMaxMs = 800;
+
+// Maps a raw random word to the tick STATE's delay after the HELLO, uniform
+// over [kStateOffsetMinMs, kStateOffsetMaxMs].
+inline uint32_t stateTickOffsetMs(uint32_t random) {
+  return kStateOffsetMinMs + random % (kStateOffsetMaxMs - kStateOffsetMinMs + 1);
+}
+
 class PresenceBeacon {
  public:
   void begin(MeshLink* mesh, PaintDistributor* paint, CurrentPalette* palette,
@@ -60,11 +71,13 @@ class PresenceBeacon {
   // Call once after begin().
   void startTimer();
 
-  // Runs the due HELLO emit on the loop task. Cheap when nothing is due.
-  void pump();
+  // Runs the due HELLO / CLAIM / STATE emits on the loop task. Pass true when
+  // another emitter already broadcast a fat frame this loop pass, so the tick
+  // STATE waits for a free pass. Cheap when nothing is due.
+  void pump(bool fatFrameSentThisPass);
 
  private:
-  void emit();                              // HELLO every 2s + alternating claim/state
+  void emit();                              // HELLO every 2s + claim on odd ticks
   void emitClaim(const uint8_t srcMac[6]);  // full-set MSG_WISP_CLAIM
   // full-set MSG_WISP_STATE; presenceFlags carries the same WISP_HELLO_FLAG_*
   // bits computed for the HELLO this tick. Packs color entries only while
@@ -79,7 +92,8 @@ class PresenceBeacon {
   // apart: an unacked broadcast has no retry, so a receiver whose scan-listen
   // gap swallows one copy still catches another. Dedup collapses them to one.
   void queueResend(const uint8_t* frame, size_t len, uint8_t copies, uint32_t now);
-  void serviceResends(uint32_t now);
+  // True when it broadcast a resend copy.
+  bool serviceResends(uint32_t now);
 
   MeshLink* mesh_ = nullptr;
   PaintDistributor* paint_ = nullptr;
@@ -98,8 +112,12 @@ class PresenceBeacon {
   bool lastHelloSourceLive_ = false;
   bool haveLastHelloConn_   = false;
 
-  // 2s-tick counter driving the phased claim/paint sub-multiples.
+  // 2s-tick counter driving the odd-tick claim.
   uint32_t beaconTick_ = 0;
+
+  // The tick STATE scheduled by emit(), sent from a later pump() pass.
+  bool     statePending_ = false;
+  uint32_t stateDueMs_   = 0;
 
   // Elevated-rate STATE window opened on a paint-mode edge. 0 when closed.
   uint32_t stateBurstUntilMs_ = 0;
@@ -113,8 +131,8 @@ class PresenceBeacon {
     uint8_t  remaining = 0;
     uint32_t nextMs = 0;
   };
-  // HELLO + at most one alternating fat frame emit per tick, so 3 slots never
-  // collide before the resends drain well within the 2s cadence.
+  // HELLO + at most one CLAIM per tick, so 3 slots never collide before the
+  // resends drain well within the 2s cadence.
   static constexpr size_t   kResendSlots  = 3;
   static constexpr uint8_t  kHelloResends = 2;
   static constexpr uint8_t  kFatResends   = 1;
@@ -125,8 +143,8 @@ class PresenceBeacon {
   static constexpr uint32_t kHelloIntervalMs = 2000;
   // STATE edge-burst: emit a few extra copies over kStateBurstMs, spaced
   // kStateBurstIntervalMs apart. Too short/sparse and a take/release edge lost
-  // to coex waits the full 4s re-cover; too long/dense wastes air against the
-  // alternating fat frames on the single core.
+  // to coex waits the full 2s re-cover; too long/dense wastes air against the
+  // tick fat frames on the single core.
   static constexpr uint32_t kStateBurstMs         = 2000;
   static constexpr uint32_t kStateBurstIntervalMs = 700;
   // Follows the root VERSION file (injected as LAMP_FW_* by inject_version.py).
