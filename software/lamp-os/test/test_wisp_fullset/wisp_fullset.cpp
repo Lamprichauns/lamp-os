@@ -154,10 +154,14 @@ void test_state_globals_survive_independent_of_count() {
 }
 
 void test_state_over_cap_rejected() {
-  uint8_t entries[lp::WISP_STATE_ENTRY_SIZE] = {0};
-  uint8_t buf[lp::WISP_STATE_MAX_SIZE];
+  // Inputs and buffer hold count+1 entries with W, so only the count cap rejects.
+  constexpr size_t kOver = lp::WISP_STATE_MAX_ENTRIES + 1;
+  uint8_t entries[kOver * lp::WISP_STATE_ENTRY_SIZE] = {0};
+  uint8_t w[kOver * lp::WISP_STATE_W_SIZE] = {0};
+  uint8_t buf[lp::WISP_STATE_FIXED_PREFIX +
+              kOver * (lp::WISP_STATE_ENTRY_SIZE + lp::WISP_STATE_W_SIZE)];
   const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 0, 0, 0, entries,
-                                      nullptr, lp::WISP_STATE_MAX_ENTRIES + 1);
+                                      w, kOver);
   TEST_ASSERT_EQUAL_UINT32(0, n);
 }
 
