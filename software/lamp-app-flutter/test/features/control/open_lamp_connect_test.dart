@@ -2,6 +2,7 @@
 // the user's session records when the phone last saw the lamp.
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_support/in_memory_ble_client.dart';
 import '../../_support/seed.dart';
 import 'package:lamp_app/core/ble/ble_client_provider.dart';
+import 'package:lamp_app/core/lifecycle/app_lifecycle.dart';
 import 'package:lamp_app/core/utils/clock.dart';
 import 'package:lamp_app/features/control/application/control_notifier.dart';
 import 'package:lamp_app/features/inventory/application/inventory_notifier.dart';
@@ -309,6 +311,53 @@ void main() {
       async.elapse(const Duration(minutes: 1));
 
       expect(ble.isConnected(_devId), isFalse);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('leaving while a save waits on the reboot leaves no link behind', () {
+    fakeAsync((async) {
+      final ble = _FlakyConnectClient(0)..elapsed = () => async.elapsed;
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 1));
+      expect(c.read(controlNotifierProvider(_devId)).value?.connected, isTrue);
+
+      ble.connectTakes = const Duration(seconds: 8);
+      final attemptsBefore = ble.attemptsAt.length;
+      c.read(controlNotifierProvider(_devId).notifier).setLampPassword('pw');
+      async.elapse(const Duration(seconds: 3));
+      expect(ble.attemptsAt.length, greaterThan(attemptsBefore),
+          reason: 'the post-save reconnect is mid-connect');
+      sub.close();
+      async.elapse(const Duration(minutes: 1));
+
+      expect(ble.isConnected(_devId), isFalse);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('backgrounding the app records an open lamp as seen', () {
+    fakeAsync((async) {
+      var now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final ble = InMemoryBleClient();
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble, clock: () => now);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 1));
+
+      now = now.add(const Duration(minutes: 10));
+      c
+          .read(appLifecycleStateProvider.notifier)
+          .set(AppLifecycleState.paused);
+      async.flushMicrotasks();
+
+      final lamp = c.read(inventoryNotifierProvider).value!.single;
+      expect(lamp.lastSeenEpochMs, now.millisecondsSinceEpoch);
+      sub.close();
       c.dispose();
       async.flushTimers();
     });

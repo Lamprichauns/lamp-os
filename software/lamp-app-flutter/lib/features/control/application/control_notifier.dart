@@ -492,6 +492,7 @@ class ControlNotifier extends _$ControlNotifier {
       }
       if (next == AppLifecycleState.paused) {
         _flushPendingCommit();
+        if (ble.isConnected(deviceId)) _recordSeenNow();
       }
     });
 
