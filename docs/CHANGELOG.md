@@ -14,6 +14,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **The app no longer connects to lamps in the background.** My Lamps doesn't
   open a link to every paired lamp it hears; the app connects only to the lamp
   you open.
+- **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
+  drop back to their own colours for a minute or two at a time. The wisp now
+  sends its colour updates twice as often and at a varying moment, so a lamp
+  that kept missing them at one fixed moment catches them.
 
 ### Changed
 - **My Lamps lists the lamps around you.** A paired lamp the phone can't hear

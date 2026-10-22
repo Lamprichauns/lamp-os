@@ -149,7 +149,7 @@ header(6) + sourceMac(6) + count(1) + entries[count*7]
   entry: lampMac(6) + int8 rssi(1)
 = 13..713 bytes  (count ≤ kMaxWispClaimEntries = 100)
 ```
-- **Sender**: wisp(s) only, on a sub-multiple of the 2 s presence tick. The two fat full-set frames alternate one per tick so two never collide on the single core: `CLAIM` on odd ticks, `MSG_WISP_STATE` on even ticks (each every ~4 s). A paint-mode edge also emits `MSG_WISP_STATE` out of cadence for a prompt on/off. No gossip relay (direct radio range only).
+- **Sender**: wisp(s) only, keyed to the 2 s presence tick. `CLAIM` goes out with the HELLO on odd ticks (every ~4 s). `MSG_WISP_STATE` goes out every tick (~2 s) at a random 200 to 800 ms offset after the HELLO, in a loop pass of its own, so two fat frames never go out in one pass on the single core (see `MSG_WISP_STATE` cadence). A paint-mode edge also emits `MSG_WISP_STATE` out of cadence for a prompt on/off. No gossip relay (direct radio range only).
 - **Full-set frame**: one v2 frame carries the whole claim set (up to `LampInventory::MAX_LAMPS` = 100 = the receiver's `WispFleetCache` capacity), so every claimed lamp refreshes each tick — no windowing, no rotation cursor. Past 100 claimed the extras are truncated cleanly (unreachable on one wisp).
 - **Admission**: a wisp claims every lamp it directly hears (a real RSSI measurement). Lamps it never hears itself are never claimed.
 - **Arbitration**: peer entries age out after 10 s of silence; ±5 dB RSSI hysteresis with last-owner stickiness; lower MAC wins a simultaneous-claim tiebreak.
@@ -175,8 +175,9 @@ presenceFlags(1) + count(1) + entries[count*12]
 = 19..1459 bytes  (count ≤ WISP_STATE_MAX_ENTRIES = 120)
 ```
 - **Sender**: wisp(s) only. In Off (paint disabled), and in Osc mode while the stream is stale, the wisp packs zero entries, so every claimed lamp finds its MAC absent and eases home. No gossip relay (direct radio range only); it re-covers the whole claimed set on its own cadence.
-- **Off / presence**: presence holds while STATE from the display wisp keeps naming this lamp. A fresh STATE that drops the lamp eases it home now; total STATE silence ages presence out after `kWispStateFreshMs` (60 s) as a failsafe. A paint-mode edge emits STATE out of cadence so on/off lands within a frame or two, not up to one steady tick.
-- **Cadence**: on even presence ticks (every ~4 s), alternating with `MSG_WISP_CLAIM` (odd ticks) so the single core never sends two fat frames back-to-back. No resend ring: at up to 1459 B it overflows the claim-sized resend slot. Edge coverage instead comes from a burst window (`kStateBurstMs` ≈ 2 s, `kStateBurstIntervalMs` ≈ 700 ms in `presence_beacon.hpp`): a paint-mode edge re-emits STATE a few times over ~2 s so a take/release lost to coex is caught without waiting the full 4 s re-cover. Burst emits skip any pump that already ran a tick frame, so they never collide with the alternating HELLO/CLAIM/STATE on the single core; the 4 s re-cover remains the backstop.
+- **Off / presence**: presence holds while STATE from the display wisp keeps naming this lamp. A fresh STATE that drops the lamp eases it home now; total STATE silence ages presence out after `kWispStateFreshMs` (60 s) as a failsafe. A paint-mode edge emits STATE out of cadence, on the next free loop pass, so on/off lands within a frame or two of the change.
+- **Cadence**: every presence tick (~2 s), at a uniformly random offset after the HELLO, drawn fresh each tick (`stateTickOffsetMs` over `kStateOffsetMinMs`..`kStateOffsetMaxMs`, 200 to 800 ms, in `presence_beacon.hpp`), so a receiver's periodic deaf window cannot phase-lock against a fixed send time. `PresenceBeacon::emit()` schedules it in a `TickStateSchedule` that holds one pending STATE: a STATE still unsent when the next HELLO fires is replaced by that tick's. No resend ring: at up to 1459 B it overflows the claim-sized resend slot. Edge coverage instead comes from a burst window (`kStateBurstMs` ≈ 2 s, `kStateBurstIntervalMs` ≈ 700 ms in `presence_beacon.hpp`): a paint-mode edge re-emits STATE a few times over ~2 s so a take/release lost to coex is caught without waiting the full 2 s re-cover, which remains the backstop.
+- **One fat frame per loop pass**: every STATE (paint-edge, burst copy and steady tick) waits in `PresenceBeacon::pump()` (`nextStateSend`) for a loop pass that sent no other fat frame: no HELLO, no CLAIM, no resend copy, and no `StatusEmitter::pump()` emit (wispStatus with its `MSG_WISP_PALETTE`, or wispConfig; `pump()` returns whether it ran one of those emits, and `loop()` passes that in). At most one STATE goes out per pass, the edge first, then a due burst copy, then the steady tick STATE, which waits for the next free pass when one of the others takes this one.
 - **Per-frame globals**: `brightness` (space brightness), `driftRateMs` (drift interval, matches `WispConfig::driftIntervalMs`), `presenceFlags` (the same bitfield as this tick's `MSG_WISP_HELLO` flags, incl `WISP_HELLO_FLAG_PAINT_MODE`).
 - **Encoding**: raw R, G, B per surface (base, shade); W dropped.
 - **Full-set frame**: one v2 frame carries the whole claimed set (up to 120 = `WISP_STATE_MAX_ENTRIES`); no windowing. Past 120 the extras truncate cleanly.
@@ -369,7 +370,7 @@ surface is Base/Shade/BaseAndShade (0x01/0x02/0x03); any other value,
 
 `brightness` is a relative factor: output = min(baseline, max(baseline × factor / 100, 20)), where baseline is the lamp's own current effective brightness. It scales, never raises: a lamp already below 20% is left as-is. The floor is a 20% output clamp enforced lamp-side at apply, so a forged factor=0 frame still lands at 20% output — nothing blacks out a space.
 
-Source-gate: a lamp accepts a brightness override only from the wisp that currently claims it (fresh `MSG_WISP_CLAIM` in the display slot). The wisp broadcasts claims every heartbeat in every source mode incl Off, so the gate holds even when the wisp paints no colors. A rogue broadcaster cannot dim your lamps. The wisp re-asserts brightness by walking its claimed lamps with unicast `MSG_OVERRIDE_BRIGHTNESS` on a cadence under the 60 s override watchdog, plus an immediate walk when the operator moves the slider.
+Source-gate: a lamp accepts a brightness override only from the wisp that currently claims it (fresh `MSG_WISP_CLAIM` in the display slot). The wisp broadcasts claims every other 2 s presence tick (~4 s) in every source mode incl Off, so the gate holds even when the wisp paints no colors. A rogue broadcaster cannot dim your lamps. The wisp re-asserts brightness by walking its claimed lamps with unicast `MSG_OVERRIDE_BRIGHTNESS` on a cadence under the 60 s override watchdog, plus an immediate walk when the operator moves the slider.
 
 **`MSG_RESTORE_BRIGHTNESS` (0x24)**, Drop brightness override.
 ```
@@ -560,7 +561,7 @@ wisp                                mesh                    lamp
   │   (event-driven)                  │                       │   ease home now
 ```
 
-In steady manual mode STATE re-covers the whole claimed set every ~4 s, well
+In steady manual mode STATE re-covers the whole claimed set every ~2 s, well
 inside the `kWispStateFreshMs` (60 s) failsafe. The failsafe firing is the
 silent-wisp path — a wisp that has actually gone away — not the normal hold.
 An Off (or unclaim) eases the lamp home the moment the first fresh STATE omits
