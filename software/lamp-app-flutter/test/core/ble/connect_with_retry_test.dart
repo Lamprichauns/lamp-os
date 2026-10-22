@@ -14,9 +14,13 @@ class _CountingClient extends InMemoryBleClient {
   /// MTU request fails does.
   bool failsAfterLinking = false;
 
+  /// Runs while an attempt is in flight.
+  void Function()? whileConnecting;
+
   @override
   Future<void> connect(String deviceId) async {
     connects++;
+    whileConnecting?.call();
     if (failures > 0) {
       failures--;
       if (failsAfterLinking) await super.connect(deviceId);
@@ -83,17 +87,11 @@ void main() {
 
   test('a link that lands after the abort is dropped', () {
     fakeAsync((async) {
-      final ble = _CountingClient(0);
       var abort = false;
+      final ble = _CountingClient(0)..whileConnecting = () => abort = true;
       bool? result;
-      // The abort turns true while the attempt is in flight.
-      final pending =
-          connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () {
-        final now = abort;
-        abort = true;
-        return now;
-      });
-      pending.then((r) => result = r);
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () => abort)
+          .then((r) => result = r);
       async.flushMicrotasks();
       expect(result, isFalse);
       expect(ble.disconnects, 1);
@@ -103,17 +101,14 @@ void main() {
 
   test('a late link stays up when a later connect has claimed the lamp', () {
     fakeAsync((async) {
-      final ble = _CountingClient(0);
       var abort = false;
       // The user leaves while the attempt is in flight and re-opens the lamp.
-      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () {
-        if (!abort) {
-          abort = true;
-          return false;
-        }
+      final ble = _CountingClient(0);
+      ble.whileConnecting = () {
+        abort = true;
         ble.claimLink('x', Object());
-        return true;
-      });
+      };
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () => abort);
       async.flushMicrotasks();
       expect(ble.disconnects, 0);
       expect(ble.isConnected('x'), isTrue);
