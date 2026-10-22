@@ -25,6 +25,7 @@
 #include <cstring>
 
 #include "fleet/wisp_roster.hpp"
+#include "paint/paint_distributor.hpp"
 #include "wire/lamp_protocol.hpp"
 
 namespace {
@@ -708,6 +709,65 @@ void test_snapshot_state_carries_w_plane(void) {
   TEST_ASSERT_EQUAL_UINT8(0x44, out.entries[y * 12 + 9]);
 }
 
+void test_store_tuple_paint_carries_w(void) {
+  wisp::WispRoster r;
+  r.setSelfMac(kSelfMac);
+  auto lamp = obs(kLampX, -60);
+  r.recomputeClaims(&lamp, 1, /*nowMs=*/1000);
+
+  wisp::ColorTuple t;
+  t.r[0] = 0x11; t.g[0] = 0x22; t.b[0] = 0x33; t.w[0] = 0xC8;
+  t.r[1] = 0x44; t.g[1] = 0x55; t.b[1] = 0x66; t.w[1] = 0x37;
+  wisp::storeTuplePaint(r, kLampX, t);
+
+  const size_t n = snapshotState(r, gEntries, gW);
+  TEST_ASSERT_EQUAL_size_t(1, n);
+  const uint8_t wantRgb[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+  TEST_ASSERT_EQUAL_MEMORY(wantRgb, &gEntries[6], 6);
+  TEST_ASSERT_EQUAL_UINT8(0xC8, gW[0]);
+  TEST_ASSERT_EQUAL_UINT8(0x37, gW[1]);
+}
+
+// Paint `count` fleet lamps so each is a packable claim.
+void claimAndPaint(wisp::WispRoster& r, size_t count) {
+  wisp::LampObservation lamps[16];
+  for (size_t i = 0; i < count; ++i) {
+    fleetMac(lamps[i].mac, static_cast<uint8_t>(i + 1));
+    lamps[i].rssi = -60;
+  }
+  r.recomputeClaims(lamps, count, /*nowMs=*/1000);
+  const uint8_t base[4] = {1, 2, 3, 4};
+  for (size_t i = 0; i < count; ++i) r.setLampPaint(lamps[i].mac, base, base);
+}
+
+void test_snapshot_state_w_capacity_bounds_entries(void) {
+  wisp::WispRoster r;
+  r.setSelfMac(kSelfMac);
+  claimAndPaint(r, 10);
+
+  // Room for 10 entries but W pairs for only 3; bytes past wCap must stay put.
+  constexpr size_t kWCap = 3 * lamp_protocol::WISP_STATE_W_SIZE;
+  uint8_t entries[10 * lamp_protocol::WISP_STATE_ENTRY_SIZE];
+  uint8_t w[10 * lamp_protocol::WISP_STATE_W_SIZE];
+  std::memset(w, 0xEE, sizeof(w));
+  const size_t n = r.snapshotStateForBroadcast(entries, sizeof(entries), w, kWCap);
+  TEST_ASSERT_EQUAL_size_t(3, n);
+  for (size_t i = kWCap; i < sizeof(w); ++i) TEST_ASSERT_EQUAL_UINT8(0xEE, w[i]);
+}
+
+void test_snapshot_state_null_w_packs_nothing(void) {
+  wisp::WispRoster r;
+  r.setSelfMac(kSelfMac);
+  claimAndPaint(r, 2);
+
+  uint8_t entries[2 * lamp_protocol::WISP_STATE_ENTRY_SIZE];
+  std::memset(entries, 0xEE, sizeof(entries));
+  const size_t n = r.snapshotStateForBroadcast(
+      entries, sizeof(entries), nullptr, 2 * lamp_protocol::WISP_STATE_W_SIZE);
+  TEST_ASSERT_EQUAL_size_t(0, n);
+  for (uint8_t b : entries) TEST_ASSERT_EQUAL_UINT8(0xEE, b);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_single_wisp_claims_everything);
@@ -736,5 +796,8 @@ int main(int, char**) {
   RUN_TEST(test_snapshot_state_packs_black_claim);
   RUN_TEST(test_snapshot_state_reclaim_starts_unassigned);
   RUN_TEST(test_snapshot_state_carries_w_plane);
+  RUN_TEST(test_store_tuple_paint_carries_w);
+  RUN_TEST(test_snapshot_state_w_capacity_bounds_entries);
+  RUN_TEST(test_snapshot_state_null_w_packs_nothing);
   return UNITY_END();
 }

@@ -487,14 +487,7 @@ void Lamp::drainWispState() {
   const Color prevBase = compositor.wispStateBaseColor();
   uint8_t selfMac[6];
   meshLink.getMyMac(selfMac);
-  Color base;
-  Color shade;
-  const bool painted = lamp::wispStateColorsFor(cmd, selfMac, base, shade);
-  if (painted) {
-    compositor.applyWispState(base, shade, now);
-  } else {
-    compositor.clearWispState(now);
-  }
+  const bool painted = compositor.applyWispStateSlot(cmd, selfMac, now);
   const bool active = compositor.wispActive();
   if (active != wasActive ||
       (active && !(compositor.wispStateBaseColor() == prevBase))) {
@@ -502,6 +495,8 @@ void Lamp::drainWispState() {
   }
 #ifdef LAMP_DEBUG
   if (painted) {
+    const Color base = compositor.wispStateBaseColor();
+    const Color shade = compositor.wispStateShadeColor();
     Serial.printf("[loop] drain wispState base=%u,%u,%u,%u shade=%u,%u,%u,%u\n",
                   base.r, base.g, base.b, base.w, shade.r, shade.g, shade.b,
                   shade.w);

@@ -173,12 +173,9 @@ void PaintDistributor::refreshDriftRoster(bool paintNewcomers) {
 void PaintDistributor::assignDriftColor(size_t idx) {
   if (!roster_ || !palette_) return;
   if (palette_->colors().empty()) return;
-  ColorTuple t = sampleTupleAtPositions(palette_->colors(), esp_random(), esp_random());
-  uint8_t base[4];
-  uint8_t shade[4];
-  t.rgbw(0, base);
-  t.rgbw(1, shade);
-  roster_->setLampPaint(driftMacs_[idx], base, shade);
+  storeTuplePaint(*roster_, driftMacs_[idx],
+                  sampleTupleAtPositions(palette_->colors(), esp_random(),
+                                         esp_random()));
 }
 
 void PaintDistributor::assignPaintColor(const uint8_t mac[6]) {
@@ -186,12 +183,7 @@ void PaintDistributor::assignPaintColor(const uint8_t mac[6]) {
   // paintMode can flip on before the source's first palette lands; an empty
   // palette would paint every claimed lamp black.
   if (palette_->colors().empty()) return;
-  ColorTuple t = sampleTupleForMac(*palette_, mac, shuffleSeed_);
-  uint8_t base[4];
-  uint8_t shade[4];
-  t.rgbw(0, base);
-  t.rgbw(1, shade);
-  roster_->setLampPaint(mac, base, shade);
+  storeTuplePaint(*roster_, mac, sampleTupleForMac(*palette_, mac, shuffleSeed_));
 }
 
 }  // namespace wisp
