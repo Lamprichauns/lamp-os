@@ -20,12 +20,16 @@ const _devId = 'lamp-open';
 class _FlakyConnectClient extends InMemoryBleClient {
   _FlakyConnectClient(this.failures);
   int failures;
+  Duration connectTakes = Duration.zero;
   final attemptsAt = <Duration>[];
   Duration Function() elapsed = () => Duration.zero;
 
   @override
   Future<void> connect(String deviceId) async {
     attemptsAt.add(elapsed());
+    if (connectTakes > Duration.zero) {
+      await Future<void>.delayed(connectTakes);
+    }
     if (failures > 0) {
       failures--;
       throw StateError('connect failed #${attemptsAt.length}');
@@ -106,8 +110,7 @@ void main() {
 
   test('closing the lamp records the moment the phone last saw it', () {
     fakeAsync((async) {
-      // Ahead of the wall clock, which stamps the post-connect colour save.
-      var now = DateTime.now().add(const Duration(days: 1));
+      var now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
       final ble = InMemoryBleClient();
       seedControlBle(ble, deviceId: _devId);
       final c = _open(async, ble, clock: () => now);
@@ -128,8 +131,7 @@ void main() {
 
   test('a dropped link records the moment the phone last saw the lamp', () {
     fakeAsync((async) {
-      // Ahead of the wall clock, which stamps the post-connect colour save.
-      var now = DateTime.now().add(const Duration(days: 1));
+      var now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
       final ble = InMemoryBleClient();
       seedControlBle(ble, deviceId: _devId);
       final c = _open(async, ble, clock: () => now);
@@ -143,6 +145,72 @@ void main() {
       final lamp = c.read(inventoryNotifierProvider).value!.single;
       expect(lamp.lastSeenEpochMs, now.millisecondsSinceEpoch);
       sub.close();
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('closing a lamp whose link already dropped keeps the drop time', () {
+    fakeAsync((async) {
+      var now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final ble = _FlakyConnectClient(0);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble, clock: () => now);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 1));
+
+      final droppedAt = now.add(const Duration(minutes: 1));
+      now = droppedAt;
+      ble.failures = 1 << 30;
+      ble.disconnect(_devId);
+      async.flushMicrotasks();
+      now = now.add(const Duration(minutes: 10));
+      sub.close();
+      async.elapse(const Duration(seconds: 1));
+
+      final lamp = c.read(inventoryNotifierProvider).value!.single;
+      expect(lamp.lastSeenEpochMs, droppedAt.millisecondsSinceEpoch);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('leaving while the open is still connecting leaves no link behind', () {
+    fakeAsync((async) {
+      final ble = _FlakyConnectClient(1)
+        ..elapsed = (() => async.elapsed)
+        ..connectTakes = const Duration(seconds: 8);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 3));
+      sub.close();
+      async.elapse(const Duration(minutes: 1));
+
+      expect(ble.isConnected(_devId), isFalse);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('leaving while a reconnect is connecting leaves no link behind', () {
+    fakeAsync((async) {
+      final ble = _FlakyConnectClient(0)..elapsed = () => async.elapsed;
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 1));
+      expect(c.read(controlNotifierProvider(_devId)).value?.connected, isTrue);
+
+      ble.connectTakes = const Duration(seconds: 8);
+      ble.disconnect(_devId);
+      async.elapse(const Duration(seconds: 2));
+      expect(ble.attemptsAt.length, greaterThan(1),
+          reason: 'the reconnect ladder is mid-connect');
+      sub.close();
+      async.elapse(const Duration(minutes: 1));
+
+      expect(ble.isConnected(_devId), isFalse);
       c.dispose();
       async.flushTimers();
     });

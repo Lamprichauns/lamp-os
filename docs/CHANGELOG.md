@@ -19,8 +19,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **My Lamps lists the lamps around you.** A paired lamp the phone can't hear
   shows as offline for five minutes after it was last seen, then leaves the
   list until it's heard again. It stays paired and keeps everything the app
-  knows about it. With no paired lamp in range, My Lamps shows just the
-  "Adopt a lamp" tile.
+  knows about it. With no paired lamp heard in the last five minutes, My
+  Lamps shows just the "Adopt a lamp" tile.
 
 ## 1.2.9
 

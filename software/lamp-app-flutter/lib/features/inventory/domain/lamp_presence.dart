@@ -1,8 +1,9 @@
 /// A lamp heard within this long counts as currently seen. Lamps advertise
-/// every 100-200 ms, so an in-range lamp is heard many times inside it; the
-/// window rides out the gaps where the phone's scan is off (a connect holds
-/// it for up to 8 s per attempt, and a restart backs off 3 s) without the
-/// lamp flickering offline.
+/// every 100-200 ms, so an in-range lamp is heard many times inside it. The
+/// window rides out a single connect attempt's scan hold of up to 8 s plus the
+/// scanner's 3 s restart backoff. A connect that fails attempt after attempt
+/// holds the scan off for up to about 39 s, and lamps on a visible My Lamps
+/// can show offline until it ends.
 const kCurrentlySeenWindow = Duration(seconds: 30);
 
 /// My Lamps keeps listing a lamp as unreachable for this long after the phone

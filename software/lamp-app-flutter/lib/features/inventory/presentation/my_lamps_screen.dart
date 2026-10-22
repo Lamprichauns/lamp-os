@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/routing/routes.dart';
+import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/ble_client_provider.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/clock.dart';
@@ -76,21 +77,19 @@ class _MyLampsScreenState extends ConsumerState<MyLampsScreen> {
 
     final ordered = [
       for (final lamp in sortMyLamps(inventory, activeId))
-        (
-          lamp: lamp,
-          presence: lampPresence(
-            lastSeenEpochMs: _latest(
-              lamp.lastSeenEpochMs,
-              nearbyById[lamp.id]?.lastSeenEpochMs,
+        if (_connected(ref, ble, lamp.id) case final connected)
+          (
+            lamp: lamp,
+            connected: connected,
+            presence: lampPresence(
+              lastSeenEpochMs: _latest(
+                lamp.lastSeenEpochMs,
+                nearbyById[lamp.id]?.lastSeenEpochMs,
+              ),
+              connected: connected,
+              now: now,
             ),
-            // Connected lamps don't advertise (NimBLE peripheral default),
-            // so the scan never sees them. Seed with the synchronous read so
-            // the first paint is right before the stream's first emit lands.
-            connected: ref.watch(lampConnectedProvider(lamp.id)).value ??
-                ble.isConnected(lamp.id),
-            now: now,
           ),
-        ),
     ].where((e) => e.presence != LampPresence.hidden);
 
     return Scaffold(
@@ -112,6 +111,7 @@ class _MyLampsScreenState extends ConsumerState<MyLampsScreen> {
               _LampTile(
                 lamp: e.lamp,
                 presence: e.presence,
+                connected: e.connected,
                 nearbyById: nearbyById,
                 isCurrent: e.lamp.id == activeId,
                 inScanGrace: inScanGrace,
@@ -123,6 +123,12 @@ class _MyLampsScreenState extends ConsumerState<MyLampsScreen> {
     );
   }
 }
+
+/// Connected lamps don't advertise (NimBLE peripheral default), so the scan
+/// never sees them. Watching the link repaints the list on a drop; the
+/// synchronous read makes the first paint right before the stream emits.
+bool _connected(WidgetRef ref, BleClient ble, String id) =>
+    ref.watch(lampConnectedProvider(id)).value ?? ble.isConnected(id);
 
 int? _latest(int? a, int? b) {
   if (a == null) return b;
@@ -152,6 +158,7 @@ class _LampTile extends ConsumerWidget {
   const _LampTile({
     required this.lamp,
     required this.presence,
+    required this.connected,
     required this.nearbyById,
     required this.isCurrent,
     required this.inScanGrace,
@@ -159,6 +166,7 @@ class _LampTile extends ConsumerWidget {
 
   final InventoryLamp lamp;
   final LampPresence presence;
+  final bool connected;
   final Map<String, NearbyLamp> nearbyById;
   final bool isCurrent;
   final bool inScanGrace;
@@ -244,11 +252,6 @@ class _LampTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the lamp's live connection state so an unsolicited link drop
-    // (powered-off lamp hitting supervision timeout) repaints this tile
-    // immediately, instead of holding green until an unrelated rebuild.
-    final connected = ref.watch(lampConnectedProvider(lamp.id)).value ??
-        ref.watch(bleClientProvider).isConnected(lamp.id);
     // Keyed by BLE deviceId (== lamp.id), the firmwareNotifier family key.
     // `.select` so a Streaming chunk-progress tick doesn't rebuild the tile;
     // only a push-phase transition does. A phone push means the lamp is

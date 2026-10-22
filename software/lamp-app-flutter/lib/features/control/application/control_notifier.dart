@@ -196,7 +196,10 @@ class ControlNotifier extends _$ControlNotifier {
       for (var attempt = 0; attempt < maxAttempts; attempt++) {
         if (!ref.mounted) return;
         try {
-          await ble.connect(_deviceId);
+          if (!await connectWithRetry(ble, _deviceId,
+              attempts: 1, shouldAbort: () => !ref.mounted)) {
+            return;
+          }
           await AuthClient(ble: ble).authenticate(
               deviceId: _deviceId, password: password);
           fresh = await _readSections(ble);
@@ -247,6 +250,7 @@ class ControlNotifier extends _$ControlNotifier {
     // touch a disposed Riverpod ref.
     await _inv.updateSeen(
       _deviceId,
+      seenAtMs: _now().millisecondsSinceEpoch,
       shade: shade == null ? null : _rgbwList(shade),
       base: base == null ? null : _rgbwList(base),
     );
@@ -294,8 +298,10 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    if (!ble.isConnected(deviceId)) {
-      await connectWithRetry(ble, deviceId);
+    if (!ble.isConnected(deviceId) &&
+        !await connectWithRetry(ble, deviceId,
+            shouldAbort: () => !ref.mounted)) {
+      throw BleNotConnected(deviceId);
     }
     // Register disconnect only after a successful connect. If connect
     // itself threw, there's nothing to tear down, and registering this
@@ -308,7 +314,7 @@ class ControlNotifier extends _$ControlNotifier {
     // ref.onDispose callbacks are called FIFO; if flush were registered
     // later it would race with the disconnect.
     ref.onDispose(() {
-      _recordSeenNow();
+      if (ble.isConnected(deviceId)) _recordSeenNow();
       _flushPendingCommit();
       ble.disconnect(deviceId);
     });
@@ -1799,7 +1805,10 @@ class ControlNotifier extends _$ControlNotifier {
       if (attempt >= _cycleAdapterAttempt) {
         await ble.cycleAdapter(_deviceId);
       }
-      await ble.connect(_deviceId);
+      if (!await connectWithRetry(ble, _deviceId,
+          attempts: 1, shouldAbort: () => !ref.mounted)) {
+        return;
+      }
       // Re-auth so subsequent writes get past the firmware's auth gate.
       final inv = await ref.read(inventoryNotifierProvider.future);
       final lamp = inv.firstWhere(

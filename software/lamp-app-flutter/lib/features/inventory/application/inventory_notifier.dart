@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -104,15 +105,15 @@ class InventoryNotifier extends _$InventoryNotifier {
 
   Future<void> updateSeen(
     String id, {
+    required int seenAtMs,
     List<int>? shade,
     List<int>? base,
   }) =>
       _mutate((current) {
-        final now = DateTime.now().millisecondsSinceEpoch;
         return current.map((l) {
           if (l.id != id) return l;
           return l.copyWith(
-            lastSeenEpochMs: now,
+            lastSeenEpochMs: seenAtMs,
             lastShadeColor: shade ?? l.lastShadeColor,
             lastBaseColor: base ?? l.lastBaseColor,
           );
@@ -134,8 +135,7 @@ class InventoryNotifier extends _$InventoryNotifier {
           if (seenAt == null) return l;
           final prior = l.lastSeenEpochMs;
           if (prior != null &&
-              (seenAt <= prior ||
-                  seenAt - prior < minStep.inMilliseconds)) {
+              seenAt - prior < math.max(minStep.inMilliseconds, 1)) {
             return l;
           }
           changed = true;

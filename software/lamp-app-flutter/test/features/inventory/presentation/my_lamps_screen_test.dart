@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,14 +21,22 @@ import 'package:lamp_app/features/inventory/presentation/lamp_grid_tile.dart';
 import 'package:lamp_app/features/inventory/presentation/my_lamps_screen.dart';
 import 'package:lamp_app/features/nearby/application/nearby_lamps_notifier.dart';
 
-/// Counts every connect and disconnect the app asks for.
+/// Counts every connect and disconnect the app asks for. With [gate] set, the
+/// next connect waits on it and then fails, like a slow attempt that loses.
 class _RecordingBleClient extends InMemoryBleClient {
   final connects = <String>[];
   final disconnects = <String>[];
+  Completer<void>? gate;
 
   @override
-  Future<void> connect(String deviceId) {
+  Future<void> connect(String deviceId) async {
     connects.add(deviceId);
+    final g = gate;
+    if (g != null) {
+      gate = null;
+      await g.future;
+      throw StateError('gated connect failed');
+    }
     return super.connect(deviceId);
   }
 
@@ -61,9 +70,7 @@ class _Rig {
   set now(DateTime t) => _setNow(t);
 }
 
-/// The wall clock never reaches this, so nothing stamped with real time can
-/// outrank the fake clock.
-final _t0 = DateTime.now().add(const Duration(days: 1));
+final _t0 = DateTime.fromMillisecondsSinceEpoch(1700000000000);
 
 Future<_Rig> _mount(
   WidgetTester tester, {
@@ -239,6 +246,7 @@ void main() {
   testWidgets(
       'nothing on My Lamps disconnects a lamp the user opened',
       (tester) async {
+    final gate = Completer<void>();
     final rig = await _mount(
       tester,
       lamps: const [
@@ -246,11 +254,19 @@ void main() {
         InventoryLamp(id: 'b', name: 'bravo', controlPassword: ''),
       ],
       activeId: 'a',
-      before: (ble) => seedControlBle(ble, deviceId: 'a', name: 'alpha'),
+      before: (ble) {
+        seedControlBle(ble, deviceId: 'a', name: 'alpha');
+        ble.gate = gate;
+      },
     );
+    // The lamp is heard before the user opens it, so any connect started off
+    // its adv is in flight, and loses, while the user's own connect lands.
+    await _hear(tester, rig, 'a', 'alpha');
     final open = rig.container
         .listen(controlNotifierProvider('a'), (_, _) {});
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    gate.complete();
+    await tester.pump(const Duration(seconds: 3));
     expect(rig.container.read(controlNotifierProvider('a')).value?.connected,
         isTrue);
 

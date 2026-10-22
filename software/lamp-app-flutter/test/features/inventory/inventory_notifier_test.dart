@@ -161,6 +161,15 @@ void main() {
       expect(seenOf(c, 'a'), 10000 + step.inMilliseconds);
     });
 
+    test('an unchanged time writes nothing', () async {
+      final c = await withLamps(const [
+        InventoryLamp(id: 'a', name: 'a', lastSeenEpochMs: 5000),
+      ]);
+      final before = c.read(inventoryNotifierProvider).value;
+      await c.read(inventoryNotifierProvider.notifier).recordLastSeen({'a': 5000});
+      expect(identical(c.read(inventoryNotifierProvider).value, before), isTrue);
+    });
+
     test('persists across a restart', () async {
       final c1 = ProviderContainer();
       await c1.read(inventoryNotifierProvider.future);
