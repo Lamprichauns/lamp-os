@@ -25,6 +25,9 @@ Future<bool> connectWithRetry(
   Duration backoff = const Duration(milliseconds: 1200),
   bool Function()? shouldAbort,
 }) async {
+  // A caller that has already given up must not take the claim from a newer
+  // connect, or its release would drop that connect's link.
+  if (shouldAbort?.call() ?? false) return false;
   ble.claimLink(deviceId, owner);
   // The check and the disconnect stay in one synchronous step, so a connect
   // that claims the lamp afterwards queues behind this disconnect.

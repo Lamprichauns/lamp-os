@@ -165,6 +165,24 @@ void main() {
     });
   });
 
+  test('a caller that already gave up leaves a newer link alone', () {
+    fakeAsync((async) {
+      final ble = _CountingClient(0);
+      final newer = Object();
+      connectWithRetry(ble, 'x', owner: newer);
+      async.flushMicrotasks();
+      bool? result;
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () => true)
+          .then((r) => result = r);
+      async.flushMicrotasks();
+      expect(result, isFalse);
+      expect(ble.connects, 1);
+      expect(ble.disconnects, 0);
+      expect(ble.isConnected('x'), isTrue);
+      expect(ble.ownsLink('x', newer), isTrue);
+    });
+  });
+
   test('claims are per lamp', () {
     final ble = _CountingClient(0);
     final a = Object();
