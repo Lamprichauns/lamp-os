@@ -168,7 +168,7 @@ void main() {
     final c = await _buildContainer(ble);
     addTearDown(c.dispose);
     // Keep provider alive so we can read state after the sheet is dismissed.
-    final sub = c.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(c));
@@ -194,7 +194,7 @@ void main() {
     final ble = InMemoryBleClient();
     final c = await _buildContainer(ble);
     addTearDown(c.dispose);
-    final sub = c.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(c));
@@ -220,7 +220,7 @@ void main() {
     final ble = InMemoryBleClient();
     final c = await _buildContainer(ble);
     addTearDown(c.dispose);
-    final sub = c.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(c));
@@ -241,7 +241,7 @@ void main() {
     final ble = InMemoryBleClient();
     final c = await _buildContainer(ble);
     addTearDown(c.dispose);
-    final sub = c.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(c));

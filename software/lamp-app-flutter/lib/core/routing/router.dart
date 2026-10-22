@@ -36,7 +36,7 @@ GoRouter appRouter(Ref ref) {
     // Caches each owned variant's firmware so a venue without internet can
     // still push updates. The first inventory is the launch fetch; later
     // changes reach the network only for a newly seen, uncached variant.
-    final list = next?.value;
+    final list = next.value;
     if (list != null) {
       ref.read(cachedFirmwareNotifierProvider.notifier).syncForInventory(list);
     }
