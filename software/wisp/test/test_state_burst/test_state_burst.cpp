@@ -6,6 +6,8 @@
 //   - a closed window (now past burstUntilMs) is never due.
 // stateTickOffsetMs maps a random word to the tick STATE's delay after the
 // HELLO, covering [kStateOffsetMinMs, kStateOffsetMaxMs] evenly.
+// TickStateSchedule holds the one tick STATE pending: due once at or after its
+// time, never early, never twice, and a reschedule replaces an unsent one.
 
 #include <unity.h>
 
@@ -64,6 +66,46 @@ void test_offset_covers_window_evenly(void) {
   for (uint32_t h : hits) TEST_ASSERT_EQUAL_UINT32(2, h);
 }
 
+void test_tick_state_not_due_before_scheduled(void) {
+  wisp::TickStateSchedule s;
+  TEST_ASSERT_FALSE(s.takeDue(0));
+  TEST_ASSERT_FALSE(s.takeDue(123456));
+}
+
+void test_tick_state_due_once_at_offset(void) {
+  wisp::TickStateSchedule s;
+  s.schedule(10000, 437);
+  TEST_ASSERT_FALSE(s.takeDue(10000));
+  TEST_ASSERT_FALSE(s.takeDue(10436));
+  TEST_ASSERT_TRUE(s.takeDue(10437));
+  TEST_ASSERT_FALSE(s.takeDue(10437));
+  TEST_ASSERT_FALSE(s.takeDue(11900));
+}
+
+void test_tick_state_late_pass_still_sends(void) {
+  wisp::TickStateSchedule s;
+  s.schedule(10000, 437);
+  TEST_ASSERT_TRUE(s.takeDue(11650));
+  TEST_ASSERT_FALSE(s.takeDue(11655));
+}
+
+void test_tick_state_reschedule_replaces_unsent(void) {
+  wisp::TickStateSchedule s;
+  s.schedule(10000, 700);
+  s.schedule(12000, 250);
+  TEST_ASSERT_FALSE(s.takeDue(12249));
+  TEST_ASSERT_TRUE(s.takeDue(12250));
+  TEST_ASSERT_FALSE(s.takeDue(12900));
+}
+
+void test_tick_state_due_across_millis_wrap(void) {
+  wisp::TickStateSchedule s;
+  s.schedule(0xFFFFFF00u, 437);
+  TEST_ASSERT_FALSE(s.takeDue(0xFFFFFFF0u));
+  TEST_ASSERT_FALSE(s.takeDue(0x000000B4u));
+  TEST_ASSERT_TRUE(s.takeDue(0x000000B5u));
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -75,5 +117,10 @@ int main(int, char**) {
   RUN_TEST(test_closed_window_not_due);
   RUN_TEST(test_offset_stays_in_window);
   RUN_TEST(test_offset_covers_window_evenly);
+  RUN_TEST(test_tick_state_not_due_before_scheduled);
+  RUN_TEST(test_tick_state_due_once_at_offset);
+  RUN_TEST(test_tick_state_late_pass_still_sends);
+  RUN_TEST(test_tick_state_reschedule_replaces_unsent);
+  RUN_TEST(test_tick_state_due_across_millis_wrap);
   return UNITY_END();
 }

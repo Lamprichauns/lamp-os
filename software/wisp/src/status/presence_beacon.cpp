@@ -60,24 +60,22 @@ void PresenceBeacon::pump(bool fatFrameSentThisPass) {
     emit();
     passBusy = true;
   }
+  if (passBusy) return;
   if (paint_ && paint_->consumeStateDirty()) {
     stateBurstUntilMs_ = now + kStateBurstMs;
     emitStateEvent();
-    passBusy = true;
-  } else if (!passBusy && stateBurstUntilMs_ != 0) {
-    if (stateBurstDue(now, stateBurstUntilMs_, lastStateEmitMs_,
-                      kStateBurstIntervalMs)) {
-      emitStateEvent();
-      passBusy = true;
-    } else if (static_cast<int32_t>(now - stateBurstUntilMs_) >= 0) {
-      stateBurstUntilMs_ = 0;
-    }
+    return;
   }
-  if (!passBusy && statePending_ &&
-      static_cast<int32_t>(now - stateDueMs_) >= 0) {
-    statePending_ = false;
+  if (stateBurstDue(now, stateBurstUntilMs_, lastStateEmitMs_,
+                    kStateBurstIntervalMs)) {
     emitStateEvent();
+    return;
   }
+  if (stateBurstUntilMs_ != 0 &&
+      static_cast<int32_t>(now - stateBurstUntilMs_) >= 0) {
+    stateBurstUntilMs_ = 0;
+  }
+  if (tickState_.takeDue(now)) emitStateEvent();
 }
 
 uint8_t PresenceBeacon::computePresenceFlags(bool wifiNow,
@@ -145,8 +143,7 @@ void PresenceBeacon::emit() {
     if (t % 2 == 1) emitClaim(srcMac);
     // A fixed phase behind the HELLO beats against a lamp's periodic deaf
     // window and loses whole runs of STATEs; a random offset spreads them.
-    statePending_ = true;
-    stateDueMs_ = millis() + stateTickOffsetMs(esp_random());
+    tickState_.schedule(millis(), stateTickOffsetMs(esp_random()));
   }
 
   // WiFi/source-live flips would otherwise wait up to 30s for the wispStatus

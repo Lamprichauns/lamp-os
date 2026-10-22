@@ -61,6 +61,27 @@ inline uint32_t stateTickOffsetMs(uint32_t random) {
   return kStateOffsetMinMs + random % (kStateOffsetMaxMs - kStateOffsetMinMs + 1);
 }
 
+// The steady-cadence STATE each HELLO tick schedules. One pending at a time: a
+// schedule() replaces an unsent one, so a loop stall drops at most that STATE.
+class TickStateSchedule {
+ public:
+  void schedule(uint32_t now, uint32_t offsetMs) {
+    pending_ = true;
+    dueMs_ = now + offsetMs;
+  }
+  // True once, on the first call at or after the due time; clears the pending
+  // STATE so the caller sends it exactly once.
+  bool takeDue(uint32_t now) {
+    if (!pending_ || static_cast<int32_t>(now - dueMs_) < 0) return false;
+    pending_ = false;
+    return true;
+  }
+
+ private:
+  bool     pending_ = false;
+  uint32_t dueMs_   = 0;
+};
+
 class PresenceBeacon {
  public:
   void begin(MeshLink* mesh, PaintDistributor* paint, CurrentPalette* palette,
@@ -72,8 +93,9 @@ class PresenceBeacon {
   void startTimer();
 
   // Runs the due HELLO / CLAIM / STATE emits on the loop task. Pass true when
-  // another emitter already broadcast a fat frame this loop pass, so the tick
-  // STATE waits for a free pass. Cheap when nothing is due.
+  // another emitter already broadcast a fat frame this loop pass. Any STATE,
+  // edge and burst copies included, waits for a pass with no other fat frame,
+  // and at most one goes out per pass. Cheap when nothing is due.
   void pump(bool fatFrameSentThisPass);
 
  private:
@@ -116,8 +138,7 @@ class PresenceBeacon {
   uint32_t beaconTick_ = 0;
 
   // The tick STATE scheduled by emit(), sent from a later pump() pass.
-  bool     statePending_ = false;
-  uint32_t stateDueMs_   = 0;
+  TickStateSchedule tickState_;
 
   // Elevated-rate STATE window opened on a paint-mode edge. 0 when closed.
   uint32_t stateBurstUntilMs_ = 0;
