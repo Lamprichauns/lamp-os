@@ -5,7 +5,7 @@ import 'package:lamp_app/core/ble/ble_client.dart';
 
 /// Test/dev fake. Records writes per (device, service, char) key, lets tests
 /// schedule encryption failures, and broadcasts writes to subscribers.
-class InMemoryBleClient implements BleClient {
+class InMemoryBleClient extends BleClient {
   final Set<String> _connected = {};
   final Map<String, Uint8List> _values = {};
   final Map<String, StreamController<Uint8List>> _streams = {};

@@ -22,7 +22,7 @@ class RecordedWrite {
 }
 
 /// InMemoryBleClient-style fake with notify injection + write capture.
-class NotifyableBle implements BleClient {
+class NotifyableBle extends BleClient {
   final Set<String> _connected = {};
   final Map<String, StreamController<Uint8List>> _streams = {};
   final Map<String, Uint8List> _lastValue = {};

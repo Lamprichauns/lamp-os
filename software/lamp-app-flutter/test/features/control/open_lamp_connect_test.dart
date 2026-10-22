@@ -38,6 +38,36 @@ class _FlakyConnectClient extends InMemoryBleClient {
   }
 }
 
+/// One BLE op at a time per device, a connect to a connected device returning
+/// at once, and a disconnect queued behind in-flight ops, as flutter_blue_plus
+/// behaves on a real phone. [settleTakes] holds a landed connect open before it
+/// returns, as fbp's MTU and priority requests do.
+class _SerialOpsClient extends InMemoryBleClient {
+  Duration connectTakes = const Duration(seconds: 8);
+  Duration settleTakes = Duration.zero;
+  Future<void> _tail = Future.value();
+
+  Future<void> _op(Future<void> Function() body) {
+    final next = _tail.then((_) => body());
+    _tail = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  @override
+  Future<void> connect(String deviceId) => _op(() async {
+        if (isConnected(deviceId)) return;
+        await Future<void>.delayed(connectTakes);
+        await super.connect(deviceId);
+        if (settleTakes > Duration.zero) {
+          await Future<void>.delayed(settleTakes);
+        }
+      });
+
+  @override
+  Future<void> disconnect(String deviceId) =>
+      _op(() => super.disconnect(deviceId));
+}
+
 /// Opens [_devId] on [ble] inside fake time and returns the container.
 ProviderContainer _open(FakeAsync async, InMemoryBleClient ble,
     {DateTime Function()? clock}) {
@@ -207,6 +237,71 @@ void main() {
       async.elapse(const Duration(seconds: 2));
       expect(ble.attemptsAt.length, greaterThan(1),
           reason: 'the reconnect ladder is mid-connect');
+      sub.close();
+      async.elapse(const Duration(minutes: 1));
+
+      expect(ble.isConnected(_devId), isFalse);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('re-opening a lamp mid-connect keeps the new session connected', () {
+    fakeAsync((async) {
+      final ble = _SerialOpsClient();
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 3));
+      first.close();
+      async.elapse(const Duration(seconds: 1));
+      expect(c.exists(controlNotifierProvider(_devId)), isFalse);
+
+      final second = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 20));
+
+      final state = c.read(controlNotifierProvider(_devId));
+      expect(state.hasError, isFalse, reason: '${state.error}');
+      expect(state.value?.connected, isTrue);
+      expect(ble.isConnected(_devId), isTrue);
+      second.close();
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('re-opening onto a link still settling keeps the new session', () {
+    fakeAsync((async) {
+      final ble = _SerialOpsClient()..settleTakes = const Duration(seconds: 2);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 3));
+      first.close();
+      async.elapse(const Duration(seconds: 6));
+      expect(ble.isConnected(_devId), isTrue,
+          reason: 'the abandoned connect has linked but not returned');
+
+      final second = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 20));
+
+      final state = c.read(controlNotifierProvider(_devId));
+      expect(state.hasError, isFalse, reason: '${state.error}');
+      expect(state.value?.connected, isTrue);
+      expect(ble.isConnected(_devId), isTrue);
+      second.close();
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('a mid-connect open nobody re-opens drops its link once it lands', () {
+    fakeAsync((async) {
+      final ble = _SerialOpsClient();
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 3));
       sub.close();
       async.elapse(const Duration(minutes: 1));
 

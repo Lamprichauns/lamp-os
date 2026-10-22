@@ -25,7 +25,8 @@ class AdoptPulseController {
     _timer?.cancel();
     _deviceId = deviceId;
     _stopped = false;
-    await connectWithRetry(_ble, deviceId, shouldAbort: () => _stopped);
+    await connectWithRetry(_ble, deviceId,
+        owner: this, shouldAbort: () => _stopped);
     if (_stopped) return;
     await _writePulse(deviceId, shadeColor);
     if (_stopped) return;

@@ -6,7 +6,7 @@ import 'ble_client.dart';
 import 'bridge_protocol.dart';
 import 'bridge_transport.dart';
 
-class NetworkDevBleClient implements BleClient {
+class NetworkDevBleClient extends BleClient {
   NetworkDevBleClient(this._t);
   final BridgeTransport _t;
   final Map<String, bool> _connected = {};

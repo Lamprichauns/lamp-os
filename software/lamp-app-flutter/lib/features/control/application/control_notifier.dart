@@ -154,6 +154,7 @@ class ControlNotifier extends _$ControlNotifier {
   // those providers (the whole app) regardless of this notifier's
   // own dispose timing.
   late BleClient _ble;
+  final _linkOwner = Object();
   late InventoryNotifier _inv;
   late DateTime Function() _now;
   final _catalogStore = const CatalogStore();
@@ -197,7 +198,9 @@ class ControlNotifier extends _$ControlNotifier {
         if (!ref.mounted) return;
         try {
           if (!await connectWithRetry(ble, _deviceId,
-              attempts: 1, shouldAbort: () => !ref.mounted)) {
+              attempts: 1,
+              owner: _linkOwner,
+              shouldAbort: () => !ref.mounted)) {
             return;
           }
           await AuthClient(ble: ble).authenticate(
@@ -298,9 +301,12 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
+    // Claimed before adopting a live link too: the abandoned connect that
+    // raised it may not have checked its abort yet.
+    ble.claimLink(deviceId, _linkOwner);
     if (!ble.isConnected(deviceId) &&
         !await connectWithRetry(ble, deviceId,
-            shouldAbort: () => !ref.mounted)) {
+            owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
       throw BleNotConnected(deviceId);
     }
     // Register disconnect only after a successful connect. If connect
@@ -1806,7 +1812,7 @@ class ControlNotifier extends _$ControlNotifier {
         await ble.cycleAdapter(_deviceId);
       }
       if (!await connectWithRetry(ble, _deviceId,
-          attempts: 1, shouldAbort: () => !ref.mounted)) {
+          attempts: 1, owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
         return;
       }
       // Re-auth so subsequent writes get past the firmware's auth gate.

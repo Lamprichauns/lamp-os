@@ -151,6 +151,7 @@ class AddLampNotifier extends _$AddLampNotifier {
       await connectWithRetry(
         ble,
         state.deviceId,
+        owner: this,
         attempts: 2,
         backoff: const Duration(milliseconds: 1500),
       );

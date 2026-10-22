@@ -32,7 +32,8 @@ void main() {
     fakeAsync((async) {
       final ble = _CountingClient(2);
       bool? result;
-      connectWithRetry(ble, 'x', attempts: 4).then((r) => result = r);
+      connectWithRetry(ble, 'x', owner: Object(), attempts: 4)
+          .then((r) => result = r);
       async.elapse(const Duration(milliseconds: 1199));
       expect(ble.connects, 1, reason: 'waits out the backoff');
       async.elapse(const Duration(seconds: 5));
@@ -46,7 +47,8 @@ void main() {
     fakeAsync((async) {
       final ble = _CountingClient(1 << 30);
       Object? error;
-      connectWithRetry(ble, 'x', attempts: 3).catchError((Object e) {
+      connectWithRetry(ble, 'x', owner: Object(), attempts: 3)
+          .catchError((Object e) {
         error = e;
         return false;
       });
@@ -61,7 +63,7 @@ void main() {
       final ble = _CountingClient(1);
       var abort = false;
       bool? result;
-      connectWithRetry(ble, 'x', shouldAbort: () => abort)
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () => abort)
           .then((r) => result = r);
       async.flushMicrotasks();
       abort = true;
@@ -78,7 +80,8 @@ void main() {
       var abort = false;
       bool? result;
       // The abort turns true while the attempt is in flight.
-      final pending = connectWithRetry(ble, 'x', shouldAbort: () {
+      final pending =
+          connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () {
         final now = abort;
         abort = true;
         return now;
@@ -89,5 +92,33 @@ void main() {
       expect(ble.disconnects, 1);
       expect(ble.isConnected('x'), isFalse);
     });
+  });
+
+  test('a late link stays up when a later connect has claimed the lamp', () {
+    fakeAsync((async) {
+      final ble = _CountingClient(0);
+      var abort = false;
+      // The user leaves while the attempt is in flight and re-opens the lamp.
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () {
+        if (!abort) {
+          abort = true;
+          return false;
+        }
+        ble.claimLink('x', Object());
+        return true;
+      });
+      async.flushMicrotasks();
+      expect(ble.disconnects, 0);
+      expect(ble.isConnected('x'), isTrue);
+    });
+  });
+
+  test('claims are per lamp', () {
+    final ble = _CountingClient(0);
+    final a = Object();
+    ble.claimLink('x', a);
+    ble.claimLink('y', Object());
+    expect(ble.ownsLink('x', a), isTrue);
+    expect(ble.ownsLink('y', a), isFalse);
   });
 }

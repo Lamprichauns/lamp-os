@@ -9,7 +9,7 @@ import 'scan_pause.dart';
 /// Production [BleClient] backed by flutter_blue_plus. Each public method
 /// resolves the device + service + characteristic from the plugin's live
 /// registry, errors out with a friendly exception type when it can't.
-class FbpBleClient implements BleClient {
+class FbpBleClient extends BleClient {
   /// Cache of discovered GATT services per device id. Populated lazily on the
   /// first `read`/`write`/`subscribe` after a successful connect. Without this
   /// every BLE write would re-run a full service discovery on the radio,
