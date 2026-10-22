@@ -60,10 +60,21 @@ Who claims:
 
 What it guarantees: when `connectWithRetry` lands a link after its owner gave
 up (`shouldAbort` true), it disconnects only while that owner still holds the
-claim. Backing out of a lamp mid-connect and opening it again keeps the new
-session's link, whichever of the two connects lands it. A connect abandoned
-with nobody claiming the lamp since still drops its link, so a lamp the user
-walked away from is not held open.
+claim. Backing out of a lamp while its connect is still in flight and opening
+it again keeps the new session's link, whichever of the two connects lands it.
+A connect abandoned with nobody claiming the lamp since still drops its link,
+so a lamp the user walked away from is not held open.
+
+The limit: only `connectWithRetry`'s late-link drop checks ownership. Once a
+session's connect succeeds, `ControlNotifier.build` registers a `ref.onDispose`
+that calls `ble.disconnect` unconditionally. On Android, flutter_blue_plus
+2.3.4's `BluetoothDevice.disconnect` enforces `androidDelay` (2 s) as a minimum
+gap after the connect, so a disconnect issued sooner waits until 2 s after the
+link came up. Backing out after the link is up but while the lamp screen is
+still loading (auth, section reads), then opening the lamp again before that
+gap ends, lets the new session adopt the still-up link and lose it when the
+old session's disconnect lands; the new session fails with
+`BleNotConnected`. iOS has no such gap.
 
 A caller that connects through `connectWithRetry` must pass an owner that is
 stable for its session (`ControlNotifier` uses one `_linkOwner` object per

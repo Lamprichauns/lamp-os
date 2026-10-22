@@ -148,7 +148,7 @@ Regression test for the `knockoutPixels` vector / `base.px` sync (firmware-side 
 - [ ] In-range lamps show their status dot; a lamp unheard for 30 s goes grey (offline), and 5 minutes after it was last heard it leaves the list.
 - [ ] With no adopted lamp in range, My Lamps shows only the "Adopt a lamp" tile.
 - [ ] Sitting on My Lamps opens no BLE connection to any lamp; tapping a tile connects to that lamp only.
-- [ ] Tap a lamp and back out while it is still connecting, then tap it again straight away: it connects and stays connected (no drop a few seconds later).
+- [ ] Tap a lamp and back out while it is still connecting, before the lamp answers, then tap it again straight away: it connects and stays connected (no drop a few seconds later).
 
 ## Phase 3 — Knockout (per-LED brightness)
 
