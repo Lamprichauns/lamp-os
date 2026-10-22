@@ -18,6 +18,10 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   for up to 34 lamps under the wisp; past 34 it shows colour only, as before.
   That needs both the lamp firmware and the app updated; with either one
   older, the preview shows the lamp's predicted colour as before.
+- **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
+  drop back to their own colours for a minute or two at a time. The wisp now
+  sends its colour updates twice as often and at a varying moment, so a lamp
+  that kept missing them at one fixed moment catches them.
 
 ## 1.2.9
 
