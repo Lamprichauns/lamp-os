@@ -105,10 +105,8 @@ class PresenceBeacon {
   void startTimer();
 
   // Runs the due HELLO / CLAIM / STATE emits on the loop task. Pass true when
-  // another emitter already broadcast a fat frame this loop pass. Any STATE,
-  // edge and burst copies included, waits for a pass with no other fat frame
-  // (nextStateSend), so two fat frames never go out in one pass on the single
-  // core. Cheap when nothing is due.
+  // another emitter ran a fat-frame emit this loop pass; any STATE then waits
+  // for a later pass. Cheap when nothing is due.
   void pump(bool fatFrameSentThisPass);
 
  private:

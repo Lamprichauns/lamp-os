@@ -1,4 +1,4 @@
-// Native tests for the STATE edge-burst timing predicate in PresenceBeacon.
+// Native tests for PresenceBeacon's STATE timing helpers.
 //
 // stateBurstDue gates the extra STATE copies emitted after a paint-mode edge:
 //   - no window (burstUntilMs == 0) is never due,
@@ -11,8 +11,8 @@
 // nextStateSend picks at most one STATE per loop pass and none on a pass that
 // already sent another fat frame. Its inputs come from PresenceBeacon::pump and
 // StatusEmitter::pump, which stay out of the native build (Arduino WiFi, FreeRTOS
-// timers, esp_random and the ESP-NOW MeshLink), so that wiring is checked by
-// reading and on the bench.
+// timers, esp_random and the ESP-NOW MeshLink), so that wiring has no native
+// test.
 
 #include <unity.h>
 
@@ -60,7 +60,7 @@ void test_offset_stays_in_window(void) {
 }
 
 void test_offset_covers_window_evenly(void) {
-  constexpr uint32_t kPerBucket = 50;
+  constexpr uint32_t kPerBucket = 200;
   std::array<uint32_t, kOffsetSpan> hits{};
   uint32_t word = 0x2545F491u;
   for (uint32_t i = 0; i < kPerBucket * kOffsetSpan; ++i) {
@@ -71,8 +71,8 @@ void test_offset_covers_window_evenly(void) {
     ++hits[off - wisp::kStateOffsetMinMs];
   }
   for (uint32_t h : hits) {
-    TEST_ASSERT_GREATER_THAN_UINT32(kPerBucket / 3, h);
-    TEST_ASSERT_LESS_THAN_UINT32(kPerBucket * 3, h);
+    TEST_ASSERT_GREATER_THAN_UINT32(kPerBucket * 7 / 10, h);
+    TEST_ASSERT_LESS_THAN_UINT32(kPerBucket * 13 / 10, h);
   }
 }
 
