@@ -10,11 +10,16 @@ class _CountingClient extends InMemoryBleClient {
   int connects = 0;
   int disconnects = 0;
 
+  /// A failing attempt still raises the link, as an Android connect whose
+  /// MTU request fails does.
+  bool failsAfterLinking = false;
+
   @override
   Future<void> connect(String deviceId) async {
     connects++;
     if (failures > 0) {
       failures--;
+      if (failsAfterLinking) await super.connect(deviceId);
       throw StateError('attempt $connects');
     }
     await super.connect(deviceId);
@@ -108,6 +113,51 @@ void main() {
         return true;
       });
       async.flushMicrotasks();
+      expect(ble.disconnects, 0);
+      expect(ble.isConnected('x'), isTrue);
+    });
+  });
+
+  test('a failure on every attempt leaves no link behind', () {
+    fakeAsync((async) {
+      final ble = _CountingClient(1 << 30)..failsAfterLinking = true;
+      Object? error;
+      connectWithRetry(ble, 'x', owner: Object(), attempts: 3)
+          .catchError((Object e) {
+        error = e;
+        return false;
+      });
+      async.elapse(const Duration(minutes: 1));
+      expect('$error', contains('attempt 3'));
+      expect(ble.isConnected('x'), isFalse);
+    });
+  });
+
+  test('an abort after a failed attempt leaves no link behind', () {
+    fakeAsync((async) {
+      final ble = _CountingClient(1)..failsAfterLinking = true;
+      var abort = false;
+      bool? result;
+      connectWithRetry(ble, 'x', owner: Object(), shouldAbort: () => abort)
+          .then((r) => result = r);
+      async.flushMicrotasks();
+      expect(ble.isConnected('x'), isTrue);
+      abort = true;
+      async.elapse(const Duration(seconds: 10));
+      expect(result, isFalse);
+      expect(ble.connects, 1);
+      expect(ble.isConnected('x'), isFalse);
+    });
+  });
+
+  test('a failed connect keeps a link a later connect has claimed', () {
+    fakeAsync((async) {
+      final ble = _CountingClient(1 << 30)..failsAfterLinking = true;
+      connectWithRetry(ble, 'x', owner: Object(), attempts: 2)
+          .catchError((Object e) => false);
+      async.flushMicrotasks();
+      ble.claimLink('x', Object());
+      async.elapse(const Duration(minutes: 1));
       expect(ble.disconnects, 0);
       expect(ble.isConnected('x'), isTrue);
     });

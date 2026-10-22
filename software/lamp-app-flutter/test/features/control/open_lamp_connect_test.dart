@@ -1,6 +1,9 @@
 // Opening a lamp connects through the shared retry policy, and the end of
 // the user's session records when the phone last saw the lamp.
 
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,37 +43,102 @@ class _FlakyConnectClient extends InMemoryBleClient {
   }
 }
 
-/// One BLE op at a time per device, a connect to a connected device returning
-/// at once, and a disconnect queued behind in-flight ops, as flutter_blue_plus
-/// behaves on a real phone. [settleTakes] holds a landed connect open before it
-/// returns, as fbp's MTU and priority requests do.
-class _SerialOpsClient extends InMemoryBleClient {
-  Duration connectTakes = const Duration(seconds: 8);
-  Duration settleTakes = Duration.zero;
-  int disconnects = 0;
+/// A first-come lock whose place is taken when [take] is called.
+class _FifoLock {
   Future<void> _tail = Future.value();
 
-  Future<void> _op(Future<void> Function() body) {
-    final next = _tail.then((_) => body());
-    _tail = next.then((_) {}, onError: (_) {});
-    return next;
+  Future<void Function()> take() {
+    final prior = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    return prior.then((_) => done.complete);
+  }
+}
+
+/// flutter_blue_plus 2.3.4's per-device ordering (bluetooth_device.dart):
+/// connect and disconnect share a disconnect lock, every GATT op shares an op
+/// lock, both first-come. A connect to a linked lamp returns at once. On
+/// Android a disconnect waits until [androidDelay] after the latest connect
+/// request, and the link stays up until it lands. [settleTakes] holds the op
+/// lock after a link lands, as the MTU request does.
+class _FbpModelClient extends InMemoryBleClient {
+  _FbpModelClient(this.elapsed);
+  final Duration Function() elapsed;
+  Duration connectTakes = const Duration(seconds: 1);
+  Duration settleTakes = Duration.zero;
+  Duration opTakes = const Duration(milliseconds: 50);
+  Duration androidDelay = const Duration(seconds: 2);
+  int disconnects = 0;
+  Duration? _connectRequestedAt;
+  final _disconnectLock = _FifoLock();
+  final _opLock = _FifoLock();
+
+  @override
+  Future<void> connect(String deviceId) async {
+    final giveDisconnect = await _disconnectLock.take();
+    final giveOp = await _opLock.take();
+    _connectRequestedAt = elapsed();
+    giveDisconnect();
+    try {
+      if (isConnected(deviceId)) return;
+      await Future<void>.delayed(connectTakes);
+      await super.connect(deviceId);
+    } finally {
+      giveOp();
+    }
+    if (settleTakes > Duration.zero) {
+      await _op(() => Future<void>.delayed(settleTakes));
+    }
   }
 
   @override
-  Future<void> connect(String deviceId) => _op(() async {
-        if (isConnected(deviceId)) return;
-        await Future<void>.delayed(connectTakes);
-        await super.connect(deviceId);
-        if (settleTakes > Duration.zero) {
-          await Future<void>.delayed(settleTakes);
-        }
-      });
-
-  @override
-  Future<void> disconnect(String deviceId) {
+  Future<void> disconnect(String deviceId) async {
     disconnects++;
-    return _op(() => super.disconnect(deviceId));
+    final giveDisconnect = await _disconnectLock.take();
+    final giveOp = await _opLock.take();
+    try {
+      final requestedAt = _connectRequestedAt;
+      if (requestedAt != null) {
+        final left = requestedAt + androidDelay - elapsed();
+        if (left > Duration.zero) await Future<void>.delayed(left);
+      }
+      await super.disconnect(deviceId);
+      _connectRequestedAt = null;
+    } finally {
+      giveDisconnect();
+      giveOp();
+    }
   }
+
+  Future<T> _op<T>(Future<T> Function() body) async {
+    final give = await _opLock.take();
+    try {
+      await Future<void>.delayed(opTakes);
+      return await body();
+    } finally {
+      give();
+    }
+  }
+
+  @override
+  Future<Uint8List> read(String d, String s, String c) =>
+      _op(() => super.read(d, s, c));
+
+  @override
+  Future<Uint8List> readSection(String deviceId, String name) =>
+      _op(() => super.readSection(deviceId, name));
+
+  @override
+  Future<void> write(
+    String d,
+    String s,
+    String c,
+    Uint8List v, {
+    bool withoutResponse = false,
+    bool allowLongWrite = false,
+  }) =>
+      _op(() => super.write(d, s, c, v,
+          withoutResponse: withoutResponse, allowLongWrite: allowLongWrite));
 }
 
 /// Opens [_devId] on [ble] inside fake time and returns the container.
@@ -253,7 +321,8 @@ void main() {
 
   test('re-opening a lamp mid-connect keeps the new session connected', () {
     fakeAsync((async) {
-      final ble = _SerialOpsClient();
+      final ble = _FbpModelClient(() => async.elapsed)
+        ..connectTakes = const Duration(seconds: 8);
       seedControlBle(ble, deviceId: _devId);
       final c = _open(async, ble);
       final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
@@ -277,7 +346,9 @@ void main() {
 
   test('re-opening onto a link still settling keeps the new session', () {
     fakeAsync((async) {
-      final ble = _SerialOpsClient()..settleTakes = const Duration(seconds: 2);
+      final ble = _FbpModelClient(() => async.elapsed)
+        ..connectTakes = const Duration(seconds: 8)
+        ..settleTakes = const Duration(seconds: 2);
       seedControlBle(ble, deviceId: _devId);
       final c = _open(async, ble);
       final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
@@ -302,7 +373,8 @@ void main() {
 
   test('a mid-connect open nobody re-opens drops its link once it lands', () {
     fakeAsync((async) {
-      final ble = _SerialOpsClient();
+      final ble = _FbpModelClient(() => async.elapsed)
+        ..connectTakes = const Duration(seconds: 8);
       seedControlBle(ble, deviceId: _devId);
       final c = _open(async, ble);
       final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
@@ -311,6 +383,68 @@ void main() {
       async.elapse(const Duration(minutes: 1));
 
       expect(ble.isConnected(_devId), isFalse);
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('re-opening while an abandoned link is being dropped reconnects', () {
+    fakeAsync((async) {
+      final ble = _FbpModelClient(() => async.elapsed);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final opened = async.elapsed;
+      final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(milliseconds: 500));
+      first.close();
+      async.elapse(const Duration(milliseconds: 800));
+      expect(c.exists(controlNotifierProvider(_devId)), isFalse);
+      expect(ble.disconnects, 1, reason: 'the abandoned link is being dropped');
+      expect(ble.isConnected(_devId), isTrue,
+          reason: 'inside the Android disconnect hold');
+      expect(async.elapsed - opened, lessThan(ble.androidDelay));
+
+      final second = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 20));
+
+      final state = c.read(controlNotifierProvider(_devId));
+      expect(state.hasError, isFalse, reason: '${state.error}');
+      expect(state.value?.connected, isTrue);
+      expect(ble.isConnected(_devId), isTrue);
+      second.close();
+      c.dispose();
+      async.flushTimers();
+    });
+  });
+
+  test('re-opening while a loading session drops its link reconnects', () {
+    fakeAsync((async) {
+      final ble = _FbpModelClient(() => async.elapsed)
+        ..connectTakes = const Duration(milliseconds: 300);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble);
+      final opened = async.elapsed;
+      final first = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(milliseconds: 500));
+      expect(ble.isConnected(_devId), isTrue);
+      expect(c.read(controlNotifierProvider(_devId)).isLoading, isTrue,
+          reason: 'linked, still reading the lamp');
+      first.close();
+      async.elapse(const Duration(milliseconds: 300));
+      expect(c.exists(controlNotifierProvider(_devId)), isFalse);
+      expect(ble.disconnects, 1, reason: 'the old session drops its link');
+      expect(ble.isConnected(_devId), isTrue,
+          reason: 'inside the Android disconnect hold');
+      expect(async.elapsed - opened, lessThan(ble.androidDelay));
+
+      final second = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 20));
+
+      final state = c.read(controlNotifierProvider(_devId));
+      expect(state.hasError, isFalse, reason: '${state.error}');
+      expect(state.value?.connected, isTrue);
+      expect(ble.isConnected(_devId), isTrue);
+      second.close();
       c.dispose();
       async.flushTimers();
     });
