@@ -259,8 +259,8 @@ class ControlNotifier extends _$ControlNotifier {
     );
   }
 
-  /// A held link hides the lamp from the scan, so the moment it ends is the
-  /// last time the phone saw it.
+  /// Stamps the lamp as seen now. A held link hides the lamp from the scan, so
+  /// a session stamps it itself while it holds the link and when the link ends.
   void _recordSeenNow() => unawaited(
         _inv.recordLastSeen({_deviceId: _now().millisecondsSinceEpoch}),
       );
@@ -301,7 +301,7 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    // Always connects, even onto a live link: a link left by an earlier
+    // Always connects, even onto a live link. A link left by an earlier
     // session may carry a queued disconnect, and the connect waits behind it.
     if (!await connectWithRetry(ble, deviceId,
         owner: _linkOwner, shouldAbort: () => !ref.mounted)) {

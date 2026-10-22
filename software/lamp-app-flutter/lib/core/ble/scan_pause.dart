@@ -15,7 +15,7 @@ class ScanPause {
   /// Fires when the last hold ends, whether its body completed or threw.
   Stream<void> get released => _released.stream;
 
-  /// Runs [body] with scanning held off. Holds nest: scanning resumes only
+  /// Runs [body] with scanning held off. Holds nest, so scanning resumes only
   /// when every concurrent hold has ended.
   Future<T> during<T>(Future<T> Function() body) async {
     _holds++;

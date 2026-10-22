@@ -57,10 +57,11 @@ class _FifoLock {
 
 /// flutter_blue_plus 2.3.4's per-device ordering (bluetooth_device.dart):
 /// connect and disconnect share a disconnect lock, every GATT op shares an op
-/// lock, both first-come. A connect to a linked lamp returns at once. On
+/// lock, both first-come. A connect to a linked lamp makes no new link. On
 /// Android a disconnect waits until [androidDelay] after the latest connect
 /// request, and the link stays up until it lands. [settleTakes] holds the op
-/// lock after a link lands, as the MTU request does.
+/// lock after any connect that leaves the lamp linked, as Android's MTU
+/// request does.
 class _FbpModelClient extends InMemoryBleClient {
   _FbpModelClient(this.elapsed);
   final Duration Function() elapsed;
@@ -80,13 +81,14 @@ class _FbpModelClient extends InMemoryBleClient {
     _connectRequestedAt = elapsed();
     giveDisconnect();
     try {
-      if (isConnected(deviceId)) return;
-      await Future<void>.delayed(connectTakes);
-      await super.connect(deviceId);
+      if (!isConnected(deviceId)) {
+        await Future<void>.delayed(connectTakes);
+        await super.connect(deviceId);
+      }
     } finally {
       giveOp();
     }
-    if (settleTakes > Duration.zero) {
+    if (settleTakes > Duration.zero && isConnected(deviceId)) {
       await _op(() => Future<void>.delayed(settleTakes));
     }
   }
