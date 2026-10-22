@@ -148,8 +148,8 @@ Future<Uint8List> readSectionVia(
 abstract class BleClient {
   final Map<String, Object> _linkOwners = {};
 
-  /// Makes [owner] the party that answers for [deviceId]'s link. Only the
-  /// latest connect or session to claim a lamp may drop a link it gave up on.
+  /// Records [owner] as the latest connect to [deviceId]. A connect that gave
+  /// up drops the link it left only while [ownsLink] still holds for it.
   void claimLink(String deviceId, Object owner) =>
       _linkOwners[deviceId] = owner;
 
@@ -158,6 +158,10 @@ abstract class BleClient {
       identical(_linkOwners[deviceId], owner);
 
   Future<void> connect(String deviceId);
+
+  /// Drops [deviceId]'s link. The disconnect takes its place in the lamp's
+  /// queue during the call itself, so a [connect] issued later waits for the
+  /// link to go down and then connects afresh.
   Future<void> disconnect(String deviceId);
   bool isConnected(String deviceId);
 

@@ -301,12 +301,10 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    // Claimed before adopting a live link too, since the abandoned connect
-    // that raised it may not have checked its abort yet.
-    ble.claimLink(deviceId, _linkOwner);
-    if (!ble.isConnected(deviceId) &&
-        !await connectWithRetry(ble, deviceId,
-            owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
+    // Always connects, even onto a live link: a link left by an earlier
+    // session may carry a queued disconnect, and the connect waits behind it.
+    if (!await connectWithRetry(ble, deviceId,
+        owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
       throw BleNotConnected(deviceId);
     }
     // Register disconnect only after a successful connect. If connect
