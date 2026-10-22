@@ -474,8 +474,7 @@ void Lamp::drainWispState() {
       std::memcmp(dispMac, cmd.sourceMac, 6) != 0) {
     return;
   }
-  lamp::lampRoster.cacheWispPaint(cmd.sourceMac, cmd.entries, cmd.w, cmd.count,
-                                  now);
+  lamp::lampRoster.cacheWispState(cmd, now);
 
   // Yield the render to an open operator color edit; the preview above still
   // updates.
