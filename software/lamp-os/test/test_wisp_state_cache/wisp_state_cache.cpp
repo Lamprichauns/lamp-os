@@ -120,7 +120,11 @@ void test_state_slot_past_capacity_keeps_frame_head() {
   roster.buildWispClaimsBlob(blob, sizeof(blob), 1000);
   TEST_ASSERT_EQUAL_UINT8(kCap, blob[0]);
   bool seen[kOver] = {};
-  for (size_t i = 0; i < kCap; ++i) seen[blob[1 + i * 6 + 5]] = true;
+  for (size_t i = 0; i < kCap; ++i) {
+    const uint8_t idx = blob[1 + i * 6 + 5];
+    TEST_ASSERT_LESS_THAN_size_t(kOver, idx);
+    seen[idx] = true;
+  }
   for (size_t i = 0; i < kCap; ++i) TEST_ASSERT_TRUE_MESSAGE(seen[i], "head entry evicted");
   for (size_t i = kCap; i < kOver; ++i) TEST_ASSERT_FALSE(seen[i]);
 }

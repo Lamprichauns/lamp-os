@@ -64,13 +64,8 @@ void test_drain_applies_own_rgbw() {
   assertColor(Color(70, 80, 90, 0x37), c.wispStateShadeColor());
 }
 
-void test_drain_feeds_render_layers_rgbw() {
-  const uint8_t rgb[6] = {0, 0, 0, 0, 0, 0};
-  const uint8_t w[4] = {0x11, 0x22, 0xC8, 0x37};
-  fillTwo(rgb, w, true);
-  Compositor c;
-  TEST_ASSERT_TRUE(c.applyWispStateSlot(gSlot, kMine, 1000));
-  // Own scene is saturated RGB with no W; full wisp presence replaces it.
+// Full wisp presence replaces the own scene with the layers' eased target.
+void assertLayers(const Compositor& c, Color wantBase, Color wantShade) {
   const Color own(200, 100, 50, 0);
   lamp::LayerStack base = c.wispLayer(true);
   lamp::LayerStack shade = c.wispLayer(false);
@@ -78,8 +73,29 @@ void test_drain_feeds_render_layers_rgbw() {
     base.tick(1.0f);
     shade.tick(1.0f);
   }
-  assertColor(Color(0, 0, 0, 0xC8), base.composite(own));
-  assertColor(Color(0, 0, 0, 0x37), shade.composite(own));
+  assertColor(wantBase, base.composite(own));
+  assertColor(wantShade, shade.composite(own));
+}
+
+void test_drain_feeds_render_layers_rgbw() {
+  const uint8_t rgb[6] = {40, 50, 60, 70, 80, 90};
+  const uint8_t w[4] = {0x11, 0x22, 0xC8, 0x37};
+  fillTwo(rgb, w, true);
+  Compositor c;
+  TEST_ASSERT_TRUE(c.applyWispStateSlot(gSlot, kMine, 1000));
+  assertLayers(c, Color(40, 50, 60, 0xC8), Color(70, 80, 90, 0x37));
+}
+
+void test_drain_w_only_repaint_reaches_layers() {
+  const uint8_t rgb[6] = {40, 50, 60, 70, 80, 90};
+  const uint8_t w1[4] = {0, 0, 0xC8, 0x37};
+  const uint8_t w2[4] = {0, 0, 0x21, 0x9A};
+  Compositor c;
+  fillTwo(rgb, w1, true);
+  TEST_ASSERT_TRUE(c.applyWispStateSlot(gSlot, kMine, 1000));
+  fillTwo(rgb, w2, true);
+  TEST_ASSERT_TRUE(c.applyWispStateSlot(gSlot, kMine, 2000));
+  assertLayers(c, Color(40, 50, 60, 0x21), Color(70, 80, 90, 0x9A));
 }
 
 void test_drain_applies_warm_white_only() {
@@ -132,6 +148,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_drain_applies_own_rgbw);
   RUN_TEST(test_drain_feeds_render_layers_rgbw);
+  RUN_TEST(test_drain_w_only_repaint_reaches_layers);
   RUN_TEST(test_drain_applies_warm_white_only);
   RUN_TEST(test_drain_applies_black);
   RUN_TEST(test_drain_without_w_plane_applies_w_zero);
