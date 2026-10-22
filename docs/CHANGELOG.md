@@ -23,6 +23,16 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   when you relaunch. If the phone keeps the app in the background for a long
   while before closing it, the lamp can show offline or drop off the list
   until it's heard again.
+- **Wisp paints black and warm white.** A lamp the wisp paints black, or warm
+  white with no colour in it, takes that paint instead of dropping back to its
+  own colours, and warm white from a wisp palette now reaches the lamps. Black
+  needs only the wisp updated. Warm white needs both the wisp and the lamp on
+  the new firmware: an older lamp ignores the warm white and shows only the
+  colour part (so warm white alone shows as black), and an older wisp sends
+  none. The app's painted-lamps preview shows warm white and black as painted,
+  for up to 34 lamps under the wisp; past 34 it shows colour only, as before.
+  That needs both the lamp firmware and the app updated; with either one
+  older, the preview shows the lamp's predicted colour as before.
 - **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
   drop back to their own colours for a minute or two at a time. The wisp now
   sends its colour updates twice as often and at a varying moment, so a lamp

@@ -29,6 +29,8 @@
 
 namespace lamp {
 
+struct PendingWispState;
+
 /**
  * One peer in the roster. Identity keys on `mac`, the stable social
  *        identity: the ESP-NOW/HELLO path stores it raw, the BLE-scan path
@@ -363,19 +365,14 @@ class LampRoster {
                       const uint8_t lampMacs[][6], uint8_t count,
                       const uint8_t selfMac[6], uint32_t nowMs);
 
-  // Accumulate one MSG_WISP_PAINT frame into the fleet cache. Same
-  // display-slot admission as cacheWispHello. `entries` is
-  // `count * WISP_PAINT_ENTRY_SIZE` bytes: lampMac(6)+baseRGB(3)+shadeRGB(3)
-  // per entry. Loop-task-only writer (Core 1).
-  void cacheWispPaint(const uint8_t srcMac[6],
-                      const uint8_t* entries, uint8_t count,
-                      uint32_t nowMs);
+  // Accumulate one drained MSG_WISP_STATE slot's entries, W included, into
+  // the fleet cache. Same display-slot admission as cacheWispHello.
+  // Loop-task-only writer (Core 1).
+  void cacheWispState(const PendingWispState& slot, uint32_t nowMs);
 
   // Build the binary blob served on CHAR_WISP_CLAIMS and the `wispclaims`
-  // page section: [count:1][mac:6*count][colorPair:6*count], see
-  // WispFleetCache::buildClaimsBlob. Entries beyond (outCap-1)/12 are
-  // dropped, so a small direct-read buffer serves a truncated set while
-  // the page section serves the full accumulation.
+  // page section, see WispFleetCache::buildClaimsBlob for what a small
+  // `outCap` drops.
   size_t buildWispClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs);
 
   // Record the source of an addressed wisp OVERRIDE_COLORS frame and assert

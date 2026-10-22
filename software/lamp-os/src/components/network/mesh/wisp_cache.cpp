@@ -1,6 +1,7 @@
 #include "wisp_cache.hpp"
 
 #include "lamp_roster.hpp"
+#include "pending_slots.hpp"
 #include "wisp_status_merge.hpp"
 
 #include <cstring>
@@ -262,19 +263,17 @@ void LampRoster::cacheWispClaim(const uint8_t mac[6],
   xSemaphoreGive(mutex_);
 }
 
-void LampRoster::cacheWispPaint(const uint8_t srcMac[6],
-                                  const uint8_t* entries, uint8_t count,
-                                  uint32_t nowMs) {
+void LampRoster::cacheWispState(const PendingWispState& slot, uint32_t nowMs) {
   const uint8_t safeCount =
-      count > lamp_protocol::WISP_PAINT_MAX_ENTRIES
-          ? static_cast<uint8_t>(lamp_protocol::WISP_PAINT_MAX_ENTRIES)
-          : count;
+      slot.count > WispFleetCache::kCapacity
+          ? static_cast<uint8_t>(WispFleetCache::kCapacity)
+          : slot.count;
   xSemaphoreTake(mutex_, portMAX_DELAY);
-  if (!admitWispLocked(srcMac, nowMs)) {
+  if (!admitWispLocked(slot.sourceMac, nowMs)) {
     xSemaphoreGive(mutex_);
     return;
   }
-  wispFleet_.upsertPaints(entries, safeCount, nowMs);
+  wispFleet_.upsertPaints(slot.entries, slot.w, safeCount, nowMs);
   xSemaphoreGive(mutex_);
 }
 

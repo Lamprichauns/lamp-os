@@ -138,5 +138,58 @@ void main() {
       expect(r.macs, {'AA:BB:CC:DD:EE:FF', '01:02:03:04:05:06'});
       expect(r.colors, isEmpty);
     });
+
+    // [count][mac x3][colorPair x3][painted, baseW, shadeW x3]
+    const paintBlob = [
+      0x03,
+      0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // mac[0]: warm white only
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, // mac[1]: painted black
+      0x10, 0x20, 0x30, 0x40, 0x50, 0x60, // mac[2]: claimed, unpainted
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x01, 0xC8, 0x37,
+      0x01, 0x00, 0x00,
+      0x00, 0x00, 0x00,
+    ];
+
+    test('paint section: W reaches the live color', () {
+      final r = parseWispClaims(paintBlob);
+      final c = r.colors['AA:BB:CC:DD:EE:FF']!;
+      expect(c.base, const LampColor(r: 0, g: 0, b: 0, w: 0xC8));
+      expect(c.shade, const LampColor(r: 0, g: 0, b: 0, w: 0x37));
+    });
+
+    test('paint section: a black-painted lamp is live black', () {
+      final r = parseWispClaims(paintBlob);
+      final c = r.colors['01:02:03:04:05:06'];
+      expect(c, isNotNull);
+      expect(c!.base, LampColor.black);
+      expect(c.shade, LampColor.black);
+    });
+
+    test('paint section: an unpainted lamp is left to prediction', () {
+      final r = parseWispClaims(paintBlob);
+      expect(r.macs, contains('10:20:30:40:50:60'));
+      expect(r.colors.containsKey('10:20:30:40:50:60'), isFalse);
+    });
+
+    test('paint section: unpainted wins over a nonzero pair', () {
+      final blob = [
+        0x01,
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+        0x00, 0x09, 0x09,
+      ];
+      expect(parseWispClaims(blob).colors, isEmpty);
+    });
+
+    test('partial paint section reads as the older layout', () {
+      final blob = paintBlob.sublist(0, paintBlob.length - 1);
+      final r = parseWispClaims(blob);
+      expect(r.macs.length, 3);
+      // Older rule: all-zero pairs are "no live color", W reads 0.
+      expect(r.colors, isEmpty);
+    });
   });
 }
