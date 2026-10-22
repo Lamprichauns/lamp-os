@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/serial_by_key.dart';
 import 'uuids.dart';
 
 
@@ -117,7 +118,7 @@ Future<Uint8List> readPagesUntilEmpty(
 /// shared page snapshot + cursor per connection, so two overlapping
 /// CTRL+DATA pairs corrupt each other (a CTRL write mid-DATA-drain resets
 /// the cursor and the in-flight reader pulls the other section's bytes).
-final Map<String, Future<void>> _pageSessions = {};
+final _pageSessions = SerialByKey();
 
 /// Reads a named page-protocol section from any [BleClient]: write the section
 /// name to CHAR_PAGE_CTRL, then pull CHAR_PAGE_DATA chunks until the empty
@@ -136,13 +137,7 @@ Future<Uint8List> readSectionVia(
             () => client.read(deviceId, BleUuids.controlService, BleUuids.pageData),
           ));
 
-  final prior = _pageSessions[deviceId] ?? Future<void>.value();
-  final result = prior.then((_) => run());
-  // Chain the next session behind this one regardless of outcome; a failure
-  // must not wedge the queue.
-  _pageSessions[deviceId] =
-      result.then((_) {}, onError: (_) {});
-  return result;
+  return _pageSessions.run(deviceId, run);
 }
 
 abstract class BleClient {

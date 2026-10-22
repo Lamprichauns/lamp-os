@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../utils/serial_by_key.dart';
 import 'ble_client.dart';
 import 'bridge_protocol.dart';
 import 'bridge_transport.dart';
@@ -12,7 +13,9 @@ class NetworkDevBleClient extends BleClient {
   final Map<String, bool> _connected = {};
   final Map<String, StreamController<bool>> _connCtrls = {};
   final Set<String> _watchStarted = {};
-  final Map<String, Future<void>> _linkOps = {};
+  /// A device's connects and disconnects, one at a time in call order, as
+  /// [BleClient.disconnect] requires.
+  final _linkOps = SerialByKey();
 
   Never _throw(String deviceId, BridgeResponse r) {
     final code = bridgeErrorCodeFromWire(r.json['error'] as String? ?? 'UNKNOWN');
@@ -24,23 +27,15 @@ class NetworkDevBleClient extends BleClient {
     _connCtrls[deviceId]?.add(v);
   }
 
-  /// Runs a device's connects and disconnects one at a time in call order,
-  /// as [BleClient.disconnect] requires.
-  Future<void> _inOrder(String deviceId, Future<void> Function() op) {
-    final next = (_linkOps[deviceId] ?? Future<void>.value()).then((_) => op());
-    _linkOps[deviceId] = next.then((_) {}, onError: (_) {});
-    return next;
-  }
-
   @override
-  Future<void> connect(String deviceId) => _inOrder(deviceId, () async {
+  Future<void> connect(String deviceId) => _linkOps.run(deviceId, () async {
         final r = await _t.request('POST', '/connect/$deviceId');
         if (!r.ok) _throw(deviceId, r);
         _setConnected(deviceId, true);
       });
 
   @override
-  Future<void> disconnect(String deviceId) => _inOrder(deviceId, () async {
+  Future<void> disconnect(String deviceId) => _linkOps.run(deviceId, () async {
         await _t.request('POST', '/disconnect/$deviceId');
         _setConnected(deviceId, false);
       });
