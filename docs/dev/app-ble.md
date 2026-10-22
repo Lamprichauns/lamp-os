@@ -23,6 +23,10 @@ needs about a second to release the slot after a failed attempt.
   returns false once it is true. Returns true once connected.
 - Rethrows the last attempt's failure, so the caller maps it to a user-visible
   error.
+- Drops the link when it gives up (an abort, or a failure on the last
+  attempt) if the lamp is still connected and its `owner` still holds the
+  claim (see below). A connect that gives up leaves no link behind on a lamp
+  no later connect has claimed.
 
 Callers:
 
@@ -42,43 +46,63 @@ and calls `BleClient.connect` directly with a per-attempt timeout.
 
 A connect can outlive the screen that started it: the user backs out while an
 attempt is still in flight, and the link lands afterwards. `BleClient` keeps
-one owner per device id so the right party decides whether that late link
-stays.
+one owner per device id so a connect that gives up knows whether the link it
+left is still its own to drop.
 
-- `BleClient.claimLink(deviceId, owner)` makes `owner` the party that answers
-  for the lamp's link. The latest claim wins.
+- `BleClient.claimLink(deviceId, owner)` records `owner` as the latest connect
+  to the lamp. The latest claim wins.
 - `BleClient.ownsLink(deviceId, owner)` is true while `owner` holds the latest
   claim.
 
-Who claims:
+Only `connectWithRetry` claims, on entry, and only `connectWithRetry` checks,
+when it gives up. A caller whose `shouldAbort` is already true on entry returns
+false without claiming, so it can't take the lamp from a newer connect. Its give-up checks `ownsLink` and `isConnected` and calls
+`BleClient.disconnect` in one synchronous step, so a connect that claims the
+lamp afterwards is ordered behind that disconnect.
 
-- `connectWithRetry` claims the lamp for its `owner` on entry.
-- `ControlNotifier.build` claims the lamp for its session before it checks
-  `isConnected`, so it also claims a link that is already up and adopts it.
-  The abandoned connect that raised that link may not have reached its abort
-  check yet.
+### Ordering the app relies on
 
-What it guarantees: when `connectWithRetry` lands a link after its owner gave
-up (`shouldAbort` true), it disconnects only while that owner still holds the
-claim. Backing out of a lamp while its connect is still in flight and opening
-it again keeps the new session's link, whichever of the two connects lands it.
-A connect abandoned with nobody claiming the lamp since still drops its link,
-so a lamp the user walked away from is not held open.
+`FbpBleClient` passes `connect` and `disconnect` straight to flutter_blue_plus
+2.3.4, which serializes them per device:
 
-The limit: only `connectWithRetry`'s late-link drop checks ownership. Once a
-session's connect succeeds, `ControlNotifier.build` registers a `ref.onDispose`
-that calls `ble.disconnect` unconditionally. On Android, flutter_blue_plus
-2.3.4's `BluetoothDevice.disconnect` enforces `androidDelay` (2 s) as a minimum
-gap after the connect, so a disconnect issued sooner waits until 2 s after the
-link came up. Backing out after the link is up but while the lamp screen is
-still loading (auth, section reads), then opening the lamp again before that
-gap ends, lets the new session adopt the still-up link and lose it when the
-old session's disconnect lands; the new session fails with
-`BleNotConnected`. iOS has no such gap.
+- `BluetoothDevice.disconnect` holds the device's disconnect `_Mutex` for its
+  whole run: the Android `androidDelay` wait, the platform disconnect and the
+  wait for the disconnected event.
+- `BluetoothDevice.connect` takes the same mutex before it issues its request.
+- `_Mutex.take` serves callers in the order they called it.
 
-A caller that connects through `connectWithRetry` must pass an owner that is
-stable for its session (`ControlNotifier` uses one `_linkOwner` object per
-notifier) and must claim before adopting a live link it did not connect itself.
+So a connect issued while a disconnect of that lamp is pending waits until the
+link is down, then connects afresh. `BleClient.disconnect` takes its place in
+that queue during the call itself.
+
+On Android, `BluetoothDevice.disconnect` waits until `androidDelay` (2 s) after
+`_connectTimestamp`, which `BluetoothDevice.connect` sets on every connect
+request, including one on a lamp that is already connected, so the gap runs
+from the latest connect request. Until the disconnect lands, the link and
+`isConnected` stay up. iOS has no such gap.
+
+### Backing out and re-opening
+
+`ControlNotifier.build` always opens through `connectWithRetry`, even when the
+lamp is already linked; it never adopts a live link. Once that connect
+succeeds it registers a `ref.onDispose` that calls `ble.disconnect`
+unconditionally.
+
+- Backing out while the session is still connecting: `connectWithRetry` gives
+  up at its next `shouldAbort` check and drops the link it left, unless a
+  re-opened session has claimed the lamp since.
+- Backing out after the link is up, while the screen is still loading (auth,
+  section reads): the session's dispose disconnects. A re-opened session
+  builds after that dispose, so its connect queues behind the disconnect.
+
+Either way, re-opening the lamp leaves the new session connected. At worst it
+waits out the old disconnect (on Android, up to about 2 s after the old
+connect request, plus the disconnect round trip) or retries through
+`connectWithRetry`. A connect abandoned with no re-open drops its link, so a
+lamp the user walked away from is not held open.
+
+A caller of `connectWithRetry` passes an owner that is stable for its session
+(`ControlNotifier` uses one `_linkOwner` object per notifier).
 
 ## Scan hold during a connect
 
@@ -114,7 +138,9 @@ How long the scan stays off:
   `requestMtu` waits a 0.35 s predelay and times out after 15 s. That request
   is outside the 8 s connect timeout, so an attempt whose link comes up and
   whose MTU request then stalls holds the scan for up to 8 s + 0.35 s + 15 s.
-  A failed MTU request throws out of `connect` and counts as a failed attempt.
+  A failed MTU request throws out of `connect` and counts as a failed attempt,
+  with the link still up. When every attempt fails, `connectWithRetry` drops
+  that link before rethrowing, while its owner still holds the claim.
 
 While the scan is off, the app hears no lamp. A connect can run with My Lamps
 on screen (My Lamps opened over a lamp that is still connecting or
@@ -176,6 +202,10 @@ while it is held. `ControlNotifier` stamps it instead:
 - when the app goes to the background, on `AppLifecycleState.paused`
   (`_recordSeenNow`, while linked).
 
-The background stamp is what keeps an open lamp listed after the app is killed:
-a kill from the background follows `paused`, so a relaunch finds a recent
-last-seen time for the lamp the phone held moments before.
+The background stamp records the moment of the pause. Neither app runs in the
+background (no `UIBackgroundModes` in `ios/Runner/Info.plist`, no foreground
+service on Android), so nothing stamps the held lamp after `paused`. A kill
+soon after the pause leaves a recent last-seen time, and the lamp is listed
+after a relaunch. If the OS keeps the link up after the pause and kills the
+app much later, the stored time is still the pause, so after a relaunch the
+lamp can show offline or be hidden until it is heard again.

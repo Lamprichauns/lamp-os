@@ -14,11 +14,15 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 - **The app no longer connects to lamps in the background.** My Lamps doesn't
   open a link to every paired lamp it hears; the app connects only to the lamp
   you open.
-- **Re-opening a lamp that hadn't connected yet keeps the connection.** Backing
-  out of a lamp before it connects and opening it again no longer drops the
-  new connection.
-- **A lamp you had open stays on My Lamps after the app is closed.** Close the
-  app with a lamp open, relaunch it, and the lamp is still listed.
+- **Re-opening a lamp right after backing out keeps the connection.** Back out
+  of a lamp while it's still connecting or loading, open it again, and it
+  connects and stays connected. On Android it can take a couple of seconds
+  longer while the old connection closes.
+- **A lamp you had open stays on My Lamps after the app is closed.** Leave the
+  app with a lamp open and close it soon after, and the lamp is still listed
+  when you relaunch. If the phone keeps the app in the background for a long
+  while before closing it, the lamp can show offline or drop off the list
+  until it's heard again.
 - **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
   drop back to their own colours for a minute or two at a time. The wisp now
   sends its colour updates twice as often and at a varying moment, so a lamp
