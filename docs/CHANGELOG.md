@@ -13,6 +13,16 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   sends its colour updates twice as often and at a varying moment, so a lamp
   that kept missing them at one fixed moment catches them.
 
+### Changed
+- **The app downloads lamp firmware once each time it starts.** It used to
+  download it again every time your list of saved lamps changed. Now it
+  fetches firmware for each kind of lamp you own once when the app starts, and
+  once more for a new kind of lamp you add that it has no firmware for yet. If
+  you're offline it keeps the firmware it already has and tries again next
+  time you open the app. Updating a lamp when it connects, and the firmware
+  panel, work from what's already downloaded, and the panel's empty message
+  now says firmware downloads when the app starts online.
+
 ## 1.2.9
 
 ### Added
