@@ -96,15 +96,17 @@ unconditionally.
   builds after that dispose, so its connect queues behind the disconnect.
 
 Either way, re-opening the lamp leaves the new session connected, or at worst
-retrying through `connectWithRetry` like any other open. Before its own connect starts it waits
-for what the old session left in the lamp's queue:
+retrying through `connectWithRetry` like any other open. Its connect returns
+only after what the old session left in the lamp's queue:
 
-- after a back-out while connecting, the rest of the abandoned attempt, on
-  either platform: up to its 8 s connect timeout, and on Android up to
-  0.35 s + 15 s more for the MTU request once the link lands;
-- after a back-out while loading, the old disconnect: on Android up to about
-  2 s after the old connect request, behind any GATT op the old session still
-  has in flight, plus the disconnect round trip.
+- after a back-out while connecting, the rest of the abandoned attempt: up to
+  its 8 s connect timeout on either platform. On Android, once the link lands,
+  the abandoned attempt's MTU request (up to 0.35 s + 15 s) runs after the new
+  connect's own connect request and before that connect returns.
+- after a back-out while loading, the old disconnect: it waits behind any GATT
+  op the old session still has in flight, then for the disconnect round trip,
+  on either platform. On Android it also waits until about 2 s after the old
+  connect request.
 
 A connect abandoned with no re-open drops its link, so a lamp the user walked
 away from is not held open.
