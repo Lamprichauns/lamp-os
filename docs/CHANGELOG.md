@@ -30,6 +30,14 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   list until it's heard again. It stays paired and keeps everything the app
   knows about it. With no paired lamp heard in the last five minutes, My
   Lamps shows just the "Adopt a lamp" tile.
+- **The app downloads lamp firmware once each time it starts.** It used to
+  download it again every time your list of saved lamps changed. Now it
+  fetches firmware for each kind of lamp you own once when the app starts, and
+  once more for a new kind of lamp you add that it has no firmware for yet. If
+  you're offline it keeps the firmware it already has and tries again the
+  next time the app is restarted. Updating a lamp when it connects, and the
+  firmware panel, work from what's already downloaded, and the panel's empty
+  message now says firmware downloads when the app starts online.
 
 ## 1.2.9
 

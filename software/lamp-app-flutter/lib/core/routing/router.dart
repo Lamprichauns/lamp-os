@@ -33,12 +33,10 @@ GoRouter appRouter(Ref ref) {
   final refresh = ValueNotifier<int>(0);
   ref.listen(inventoryNotifierProvider, (_, next) {
     refresh.value++;
-    // Background-fetch the per-variant firmware for each lamp the user owns
-    // so a venue without internet can still push updates. The cache notifier
-    // coalesces concurrent triggers and ignores network errors (failure
-    // leaves the previous cached copy in place).
-    final list = next?.value;
-    if (list != null && list.isNotEmpty) {
+    // Caches each owned variant's firmware so a venue without internet can
+    // still push updates. syncForInventory owns the fetch cadence.
+    final list = next.value;
+    if (list != null) {
       ref.read(cachedFirmwareNotifierProvider.notifier).syncForInventory(list);
     }
   });

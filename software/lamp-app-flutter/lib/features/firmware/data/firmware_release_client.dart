@@ -5,9 +5,7 @@
 // tagged push. Fetches that asset over HTTPS, hands it to the verifier
 // for LSIG + Ed25519 check, and returns the bytes for the OTA pusher.
 //
-// No GitHub auth token needed; the releases are public. No API rate
-// limit risk for the per-user fetch cadence (one tap per user per OTA
-// session).
+// No GitHub auth token needed; the releases are public.
 
 import 'dart:async';
 import 'dart:io';

@@ -39,7 +39,7 @@ class _GreetingFakeControl extends ControlNotifier {
 
   @override
   Future<ControlState> build(String deviceId) async => ControlState(
-        lamp: LampSection(
+        lamp: const LampSection(
           name: 'self',
           brightness: 100,
           advancedEnabled: false,

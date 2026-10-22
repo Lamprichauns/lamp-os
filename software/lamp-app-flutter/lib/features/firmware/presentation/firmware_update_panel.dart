@@ -113,7 +113,7 @@ class _CacheListView extends ConsumerWidget {
           const SizedBox(width: AppSpace.md),
           Expanded(
             child: Text(
-              'No firmware downloaded yet — connect while online to sync.',
+              'No firmware downloaded yet. It downloads when the app starts online.',
               style: theme.textTheme.bodyLarge,
             ),
           ),
