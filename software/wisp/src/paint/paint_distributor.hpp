@@ -40,6 +40,7 @@ class PaintDistributor {
   // Consumed by the beacon: a paint-mode edge wants an out-of-cadence STATE
   // emit so a lamp responds within a frame, not up to one STATE tick.
   bool consumeStateDirty() { const bool d = stateDirty_; stateDirty_ = false; return d; }
+  bool stateDirty() const { return stateDirty_; }
 
   // Shuffle seed passed through to TupleSampler. Changing it re-rolls
   // per-lamp color assignments on the next pass.

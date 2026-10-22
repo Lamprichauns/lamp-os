@@ -57,7 +57,7 @@ class StatusEmitter {
   void pollConfig();
 
   // Runs the due wispStatus / wispConfig emit on the loop task. Cheap when
-  // nothing is due. True when it broadcast this pass.
+  // nothing is due. True when it ran a wispStatus or wispConfig emit this pass.
   bool pump();
 
  private:

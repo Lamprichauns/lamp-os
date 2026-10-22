@@ -2,9 +2,7 @@
 //
 // MSG_WISP_HELLO fires every 2s tick, with the fat full-set MSG_WISP_CLAIM on
 // odd ticks. The fat full-set MSG_WISP_STATE goes out every tick at a random
-// offset after the HELLO, in a loop pass of its own, so a lamp's periodic deaf
-// window cannot phase-lock against it and two fat frames never go out in one
-// pass on the single core. STATE is the sole paint render path (per-lamp
+// offset after the HELLO. STATE is the sole paint render path (per-lamp
 // colors), so a paint-mode edge also emits STATE out of cadence via
 // PaintDistributor's dirty flag, then re-emits it a few times over a short
 // burst window so the take/release edge survives a coex drop instead of waiting
@@ -52,6 +50,8 @@ inline bool stateBurstDue(uint32_t now, uint32_t burstUntilMs,
   return (now - lastStateEmitMs) >= intervalMs;
 }
 
+// A fixed STATE phase behind the HELLO beats against a lamp's periodic deaf
+// window and loses whole runs of STATEs; a per-tick random offset spreads them.
 constexpr uint32_t kStateOffsetMinMs = 200;
 constexpr uint32_t kStateOffsetMaxMs = 800;
 
@@ -61,26 +61,38 @@ inline uint32_t stateTickOffsetMs(uint32_t random) {
   return kStateOffsetMinMs + random % (kStateOffsetMaxMs - kStateOffsetMinMs + 1);
 }
 
-// The steady-cadence STATE each HELLO tick schedules. One pending at a time: a
-// schedule() replaces an unsent one, so a loop stall drops at most that STATE.
+// The steady-cadence STATE each HELLO tick schedules. It holds one pending
+// STATE, and a schedule() replaces an unsent one, so a loop stall drops at most
+// that STATE.
 class TickStateSchedule {
  public:
-  void schedule(uint32_t now, uint32_t offsetMs) {
+  void schedule(uint32_t helloMs, uint32_t offsetMs) {
     pending_ = true;
-    dueMs_ = now + offsetMs;
+    dueMs_ = helloMs + offsetMs;
   }
-  // True once, on the first call at or after the due time; clears the pending
-  // STATE so the caller sends it exactly once.
-  bool takeDue(uint32_t now) {
-    if (!pending_ || static_cast<int32_t>(now - dueMs_) < 0) return false;
-    pending_ = false;
-    return true;
+  // True from the due time until markSent().
+  bool due(uint32_t now) const {
+    return pending_ && static_cast<int32_t>(now - dueMs_) >= 0;
   }
+  void markSent() { pending_ = false; }
 
  private:
   bool     pending_ = false;
   uint32_t dueMs_   = 0;
 };
+
+enum class StateSend : uint8_t { None, Edge, Burst, Tick };
+
+// Which STATE a loop pass sends. None on a pass that already broadcast another
+// fat frame, else the paint edge, then a due burst copy, then a due tick STATE.
+constexpr StateSend nextStateSend(bool passBusy, bool edgeDirty, bool burstDue,
+                                  bool tickDue) {
+  if (passBusy) return StateSend::None;
+  if (edgeDirty) return StateSend::Edge;
+  if (burstDue) return StateSend::Burst;
+  if (tickDue) return StateSend::Tick;
+  return StateSend::None;
+}
 
 class PresenceBeacon {
  public:
@@ -94,8 +106,9 @@ class PresenceBeacon {
 
   // Runs the due HELLO / CLAIM / STATE emits on the loop task. Pass true when
   // another emitter already broadcast a fat frame this loop pass. Any STATE,
-  // edge and burst copies included, waits for a pass with no other fat frame,
-  // and at most one goes out per pass. Cheap when nothing is due.
+  // edge and burst copies included, waits for a pass with no other fat frame
+  // (nextStateSend), so two fat frames never go out in one pass on the single
+  // core. Cheap when nothing is due.
   void pump(bool fatFrameSentThisPass);
 
  private:
