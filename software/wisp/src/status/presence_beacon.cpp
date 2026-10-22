@@ -9,6 +9,7 @@
 #include "net/mesh_link.hpp"
 #include "paint/paint_distributor.hpp"
 #include "fleet/wisp_roster.hpp"
+#include "status/state_frame.hpp"
 #include "core/wisp_controller.hpp"
 #include "wire/lamp_protocol.hpp"
 #include "status/status_emitter.hpp"
@@ -185,9 +186,9 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
   WISP_SEQ_PORTMUX_ENTER(&seq_->mux);
   stateSeq = seq_->next();
   WISP_SEQ_PORTMUX_EXIT(&seq_->mux);
-  const size_t stateLen = roster_->buildStateFrame(
-      stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness, driftRateMs,
-      presenceFlags, paint_ && paint_->painting());
+  const size_t stateLen = buildStateFrame(
+      *roster_, stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness,
+      driftRateMs, presenceFlags, paint_ && paint_->painting());
   // No resend: at up to 1461 B STATE overflows the paint-sized resend slot.
   // Edge coverage comes from the burst window in pump(); the 4s cadence backs
   // both up.

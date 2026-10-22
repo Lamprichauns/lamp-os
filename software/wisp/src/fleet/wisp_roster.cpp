@@ -263,23 +263,6 @@ size_t WispRoster::snapshotStateForBroadcast(uint8_t* out, size_t cap,
   return out_i;
 }
 
-size_t WispRoster::buildStateFrame(uint8_t* buf, size_t bufLen, uint16_t seq,
-                                   const uint8_t srcMac[6], uint8_t brightness,
-                                   uint32_t driftRateMs, uint8_t presenceFlags,
-                                   bool painting) {
-  uint8_t entries[lamp_protocol::WISP_STATE_MAX_ENTRIES *
-                  lamp_protocol::WISP_STATE_ENTRY_SIZE];
-  uint8_t w[lamp_protocol::WISP_STATE_MAX_ENTRIES *
-            lamp_protocol::WISP_STATE_W_SIZE];
-  const size_t count =
-      painting ? snapshotStateForBroadcast(entries, sizeof(entries), w, sizeof(w))
-               : 0;
-  return lamp_protocol::buildWispState(
-      buf, bufLen, seq, srcMac, brightness, driftRateMs, presenceFlags,
-      count > 0 ? entries : nullptr, count > 0 ? w : nullptr,
-      static_cast<uint8_t>(count));
-}
-
 size_t WispRoster::claimedCount() const {
   if (xSemaphoreTake(asHandle(mutex_), portMAX_DELAY) != pdTRUE) return 0;
   const size_t n = ownCount_;

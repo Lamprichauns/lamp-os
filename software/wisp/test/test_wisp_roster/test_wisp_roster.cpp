@@ -26,6 +26,7 @@
 
 #include "fleet/wisp_roster.hpp"
 #include "paint/paint_distributor.hpp"
+#include "status/state_frame.hpp"
 #include "wire/lamp_protocol.hpp"
 
 namespace {
@@ -779,9 +780,9 @@ void test_build_state_frame_carries_w_plane(void) {
 
   const uint8_t srcMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
   uint8_t frame[lamp_protocol::WISP_STATE_MAX_SIZE];
-  const size_t len = r.buildStateFrame(frame, sizeof(frame), /*seq=*/9, srcMac,
-                                       /*brightness=*/90, /*driftRateMs=*/30000,
-                                       /*presenceFlags=*/0x01, /*painting=*/true);
+  const size_t len = wisp::buildStateFrame(
+      r, frame, sizeof(frame), /*seq=*/9, srcMac, /*brightness=*/90,
+      /*driftRateMs=*/30000, /*presenceFlags=*/0x01, /*painting=*/true);
   lamp_protocol::ParsedWispState out;
   TEST_ASSERT_TRUE(lamp_protocol::parseWispState(frame, len, out));
   TEST_ASSERT_EQUAL_UINT8(1, out.count);
@@ -805,8 +806,8 @@ void test_build_state_frame_off_packs_no_entries(void) {
 
   const uint8_t srcMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
   uint8_t frame[lamp_protocol::WISP_STATE_MAX_SIZE];
-  const size_t len = r.buildStateFrame(frame, sizeof(frame), 9, srcMac, 90,
-                                       30000, 0, /*painting=*/false);
+  const size_t len = wisp::buildStateFrame(r, frame, sizeof(frame), 9, srcMac,
+                                           90, 30000, 0, /*painting=*/false);
   lamp_protocol::ParsedWispState out;
   TEST_ASSERT_TRUE(lamp_protocol::parseWispState(frame, len, out));
   TEST_ASSERT_EQUAL_UINT8(0, out.count);
