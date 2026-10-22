@@ -45,6 +45,7 @@ class _FlakyConnectClient extends InMemoryBleClient {
 class _SerialOpsClient extends InMemoryBleClient {
   Duration connectTakes = const Duration(seconds: 8);
   Duration settleTakes = Duration.zero;
+  int disconnects = 0;
   Future<void> _tail = Future.value();
 
   Future<void> _op(Future<void> Function() body) {
@@ -64,8 +65,10 @@ class _SerialOpsClient extends InMemoryBleClient {
       });
 
   @override
-  Future<void> disconnect(String deviceId) =>
-      _op(() => super.disconnect(deviceId));
+  Future<void> disconnect(String deviceId) {
+    disconnects++;
+    return _op(() => super.disconnect(deviceId));
+  }
 }
 
 /// Opens [_devId] on [ble] inside fake time and returns the container.
@@ -263,7 +266,7 @@ void main() {
       final state = c.read(controlNotifierProvider(_devId));
       expect(state.hasError, isFalse, reason: '${state.error}');
       expect(state.value?.connected, isTrue);
-      expect(ble.isConnected(_devId), isTrue);
+      expect(ble.disconnects, 0, reason: 'the re-opened link never dropped');
       second.close();
       c.dispose();
       async.flushTimers();
@@ -288,7 +291,7 @@ void main() {
       final state = c.read(controlNotifierProvider(_devId));
       expect(state.hasError, isFalse, reason: '${state.error}');
       expect(state.value?.connected, isTrue);
-      expect(ble.isConnected(_devId), isTrue);
+      expect(ble.disconnects, 0, reason: 'the re-opened link never dropped');
       second.close();
       c.dispose();
       async.flushTimers();
