@@ -181,9 +181,8 @@ class MeshLink {
   // relay). Lamps DO act on the payload: cache it for the app to read via
   // CHAR_WISP_STATUS.
   lamp_protocol::DedupRing<32> wispPaletteDedup_;
-  // Per-lamp paint colors from the wisp. No relay; dedup prevents
-  // repeat-fire. Cached for CHAR_WISP_CLAIMS to serve the app's
-  // painted-lamps preview.
+  // Retired MSG_WISP_PAINT. Parsed and deduped, never drained (see
+  // docs/dev/networking.md).
   lamp_protocol::DedupRing<16> wispPaintDedup_;
   // Declarative per-lamp state from the wisp. No relay; dedup prevents
   // repeat-fire on direct reception.

@@ -46,9 +46,9 @@ void test_two_entry_round_trip() {
   uint8_t frame[2 * 12];
   makePaintEntry(frame, mac0, 0x10, 0x40);
   makePaintEntry(frame + 12, mac1, 0xA0, 0xD0);
-  cache.upsertPaints(frame, 2, 1000);
+  cache.upsertPaints(frame, nullptr, 2, 1000);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_TRUE(cache.findPaint(mac0, 1000, base, shade));
   TEST_ASSERT_EQUAL_UINT8(0x10, base[0]);
   TEST_ASSERT_EQUAL_UINT8(0x11, base[1]);
@@ -66,9 +66,9 @@ void test_unknown_mac_returns_false() {
   macForIndex(other, 9);
   uint8_t frame[12];
   makePaintEntry(frame, mac, 0x10, 0x40);
-  cache.upsertPaints(frame, 1, 1000);
+  cache.upsertPaints(frame, nullptr, 1, 1000);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_FALSE(cache.findPaint(other, 1000, base, shade));
 }
 
@@ -80,11 +80,11 @@ void test_entries_accumulate_across_frames() {
   macForIndex(mac1, 1);
   uint8_t frame[12];
   makePaintEntry(frame, mac0, 0x10, 0x40);
-  cache.upsertPaints(frame, 1, 1000);
+  cache.upsertPaints(frame, nullptr, 1, 1000);
   makePaintEntry(frame, mac1, 0xA0, 0xD0);
-  cache.upsertPaints(frame, 1, 3000);
+  cache.upsertPaints(frame, nullptr, 1, 3000);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_TRUE(cache.findPaint(mac0, 4000, base, shade));
   TEST_ASSERT_TRUE(cache.findPaint(mac1, 4000, base, shade));
 }
@@ -97,12 +97,12 @@ void test_per_entry_staleness() {
   macForIndex(mac1, 1);
   uint8_t frame[12];
   makePaintEntry(frame, mac0, 0x10, 0x40);
-  cache.upsertPaints(frame, 1, 0);
+  cache.upsertPaints(frame, nullptr, 1, 0);
   makePaintEntry(frame, mac1, 0xA0, 0xD0);
-  cache.upsertPaints(frame, 1, 50000);
+  cache.upsertPaints(frame, nullptr, 1, 50000);
 
   const uint32_t nowMs = WispFleetCache::kStaleMs + 10000;
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_FALSE(cache.findPaint(mac0, nowMs, base, shade));
   TEST_ASSERT_TRUE(cache.findPaint(mac1, nowMs, base, shade));
 }
@@ -114,9 +114,9 @@ void test_boundary_age_still_fresh() {
   macForIndex(mac, 0);
   uint8_t frame[12];
   makePaintEntry(frame, mac, 0x10, 0x40);
-  cache.upsertPaints(frame, 1, 1000);
+  cache.upsertPaints(frame, nullptr, 1, 1000);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_TRUE(
       cache.findPaint(mac, 1000 + WispFleetCache::kStaleMs, base, shade));
   TEST_ASSERT_FALSE(
@@ -130,18 +130,18 @@ void test_upsert_refreshes_in_place() {
   macForIndex(mac, 0);
   uint8_t frame[12];
   makePaintEntry(frame, mac, 0x10, 0x40);
-  cache.upsertPaints(frame, 1, 1000);
+  cache.upsertPaints(frame, nullptr, 1, 1000);
   makePaintEntry(frame, mac, 0x77, 0x99);
-  cache.upsertPaints(frame, 1, 2000);
+  cache.upsertPaints(frame, nullptr, 1, 2000);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_TRUE(cache.findPaint(mac, 2000, base, shade));
   TEST_ASSERT_EQUAL_UINT8(0x77, base[0]);
   TEST_ASSERT_EQUAL_UINT8(0x99, shade[0]);
 
   // Single blob entry: no duplicate slot was consumed.
-  uint8_t blob[1 + 2 * 12];
-  TEST_ASSERT_EQUAL_size_t(1 + 12,
+  uint8_t blob[1 + 2 * lamp::WispFleetCache::kBlobEntrySize];
+  TEST_ASSERT_EQUAL_size_t(1 + lamp::WispFleetCache::kBlobEntrySize,
                            cache.buildClaimsBlob(blob, sizeof(blob), 2000));
 }
 
@@ -154,15 +154,15 @@ void test_full_cache_evicts_oldest() {
                             static_cast<uint8_t>(i >> 8),
                             static_cast<uint8_t>(i)};
     makePaintEntry(frame, mac, 0x10, 0x40);
-    cache.upsertPaints(frame, 1, static_cast<uint32_t>(1000 + i));
+    cache.upsertPaints(frame, nullptr, 1, static_cast<uint32_t>(1000 + i));
   }
   const uint8_t newcomer[6] = {0x02, 0x00, 0x00, 0x02, 0x00, 0x00};
   makePaintEntry(frame, newcomer, 0x55, 0x66);
   const uint32_t nowMs =
       static_cast<uint32_t>(1000 + WispFleetCache::kCapacity);
-  cache.upsertPaints(frame, 1, nowMs);
+  cache.upsertPaints(frame, nullptr, 1, nowMs);
 
-  uint8_t base[3], shade[3];
+  uint8_t base[4], shade[4];
   TEST_ASSERT_TRUE(cache.findPaint(newcomer, nowMs, base, shade));
   const uint8_t oldestMac[6] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x00};
   TEST_ASSERT_FALSE(cache.findPaint(oldestMac, nowMs, base, shade));

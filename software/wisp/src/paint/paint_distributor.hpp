@@ -11,12 +11,26 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "fleet/wisp_roster.hpp"
+#include "paint/tuple_sampler.hpp"
+
 namespace wisp {
 
 class CurrentPalette;
 class LampInventory;
 class MeshLink;
-class WispRoster;
+
+// Store `t` on `mac`'s claim as RGBW base (color 0) and shade (color 1).
+// Header-inline so native tests reach the assignment path without the Arduino
+// build.
+inline void storeTuplePaint(WispRoster& roster, const uint8_t mac[6],
+                            const ColorTuple& t) {
+  uint8_t base[4];
+  uint8_t shade[4];
+  t.rgbw(0, base);
+  t.rgbw(1, shade);
+  roster.setLampPaint(mac, base, shade);
+}
 
 class PaintDistributor {
  public:

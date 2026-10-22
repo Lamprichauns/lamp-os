@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "animated_behavior.hpp"
+#include "components/network/mesh/pending_slots.hpp"
 #include "behavior_context.hpp"
 #include "frame_buffer.hpp"
 #include "home_mode_gate.hpp"
@@ -98,6 +99,9 @@ class Compositor {
   bool wispActive() const;
   Color wispStateBaseColor() const { return wispStateBase_; }
   Color wispStateShadeColor() const { return wispStateShade_; }
+  const LayerStack& wispLayer(bool base) const {
+    return base ? wispBaseStack_ : wispShadeStack_;
+  }
 
   /**
    * @param [in] inBehaviors list of behaviors to execute in priority sequence. last item
@@ -221,6 +225,20 @@ class Compositor {
   void clearWispState(uint32_t nowMs) {
     wispStatePresent_ = false;
     wispStateFreshMs_ = nowMs;
+  }
+  // Feed a drained STATE slot: this lamp's RGBW entry is applied, its absence
+  // clears. Returns whether the slot paints `selfMac`. Header-inline as the
+  // native-test seam for the drain.
+  bool applyWispStateSlot(const PendingWispState& slot, const uint8_t selfMac[6],
+                          uint32_t nowMs) {
+    Color base;
+    Color shade;
+    if (!wispStateColorsFor(slot, selfMac, base, shade)) {
+      clearWispState(nowMs);
+      return false;
+    }
+    applyWispState(base, shade, nowMs);
+    return true;
   }
 
   // Failsafe window: presence ages out this long after the last STATE frame
