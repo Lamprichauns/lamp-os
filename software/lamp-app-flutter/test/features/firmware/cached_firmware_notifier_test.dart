@@ -288,18 +288,21 @@ void _cadenceTests() {
       final notifier =
           containerWith(offline).read(cachedFirmwareNotifierProvider.notifier);
 
-      await notifier.syncForInventory([_lamp('a', 'standard')]);
+      // standard has a cached copy; snafu has none.
+      final fleet = [_lamp('a', 'standard'), _lamp('b', 'snafu')];
+      await notifier.syncForInventory(fleet);
       final launchAttempts = offline.calls;
-      expect(launchAttempts, greaterThan(0));
+      expect(launchAttempts, 2 * FirmwareChannel.values.length);
       for (var i = 0; i < 5; i++) {
-        await notifier.syncForInventory([_lamp('a', 'standard', lastSeen: i)]);
+        await notifier.syncForInventory(
+            [_lamp('a', 'standard', lastSeen: i), _lamp('b', 'snafu')]);
       }
       expect(offline.calls, launchAttempts, reason: 'no retry loop');
       expect(notifier.index['standard-stable']?.version, cachedVersion);
 
       final relaunched =
           containerWith(offline).read(cachedFirmwareNotifierProvider.notifier);
-      await relaunched.syncForInventory([_lamp('a', 'standard')]);
+      await relaunched.syncForInventory(fleet);
       expect(offline.calls, launchAttempts * 2,
           reason: 'a new app launch fetches again');
     });
