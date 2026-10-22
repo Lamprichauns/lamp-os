@@ -197,7 +197,7 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
       stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness, driftRateMs,
       presenceFlags, stateCount > 0 ? stateEntries : nullptr,
       static_cast<uint8_t>(stateCount));
-  // No resend: at up to 1459 B STATE overflows the paint-sized resend slot.
+  // No resend: at up to 1459 B STATE overflows the claim-sized resend slot.
   // Edge coverage comes from the burst window in pump(); the 2s cadence backs
   // both up.
   if (stateLen) {

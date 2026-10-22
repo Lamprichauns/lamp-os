@@ -5,6 +5,14 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Fixed
+- **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
+  drop back to their own colours for a minute or two at a time. The wisp now
+  sends its colour updates twice as often and at a varying moment, so a lamp
+  that kept missing them at one fixed moment catches them.
+
 ## 1.2.9
 
 ### Added
