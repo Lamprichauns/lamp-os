@@ -8,7 +8,7 @@ namespace lamp {
 /**
  * Accumulates MSG_WISP_CLAIM / MSG_WISP_STATE entries across frames.
  *        Per-entry upsert with staleness eviction rides out frames lost to
- *        coex. No locking of its own; LampRoster serialises access under its
+ *        coex. No locking of its own; LampRoster serializes access under its
  *        mutex.
  */
 struct WispFleetCache {
