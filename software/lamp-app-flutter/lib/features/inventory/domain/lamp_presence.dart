@@ -1,5 +1,5 @@
 /// A lamp heard within this long counts as currently seen. Sized against the
-/// scan holds a connect causes: see docs/dev/app-ble.md.
+/// scan holds a connect causes (docs/dev/app-ble.md).
 const kCurrentlySeenWindow = Duration(seconds: 30);
 
 /// My Lamps keeps listing a lamp as unreachable for this long after the phone

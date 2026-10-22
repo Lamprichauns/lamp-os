@@ -362,4 +362,32 @@ void main() {
       async.flushTimers();
     });
   });
+
+  test('backgrounding after the link dropped keeps the drop time', () {
+    fakeAsync((async) {
+      var now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final ble = _FlakyConnectClient(0);
+      seedControlBle(ble, deviceId: _devId);
+      final c = _open(async, ble, clock: () => now);
+      final sub = c.listen(controlNotifierProvider(_devId), (_, _) {});
+      async.elapse(const Duration(seconds: 1));
+
+      final droppedAt = now.add(const Duration(minutes: 1));
+      now = droppedAt;
+      ble.failures = 1 << 30;
+      ble.disconnect(_devId);
+      async.flushMicrotasks();
+      now = now.add(const Duration(minutes: 10));
+      c
+          .read(appLifecycleStateProvider.notifier)
+          .set(AppLifecycleState.paused);
+      async.flushMicrotasks();
+
+      final lamp = c.read(inventoryNotifierProvider).value!.single;
+      expect(lamp.lastSeenEpochMs, droppedAt.millisecondsSinceEpoch);
+      sub.close();
+      c.dispose();
+      async.flushTimers();
+    });
+  });
 }

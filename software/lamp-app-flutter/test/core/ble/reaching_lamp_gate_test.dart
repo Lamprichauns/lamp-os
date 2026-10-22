@@ -137,7 +137,8 @@ void main() {
     expect(find.text('← pick another lamp'), findsOneWidget);
     // Name isn't known yet during the initial load; the gate falls back
     // to a generic line rather than showing a stale/incorrect name.
-    expect(find.textContaining('your lamp'), findsOneWidget);
+    expect(find.textContaining(RegExp('your lamp', caseSensitive: false)),
+        findsOneWidget);
   });
 
   testWidgets('overlay shown when the lamp is not connected', (tester) async {

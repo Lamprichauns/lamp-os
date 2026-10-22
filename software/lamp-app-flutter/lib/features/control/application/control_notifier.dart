@@ -301,8 +301,8 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    // Claimed before adopting a live link too: the abandoned connect that
-    // raised it may not have checked its abort yet.
+    // Claimed before adopting a live link too, since the abandoned connect
+    // that raised it may not have checked its abort yet.
     ble.claimLink(deviceId, _linkOwner);
     if (!ble.isConnected(deviceId) &&
         !await connectWithRetry(ble, deviceId,

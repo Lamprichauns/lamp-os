@@ -148,9 +148,8 @@ Future<Uint8List> readSectionVia(
 abstract class BleClient {
   final Map<String, Object> _linkOwners = {};
 
-  /// Makes [owner] the party that answers for [deviceId]'s link: the latest
-  /// connect or session to claim a lamp is the only one entitled to drop a
-  /// link it gave up on.
+  /// Makes [owner] the party that answers for [deviceId]'s link. Only the
+  /// latest connect or session to claim a lamp may drop a link it gave up on.
   void claimLink(String deviceId, Object owner) =>
       _linkOwners[deviceId] = owner;
 
