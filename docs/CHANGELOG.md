@@ -14,8 +14,9 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   needs only the wisp updated. Warm white needs both the wisp and the lamp on
   the new firmware: an older lamp ignores the warm white and shows only the
   colour part (so warm white alone shows as black), and an older wisp sends
-  none. The app's painted-lamps preview still shows colour only, so a lamp
-  painted black or warm white only appears there with its predicted colour.
+  none. The app's painted-lamps preview shows warm white and black as painted.
+  That needs both the lamp firmware and the app updated; with either one
+  older, the preview shows the lamp's predicted colour as before.
 
 ## 1.2.9
 
