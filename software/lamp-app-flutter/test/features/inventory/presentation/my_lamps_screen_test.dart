@@ -265,4 +265,25 @@ void main() {
     open.close();
     await _unmount(tester, rig);
   });
+
+  testWidgets('leaving My Lamps stores each heard lamp\'s exact last sighting',
+      (tester) async {
+    final rig = await _mount(tester, lamps: const [
+      InventoryLamp(id: 'a', name: 'alpha'),
+    ]);
+    await _hear(tester, rig, 'a', 'alpha');
+    final heardAt = rig.now.add(const Duration(seconds: 10));
+    await _advanceTo(tester, rig, heardAt);
+    await _hear(tester, rig, 'a', 'alpha');
+
+    // Leave the list but keep the scope, which drives Riverpod's disposal.
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: rig.container,
+      child: const MaterialApp(home: SizedBox()),
+    ));
+    await tester.pump(const Duration(seconds: 1));
+    final stored = rig.container.read(inventoryNotifierProvider).value!.single;
+    expect(stored.lastSeenEpochMs, heardAt.millisecondsSinceEpoch);
+    await _unmount(tester, rig);
+  });
 }
