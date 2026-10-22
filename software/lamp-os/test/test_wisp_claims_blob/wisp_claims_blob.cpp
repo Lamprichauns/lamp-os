@@ -272,7 +272,7 @@ void test_ext_section_without_w_plane() {
   cache.upsertPaints(paint, nullptr, 1, 2000);
 
   uint8_t buf[1 + WispFleetCache::kBlobEntrySize];
-  cache.buildClaimsBlob(buf, sizeof(buf), 2000);
+  TEST_ASSERT_EQUAL_size_t(sizeof(buf), cache.buildClaimsBlob(buf, sizeof(buf), 2000));
   const size_t ext = 1 + 12;
   TEST_ASSERT_EQUAL_UINT8(0x40, buf[1 + 6]);
   TEST_ASSERT_EQUAL_UINT8(1, buf[ext + 0]);
@@ -296,7 +296,7 @@ void test_blob_prefix_matches_legacy_layout() {
   cache.upsertPaints(paint, w, 1, 1000);
 
   uint8_t buf[1 + 2 * WispFleetCache::kBlobEntrySize];
-  cache.buildClaimsBlob(buf, sizeof(buf), 1000);
+  TEST_ASSERT_EQUAL_size_t(sizeof(buf), cache.buildClaimsBlob(buf, sizeof(buf), 1000));
   uint8_t want[1 + 2 * 12] = {2};
   std::memcpy(want + 1, macs[0], 6);
   std::memcpy(want + 7, macs[1], 6);
@@ -322,7 +322,7 @@ void test_paint_section_dropped_when_it_does_not_fit() {
 // The 512 B direct read: past 34 lamps it keeps the 42 entries the older
 // layout carried, and up to 34 it carries the paint section.
 void test_att_sized_buffer_keeps_legacy_entry_count() {
-  constexpr size_t kAttMax = 512;
+  constexpr size_t kAttMax = WispFleetCache::kAttValueMax;
   const size_t kLampCounts[] = {34, 42, 60};
   for (size_t lamps : kLampCounts) {
     WispFleetCache cache;

@@ -265,8 +265,8 @@ void LampRoster::cacheWispClaim(const uint8_t mac[6],
 
 void LampRoster::cacheWispState(const PendingWispState& slot, uint32_t nowMs) {
   const uint8_t safeCount =
-      slot.count > lamp_protocol::WISP_PAINT_MAX_ENTRIES
-          ? static_cast<uint8_t>(lamp_protocol::WISP_PAINT_MAX_ENTRIES)
+      slot.count > WispFleetCache::kCapacity
+          ? static_cast<uint8_t>(WispFleetCache::kCapacity)
           : slot.count;
   xSemaphoreTake(mutex_, portMAX_DELAY);
   if (!admitWispLocked(slot.sourceMac, nowMs)) {

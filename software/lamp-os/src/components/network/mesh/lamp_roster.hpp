@@ -371,10 +371,8 @@ class LampRoster {
   void cacheWispState(const PendingWispState& slot, uint32_t nowMs);
 
   // Build the binary blob served on CHAR_WISP_CLAIMS and the `wispclaims`
-  // page section, see WispFleetCache::buildClaimsBlob. Entries beyond
-  // (outCap-1)/WispFleetCache::kBlobEntrySize are
-  // dropped, so a small direct-read buffer serves a truncated set while
-  // the page section serves the full accumulation.
+  // page section, see WispFleetCache::buildClaimsBlob for what a small
+  // `outCap` drops.
   size_t buildWispClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs);
 
   // Record the source of an addressed wisp OVERRIDE_COLORS frame and assert

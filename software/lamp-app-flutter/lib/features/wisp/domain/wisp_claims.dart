@@ -5,9 +5,9 @@ typedef WispClaimsParse = ({
   Map<String, ({LampColor base, LampColor shade})> colors,
 });
 
-/// Parses the binary CHAR_WISP_CLAIMS payload.
+/// Parses the mac set out of a CHAR_WISP_CLAIMS payload (format: see
+/// [parseWispClaims]).
 ///
-/// Wire format: `[count:1][mac:6]*count`, count ≤ 32, max 193 bytes.
 /// Returns a set of uppercase colon-separated MAC strings
 /// (e.g. "AA:BB:CC:DD:EE:FF"), the same format as WispStatus.wispMac
 /// and the inverse of parseMacFromBleId. Empty/short/malformed blobs

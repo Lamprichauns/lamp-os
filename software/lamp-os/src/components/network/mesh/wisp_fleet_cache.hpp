@@ -18,6 +18,9 @@ struct WispFleetCache {
   static constexpr uint32_t kStaleMs = 60000;
   // Claims blob bytes per lamp: mac(6) + colorPair(6) + paintExt(3).
   static constexpr size_t kBlobEntrySize = 6 + 6 + 3;
+  // Cap on a BLE characteristic value (the vendored ble_att.h limit). A larger
+  // setValue reads back empty, so a direct-read blob is built within it.
+  static constexpr size_t kAttValueMax = 512;
 
   struct ClaimEntry {
     uint8_t mac[6];

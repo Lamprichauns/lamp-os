@@ -1278,9 +1278,9 @@ void start(lamp::Config* config) {
 
   s_service = s_server->createService(SERVICE_UUID);
 
-  // Binary blob, see WispFleetCache::buildClaimsBlob. count=0 when no claim
-  // heard in 60 s. The `wispclaims` page section serves the full accumulated
-  // fleet. Separate from CHAR_WISP_STATUS because that payload is already at
+  // Binary blob, see WispFleetCache::buildClaimsBlob. count=0 when every
+  // claim and paint entry is stale. The `wispclaims` page section serves the
+  // larger accumulated set. Separate from CHAR_WISP_STATUS because that payload is already at
   // the MTU soft budget (466/509 B).
   class WispClaimsCallback : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
@@ -1289,9 +1289,9 @@ void start(lamp::Config* config) {
         c->setValue(kEmpty, 1);
         return;
       }
-      // The vendored ble_att.h caps a characteristic value at 512 B; a larger
-      // setValue leaves the value empty, so the blob is built to fit.
-      static uint8_t buf[512];
+      static uint8_t buf[lamp::WispFleetCache::kAttValueMax];
+      static_assert(sizeof(buf) <= lamp::WispFleetCache::kAttValueMax,
+                    "a value over the ATT cap reads back empty");
       size_t n = lamp::lampRoster.buildWispClaimsBlob(buf, sizeof(buf),
                                                         millis());
       c->setValue(buf, n);

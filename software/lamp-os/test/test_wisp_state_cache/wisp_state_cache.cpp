@@ -74,7 +74,9 @@ void test_state_slot_without_w_caches_w_zero() {
   roster.cacheWispState(gSlot, 2000);
 
   uint8_t blob[1 + 2 * WispFleetCache::kBlobEntrySize];
-  roster.buildWispClaimsBlob(blob, sizeof(blob), 2000);
+  TEST_ASSERT_EQUAL_size_t(sizeof(blob),
+                           roster.buildWispClaimsBlob(blob, sizeof(blob), 2000));
+  TEST_ASSERT_EQUAL_UINT8(2, blob[0]);
   const size_t ext = 1 + 2 * 12;
   for (size_t i = 0; i < 2; ++i) {
     TEST_ASSERT_EQUAL_UINT8(1, blob[ext + i * 3]);
