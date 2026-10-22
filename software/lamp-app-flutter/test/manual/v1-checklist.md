@@ -119,8 +119,8 @@ Hardware verification for things automated tests can't cover. Walk through this 
 
 ### Persistent seen-lamps
 
-- [ ] Force-quit the app and relaunch — inventory + previously-seen "Other nearby lamps" reappear without needing the lamps in range.
-- [ ] A lamp last seen days ago is still in the inventory picker (no auto-eviction in v1).
+- [ ] Force-quit the app and relaunch: a lamp seen in the last 5 minutes is listed (offline if out of range) without needing it in range; one last seen longer ago is not listed until it is heard again.
+- [ ] A lamp last seen days ago is not listed but stays paired: bring it in range and it reappears with its name and colours.
 
 ## Phase 1d — BT-only lamps (non-mesh)
 
@@ -142,10 +142,12 @@ Regression test for the `knockoutPixels` vector / `base.px` sync (firmware-side 
 
 ## Phase 6 — My Lamps screen
 
-- [ ] My Lamps screen lists every adopted lamp with its critter + last-seen shade/base colors.
+- [ ] My Lamps lists each adopted lamp the phone has heard in the last 5 minutes (or is connected to), with its critter + last-seen shade/base colors.
 - [ ] Tiles re-render after editing on the control screen (within the seen-flush debounce window, ~500 ms).
 - [ ] W-channel edits (warm-white shifts) show up on the tile, not as black.
-- [ ] In-range lamps show their status dot; out-of-range ones go grey within the BLE staleness window.
+- [ ] In-range lamps show their status dot; a lamp unheard for 30 s goes grey (offline), and 5 minutes after it was last heard it leaves the list.
+- [ ] With no adopted lamp in range, My Lamps shows only the "Adopt a lamp" tile.
+- [ ] Sitting on My Lamps opens no BLE connection to any lamp; tapping a tile connects to that lamp only.
 
 ## Phase 3 — Knockout (per-LED brightness)
 

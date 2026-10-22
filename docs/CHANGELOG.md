@@ -5,6 +5,23 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## Unreleased
+
+### Fixed
+- **Opening a lamp connects more reliably.** The app retries a failed connect
+  a few times before giving up, and holds its Bluetooth scan off while it
+  connects so the two don't fight over the phone's radio.
+- **The app no longer connects to lamps in the background.** My Lamps doesn't
+  open a link to every paired lamp it hears; the app connects only to the lamp
+  you open.
+
+### Changed
+- **My Lamps lists the lamps around you.** A paired lamp the phone can't hear
+  shows as offline for five minutes after it was last seen, then leaves the
+  list until it's heard again. It stays paired and keeps everything the app
+  knows about it. With no paired lamp in range, My Lamps shows just the
+  "Adopt a lamp" tile.
+
 ## 1.2.9
 
 ### Added
