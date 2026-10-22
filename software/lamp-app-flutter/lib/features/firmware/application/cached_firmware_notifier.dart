@@ -85,11 +85,11 @@ class CachedFirmwareNotifier extends _$CachedFirmwareNotifier {
       };
 
   /// Keeps the cache in step with the owned variants, fetching each variant
-  /// (one request per channel) at most once per app launch. The first call
-  /// fetches every owned variant; a later call fetches only a variant it has
-  /// never seen that has nothing cached. Every other call is free, so the caller may pass each
-  /// inventory change. A failed fetch keeps the previous cached copy and is
-  /// not retried until the next launch.
+  /// at most once per app launch, one GitHub request per channel. The first
+  /// call fetches every owned variant; a later call fetches only a variant it
+  /// has never seen that has nothing cached. Every other call is free, so the
+  /// caller may pass each inventory change. A failed fetch keeps the previous
+  /// cached copy and is not retried until the next launch.
   Future<void> syncForInventory(List<InventoryLamp> inventory) async {
     final launch = !_synced;
     _synced = true;
