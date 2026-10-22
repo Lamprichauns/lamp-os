@@ -95,11 +95,19 @@ unconditionally.
   section reads): the session's dispose disconnects. A re-opened session
   builds after that dispose, so its connect queues behind the disconnect.
 
-Either way, re-opening the lamp leaves the new session connected. At worst it
-waits out the old disconnect (on Android, up to about 2 s after the old
-connect request, plus the disconnect round trip) or retries through
-`connectWithRetry`. A connect abandoned with no re-open drops its link, so a
-lamp the user walked away from is not held open.
+Either way, re-opening the lamp leaves the new session connected, or at worst
+retrying through `connectWithRetry` like any other open. Before its own connect starts it waits
+for what the old session left in the lamp's queue:
+
+- after a back-out while connecting, the rest of the abandoned attempt, on
+  either platform: up to its 8 s connect timeout, and on Android up to
+  0.35 s + 15 s more for the MTU request once the link lands;
+- after a back-out while loading, the old disconnect: on Android up to about
+  2 s after the old connect request, behind any GATT op the old session still
+  has in flight, plus the disconnect round trip.
+
+A connect abandoned with no re-open drops its link, so a lamp the user walked
+away from is not held open.
 
 A caller of `connectWithRetry` passes an owner that is stable for its session
 (`ControlNotifier` uses one `_linkOwner` object per notifier).
@@ -121,7 +129,8 @@ own scan around a connect, so the app does:
 - `FbpBleScanner` (`core/ble/ble_scanner.dart`) never starts a scan while
   `scanPause.isPaused`. On `released` it restarts through `_restartScan`, which
   waits `_restartBackoff` (3 s) first, and stops a scan that started while a
-  new hold was taken.
+  new hold was taken. A trigger that lands while a restart is running (a hold
+  ending, the scan stopping) runs one more restart after it.
 
 How long the scan stays off:
 

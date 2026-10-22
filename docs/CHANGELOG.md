@@ -16,8 +16,8 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   you open.
 - **Re-opening a lamp right after backing out keeps the connection.** Back out
   of a lamp while it's still connecting or loading, open it again, and it
-  connects and stays connected. On Android it can take a couple of seconds
-  longer while the old connection closes.
+  connects and stays connected. It can take a few seconds longer while the
+  phone finishes with the earlier attempt.
 - **A lamp you had open stays on My Lamps after the app is closed.** Leave the
   app with a lamp open and close it soon after, and the lamp is still listed
   when you relaunch. If the phone keeps the app in the background for a long
