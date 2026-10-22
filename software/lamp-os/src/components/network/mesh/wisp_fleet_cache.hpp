@@ -52,8 +52,9 @@ struct WispFleetCache {
   // [painted+baseW+shadeW:3*count]. Membership is the union of fresh claim
   // and fresh paint macs (claim order first). A mac with fresh paint has
   // painted = 1 and its colors, black included; one without has painted = 0
-  // and zero colors. Entries beyond (outCap-1)/kBlobEntrySize are dropped.
-  // Returns bytes written.
+  // and zero colors. Entries beyond (outCap-1)/12 are dropped, and the paint
+  // section is left off when it does not fit `outCap`, so a reader of the
+  // [count][mac][pair] layout keeps its entry count. Returns bytes written.
   size_t buildClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs) const;
 
   void clear();

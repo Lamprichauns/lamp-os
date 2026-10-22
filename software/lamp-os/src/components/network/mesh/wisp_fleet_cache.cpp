@@ -89,7 +89,7 @@ bool WispFleetCache::findPaint(const uint8_t mac[6], uint32_t nowMs,
 size_t WispFleetCache::buildClaimsBlob(uint8_t* out, size_t outCap,
                                        uint32_t nowMs) const {
   if (!out || outCap == 0) return 0;
-  const size_t maxEntries = (outCap - 1) / kBlobEntrySize;
+  const size_t maxEntries = (outCap - 1) / 12;
 
   const uint8_t* macs[2 * kCapacity];
   size_t n = 0;
@@ -111,9 +111,9 @@ size_t WispFleetCache::buildClaimsBlob(uint8_t* out, size_t outCap,
   }
   const size_t colorBase = 1 + n * 6;
   const size_t extBase = 1 + n * 12;
+  const bool withPaint = 1 + n * kBlobEntrySize <= outCap;
   for (size_t i = 0; i < n; ++i) {
     uint8_t* pair = out + colorBase + i * 6;
-    uint8_t* ext = out + extBase + i * 3;
     uint8_t base[4], shade[4];
     const bool painted = findPaint(macs[i], nowMs, base, shade);
     if (!painted) {
@@ -122,11 +122,13 @@ size_t WispFleetCache::buildClaimsBlob(uint8_t* out, size_t outCap,
     }
     std::memcpy(pair, base, 3);
     std::memcpy(pair + 3, shade, 3);
+    if (!withPaint) continue;
+    uint8_t* ext = out + extBase + i * 3;
     ext[0] = painted ? 1 : 0;
     ext[1] = base[3];
     ext[2] = shade[3];
   }
-  return 1 + n * kBlobEntrySize;
+  return withPaint ? 1 + n * kBlobEntrySize : extBase;
 }
 
 void WispFleetCache::clear() {

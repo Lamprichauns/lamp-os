@@ -304,6 +304,44 @@ void test_blob_prefix_matches_legacy_layout() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(want, buf, sizeof(want));
 }
 
+// A buffer with room for the pairs but not the paint section gets the
+// [count][mac][pair] layout with every entry it can hold.
+void test_paint_section_dropped_when_it_does_not_fit() {
+  WispFleetCache cache;
+  const uint8_t macs[3][6] = {
+      {0x61, 0x62, 0x63, 0x64, 0x65, 0x66},
+      {0x71, 0x72, 0x73, 0x74, 0x75, 0x76},
+      {0x81, 0x82, 0x83, 0x84, 0x85, 0x86},
+  };
+  cache.upsertClaims(macs, 3, 1000);
+  uint8_t buf[1 + 3 * 12 + 2];  // short of 1 + 3 * kBlobEntrySize
+  TEST_ASSERT_EQUAL_size_t(1 + 3 * 12, cache.buildClaimsBlob(buf, sizeof(buf), 1000));
+  TEST_ASSERT_EQUAL_UINT8(3, buf[0]);
+}
+
+// The 512 B direct read: past 34 lamps it keeps the 42 entries the older
+// layout carried, and up to 34 it carries the paint section.
+void test_att_sized_buffer_keeps_legacy_entry_count() {
+  constexpr size_t kAttMax = 512;
+  const size_t kLampCounts[] = {34, 42, 60};
+  for (size_t lamps : kLampCounts) {
+    WispFleetCache cache;
+    uint8_t macs[60][6] = {};
+    for (size_t i = 0; i < lamps; ++i) {
+      macs[i][0] = 0x02;
+      macs[i][5] = static_cast<uint8_t>(i + 1);
+    }
+    cache.upsertClaims(macs, static_cast<uint8_t>(lamps), 1000);
+    uint8_t buf[kAttMax];
+    const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
+    TEST_ASSERT_TRUE(n <= kAttMax);
+    const size_t want = lamps < 42 ? lamps : 42;
+    TEST_ASSERT_EQUAL_UINT8(want, buf[0]);
+    const size_t withPaint = 1 + want * WispFleetCache::kBlobEntrySize;
+    TEST_ASSERT_EQUAL_size_t(withPaint <= kAttMax ? withPaint : 1 + want * 12, n);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_blob_size_for_n_macs);
@@ -320,5 +358,7 @@ int main(int, char**) {
   RUN_TEST(test_ext_section_carries_w_and_painted);
   RUN_TEST(test_ext_section_without_w_plane);
   RUN_TEST(test_blob_prefix_matches_legacy_layout);
+  RUN_TEST(test_paint_section_dropped_when_it_does_not_fit);
+  RUN_TEST(test_att_sized_buffer_keeps_legacy_entry_count);
   return UNITY_END();
 }
