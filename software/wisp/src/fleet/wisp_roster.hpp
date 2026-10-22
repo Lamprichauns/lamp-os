@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "fleet/lamp_inventory.hpp"
+#include "wire/lamp_protocol.hpp"
 
 namespace wisp {
 
@@ -18,6 +19,8 @@ constexpr size_t WISP_ROSTER_MAX_PEERS = 8;
 constexpr size_t WISP_ROSTER_MAX_LAMPS = 100;
 static_assert(WISP_ROSTER_MAX_LAMPS == LampInventory::MAX_LAMPS,
               "claim set must cover the full inventory");
+static_assert(WISP_ROSTER_MAX_LAMPS <= lamp_protocol::WISP_STATE_MAX_ENTRIES,
+              "every claim must fit one MSG_WISP_STATE frame");
 
 // Per-peer claim-entry cap; the wire cap kMaxWispClaimEntries per
 // MSG_WISP_CLAIM frame.
@@ -110,6 +113,14 @@ class WispRoster {
   // the entry count written (not bytes).
   size_t snapshotStateForBroadcast(uint8_t* out, size_t cap, uint8_t* w,
                                    size_t wCap);
+
+  // Build a whole MSG_WISP_STATE frame into `buf`: the snapshot above with its
+  // W plane when `painting`, no entries otherwise (lamps find themselves absent
+  // and ease home). Returns the frame length, 0 on build failure.
+  size_t buildStateFrame(uint8_t* buf, size_t bufLen, uint16_t seq,
+                         const uint8_t srcMac[6], uint8_t brightness,
+                         uint32_t driftRateMs, uint8_t presenceFlags,
+                         bool painting);
 
   // Diagnostics. Both take the mutex briefly.
   size_t claimedCount() const;

@@ -1,6 +1,6 @@
 // Compositor::applyWispStateSlot, the drain's STATE-slot step: this lamp's
 // RGBW entry lands as the wisp target with W intact, black included, and an
-// absent entry clears presence. Links against a stub Compositor constructor.
+// absent entry reports unpainted. Links against a stub Compositor constructor.
 
 #include <unity.h>
 
@@ -101,7 +101,7 @@ void test_drain_without_w_plane_applies_w_zero() {
   assertColor(Color(70, 80, 90, 0), c.wispStateShadeColor());
 }
 
-void test_drain_absent_entry_clears() {
+void test_drain_absent_entry_reports_unpainted() {
   const uint8_t kStranger[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
   const uint8_t rgb[6] = {1, 2, 3, 4, 5, 6};
   const uint8_t w[4] = {0, 0, 0, 0};
@@ -116,6 +116,6 @@ int main(int, char**) {
   RUN_TEST(test_drain_applies_warm_white_only);
   RUN_TEST(test_drain_applies_black);
   RUN_TEST(test_drain_without_w_plane_applies_w_zero);
-  RUN_TEST(test_drain_absent_entry_clears);
+  RUN_TEST(test_drain_absent_entry_reports_unpainted);
   return UNITY_END();
 }

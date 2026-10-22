@@ -768,6 +768,50 @@ void test_snapshot_state_null_w_packs_nothing(void) {
   for (uint8_t b : entries) TEST_ASSERT_EQUAL_UINT8(0xEE, b);
 }
 
+void test_build_state_frame_carries_w_plane(void) {
+  wisp::WispRoster r;
+  r.setSelfMac(kSelfMac);
+  auto lamp = obs(kLampX, -60);
+  r.recomputeClaims(&lamp, 1, /*nowMs=*/1000);
+  const uint8_t base[4]  = {0x11, 0x22, 0x33, 0xC8};
+  const uint8_t shade[4] = {0x44, 0x55, 0x66, 0x37};
+  r.setLampPaint(kLampX, base, shade);
+
+  const uint8_t srcMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+  uint8_t frame[lamp_protocol::WISP_STATE_MAX_SIZE];
+  const size_t len = r.buildStateFrame(frame, sizeof(frame), /*seq=*/9, srcMac,
+                                       /*brightness=*/90, /*driftRateMs=*/30000,
+                                       /*presenceFlags=*/0x01, /*painting=*/true);
+  lamp_protocol::ParsedWispState out;
+  TEST_ASSERT_TRUE(lamp_protocol::parseWispState(frame, len, out));
+  TEST_ASSERT_EQUAL_UINT8(1, out.count);
+  TEST_ASSERT_EQUAL_MEMORY(kLampX, out.entries, 6);
+  TEST_ASSERT_EQUAL_UINT8(0x33, out.entries[8]);
+  TEST_ASSERT_NOT_NULL(out.w);
+  TEST_ASSERT_EQUAL_UINT8(0xC8, out.w[0]);
+  TEST_ASSERT_EQUAL_UINT8(0x37, out.w[1]);
+  TEST_ASSERT_EQUAL_UINT8(90, out.brightness);
+  TEST_ASSERT_EQUAL_UINT32(30000, out.driftRateMs);
+  TEST_ASSERT_EQUAL_UINT8(0x01, out.presenceFlags);
+}
+
+void test_build_state_frame_off_packs_no_entries(void) {
+  wisp::WispRoster r;
+  r.setSelfMac(kSelfMac);
+  auto lamp = obs(kLampX, -60);
+  r.recomputeClaims(&lamp, 1, /*nowMs=*/1000);
+  const uint8_t base[4] = {1, 2, 3, 4};
+  r.setLampPaint(kLampX, base, base);
+
+  const uint8_t srcMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+  uint8_t frame[lamp_protocol::WISP_STATE_MAX_SIZE];
+  const size_t len = r.buildStateFrame(frame, sizeof(frame), 9, srcMac, 90,
+                                       30000, 0, /*painting=*/false);
+  lamp_protocol::ParsedWispState out;
+  TEST_ASSERT_TRUE(lamp_protocol::parseWispState(frame, len, out));
+  TEST_ASSERT_EQUAL_UINT8(0, out.count);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_single_wisp_claims_everything);
@@ -799,5 +843,7 @@ int main(int, char**) {
   RUN_TEST(test_store_tuple_paint_carries_w);
   RUN_TEST(test_snapshot_state_w_capacity_bounds_entries);
   RUN_TEST(test_snapshot_state_null_w_packs_nothing);
+  RUN_TEST(test_build_state_frame_carries_w_plane);
+  RUN_TEST(test_build_state_frame_off_packs_no_entries);
   return UNITY_END();
 }
