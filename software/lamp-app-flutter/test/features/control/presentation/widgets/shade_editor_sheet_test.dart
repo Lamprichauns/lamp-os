@@ -62,7 +62,7 @@ void main() {
     addTearDown(container.dispose);
     // Keep provider alive so we can read state after the sheet (and its
     // watchers) are dismissed — controlNotifierProvider is auto-dispose.
-    final sub = container.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = container.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(container));
@@ -88,7 +88,7 @@ void main() {
       (tester) async {
     final (:container, :ble) = await _buildContainer();
     addTearDown(container.dispose);
-    final sub = container.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = container.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(container));
@@ -114,7 +114,7 @@ void main() {
       (tester) async {
     final (:container, :ble) = await _buildContainer();
     addTearDown(container.dispose);
-    final sub = container.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = container.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(container));
@@ -134,7 +134,7 @@ void main() {
       (tester) async {
     final (:container, :ble) = await _buildContainer();
     addTearDown(container.dispose);
-    final sub = container.listen(controlNotifierProvider(_devId), (_, __) {});
+    final sub = container.listen(controlNotifierProvider(_devId), (_, _) {});
     addTearDown(sub.close);
 
     await tester.pumpWidget(_wrap(container));

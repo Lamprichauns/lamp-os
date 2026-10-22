@@ -1,7 +1,7 @@
 // Tests for the arrival/near contract behind BehaviorContext::forEachArrival /
 // forEachNearby. forEachArrival hands the single strongest ungreeted arrival
 // through LampRoster::bestUngreetedArrival (an in-place under-lock scan, no
-// snapshot); forEachNearby walks the getNear() snapshot in RSSI order.
+// snapshot); forEachNearby walks the snapshotNear() copy in RSSI order.
 //
 // Inline mirror (no FreeRTOS) of that observable contract: strongest-RSSI pick,
 // consumer-owned ack (ack only on cb == true), no auto-ack, once-per-arrival

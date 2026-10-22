@@ -1,5 +1,5 @@
 // A local copy of the algorithm pins the contract independently (no
-// CurrentPalette / aurora pull-in). The production sampleTupleAtPositions is
+// CurrentPalette pull-in). The production sampleTupleAtPositions is
 // also exercised directly, including a golden-parity check that guards the
 // sampleTupleForMac refactor against the same golden bytes.
 
@@ -300,6 +300,20 @@ void test_at_positions_empty_palette_returns_black(void) {
   }
 }
 
+void test_tuple_rgbw_packs_w_per_surface(void) {
+  wisp::ColorTuple t;
+  t.r[0] = 1; t.g[0] = 2; t.b[0] = 3; t.w[0] = 0xC8;
+  t.r[1] = 4; t.g[1] = 5; t.b[1] = 6; t.w[1] = 0x37;
+  uint8_t base[4];
+  uint8_t shade[4];
+  t.rgbw(0, base);
+  t.rgbw(1, shade);
+  const uint8_t wantBase[4]  = {1, 2, 3, 0xC8};
+  const uint8_t wantShade[4] = {4, 5, 6, 0x37};
+  TEST_ASSERT_EQUAL_MEMORY(wantBase, base, 4);
+  TEST_ASSERT_EQUAL_MEMORY(wantShade, shade, 4);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_empty_palette_returns_black);
@@ -314,5 +328,6 @@ int main(int, char**) {
   RUN_TEST(test_at_positions_different_inputs_differ);
   RUN_TEST(test_at_positions_gap_enforced_for_equal_inputs);
   RUN_TEST(test_at_positions_empty_palette_returns_black);
+  RUN_TEST(test_tuple_rgbw_packs_w_per_surface);
   return UNITY_END();
 }

@@ -38,13 +38,17 @@ void ArrivalNotifier::fire(const PeerView& v) {
   for (size_t i = 0; i < observerCount_; ++i) observers_[i](v);
 }
 
-void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs) {
+static_assert(ArrivalNotifier::kMaxFired == LampRoster::kCapacity,
+              "every near peer needs a fired slot");
+
+void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWindowMs,
+                           ArrivalPass pass) {
   if (observerCount_ == 0) return;
 
   bool present[kMaxFired] = {};
 
   // Snapshot before firing: an observer is arbitrary user code that may
-  // re-enter getNear/getMesh/getAll, which fills a distinct buffer, so this
+  // re-enter getMesh/getAll, which fills a distinct buffer, so this
   // snapshot stays valid across the fire loop.
   const std::vector<NearbyCopy>& near = roster.snapshotNear(nearWindowMs);
   for (const NearbyCopy& e : near) {
@@ -54,18 +58,23 @@ void ArrivalNotifier::tick(uint32_t nowMs, LampRoster& roster, uint32_t nearWind
       present[idx] = true;  // still near: keep the fired mark, no re-fire
       continue;
     }
-    if ((nowMs - e.lastSeenNearMs) > kArrivalMaxAgeMs) continue;  // not fresh
+    if (pass == ArrivalPass::Hold) continue;
+    if (pass == ArrivalPass::Fire && (nowMs - e.lastSeenNearMs) > kArrivalMaxAgeMs) {
+      continue;  // not fresh
+    }
 
     int slot = -1;
     for (size_t i = 0; i < kMaxFired; ++i) {
       if (!firedUsed_[i]) { slot = static_cast<int>(i); break; }
     }
-    if (slot < 0) continue;  // near crowd exceeds kMaxFired; skip, no re-fire spam
+    if (slot < 0) continue;
     std::memcpy(fired_[slot], e.mac, 6);
     firedUsed_[slot] = true;
     present[slot] = true;
-    fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
-                        e.lastRssi, e.variant));
+    if (pass == ArrivalPass::Fire) {
+      fire(PeerView::make(e.name, e.mac, e.hasMac, e.baseColor, e.shadeColor,
+                          e.lastRssi, e.variant));
+    }
   }
 
   for (size_t i = 0; i < kMaxFired; ++i) {

@@ -34,6 +34,8 @@ namespace lamp {
 // dots_behavior.cpp reads the wisp-active flag off the compositor; the native
 // suite doesn't link compositor.cpp, so provide the never-active stub here.
 bool Compositor::wispActive() const { return false; }
+// Home mode's peer gate; these tests run outside home mode.
+bool BehaviorContext::ignoresPeers() const { return false; }
 }  // namespace lamp
 
 using namespace lamp;

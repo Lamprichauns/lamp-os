@@ -2,7 +2,8 @@
 // Lamp::setup() boot wiring, Lamp::tick() orchestrator.
 //
 // Sibling TUs share file-scope state via core/lamp_internal.hpp:
-// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: cascade routing;
+// lamp_drains.cpp: drain bodies; lamp_remote_op.cpp: remote-op and inbound
+// control-op receive;
 // lamp_brightness.cpp: brightness/home-mode; lamp_behaviors.cpp: initBehaviors;
 // lamp_test_action.cpp: dispatchLampAction.
 
@@ -38,9 +39,11 @@
 #include "components/network/mesh/lamp_roster.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
+#include "components/network/transport/espnow_link.hpp"
 #if LAMP_WEBAPP_ENABLED
 #include "components/webapp/webapp.hpp"
 #endif
+#include "core/moments.hpp"
 #include "core/personality_engine.hpp"
 #include "core/arrival_notifier.hpp"
 #include "components/transient_override/brightness_override.hpp"
@@ -52,17 +55,23 @@
 #include "behaviors/social.hpp"
 #include "behaviors/social_echo.hpp"
 #include "config/config.hpp"
+#include "config/config_codec.hpp"
 #include "config/config_types.hpp"
 #include "config/nvs_config_store.hpp"
 #include "core/compositor.hpp"
 #include "core/frame_buffer.hpp"
+#include "core/boot_recovery.hpp"
+#include "core/crash_record.hpp"
+#include "version.hpp"
 #include "core/power_governor.hpp"
 #include <lampos/blended_identity.hpp>
 #include <lampos/led_power.hpp>
 #include "components/firmware/ota_quiet_mode.hpp"
+#include "components/firmware/ota_offer.hpp"
 #include "core/pending_json_slot.hpp"
 #include "core/pending_typed_slot.hpp"
 #include "core/pending_slot_aggregate.hpp"
+#include "core/wisp_broadcast_peek.hpp"
 #include "core/override_aggregate.hpp"
 #include "util/bd_addr.hpp"
 #include "util/color.hpp"
@@ -115,9 +124,9 @@ volatile bool pendingFlushDispositionsRequested = false;
 PendingKnockoutUpdate pendingKnockout;
 
 // Pending triggerExpression invocations whose delayMs > 0, drained from the
-// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi-task
-// CONTROL_OP handler just posts JSON into lamp::pendingSlots.inboundOp, and
-// the drain that parses it into this queue runs on the loop task), so no mutex.
+// loop task once millis() reaches fireAtMs. Loop-task only (the WiFi task
+// just posts a MSG_COMMAND into lamp::pendingSlots.command, and the drain that
+// parses it into this queue runs on the loop task), so no mutex.
 struct DelayedInvocation {
   lamp::ExpressionInvocation inv;
   uint32_t fireAtMs;
@@ -195,11 +204,10 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
 #endif
     pendingTriggers.erase(pendingTriggers.begin());
   }
-  DelayedInvocation d;
+  DelayedInvocation& d = pendingTriggers.emplace_back();
   d.inv = inv;
   d.fireAtMs = millis() + delayMs;
   std::memcpy(d.srcMac, srcMac, 6);
-  pendingTriggers.push_back(d);
 }
 }  // namespace lamp
 
@@ -237,7 +245,7 @@ lamp::SocialEchoObserver socialEchoObserver(config, expressionManager, meshLink)
 // arrive via pendingFirmwareControl and are drained on Core 1.
 lamp::FirmwareReceiver    firmwareReceiver;
 // firmwareDistributor's global instance lives in firmware_distributor.cpp
-// (extern decl in firmware_distributor.hpp) so SocialBehavior can reference
+// (extern decl in firmware_distributor.hpp) so the offer scan can reference
 // it as `lamp::firmwareDistributor` from any TU.
 
 // Post-OTA "mark this app valid" state.
@@ -256,8 +264,8 @@ lamp::FirmwareReceiver    firmwareReceiver;
 bool g_pendingVerify = false;
 uint32_t g_markValidDeadlineMs = 0;
 
-// Local appliers for mesh-received ops, shared between the slot drains
-// (lamp_drains.cpp) and the cascade-receive router (lamp_remote_op.cpp):
+// Local appliers shared between the slot drains (lamp_drains.cpp) and the
+// remote-op receive (lamp_remote_op.cpp):
 // apply a JSON colors array / expression op to configurator + advert +
 // section cache in one shot.
 //
@@ -353,66 +361,51 @@ namespace lamp {
 // Internal helper for the apply_expressions.hpp split. mutateConfig=true is
 // the user-source path (BLE expressionOp drain): drives expressionManager
 // AND mirrors into config.expressions so persistConfig() captures it.
-// mutateConfig=false is the remote-source path (applyRemoteOpLocal for a
-// cascade-relayed CONTROL_OP): drives expressionManager only so the
-// cascade's transient state never becomes persistable.
+// mutateConfig=false is the remote-op path (applyLampOp for a CHAR_REMOTE_OP
+// write): drives expressionManager only so the preview never becomes
+// persistable.
 void runExpressionOp(JsonObject doc, bool mutateConfig) {
   if (doc.isNull()) return;
   const char* op = doc["op"].as<const char*>();
   if (op && strcmp(op, "upsert") == 0 && doc["entry"].is<JsonObject>()) {
-    JsonObject entry = doc["entry"].as<JsonObject>();
     lamp::ExpressionConfig cfg;
-    cfg.type = std::string(entry["type"] | "");
-    cfg.enabled = entry["enabled"] | true;
-    cfg.intervalMin = entry["intervalMin"] | 60;
-    cfg.intervalMax = entry["intervalMax"] | 900;
-    cfg.target = entry["target"] | 3;
-    for (JsonPair kv : entry) {
-      std::string key(kv.key().c_str());
-      // `disabledDuringWispOverride` is tolerated from older app payloads
-      // but ignored: it's a pure type-property on the Expression subclass,
-      // not config-driven.
-      if (key == "type" || key == "enabled" ||
-          key == "disabledDuringWispOverride" ||
-          key == "intervalMin" || key == "intervalMax" ||
-          key == "target" || key == "colors") continue;
-      JsonVariant v = kv.value();
-      if (v.is<uint32_t>()) cfg.setParameter(key, v.as<uint32_t>());
-      else if (v.is<int>()) cfg.setParameter(key, static_cast<uint32_t>(v.as<int>()));
+    if (!lamp::config_codec::parseExpression(doc["entry"].as<JsonObject>(), cfg, true)) {
+      Serial.printf("[expr] upsert %s over caps, extras dropped\n",
+                    cfg.type.c_str());
     }
-    // Store the JsonArray in a local so iteration doesn't reference a
-    // temporary destroyed at the end of the full expression (ArduinoJson
-    // 7.4.x tightened lifetime semantics on chained calls).
-    JsonArray colorsArr = entry["colors"].as<JsonArray>();
-    for (JsonVariant cv : colorsArr) {
-      cfg.colors.push_back(lamp::hexStringToColor(cv));
+    // A type this variant does not register never renders; storing it only
+    // spends a record and NVS.
+    if (!::expressionManager.registry().find(cfg.type.c_str())) {
+      Serial.printf("[expr] upsert type=%s rejected: not on this lamp\n",
+                    cfg.type.c_str());
+      return;
     }
-    if (!cfg.type.empty()) {
-      ::expressionManager.upsertExpression(cfg, &::compositor);
-      if (mutateConfig) {
-        // Mirror into config.expressions so the next settings_blob save
-        // persists the user's latest edits. expressionManager is the runtime
-        // animator; config is what gets serialized to NVS.
-        auto& exprs = ::config.expressions.expressions;
-        bool found = false;
-        for (auto& e : exprs) {
-          if (e.type == cfg.type && e.target == cfg.target) {
-            e = cfg;
-            found = true;
-            break;
-          }
-        }
-        if (!found) exprs.push_back(cfg);
+    if (cfg.target < lamp::kExpressionTargetMin ||
+        cfg.target > lamp::kExpressionTargetMax) {
+      Serial.printf("[expr] upsert type=%s target=%u rejected\n", cfg.type.c_str(),
+                    (unsigned)cfg.target);
+      return;
+    }
+    // Mirror into config.expressions so the next save persists the user's
+    // latest edits; config is what gets serialized to NVS, expressionManager
+    // the runtime animator. A mirrored entry's parameters live only in config.
+    bool configBacked = false;
+    if (mutateConfig) {
+      configBacked = lamp::config_codec::mirrorUpsert(::config.expressions, cfg);
+      if (!configBacked) {
+        Serial.printf("[expr] config full; upsert type=%s not saved\n", cfg.type.c_str());
       }
     }
+    ::expressionManager.upsertExpression(cfg, &::compositor, configBacked);
   } else if (op && strcmp(op, "remove") == 0) {
     const char* type = doc["type"].as<const char*>();
     int tgt = doc["target"] | 0;
     // Match the stored (type,target) exactly, whatever the target value. A
     // range-guarded remove leaves a malformed or legacy target (e.g. an
     // out-of-range value written by an older build) permanently undeletable;
-    // the exact key match is the safety, so no numeric bound is needed.
-    if (type) {
+    // the exact key match is the safety. A value outside a byte matches no
+    // stored target and would wrap onto a real one, so it removes nothing.
+    if (type && tgt >= 0 && tgt <= UINT8_MAX) {
       ::expressionManager.removeExpression(type, static_cast<lamp::ExpressionTarget>(tgt), &::compositor);
       if (mutateConfig) {
         auto& exprs = ::config.expressions.expressions;
@@ -445,6 +438,7 @@ void updateAdvertisedDeviceName(const char* newName) {
   // GATT connections are unaffected (advertising and connections are
   // separate state machines in NimBLE). The brief gap (~50ms, well under the
   // advertising interval) is below human perception.
+  if (!NimBLEDevice::isInitialized()) return;
   NimBLEDevice::setDeviceName(newName);
   auto* adv = NimBLEDevice::getAdvertising();
   if (adv != nullptr) {
@@ -457,6 +451,13 @@ void updateAdvertisedDeviceName(const char* newName) {
 #endif  // defined(ARDUINO) || defined(ESP_PLATFORM)
 
 namespace lamp {
+
+void refreshDefaultScene() {
+  shade.defaultColors =
+      buildGradientWithStops(shade.pixelCount, ::config.shade.broadcastColors());
+  base.defaultColors =
+      buildGradientWithStops(base.pixelCount, ::config.base.broadcastColors());
+}
 
 void applyKnockoutPixel(uint8_t pixel, uint8_t brightness) {
   if (pixel < ::config.base.sumPx() && brightness <= 100) {
@@ -528,6 +529,59 @@ void lamp::Lamp::tickInputs(uint32_t nowMs) {
   for (auto& src : inputs_) src->tick(nowMs);
 }
 
+// GPIO0 is the dev board's BOOT button, unused by every variant. Reading it
+// as a pull-up input is safe; its strapping role only applies at reset, which
+// is also why the hold only registers on an already-running lamp.
+// Two full-lamp pulses. Clearing the password deliberately does not restart
+// the lamp, so this is the only signal an owner standing at the lamp gets.
+// Blocking: a one-shot hold-to-recover is worth ~0.8s of stalled loop, and
+// the compositor repaints from the behaviour stack on the next frame.
+static void pulseWholeLampTwice() {
+  lamp::FrameBuffer* fbs[] = {&::shade, &::base};
+  uint8_t saved[2] = {0, 0};
+  for (size_t i = 0; i < 2; ++i) {
+    if (!fbs[i]->segments.empty()) {
+      saved[i] = fbs[i]->segments[0].driver->getBrightness();
+    }
+  }
+  auto paint = [&](lamp::Color c, uint8_t brightness) {
+    for (auto* fb : fbs) {
+      if (fb->segments.empty()) continue;
+      std::fill(fb->buffer.begin(), fb->buffer.end(), c);
+      for (auto& seg : fb->segments) seg.driver->setBrightness(brightness);
+      fb->flush();
+    }
+  };
+  const lamp::Color white(0, 0, 0, 255);
+  const lamp::Color off(0, 0, 0, 0);
+  for (int pulse = 0; pulse < 2; ++pulse) {
+    paint(white, 200);
+    delay(180);
+    paint(off, 200);
+    delay(180);
+  }
+  for (size_t i = 0; i < 2; ++i) {
+    if (fbs[i]->segments.empty()) continue;
+    for (auto& seg : fbs[i]->segments) seg.driver->setBrightness(saved[i]);
+  }
+}
+
+void lamp::Lamp::tickBootRecovery() {
+  if (::config.lamp.password.empty()) return;
+  static bool s_pinReady = false;
+  if (!s_pinReady) {
+    pinMode(0, INPUT_PULLUP);
+    s_pinReady = true;
+  }
+  if (!bootRecovery_.update(digitalRead(0) == LOW, millis())) return;
+  ::config.lamp.password.clear();
+  ::config.persistConfig("boot_recovery");
+  // BLE auth reads the password live, so the app is usable immediately. The
+  // softAP keeps the key it was brought up with until the next boot.
+  Serial.println("[recovery] BOOT held: control password cleared");
+  pulseWholeLampTwice();
+}
+
 void lamp::Lamp::recomputeEffectiveCeiling() {
   s_hwMaxBrightness =
       lamp::effectiveCeiling(hw_.maxBrightness, ::config.lamp.brightnessCeiling);
@@ -567,7 +621,7 @@ void lamp::Lamp::setup() {
   }
   // Seed the file-scope brightness cap from the variant's HwConfig narrowed by
   // the user ceiling so free functions (applyEffectiveBrightness,
-  // applyRemoteOpLocal) use the correct ceiling without importing a variant header.
+  // applyLampOp) use the correct ceiling without importing a variant header.
   recomputeEffectiveCeiling();
 
   // `config` as an unqualified name inside a Lamp member function resolves to
@@ -582,6 +636,7 @@ void lamp::Lamp::setup() {
     Serial.println(
         "[power] brownout reset — supply budget constants may be mis-sized");
   }
+  crash_record::boot(FIRMWARE_VERSION);
   lamp_register_panic_handler();
 
   config = lamp::Config(&configStore);
@@ -612,13 +667,9 @@ void lamp::Lamp::setup() {
     persistFirstBoot = true;
   }
   if (!config.lamp.setup) {
-    const Color baseDefault = hexStringToColor(defaults().baseColor.c_str());
-    const Color shadeDefault = hexStringToColor(defaults().shadeColor.c_str());
-    const bool colorsUnconfigured =
-        config.base.broadcastColors().size() == 1 &&
-        config.base.broadcastColors()[0] == baseDefault &&
-        config.shade.broadcastColors().size() == 1 &&
-        config.shade.broadcastColors()[0] == shadeDefault;
+    const bool colorsUnconfigured = colorsAreFactoryDefault(
+        config.base.broadcastColors(), config.shade.broadcastColors(),
+        defaults().baseColor, defaults().shadeColor);
     if (colorsUnconfigured) {
       FastRng rng(seedFromMac());
       int baseHue = rng.range(0, 359);
@@ -745,8 +796,18 @@ void lamp::Lamp::setup() {
   // arriving in the gap is dropped because controlOpHandler_ is null.
   meshLink.setControlOpHandler(
       [](const uint8_t* payload, size_t len, const uint8_t srcMac[6]) {
-        lamp::pendingSlots.inboundOp.post(
-            pendingMux, reinterpret_cast<const char*>(payload), len, srcMac);
+        const char* json = reinterpret_cast<const char*>(payload);
+        switch (lamp::peekWispBroadcast(payload, len)) {
+          case lamp::WispBroadcast::Status:
+            lamp::pendingSlots.wispStatus.post(pendingMux, json, len, srcMac);
+            return;
+          case lamp::WispBroadcast::Config:
+            lamp::pendingSlots.wispConfig.post(pendingMux, json, len, srcMac);
+            return;
+          case lamp::WispBroadcast::None:
+            break;
+        }
+        lamp::pendingSlots.inboundOp.post(pendingMux, json, len, srcMac);
       });
   // Install the OTA receiver BEFORE meshLink.begin() so the chunk
   // fast-path is wired by the time MSG_FW_* frames start arriving.
@@ -779,8 +840,8 @@ void lamp::Lamp::setup() {
   // that only one transport (mesh OR BLE) drives an active OTA at a time.
   ble_control::setFirmwareReceiver(&firmwareReceiver);
 
-  // Gossip OTA: the lamp can ALSO originate offers to peers it meets via the
-  // social system. Wire the distributor through the same
+  // Gossip OTA: the lamp can ALSO originate offers to the peers tickOtaOffers
+  // finds on the mesh. Wire the distributor through the same
   // EspNowFirmwareTransport (it emits MSG_FW_OFFER/CHUNK/DONE and listens for
   // ACCEPT/REQ/RESULT via mesh_link's dispatch ladder).
   lamp::firmwareDistributor.begin(&meshFwTransport);
@@ -824,6 +885,7 @@ void lamp::Lamp::setup() {
   expressionManager.setCompositor(&compositor);
   // Expression mirror: replay a warm peer's triggered expression locally.
   expressionObserverRegistry.registerObserver(&socialEchoObserver);
+  beginMoments(ownMac);
   // One-shot reservation so the loop-task drain never reallocates mid-frame.
   pendingTriggers.reserve(MAX_PENDING_TRIGGERS);
   lamp::logHeap("boot");
@@ -946,9 +1008,13 @@ void lamp::Lamp::tick() {
     if (static_cast<int32_t>(nowMs - s_nextHeapLogMs) >= 0) {
       s_nextHeapLogMs = nowMs + 30000;
       lamp::logHeap("trend");
+      Serial.printf("[heap] txstalls=%lu txrefused=%lu\n",
+                    (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                    (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     }
   }
 #endif
+  crash_record::tick(millis(), [] { return lampRoster.size(); });
 
   // Drain pending BLE actions on the loop task (Core 1). All heap allocation
   // (JsonDocument parse, std::vector, gradient construction) happens here,
@@ -978,6 +1044,8 @@ void lamp::Lamp::tick() {
   // has been idle for kDispositionFlushIdleMs (5s). Cheap when nothing is
   // dirty (single bool check + uint32_t subtraction).
   config.maybeFlushDispositions(millis());
+  // Like the drains, no NVS save runs while firmware chunks are being written.
+  if (!firmwareReceiver.isInProgress()) config.maybeRetryPersist(millis());
   if (pendingFlushDispositionsRequested) {
     // Phone disconnected (set on Core 0 in ble_control's onDisconnect).
     // Force-commit so the user's final slider value survives even if
@@ -1016,6 +1084,7 @@ void lamp::Lamp::tick() {
   drainWispState();
   drainWispOp();
   drainWispStatus();
+  drainWispConfig();
   drainCommand();
   drainColorQuery();
   drainColorInfo();
@@ -1043,8 +1112,10 @@ void lamp::Lamp::tick() {
     // value; layering crowd-dim or OTA pulse mid-drag would make the slider
     // feel laggy and disconnected. Once the window elapses the next
     // applyEffectiveBrightness call reapplies both multipliers cleanly.
-    if (!lamp::overrides.brightness.isActive() && lamp::brightnessFadeSeeded() &&
-        lamp::brightnessFadeSource() != lamp::brightnessFadeTarget()) {
+    const bool userFading = !lamp::overrides.brightness.isActive() &&
+                            lamp::brightnessFadeSeeded() &&
+                            lamp::brightnessFadeSource() != lamp::brightnessFadeTarget();
+    if (userFading) {
       const uint8_t level = computeUserBrightnessNow(now);
       lamp::setAllStripsBrightness(
           lamp::calculateBrightnessLevel(s_hwMaxBrightness, level));
@@ -1057,10 +1128,18 @@ void lamp::Lamp::tick() {
     // reads a consistent post-fade view this tick. Cheap when nothing's
     // changed (1 Hz internal cadence). consumePendingApply() trips the
     // applyEffectiveBrightness pump when the crowd-dim factor crosses the
-    // deadband, or when SocialMode changes the dim regime.
+    // deadband, or when SocialMode changes the dim regime. The crowd-dim
+    // ramp then reapplies every pass until it lands; the slider's own
+    // micro-fade owns the strip while it runs, and OTA quiet mode holds it.
     lamp::personalityEngine.tick(now);
     if (lamp::personalityEngine.consumePendingApply()) {
       pendingApplyEffectiveBrightness = true;
+    }
+    lamp::momentDirector.tick(now);
+    // crowdDimFading() consumes the landing pass, so it is asked only when
+    // the reapply can run.
+    if (!userFading && !lamp::ota_quiet_mode::isQuiet() && lamp::crowdDimFading(now)) {
+      lamp::applyEffectiveBrightness();
     }
   }
 
@@ -1070,6 +1149,8 @@ void lamp::Lamp::tick() {
   // arrives after a long-delayMs one, the long one fires first when its
   // deadline hits. Best-effort by design; the cascade UX tolerates the
   // jitter and avoiding a priority queue keeps the drain trivial.
+  // A delayed cascade booked before home mode began is dropped.
+  if (expressionManager.ignoresPeers()) pendingTriggers.clear();
   if (!pendingTriggers.empty()) {
     const uint32_t now = millis();
     for (auto it = pendingTriggers.begin(); it != pendingTriggers.end();) {
@@ -1083,7 +1164,9 @@ void lamp::Lamp::tick() {
   }
 
   socialEchoObserver.tick(millis());
-  arrivalNotifier.tick(millis(), lamp::lampRoster, LAMP_PRUNE_TIME_MS);
+  compositor.behaviorContext().tickArrivals(millis(), LAMP_PRUNE_TIME_MS);
+
+  tickBootRecovery();
 
   wifi::tick();
 #if LAMP_WEBAPP_ENABLED
@@ -1095,6 +1178,7 @@ void lamp::Lamp::tick() {
   firmwareReceiver.tick(millis());
   lamp::firmwareDistributor.tick(millis());
   fs_ota::tick(millis());
+  lamp::tickOtaOffers(millis(), compositor.startupComplete);
   // Post-OTA self-health check. After 30 seconds of steady-state loop
   // iteration, if BLE is up and the loop has been iterating (trivially true
   // inside it), call mark_app_valid so the next OTA can succeed. If the lamp
@@ -1165,6 +1249,7 @@ void lamp::Lamp::tick() {
   // a remote cascade arrived) whose animations have finished. AFTER tick so
   // the final frame of the animation is drawn before removal.
   expressionManager.gcTransients();
+  expressionManager.tickCascade(millis());
 
   // Reap the active-test set (entries fired via dispatchLampAction
   // "test_expression"). When the last one transitions to STOPPED, flip

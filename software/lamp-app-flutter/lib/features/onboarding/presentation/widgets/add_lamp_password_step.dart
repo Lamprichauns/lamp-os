@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lamp_app/core/utils/string_case.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/lamp_password.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/widgets/friendly_error.dart';
 import '../../application/add_lamp_notifier.dart';
@@ -21,9 +22,9 @@ Future<void> _confirmSkip(BuildContext context, AddLampNotifier notifier) async 
     builder: (ctx) => AlertDialog(
       title: const Text('Adopt without a password?'),
       content: const Text(
-        "Anyone within Bluetooth range will be able to play with this lamp. "
-        "You can set a password later from the Setup tab, but it's safer to "
-        'pick one now.',
+        'Anyone nearby will be able to control this lamp and change its '
+        "settings, and its setup WiFi stays open. You can set a password "
+        "later from the Setup tab, but it's safer to pick one now.",
       ),
       actions: [
         TextButton(
@@ -72,8 +73,9 @@ class _AddLampPasswordStepState extends ConsumerState<AddLampPasswordStep> {
     final colorScheme = Theme.of(context).colorScheme;
     final showMismatch =
         _confirm.text.isNotEmpty && _confirm.text != state.password;
-    final canContinue = state.password.isNotEmpty &&
-        _confirm.text == state.password;
+    final passwordError = lampPasswordError(state.password);
+    final canContinue =
+        passwordError == null && _confirm.text == state.password;
     final name = state.name.isEmpty ? 'your lamp' : state.name.toTitleCase();
     return Padding(
       padding: const EdgeInsets.all(AppSpace.xl),
@@ -92,7 +94,9 @@ class _AddLampPasswordStepState extends ConsumerState<AddLampPasswordStep> {
             ),
             const SizedBox(height: AppSpace.sm),
             Text(
-              "Only phones with this password will be able to control this lamp.",
+              'Only phones with this password will be able to control this '
+              "lamp, and it locks the lamp's setup WiFi. Between "
+              '$kLampPasswordMinLength-$kLampPasswordMaxLength characters.',
               textAlign: TextAlign.center,
               style: textTheme.bodyMedium,
             ),
@@ -113,9 +117,11 @@ class _AddLampPasswordStepState extends ConsumerState<AddLampPasswordStep> {
                 notifier.setPassword(v);
                 setState(() {}); // re-evaluate the mismatch banner + button
               },
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Password',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                errorText:
+                    state.password.isEmpty ? null : passwordError,
               ),
             ),
             const SizedBox(height: AppSpace.md),

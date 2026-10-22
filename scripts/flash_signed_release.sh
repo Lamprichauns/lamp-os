@@ -21,6 +21,10 @@
 #   VARIANT      lamp variant: standard (default) or snafu
 #   PORT         esptool upload port (required if multiple boards attached)
 #   RELEASE_TAG  GitHub release tag to pull from: beta (default) or stable
+#   IMAGE        flash this local distribution.bin, skip the download (used for
+#                a locally-built signed variant with no release asset, e.g. loaf)
+#   CACHE_DIR    where downloads are cached and reused (default ~/.cache/lamp-os)
+#   REFRESH      set to force a re-download even if a cached image exists
 #
 # For people WITHOUT the signing key: downloads a prebuilt image, never builds
 # or signs. Requires: curl, esptool (pip install esptool), dd.
@@ -32,7 +36,11 @@ RELEASE_TAG="${RELEASE_TAG:-beta}"
 ASSET="distribution-${VARIANT}.bin"
 REPO="wearelamplit/lamp-os"
 URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
-TMPFILE="$(mktemp -t lamp-dist-XXXX.bin)"
+# Cache the merged image so a re-flash (or an offline bench) reuses it instead of
+# re-pulling 4 MiB. IMAGE=<path> flashes a local image (e.g. a locally-built
+# signed loaf) and skips the network entirely.
+CACHE_DIR="${CACHE_DIR:-$HOME/.cache/lamp-os}"
+TMPFILE="${IMAGE:-$CACHE_DIR/$ASSET}"
 APP0FILE="$(mktemp -t lamp-app0-XXXX.bin)"
 SPIFFSFILE="$(mktemp -t lamp-spiffs-XXXX.bin)"
 # Prefer the esptool binary on PATH, else the module form (pip installs the
@@ -44,7 +52,7 @@ else
   ESPTOOL=( python3 -m esptool )
 fi
 
-cleanup() { rm -f "$TMPFILE" "$APP0FILE" "$SPIFFSFILE"; }
+cleanup() { rm -f "$APP0FILE" "$SPIFFSFILE"; }
 trap cleanup EXIT
 
 # otadata offset+size from the partition table, not hardcoded, so a repartition
@@ -58,15 +66,28 @@ if [ -z "${OTADATA_OFF:-}" ] || [ -z "${OTADATA_SIZE:-}" ]; then
   exit 1
 fi
 
-echo "[flash:release] downloading ${ASSET} from release '${RELEASE_TAG}' (${REPO})"
-if ! curl -fSL --retry 3 -o "${TMPFILE}" "${URL}"; then
-  echo "ERROR: asset '${ASSET}' not found in release '${RELEASE_TAG}'." >&2
-  echo "       Publish a release for tag '${RELEASE_TAG}' on GitHub, then retry." >&2
-  exit 1
+if [ -s "$TMPFILE" ]; then
+  echo "[flash:release] using cached image ${TMPFILE} (REFRESH=1 to re-download)"
+  [ -n "${REFRESH:-}" ] && [ -z "${IMAGE:-}" ] && rm -f "$TMPFILE"
 fi
 
 if [ ! -s "$TMPFILE" ]; then
-  echo "ERROR: downloaded file is empty." >&2
+  if [ -n "${IMAGE:-}" ]; then
+    echo "ERROR: IMAGE=${IMAGE} not found or empty." >&2
+    exit 1
+  fi
+  mkdir -p "$CACHE_DIR"
+  echo "[flash:release] downloading ${ASSET} from release '${RELEASE_TAG}' (${REPO})"
+  if ! curl -fSL --retry 3 -o "${TMPFILE}" "${URL}"; then
+    rm -f "$TMPFILE"
+    echo "ERROR: asset '${ASSET}' not found in release '${RELEASE_TAG}'." >&2
+    echo "       Publish a release for tag '${RELEASE_TAG}' on GitHub, then retry." >&2
+    exit 1
+  fi
+fi
+
+if [ ! -s "$TMPFILE" ]; then
+  echo "ERROR: image is empty." >&2
   exit 1
 fi
 
@@ -91,4 +112,5 @@ PORT_ARG=()
 echo "[flash:release] resetting otadata (${OTADATA_OFF}+${OTADATA_SIZE}) so the bootloader boots ota_0 (app0)..."
 "${ESPTOOL[@]}" ${PORT_ARG[@]+"${PORT_ARG[@]}"} --chip esp32 erase_region "$OTADATA_OFF" "$OTADATA_SIZE"
 
-echo "[flash:release] done — lamp updated to ${VARIANT}/${RELEASE_TAG}, name/colors/adoption kept."
+SRC_DESC="${IMAGE:-${VARIANT}/${RELEASE_TAG}}"
+echo "[flash:release] done — lamp updated to ${SRC_DESC}, name/colors/adoption kept."

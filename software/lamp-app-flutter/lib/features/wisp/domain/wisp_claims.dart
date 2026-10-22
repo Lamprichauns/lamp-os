@@ -5,9 +5,9 @@ typedef WispClaimsParse = ({
   Map<String, ({LampColor base, LampColor shade})> colors,
 });
 
-/// Parses the binary CHAR_WISP_CLAIMS payload.
+/// Parses the mac set out of a CHAR_WISP_CLAIMS payload (format: see
+/// [parseWispClaims]).
 ///
-/// Wire format: `[count:1][mac:6]*count`, count ≤ 32, max 193 bytes.
 /// Returns a set of uppercase colon-separated MAC strings
 /// (e.g. "AA:BB:CC:DD:EE:FF"), the same format as WispStatus.wispMac
 /// and the inverse of parseMacFromBleId. Empty/short/malformed blobs
@@ -15,12 +15,16 @@ typedef WispClaimsParse = ({
 Set<String> parseClaimedMacs(List<int> blob) => parseWispClaims(blob).macs;
 
 /// Parses the full CHAR_WISP_CLAIMS payload including the optional
-/// trailing color section.
+/// trailing color and paint sections.
 ///
-/// Wire format: `[count:1][mac:6*count][colorPair:6*count]?`
-/// Colors present only when `blob.length >= 1 + count*12`. An all-zero
-/// colorPair is the sentinel for "no live color" and is omitted from
-/// the returned map. Malformed blobs return empty fields without throwing.
+/// Wire format:
+/// `[count:1][mac:6*count][colorPair:6*count]?[painted,baseW,shadeW:3*count]?`
+/// With the paint section (`blob.length >= 1 + count*15`), a mac with
+/// `painted == 1` maps to its RGBW colors, black included, and one with
+/// `painted == 0` is omitted. Without it (older firmware), colors are RGB with
+/// W = 0 and an all-zero colorPair is the "no live color" sentinel. A mac
+/// absent from the map falls back to the predicted color. Malformed blobs
+/// return empty fields without throwing.
 WispClaimsParse parseWispClaims(List<int> blob) {
   const empty = (macs: <String>{}, colors: <String, ({LampColor base, LampColor shade})>{});
   if (blob.isEmpty) return empty;
@@ -35,7 +39,9 @@ WispClaimsParse parseWispClaims(List<int> blob) {
 
   final colors = <String, ({LampColor base, LampColor shade})>{};
   final colorOffset = 1 + count * 6;
-  if (blob.length >= colorOffset + count * 6) {
+  final paintOffset = colorOffset + count * 6;
+  final hasPaint = blob.length >= paintOffset + count * 3;
+  if (blob.length >= paintOffset) {
     for (var i = 0; i < count; i++) {
       final o = colorOffset + i * 6;
       final r0 = blob[o] & 0xFF;
@@ -44,14 +50,20 @@ WispClaimsParse parseWispClaims(List<int> blob) {
       final r1 = blob[o + 3] & 0xFF;
       final g1 = blob[o + 4] & 0xFF;
       final b1 = blob[o + 5] & 0xFF;
-      // Sentinel: both triples are zero → no live color for this mac.
-      if (r0 == 0 && g0 == 0 && b0 == 0 && r1 == 0 && g1 == 0 && b1 == 0) {
+      var w0 = 0;
+      var w1 = 0;
+      if (hasPaint) {
+        final p = paintOffset + i * 3;
+        if ((blob[p] & 0xFF) != 1) continue;
+        w0 = blob[p + 1] & 0xFF;
+        w1 = blob[p + 2] & 0xFF;
+      } else if (r0 == 0 && g0 == 0 && b0 == 0 && r1 == 0 && g1 == 0 && b1 == 0) {
         continue;
       }
       final mac = _macAt(blob, 1 + i * 6);
       colors[mac] = (
-        base: LampColor(r: r0, g: g0, b: b0, w: 0),
-        shade: LampColor(r: r1, g: g1, b: b1, w: 0),
+        base: LampColor(r: r0, g: g0, b: b0, w: w0),
+        shade: LampColor(r: r1, g: g1, b: b1, w: w1),
       );
     }
   }

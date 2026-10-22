@@ -47,14 +47,14 @@ ColorOverride* surfaceOverrideFor(BehaviorContext* ctx, FrameBuffer* fb) {
 }
 }  // namespace
 
-bool Expression::shouldAffectBuffer() {
+bool Expression::shouldAffectBuffer(FrameBuffer* surface) {
   // Context is wired by Compositor::addBehavior at register time (or by
   // ExpressionManager::setCompositor for transients). Until both are wired
   // and ExpressionManager::begin() has published the buffer list, treat as
   // not-yet-routable and skip.
   if (!context_ || context_->expressionFrameBuffers.size() < 2) return false;
 
-  ColorOverride* ov = surfaceOverrideFor(context_, fb);
+  ColorOverride* ov = surfaceOverrideFor(context_, surface);
 
   // While the operator has this surface's color editor open, pause all
   // expressions on it so the color being picked reads clean instead of
@@ -63,9 +63,9 @@ bool Expression::shouldAffectBuffer() {
 
   switch (target) {
     case TARGET_SHADE:
-      return fb == context_->expressionFrameBuffers[0];
+      return surface == context_->expressionFrameBuffers[0];
     case TARGET_BASE:
-      return fb == context_->expressionFrameBuffers[1];
+      return surface == context_->expressionFrameBuffers[1];
     case TARGET_BOTH:
       return true;
     default:
@@ -73,24 +73,42 @@ bool Expression::shouldAffectBuffer() {
   }
 }
 
-float Expression::wispDimScale() {
-  if (!context_ || !context_->compositor ||
-      context_->expressionFrameBuffers.size() < 2) {
-    return 1.0f;
-  }
-  const bool isBase = fb == context_->expressionFrameBuffers[1];
-  const bool isShade = fb == context_->expressionFrameBuffers[0];
-  if (!isBase && !isShade) return 1.0f;
-  const float w = context_->compositor->wispPresence(isBase);
-  return opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
+float Expression::retireScale() const {
+  if (!retiring_) return 1.0f;
+  const uint32_t elapsed = millis() - retireStartMs_;
+  return elapsed >= kRetireFadeMs ? 0.0f
+                                  : 1.0f - static_cast<float>(elapsed) / kRetireFadeMs;
 }
 
-void Expression::configureOpacity(const std::map<std::string, uint32_t>& parameters) {
+float Expression::wispDimScale(FrameBuffer* surface) {
+  const float retireScale = this->retireScale();
+  if (!context_ || !context_->compositor ||
+      context_->expressionFrameBuffers.size() < 2) {
+    return retireScale;
+  }
+  const bool isBase = surface == context_->expressionFrameBuffers[1];
+  const bool isShade = surface == context_->expressionFrameBuffers[0];
+  if (!isBase && !isShade) return retireScale;
+  const float w = context_->compositor->wispPresence(isBase);
+  return retireScale * opacityTarget(true, opacityPct_ / 100.0f, wispDimFloor(), w);
+}
+
+void Expression::retire() {
+  if (retiring_) return;
+  retiring_ = true;
+  retireStartMs_ = millis();
+}
+
+bool Expression::retired() const {
+  return retiring_ && millis() - retireStartMs_ >= kRetireFadeMs;
+}
+
+void Expression::configureOpacity(const ExpressionParams& parameters) {
   opacityPct_ = static_cast<uint8_t>(
       std::clamp<uint32_t>(getParam(parameters, "opacity", 100), 10, 100));
 }
 
-void Expression::configureEasing(const std::map<std::string, uint32_t>& parameters, uint32_t defVal) {
+void Expression::configureEasing(const ExpressionParams& parameters, uint32_t defVal) {
   easingRaw_ = getParam(parameters, "easing", defVal);
   easing_ = (easingRaw_ == static_cast<uint32_t>(Easing::Random))
                 ? randomEasing(rng)

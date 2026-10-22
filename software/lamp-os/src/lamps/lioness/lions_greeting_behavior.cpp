@@ -42,7 +42,7 @@ void LionsGreetingBehavior::startGreeting(const lamp::PeerView& peer) {
     inv.type   = "glitchy";
     inv.colors = {greetColor_};
     inv.target = static_cast<uint8_t>(TARGET_SHADE);
-    expr_->triggerInvocation(inv, peer.mac, /*broadcast=*/false);
+    expr_->triggerInvocation(inv, peer.mac, /*broadcast=*/false, TransientSource::Local);
   }
   greetingWasActive_ = true;
   if (onGreetingChange_) onGreetingChange_();

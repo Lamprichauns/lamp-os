@@ -68,6 +68,43 @@ void test_received_cascade_home_on_disabled_type_dropped() {
   TEST_ASSERT_TRUE(receivedCascadeDropped(true, "glitchy", {"glitchy"}));
 }
 
+// Peer pushes are ignored only when home mode is active AND social is off.
+void test_remote_blocked_only_home_and_social_off() {
+  TEST_ASSERT_TRUE(homeModeBlocksRemote(true, true, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, false, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, true, TransientSource::Remote));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, false, TransientSource::Remote));
+}
+
+void test_local_never_blocked() {
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, true, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(true, false, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, true, TransientSource::Local));
+  TEST_ASSERT_FALSE(homeModeBlocksRemote(false, false, TransientSource::Local));
+}
+
+// Social off skips a social behavior unless it plays the app's own greeting.
+void test_social_skip_lets_app_greeting_play() {
+  TEST_ASSERT_TRUE(homeModeSkipsSocial(true, false));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(true, true));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(false, false));
+  TEST_ASSERT_FALSE(homeModeSkipsSocial(false, true));
+}
+
+// The compositor's per-behavior decision.
+void test_home_mode_tick() {
+  // Home mode off: everything runs.
+  TEST_ASSERT_TRUE(homeModeTick(false, true, true, false, true) == HomeModeTick::Run);
+  // A social behavior with social off is cancelled, unless the app's greeting plays.
+  TEST_ASSERT_TRUE(homeModeTick(true, true, true, false, false) == HomeModeTick::Cancel);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, true, true, false) == HomeModeTick::Run);
+  TEST_ASSERT_TRUE(homeModeTick(true, false, true, false, false) == HomeModeTick::Run);
+  // An expression of a home-disabled type is skipped, social on or off.
+  TEST_ASSERT_TRUE(homeModeTick(true, false, false, false, true) == HomeModeTick::Skip);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, false, false, true) == HomeModeTick::Skip);
+  TEST_ASSERT_TRUE(homeModeTick(true, true, false, false, false) == HomeModeTick::Run);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_null_id_not_skipped);
@@ -80,5 +117,9 @@ int main(int, char**) {
   RUN_TEST(test_received_cascade_home_off_never_dropped);
   RUN_TEST(test_received_cascade_home_on_enabled_type_kept);
   RUN_TEST(test_received_cascade_home_on_disabled_type_dropped);
+  RUN_TEST(test_remote_blocked_only_home_and_social_off);
+  RUN_TEST(test_local_never_blocked);
+  RUN_TEST(test_social_skip_lets_app_greeting_play);
+  RUN_TEST(test_home_mode_tick);
   return UNITY_END();
 }

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +9,8 @@
 #include "core/frame_buffer.hpp"
 #include "expression.hpp"
 #include "expression_invocation.hpp"
+#include "expressions/cascade_scheduler.hpp"
+#include "expressions/transient_admission.hpp"
 #include "expression_registry.hpp"
 #include "expressions/glitchy/glitchy_expression.hpp"
 #include "expressions/shifty/shifty_expression.hpp"
@@ -42,15 +43,20 @@ void enqueueDelayedInvocation(const ExpressionInvocation& inv,
  * Manages active expressions and their lifecycle.
  */
 class ExpressionManager {
+ public:
+  using ConfigParamsLookup = const ExpressionParams* (*)(const std::string& type,
+                                                         uint8_t target);
+
  private:
-  // Store expression with its type for triggering. `config` is a snapshot
-  // of the ExpressionConfig that built this entry, kept so the manager can
-  // make cascade decisions without each Expression subclass having to
-  // expose its raw parameter map.
+  // An expression with its type for triggering. Its parameters (read for
+  // cascades and event payloads) come from the Config entry with the same
+  // (type, target) through configParams_, so a configured expression's
+  // parameters exist once. An entry with no Config entry behind it (a relayed
+  // op, an invocation) carries its own copy in ownParams.
   struct ExpressionEntry {
     std::unique_ptr<Expression> expression;
     std::string type;
-    ExpressionConfig config;
+    std::unique_ptr<ExpressionParams> ownParams;
   };
   std::vector<ExpressionEntry> expressions;
   FrameBuffer* shadeBuffer = nullptr;
@@ -62,6 +68,9 @@ class ExpressionManager {
   // intentionally skipping for remote-arrived invocations). Loop-task only,
   // no concurrency.
   bool suppressCascade_ = false;
+
+  ConfigParamsLookup configParams_ = nullptr;
+  const ExpressionParams& paramsOf(const ExpressionEntry& entry) const;
 
   // One-shot Expression instances created on-demand by triggerInvocation when
   // a remote cascade arrives. They live in the compositor for the duration of
@@ -78,8 +87,17 @@ class ExpressionManager {
     uint8_t srcMac[6];
     std::unique_ptr<Expression> expression;
     uint32_t createdMs = 0;
+    TransientSource source = TransientSource::Remote;
   };
   std::vector<TransientExpression> transientExpressions_;
+  // In-flight transients and their split between sources: admitTransient
+  // (transient_admission.hpp). Reserved at begin().
+  static constexpr size_t kMaxTransients = TransientSlots::kMax;
+  static constexpr size_t kTransientHeapBytes = 2048;
+  // A dropped transient logs on every build, at most this often.
+  static constexpr uint32_t kTransientDropLogMs = 5000;
+  // The cascade fan-out draining a batch per pass (tickCascade).
+  CascadeScheduler cascade_;
 
   // Non-owning pointers to ExpressionEntry::expression instances that the
   // app's Test button fired via dispatchLampAction("test_expression").
@@ -137,6 +155,7 @@ class ExpressionManager {
     size_t head = 0;
   };
   RecentCascade recentCascades_;
+  LocalCooldown localCooldown_;
 
   // Parallel dedup ring for MSG_EVENT announces. Same keying and eviction
   // policy as recentCascades_: a TARGET_BOTH expression's shade and base
@@ -165,14 +184,22 @@ class ExpressionManager {
   // recentEvents_ so a TARGET_BOTH auto-trigger produces exactly one event.
   void emitEvent(const ExpressionEntry& entry);
 
-  // Synthesize a cascade-enabled ExpressionEntry from an invocation, selecting
-  // the base/shade buffer by `inv.target`. Feeds maybeCascade + emitEvent.
-  ExpressionEntry entryFromInvocation(const ExpressionInvocation& inv);
+  // The cascade and the event for an expression of `shape`'s type, colours
+  // and target with `params`; maybeCascade and emitEvent run them for a
+  // configured entry. An unregistered type sends neither.
+  void cascade(const ExpressionInvocation& shape, const ExpressionParams& params,
+               const uint8_t* excludeMac = nullptr);
+  void announce(const ExpressionInvocation& shape, const ExpressionParams& params);
+  static ExpressionInvocation shapeOf(const ExpressionEntry& entry);
+  // An invocation's own wave: cascade and event with cascadeEnabled set,
+  // built from the invocation alone, with no Expression made for it.
+  void broadcastFrom(const ExpressionInvocation& inv, const uint8_t* excludeMac = nullptr);
 
   ExpressionRegistry registry_;
 
   // Build an Expression bound to `buffer` for `type` via the registry's
-  // descriptor. Folds descriptor defaults into `parameters` before
+  // descriptor, joining the shade `above` it when non-null (surfacePlan).
+  // Folds descriptor defaults into `parameters` before
   // configureFromParameters. Returns nullptr for a type absent from the
   // registry. Shared by addExpression + triggerInvocation.
   std::unique_ptr<Expression> makeExpression(
@@ -180,7 +207,8 @@ class ExpressionManager {
       const std::vector<Color>& colors,
       uint32_t intervalMin, uint32_t intervalMax,
       ExpressionTarget target,
-      const std::map<std::string, uint32_t>& parameters);
+      const ExpressionParams& parameters,
+      FrameBuffer* above = nullptr);
 
  public:
   ExpressionRegistry& registry() { return registry_; }
@@ -217,8 +245,14 @@ class ExpressionManager {
   /**
    * Add a new expression. Used at boot by loadFromConfig (compositor
    * not yet built). Runtime callers should use upsertExpression.
+   * `configBacked`: Config holds this (type, target), so the entry reads its
+   * parameters there; false keeps a copy on the entry.
    */
-  void addExpression(const ExpressionConfig& config);
+  void addExpression(const ExpressionConfig& config, bool configBacked = true);
+
+  // Where a configured entry's parameters live: the Config entry for (type,
+  // target), or null. Set once at boot.
+  void setConfigParamsLookup(ConfigParamsLookup lookup) { configParams_ = lookup; }
 
   /**
    * Clear all expressions. Only safe before the compositor has been
@@ -250,10 +284,12 @@ class ExpressionManager {
    * break makes flood propagation safe. `broadcast` is a separate axis: true
    * only for a local origination (the app Test button) that must fan a wave
    * out, false for every receive/forward path so received cascades stay
-   * terminal.
+   * terminal. `source` decides which transient slots it may use: a peer's
+   * (Remote, the default) never takes the ones held for the lamp's own.
    */
   bool triggerInvocation(const ExpressionInvocation& inv,
-                         const uint8_t srcMac[6], bool broadcast = false);
+                         const uint8_t srcMac[6], bool broadcast = false,
+                         TransientSource source = TransientSource::Remote);
 
   /**
    * Broadcast an invocation to the crowd WITHOUT firing it locally.
@@ -285,14 +321,26 @@ class ExpressionManager {
    */
   void onExpressionFired(Expression* e);
 
+  // True while home mode ignores other lamps (Compositor::blocksRemote): a
+  // peer's invocation is neither started nor booked for later.
+  bool ignoresPeers() const;
+
   /**
    * Garbage-collect transient one-shot expressions created by
-   * triggerInvocation whose animation has finished. Unregisters them
-   * from the compositor and destroys the instance. Cheap; safe to
-   * call every loop tick. Call AFTER compositor.tick() so the final
-   * frame of the animation gets drawn before removal.
+   * triggerInvocation whose animation has finished, whose retire fade has
+   * ended, or that outlived the lifetime cap. Unregisters them from the
+   * compositor and destroys the instance. While home mode discards peers
+   * (Compositor::discardsRemote, outside the app's preview) it first retires
+   * every Remote transient still running, so a peer's effect fades out over
+   * Expression::kRetireFadeMs and is reaped here. Cheap; safe to call every
+   * loop tick. Call AFTER compositor.tick() so the final frame of the
+   * animation gets drawn before removal.
    */
   void gcTransients();
+
+  // Loop drain: sends the next batch of a cascade fan-out when due, and stops
+  // the drain when an OTA starts.
+  void tickCascade(uint32_t nowMs);
 
   std::vector<Color> getExpressionColors(const std::string& type) const;
 
@@ -301,7 +349,8 @@ class ExpressionManager {
    * existing entries for (type, target), builds fresh ones from
    * config, and registers them with the compositor.
    */
-  void upsertExpression(const ExpressionConfig& config, Compositor* compositor);
+  void upsertExpression(const ExpressionConfig& config, Compositor* compositor,
+                        bool configBacked = true);
 
   /**
    * Live remove keyed by (type, target). Unregisters from compositor

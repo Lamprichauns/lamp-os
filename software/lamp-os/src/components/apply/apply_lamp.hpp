@@ -8,6 +8,8 @@
 
 #include <ArduinoJson.h>
 
+#include <cstring>
+
 #include "config/config.hpp"
 #include "components/apply/apply_brightness.hpp"
 #include "util/str.hpp"
@@ -31,14 +33,22 @@ namespace apply {
 inline void lampLocal(JsonObject obj, uint8_t maxBrightness) {
   if (obj.isNull()) return;
   if (obj["name"].is<const char*>()) {
-    ::config.lamp.name = asciiLower(std::string(obj["name"].as<const char*>()));
+    ::config.lamp.name =
+        normalizeLampName(std::string(obj["name"].as<const char*>()));
     ::config.lamp.named = true;
     ::lamp::updateAdvertisedDeviceName(::config.lamp.name.c_str());
   }
   // Present (even empty) overwrites; empty clears. Absent leaves the stored
   // password intact so a partial write carrying only other fields can't wipe it.
+  // An over-long password is refused whole; truncating it would lock the
+  // owner out with a password they never typed.
   if (obj["password"].is<const char*>()) {
-    ::config.lamp.password = std::string(obj["password"].as<const char*>());
+    const char* pw = obj["password"].as<const char*>();
+    if (std::strlen(pw) <= kMaxPasswordLen) {
+      ::config.lamp.password = pw;
+    } else {
+      Serial.println("[cfg] password over 64 bytes refused");
+    }
   }
   if (obj["brightness"].is<int>()) {
     int level = obj["brightness"].as<int>();

@@ -1,6 +1,5 @@
 #pragma once
 #include <cstring>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -13,7 +12,7 @@ namespace lamp {
 // the loop param follows its config value (Continuous == 1); otherwise the
 // descriptor's static continuous flag decides.
 inline bool effectiveContinuous(const ExpressionDescriptor& d,
-                                const std::map<std::string, uint32_t>& params) {
+                                const ExpressionParams& params) {
   for (const auto& p : d.params) {
     if (std::strcmp(p.key, kLoopParamKey) == 0) {
       return getParam(params, kLoopParamKey, 0) != 0;
@@ -36,7 +35,7 @@ class ExpressionRegistry {
   // interval/duration range defaults into their min/maxKey. Never overwrites a
   // present key.
   void applyDefaults(const ExpressionDescriptor& d,
-                     std::map<std::string, uint32_t>& params,
+                     ExpressionParams& params,
                      uint16_t window) const;
 
   // Returns the exprcat wire JSON: { "schemaVersion":1, "expressions":[...] }.

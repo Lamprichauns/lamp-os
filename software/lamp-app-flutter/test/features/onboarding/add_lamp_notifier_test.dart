@@ -464,15 +464,12 @@ enum _HangOp { connect, read }
 /// connect() again as part of the post-reboot verify probe — we want the
 /// second connect to hang so the verify-path timeout fires, not the
 /// step-0 connect.
-class _HangingBleClient implements BleClient {
+class _HangingBleClient extends BleClient {
   _HangingBleClient({required this.hangOn});
 
   final _HangOp hangOn;
   int _connectCount = 0;
   final Set<String> _connected = {};
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<void> connect(String deviceId) {
@@ -544,16 +541,13 @@ class _HangingBleClient implements BleClient {
 /// simulate the user leaving the wizard (reset()) mid-claim. Records the
 /// characteristic UUIDs written so the test can assert the claim blob was
 /// never sent.
-class _ResetDuringClaimBleClient implements BleClient {
+class _ResetDuringClaimBleClient extends BleClient {
   _ResetDuringClaimBleClient(this.onFirstConnect);
 
   final void Function() onFirstConnect;
   int _connectCount = 0;
   final List<String> writes = [];
   final Set<String> _connected = {};
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<void> connect(String deviceId) async {
@@ -609,13 +603,10 @@ class _ResetDuringClaimBleClient implements BleClient {
 /// Fails every verify-phase reconnect until [recovered] is set, then connects
 /// cleanly — models the lamp finally coming back after the user taps Retry.
 /// The step-0 claim connect (first call) always succeeds.
-class _RecoveringBleClient implements BleClient {
+class _RecoveringBleClient extends BleClient {
   bool recovered = false;
   int _connectCount = 0;
   final Set<String> _connected = {};
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<void> connect(String deviceId) async {

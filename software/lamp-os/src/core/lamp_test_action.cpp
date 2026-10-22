@@ -13,6 +13,7 @@
 #include <ArduinoJson.h>
 
 #include "esp_heap_caps.h"
+#include "components/network/transport/espnow_link.hpp"
 #include "esp_system.h"
 
 #include <cstdint>
@@ -24,10 +25,12 @@
 #include "behaviors/greetable.hpp"
 #include "components/apply/apply_brightness.hpp"
 #include "components/apply/apply_expressions.hpp"
+#include "components/apply/apply_lamp.hpp"
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
 #include "config/config.hpp"
 #include "core/compositor.hpp"
+#include "core/moments.hpp"
 #include "core/frame_buffer.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/personality_engine.hpp"
@@ -128,15 +131,15 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
         inv.target = static_cast<uint8_t>(target);
         inv.colors = std::move(payloadColors);
         for (JsonPairConst kv : doc["parameters"].as<JsonObjectConst>()) {
-          inv.parameters[std::string(kv.key().c_str())] =
-              kv.value().as<uint32_t>();
+          inv.parameters.set(kv.key().c_str(), kv.value().as<uint32_t>());
         }
 #ifdef LAMP_DEBUG
         Serial.printf("[test] transient pulse colors=%zu type=%s target=%d\n",
                       inv.colors.size(), inv.type.c_str(),
                       static_cast<int>(target));
 #endif
-        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true);
+        expressionManager.triggerInvocation(inv, kLocalTestMac, /*broadcast=*/true,
+                                            lamp::TransientSource::Local);
         expressionManager.markTestActive(type.c_str(), target);
       } else {
         // No colors payload → trigger an already-configured expression by name.
@@ -233,23 +236,31 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   //
   // Payload:
   //   {"a":"inject_nearby","peers":[
-  //     {"name":"red","baseColor":"#FF0000FF","disposition":5},
-  //     {"name":"blue","baseColor":"#0000FFFF","disposition":1}
+  //     {"name":"red","mac":"AA:BB:CC:DD:EE:01","baseColor":"#FF0000FF","disposition":5},
+  //     {"name":"blue","mac":"AA:BB:CC:DD:EE:02","baseColor":"#0000FFFF","disposition":1}
   //   ]}
+  // Dispositions are keyed by MAC, so a peer without "mac" counts as Neutral.
+  // Injected peers read as seen now and go stale after the freshness window.
   // Pair with {"a":"clear_nearby"} to drop back to live data.
   else if (action == "inject_nearby") {
-    std::vector<lamp::RosterEntry> peers;
+    std::vector<lamp::NearbyCopy> peers;
     JsonArray arr = doc["peers"];
     for (JsonVariant v : arr) {
-      lamp::RosterEntry p;
+      lamp::NearbyCopy p;
       snprintf(p.name, sizeof(p.name), "%s", v["name"] | "");
       if (p.name[0] == '\0') continue;
       const String baseHex = String(v["baseColor"] | "#FFFFFFFF");
       p.baseColor = lamp::hexStringToColor(baseHex.c_str());
       p.lastRssi = v["rssi"].is<int>() ? static_cast<int8_t>(v["rssi"].as<int>()) : -50;
+      p.lastSeenNearMs = millis();
+      p.lastSeenBleMs = p.lastSeenNearMs;
+      const char* mac = v["mac"] | "";
+      p.hasMac = lamp::parseBdAddr(mac, p.mac);
       const int disp = v["disposition"] | 3;
-      if (disp >= 1 && disp <= 5) {
-        config.setDisposition(p.name, static_cast<uint8_t>(disp));
+      if (p.hasMac && disp >= 1 && disp <= 5) {
+        char lampId[18];
+        lamp::formatBdAddr(p.mac, lampId);
+        config.setDisposition(lampId, static_cast<uint8_t>(disp));
       }
       peers.push_back(p);
     }
@@ -258,6 +269,25 @@ void dispatchLampAction(JsonDocument& doc, unsigned long updateTimeMs) {
   } else if (action == "clear_nearby") {
     Serial.println("[personality] clear_nearby");
     lamp::personalityEngine.clearNearbyOverride();
+  }
+  // Bench hooks for Moments. "moment" starts a kind now, past eligibility,
+  // conditions and the crowd cooldown but never past a suppressor:
+  //   {"a":"moment","k":"fireflies|whisper","seed":42}
+  else if (action == "moment") {
+    const String k = String(doc["k"] | "");
+    const uint32_t seed = doc["seed"] | 0u;
+    lamp::MomentKind kind;
+    if (k == "fireflies") {
+      kind = lamp::MomentKind::Fireflies;
+    } else if (k == "whisper") {
+      kind = lamp::MomentKind::Whisper;
+    } else {
+      Serial.println("[moment] force err kind");
+      return;
+    }
+    lamp::momentDirector.force(kind, seed, millis());
+  } else if (action == "moment_state") {
+    lamp::momentDirector.dumpState(millis());
   }
 #endif
 }
@@ -292,17 +322,22 @@ void runSerialCommand(char* line, size_t len) {
   }
 
   if (strcmp(line, "heap.get") == 0) {
-    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u\n",
+    Serial.printf("[cmd] ok heap free=%u largest=%u minever=%u txstalls=%lu txrefused=%lu\n",
                   (unsigned)esp_get_free_heap_size(),
                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
-                  (unsigned)esp_get_minimum_free_heap_size());
+                  (unsigned)esp_get_minimum_free_heap_size(),
+                  (unsigned long)lamp::EspNowLink::s_txCredit.stalls(),
+                  (unsigned long)lamp::EspNowLink::s_txCredit.refused());
     return;
   }
 
   if (strcmp(line, "expr.get") == 0) {
     std::string out;
     config.expressionsSectionJsonCached(out);
-    Serial.printf("[cmd] ok %s\n", out.c_str());
+    // write() streams the JSON; printf would malloc the whole line first.
+    Serial.print("[cmd] ok ");
+    Serial.write(reinterpret_cast<const uint8_t*>(out.data()), out.size());
+    Serial.println();
     return;
   }
 
@@ -357,6 +392,20 @@ void runSerialCommand(char* line, size_t len) {
     config.baseSectionJsonCached(base);
     config.shadeSectionJsonCached(shade);
     Serial.printf("[cmd] ok base=%s shade=%s\n", base.c_str(), shade.c_str());
+    return;
+  }
+
+  // Same partial-merge choke point as the BLE settings_blob `lamp` drain, e.g.
+  // `cfg.set {"password":""}` clears the control password on a locked-out lamp.
+  if (strncmp(line, "cfg.set ", 8) == 0) {
+    JsonDocument doc;
+    if (deserializeJson(doc, line + 8) != DeserializationError::Ok) {
+      Serial.println("[cmd] err parse");
+      return;
+    }
+    lamp::apply::lampLocal(doc.as<JsonObject>(), s_hwMaxBrightness);
+    config.persistConfig("cfgSet");
+    Serial.println("[cmd] ok cfg.set");
     return;
   }
 

@@ -17,8 +17,8 @@ import '../../application/advanced_session.dart';
 ///     (`status.present`). The orbs use `status.offColor` for the tint
 ///     because the wisp isn't painting per-surface colors right now.
 ///     This gives operators an entry point to the wisp config even when
-///     the wisp is in Off mode or stuck waiting for Aurora to publish a
-///     zone. Without this escape hatch, the 5-tap-orbs gesture would be
+///     the wisp is in Off mode or waiting for a Straylight palette.
+///     Without this escape hatch, the 5-tap-orbs gesture would be
 ///     inaccessible whenever the wisp wasn't painting.
 ///
 /// Sized to sit in the empty top-right of the control screen header. No
@@ -84,7 +84,7 @@ class _WispIndicatorState extends ConsumerState<WispIndicator>
     // Advanced-mode escape hatch: even when the wisp isn't actively
     // painting, surface the orbs so the 5-tap gesture remains reachable.
     // Required for the operator to flip a stuck-in-Off-mode wisp back
-    // into Manual or Aurora without app-restart workarounds.
+    // into Manual or Straylight without app-restart workarounds.
     final advanced = ref.watch(effectiveAdvancedProvider(widget.lampId));
     if (status == null) {
       return SizedBox(width: widget.size, height: widget.size);

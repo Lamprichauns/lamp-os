@@ -9,8 +9,8 @@ lamp. (For the project pitch, hardware build, and contribution flow, see the
 
 Three components under [`software/`](../../software/) — the lamp firmware
 (ESP32-WROOM), the wisp infrastructure node (Seeed XIAO ESP32-C6), and the
-Flutter control app — linked by BLE GATT, an ESP-NOW mesh, and the wisp's Aurora
-feed. The one-screen map of components, links, data flows, and where each
+Flutter control app — linked by BLE GATT, an ESP-NOW mesh, and the wisp's
+Straylight OSC feed. The one-screen map of components, links, data flows, and where each
 subsystem lives is [`architecture.md`](architecture.md). **Start there** for
 orientation.
 
@@ -69,10 +69,12 @@ it back upstream, see [Contributing](../../README.md#contributing).
   the descriptor model, the wisp-override gate, the testing pattern, and the
   new-expression skeleton.
 - [`social.md`](social.md), overview of how a lamp behaves around other lamps,
-  greetings and crowd-dim, and how they fit together. **Start here** for the
+  greetings, crowd-dim and Moments, and how they fit together. **Start here** for the
   social system, then the docs below.
 - [`personality-greetings.md`](personality-greetings.md), disposition-driven
   greeting animations (how lamps acknowledge peers they meet on the mesh).
+- [`moments.md`](moments.md), the rare crowd-level expressions (Fireflies,
+  Whisper): pacing, the `mo` wire object, suppressors, bench steps.
 - [`personality-signals.md`](personality-signals.md), the signals a custom
   lamp can react to (crowd weight/composition, presence, time, etc.).
 - [`utilities.md`](utilities.md), the mechanical helper toolbox
@@ -83,6 +85,11 @@ it back upstream, see [Contributing](../../README.md#contributing).
 - [`networking.md`](networking.md), the authoritative wire-format spec for the
   ESP-NOW mesh **and** the BLE GATT link. **The code wins ties**, update this
   doc when it doesn't.
+
+### Control app
+- [`app-ble.md`](app-ble.md), how the app holds BLE links to lamps: the shared
+  connect retry, link ownership, the scan hold during a connect, and My Lamps
+  presence and last-seen stamps.
 
 ### Operations + environment
 - [`environment/`](environment/README.md), toolchain setup, npm task catalog,

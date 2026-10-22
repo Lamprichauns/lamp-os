@@ -19,9 +19,9 @@ static const uint8_t kWispOpSaltLE[16] = {
 
 static bool isApplied(DispatchResult r) {
   switch (r) {
-    case DispatchResult::AppliedZoneChange:
     case DispatchResult::AppliedWifiChange:
     case DispatchResult::AppliedSourceChange:
+    case DispatchResult::AppliedOscRole:
     case DispatchResult::AppliedManualPalette:
     case DispatchResult::AppliedOffColor:
     case DispatchResult::AppliedShuffle:
@@ -71,11 +71,11 @@ DispatchResult WispOpDispatcher::dispatch(const uint8_t* payload, size_t len) {
     jsonLen = len;
   }
 
-  // Gate plaintext behind the password, with two exceptions. setManualPalette
+  // Gate plaintext behind the password, with three exceptions. setManualPalette
   // is an integrity exception: palette colors are unauthenticated by design
   // (an attacker in BLE proximity can vandalize colors regardless, so sealing
-  // adds nothing under the proximity threat model). pollStatus is read-only:
-  // it only triggers a re-broadcast of already-public state.
+  // adds nothing under the proximity threat model). pollStatus and pollConfig
+  // are read-only: they only trigger a re-broadcast of already-public state.
   if (config_.password().length() > 0) {
     // Peek the op name before deciding to reject.
     JsonDocument peekDoc;
@@ -83,7 +83,8 @@ DispatchResult WispOpDispatcher::dispatch(const uint8_t* payload, size_t len) {
     if (!err) {
       const char* op = peekDoc["op"];
       if (op && (strcmp(op, "setManualPalette") == 0 ||
-                 strcmp(op, "pollStatus") == 0)) {
+                 strcmp(op, "pollStatus") == 0 ||
+                 strcmp(op, "pollConfig") == 0)) {
         return dispatchJson(json, jsonLen);
       }
     }
@@ -117,27 +118,11 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
     return DispatchResult::Malformed;
   }
 
-  if (strcmp(op, "setZone") == 0) {
-    if (!doc["zoneId"].is<int>()) {
-      Serial.println("[wisp.op] setZone missing/invalid 'zoneId'");
-      return DispatchResult::Malformed;
-    }
-    const int zoneId = doc["zoneId"].as<int>();
-    Serial.printf("[wisp.op] setZone zoneId=%d\n", zoneId);
-    config_.setSelectedZone(zoneId);
-    return DispatchResult::AppliedZoneChange;
-  }
-
-  if (strcmp(op, "clearZone") == 0) {
-    Serial.println("[wisp.op] clearZone");
-    config_.clearSelectedZone();
-    return DispatchResult::AppliedZoneChange;
-  }
-
   if (strcmp(op, "setSource") == 0) {
-    // Accept "mode":"off|manual|aurora" or numeric 0|1|2. Coerce server-side
-    // so an unexpected wire value doesn't strand the wisp in an unknown mode.
-    WispSourceMode resolved = WispSourceMode::Aurora;
+    // Accept "mode":"off|manual|osc" or numeric 0|1|3. Anything else is
+    // Malformed so an unexpected wire value can't strand the wisp in an
+    // unknown mode.
+    WispSourceMode resolved = WispSourceMode::Off;
     bool resolvedOk = false;
     JsonVariant modeVar = doc["mode"];
     if (modeVar.is<const char*>()) {
@@ -148,13 +133,15 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
       } else if (strcmp(s, "manual") == 0) {
         resolved = WispSourceMode::Manual;
         resolvedOk = true;
-      } else if (strcmp(s, "aurora") == 0) {
-        resolved = WispSourceMode::Aurora;
+      } else if (strcmp(s, "osc") == 0) {
+        resolved = WispSourceMode::Osc;
         resolvedOk = true;
       }
     } else if (modeVar.is<int>()) {
       const int v = modeVar.as<int>();
-      if (v >= 0 && v <= 2) {
+      if (v == static_cast<int>(WispSourceMode::Off) ||
+          v == static_cast<int>(WispSourceMode::Manual) ||
+          v == static_cast<int>(WispSourceMode::Osc)) {
         resolved = static_cast<WispSourceMode>(v);
         resolvedOk = true;
       }
@@ -166,6 +153,17 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
     Serial.printf("[wisp.op] setSource mode=%d\n", static_cast<int>(resolved));
     config_.setSourceMode(resolved);
     return DispatchResult::AppliedSourceChange;
+  }
+
+  if (strcmp(op, "setOscRole") == 0) {
+    OscRole role = OscRole::Primary;
+    if (!oscRoleFromName(doc["role"].as<const char*>(), role)) {
+      Serial.println("[wisp.op] setOscRole missing/invalid 'role'");
+      return DispatchResult::Malformed;
+    }
+    Serial.printf("[wisp.op] setOscRole role=%s\n", oscRoleName(role));
+    config_.setOscRole(role);
+    return DispatchResult::AppliedOscRole;
   }
 
   if (strcmp(op, "setOffColor") == 0) {
@@ -287,6 +285,10 @@ DispatchResult WispOpDispatcher::dispatchJson(const char* json, size_t len) {
 
   if (strcmp(op, "pollStatus") == 0) {
     return DispatchResult::PollStatus;
+  }
+
+  if (strcmp(op, "pollConfig") == 0) {
+    return DispatchResult::PollConfig;
   }
 
   if (strcmp(op, "shuffle") == 0) {

@@ -15,16 +15,21 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "expr_catalog.h"
+#include "components/firmware/firmware_receiver.hpp"
 #include "components/firmware/ota_quiet_mode.hpp"
 #include "components/network/ble/ble_control.hpp"
+#include "behaviors/fade_out.hpp"
 #include "components/network/transport/wifi.hpp"
+#include "components/webapp/settings_body.hpp"
 #include "components/webapp/webapp_deadline.hpp"
 #include "config/config_types.hpp"
 #include "core/pending_json_slot.hpp"
 #include "util/color.hpp"
+#include "util/heap_guard.hpp"
 #include "util/heap_probe.hpp"
 
 // Same Core 0 → Core 1 drain handoff the BLE writes use; mutating config
@@ -36,6 +41,8 @@ void postPendingEditSession(uint8_t surfaceMask, bool open);
 void postPendingTestActionJson(const char* data, size_t len);
 void postPendingSocialDispositionsJson(const char* data, size_t len);
 
+extern lamp::FirmwareReceiver firmwareReceiver;
+
 namespace webapp {
 
 static lamp::Config* s_config = nullptr;
@@ -43,7 +50,18 @@ static AsyncWebServer* s_server = nullptr;
 static AsyncWebSocket* s_ws = nullptr;
 
 static uint32_t s_deadlineMs = 0;
+// An armed reboot and when it is due; millis() can read 0, so the flag, not
+// the time, says whether one is armed.
+static bool s_rebootArmed = false;
 static uint32_t s_rebootAtMs = 0;
+
+static void armReboot(uint32_t atMs) {
+  s_rebootArmed = true;
+  s_rebootAtMs = atMs;
+}
+// Set only by the save path so rebootNow() fades to black first; the
+// browser-left / idle reboots stay a hard restart (no scene to fade).
+static bool s_fadeOnReboot = false;
 static bool s_apUp = false;
 static bool s_serverUp = false;
 static bool s_neverExpire = false;
@@ -83,10 +101,18 @@ static String s_settingsJson;
 static void buildSettingsSnapshot() {
   JsonDocument doc = s_config->asJsonDocument();
   doc["lamp"]["hasPassword"] = !s_config->lamp.password.empty();
+  doc["lamp"]["apSecured"] = wifi::softApSecured();
   doc["lamp"]["lampId"] = s_config->lampId();
   doc["lamp"].remove("password");
   s_settingsJson = "";
   serializeJson(doc, s_settingsJson);
+}
+
+// A password the AP can't key leaves the network open, so the surface that
+// would hand config writes (or the password itself) to any nearby client goes
+// read-only. Recover by setting a usable password over BLE.
+static bool webSurfaceReadOnly() {
+  return !s_config->lamp.password.empty() && !wifi::softApSecured();
 }
 
 static void handleGetSettings(AsyncWebServerRequest* req) {
@@ -107,13 +133,19 @@ static void handleGetNearby(AsyncWebServerRequest* req) {
   req->send(200, "application/json", json.c_str());
 }
 
+// A map the heap could not build answers 503, never "{}": the editor PUTs the
+// whole map back, so an empty one would erase every stored disposition.
 static void handleGetDispositions(AsyncWebServerRequest* req) {
   bumpDeadline();
   try {
-    req->send(200, "application/json", s_config->asDispositionsJson());
+    const std::string json = s_config->asDispositionsJson();
+    if (!json.empty()) {
+      req->send(200, "application/json", json.c_str());
+      return;
+    }
   } catch (const std::bad_alloc&) {
-    req->send(200, "application/json", "{}");
   }
+  req->send(503, "application/json", "{\"ok\":false}");
 }
 
 // Bulk replace of the per-peer disposition map, mirroring the auth-gated
@@ -122,6 +154,10 @@ static void handleGetDispositions(AsyncWebServerRequest* req) {
 static void handlePutDispositions(AsyncWebServerRequest* req,
                                   JsonVariant& json) {
   bumpDeadline();
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
+    return;
+  }
   if (lamp::ota_quiet_mode::isQuiet()) {
     req->send(503, "application/json", "{\"ok\":false}");
     return;
@@ -136,57 +172,164 @@ static void handlePutDispositions(AsyncWebServerRequest* req,
   req->send(200, "application/json", "{\"ok\":true}");
 }
 
-static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& json) {
+// A web save handed from the AsyncTCP task to the loop: the request body as
+// it arrived, in one malloc'd block the loop frees, so the document is parsed
+// once, on the loop (config_codec::saveRawJson). Each hand-off carries
+// a sequence number and the loop publishes (seq, ok) for it, so a waiter only
+// takes its own result. A waiter that times out withdraws its body if the
+// loop has not taken it (nothing is saved); once taken, the save finishes and
+// arms the reboot on its own.
+struct WebSave {
+  char* body = nullptr;
+  uint32_t seq = 0;
+};
+static WebSave s_webSavePending;
+static uint32_t s_webSaveSeq = 0;
+static uint32_t s_webSaveDoneSeq = 0;
+static lamp::config_codec::SaveResult s_webSaveDoneResult = lamp::config_codec::SaveResult::Ok;
+static portMUX_TYPE s_webSaveMux = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t s_webSaveDone = nullptr;
+static constexpr uint32_t kWebSaveWaitMs = 3000;
+static constexpr uint32_t kRebootDelayMs = 1500;
+
+enum class WebSaveResult { Saved, Failed, Invalid, Held, Withdrawn, StillSaving };
+
+static WebSaveResult saveOnLoop(char* raw) {
+  if (!s_webSaveDone) {
+    free(raw);
+    return WebSaveResult::Failed;
+  }
+  portENTER_CRITICAL(&s_webSaveMux);
+  const uint32_t seq = ++s_webSaveSeq;
+  char* stale = s_webSavePending.body;
+  s_webSavePending = {raw, seq};
+  portEXIT_CRITICAL(&s_webSaveMux);
+  free(stale);
+
+  const uint32_t deadline = millis() + kWebSaveWaitMs;
+  while (true) {
+    const int32_t left = static_cast<int32_t>(deadline - millis());
+    if (left > 0 && xSemaphoreTake(s_webSaveDone, pdMS_TO_TICKS(left)) == pdTRUE) {
+      portENTER_CRITICAL(&s_webSaveMux);
+      const bool mine = s_webSaveDoneSeq == seq;
+      const lamp::config_codec::SaveResult result = s_webSaveDoneResult;
+      portEXIT_CRITICAL(&s_webSaveMux);
+      if (mine) {
+        switch (result) {
+          case lamp::config_codec::SaveResult::Ok: return WebSaveResult::Saved;
+          case lamp::config_codec::SaveResult::Invalid: return WebSaveResult::Invalid;
+          case lamp::config_codec::SaveResult::Held: return WebSaveResult::Held;
+          default: return WebSaveResult::Failed;
+        }
+      }
+      continue;  // an earlier hand-off's result
+    }
+    portENTER_CRITICAL(&s_webSaveMux);
+    char* withdrawn = nullptr;
+    if (s_webSavePending.seq == seq) {
+      withdrawn = s_webSavePending.body;
+      s_webSavePending = {};
+    }
+    portEXIT_CRITICAL(&s_webSaveMux);
+    if (withdrawn) {
+      free(withdrawn);
+      return WebSaveResult::Withdrawn;
+    }
+    return WebSaveResult::StillSaving;
+  }
+}
+
+// Loop task: runs a pending web save and, when it lands, arms the reboot that
+// loads it. Waits while a firmware update is being received, as every config
+// save does; a handler that times out meanwhile withdraws its body.
+static void drainWebSave() {
+  if (firmwareReceiver.isInProgress()) return;
+  portENTER_CRITICAL(&s_webSaveMux);
+  const WebSave save = s_webSavePending;
+  s_webSavePending = {};
+  portEXIT_CRITICAL(&s_webSaveMux);
+  if (!save.body) return;
+  const lamp::config_codec::SaveResult result = s_config->persistRawJson(save.body);
+  const bool ok = result == lamp::config_codec::SaveResult::Ok;
+  free(save.body);
+  // Every build: a handler that already answered 202 has no other way to
+  // surface the failure.
+  if (!ok) Serial.printf("[webapp] pending save failed (seq %lu)\n", (unsigned long)save.seq);
+  if (ok) {
+    s_fadeOnReboot = true;
+    armReboot(millis() + kRebootDelayMs);
+  }
+  portENTER_CRITICAL(&s_webSaveMux);
+  s_webSaveDoneSeq = save.seq;
+  s_webSaveDoneResult = result;
+  portEXIT_CRITICAL(&s_webSaveMux);
+  xSemaphoreGive(s_webSaveDone);
+}
+
+static void collectSettingsBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
+                                size_t index, size_t total) {
+  collectBodyPiece(req->_tempObject, data, len, index, total, kMaxSettingsBody,
+                   lamp::heapCanSpare);
+}
+
+// Whole-document replace: the body must be the full config (the GET doc,
+// mutated and sent back in its entirety). The loop parses it once
+// (config_codec::saveRawJson) and refuses one with no `lamp` object or an
+// over-long password or SSID; that answers 400 while this handler still
+// waits, and is logged after a 202. A missing password keeps the stored one
+// (GET redacts it), and a body carrying a name marks the lamp named.
+static void handlePutSettings(AsyncWebServerRequest* req) {
   bumpDeadline();
-  JsonObject obj = json.as<JsonObject>();
-  // Whole-document replace: the body must be the full config (the GET doc,
-  // mutated and sent back in its entirety). Reject anything without a `lamp`
-  // object so a partial/garbage body can't wipe config back to constructor
-  // defaults on the reboot below.
-  if (obj.isNull() || !obj["lamp"].is<JsonObject>()) {
-    req->send(400, "application/json", "{\"ok\":false}");
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
     return;
   }
-  // GET redacts the password, so the body won't carry it. Re-inject the
-  // server-side value (the from-scratch reload on boot only keeps a password
-  // present in the blob, so omitting it would wipe the control password).
-  const char* pw = obj["lamp"]["password"] | "";
-  if (pw[0] == '\0' && !s_config->lamp.password.empty()) {
-    obj["lamp"]["password"] = s_config->lamp.password;
-  }
-  // A web save carrying a name is an explicit user configuration; stamp the
-  // adoption flag so boot's applyDefaults never reverts the name to a default.
-  const char* nm = obj["lamp"]["name"] | "";
-  if (nm[0] != '\0') obj["lamp"]["named"] = true;
-  String out;
-  // Reserve the exact size so a fragmented heap fails loud instead of Arduino
-  // String silently truncating mid-serialize; a short write is a 500, not a
-  // truncated blob handed to persist.
-  const size_t need = measureJson(json);
-  out.reserve(need);
-  serializeJson(json, out);
-  if (out.length() != need) {
-    req->send(500, "application/json", "{\"ok\":false}");
+  const int status = settingsBodyStatus(req->contentType().startsWith("application/json"),
+                                        req->contentLength(), req->_tempObject,
+                                        kMaxSettingsBody);
+  if (status != 0) {
+    req->send(status, "application/json", "{\"ok\":false}");
     return;
   }
-  if (!s_config->persistRawJson(out.c_str())) {
-    req->send(500, "application/json", "{\"ok\":false}");
-    return;
+  char* body = takeBody(req->_tempObject);  // the loop frees it
+  // A landed save arms its own reboot (drainWebSave): the constructor
+  // re-parses the new config on boot, and drain-level side-effects in
+  // apply::settingsBlobLocal() do not run inline for web saves. The 1.5 s
+  // delay lets the HTTP response flush.
+  switch (saveOnLoop(body)) {
+    case WebSaveResult::Saved:
+      lamp::logHeap("web-save");
+      req->send(200, "application/json", "{\"ok\":true}");
+      return;
+    case WebSaveResult::StillSaving:
+      // Taken by the loop but not done in time: it lands, and reboots, on
+      // its own.
+      req->send(202, "application/json", "{\"ok\":true,\"pending\":true}");
+      return;
+    case WebSaveResult::Invalid:
+      req->send(400, "application/json", "{\"ok\":false}");
+      return;
+    case WebSaveResult::Held:
+      // An earlier save waits for its reboot; this one would write over it.
+      req->send(409, "application/json", "{\"ok\":false}");
+      return;
+    case WebSaveResult::Failed:
+    case WebSaveResult::Withdrawn:
+      req->send(500, "application/json", "{\"ok\":false}");
+      return;
   }
-  lamp::logHeap("web-save");
-  // Reboot re-applies settings via the constructor; drain-level side-effects
-  // in apply::settingsBlobLocal() do not run inline for web saves.
-  // 1.5s delay so the HTTP response flushes AND any lamp.name change picks up
-  // on the BLE advert (set once at bluetooth.cpp:147). The constructor
-  // re-parses the new blob on boot.
-  s_rebootAtMs = millis() + 1500;
-  req->send(200, "application/json", "{\"ok\":true}");
 }
 
 // Server-verified password gate. Releases the stored plaintext only on a
 // correct match so the UI can show it; GET keeps the password redacted.
 static void handleUnlock(AsyncWebServerRequest* req, JsonVariant& json) {
   bumpDeadline();
+  // Unthrottled and it returns the plaintext on a match, so on an open AP it
+  // would be a free oracle for the BLE control password.
+  if (webSurfaceReadOnly()) {
+    req->send(403, "application/json", "{\"ok\":false}");
+    return;
+  }
   const std::string& stored = s_config->lamp.password;
   const std::string supplied = json["password"] | "";
   // Constant-time compare: accumulate diff over max(stored, supplied) length
@@ -293,12 +436,7 @@ static void startServer() {
   s_server->addHandler(new AsyncCallbackJsonWebHandler("/api/dispositions",
                                                        handlePutDispositions));
 
-  auto* putHandler =
-      new AsyncCallbackJsonWebHandler("/api/settings", handlePutSettings);
-  // Full config (expressions + dense knockout) can exceed the 16 KB default,
-  // which AsyncJson drops silently. Give it generous headroom.
-  putHandler->setMaxContentLength(32768);
-  s_server->addHandler(putHandler);
+  s_server->on("/api/settings", HTTP_PUT, handlePutSettings, nullptr, collectSettingsBody);
 
   s_server->addHandler(
       new AsyncCallbackJsonWebHandler("/api/unlock", handleUnlock));
@@ -324,11 +462,12 @@ static void startServer() {
 void begin(lamp::Config& config) {
   if (s_apUp) return;
   s_config = &config;
+  if (!s_webSaveDone) s_webSaveDone = xSemaphoreCreateBinary();
 
   // SoftAP SSID is the lamp's name + "-lamp" so it's recognizable as a
   // lamp's setup network in a Wi-Fi scan.
   const std::string ssid = config.lamp.name + "-lamp";
-  if (!wifi::startSoftAp(ssid)) {
+  if (!wifi::startSoftAp(ssid, config.lamp.password)) {
 #ifdef LAMP_DEBUG
     Serial.println("[webapp] softAP failed; webapp not started");
 #endif
@@ -343,12 +482,13 @@ void begin(lamp::Config& config) {
   const uint8_t bootMinutes = config.lamp.apBootMinutes;
   s_neverExpire = (bootMinutes == 0);
   s_deadlineMs = millis() + bootMinutes * 60000UL;
-  s_rebootAtMs = 0;
+  s_rebootArmed = false;
   s_apUp = true;
 
 #ifdef LAMP_DEBUG
-  Serial.printf("[webapp] softAP up at %s  bootWindow=%umin%s\n",
-                WiFi.softAPIP().toString().c_str(), bootMinutes,
+  Serial.printf("[webapp] softAP up at %s  auth=%s bootWindow=%umin%s\n",
+                WiFi.softAPIP().toString().c_str(),
+                wifi::softApSecured() ? "wpa2" : "open", bootMinutes,
                 s_neverExpire ? " (never expire)" : "");
 #endif
 }
@@ -366,13 +506,37 @@ static void stopAp() {
 }
 
 static void rebootNow() {
+  if (s_fadeOnReboot) {
+    // FadeOutBehavior draws over everything, fades to black over
+    // REBOOT_ANIMATION_FRAMES (~1.9s), then calls ESP.restart() on its last
+    // frame. Consume the flag and leave a fallback deadline: if this variant
+    // has WebApp but not FadeOutBehavior (nothing consumes the flag), the hard
+    // restart below still fires so the save always reboots.
+    lamp::fadeOutRebootRequested = true;
+    s_fadeOnReboot = false;
+    armReboot(millis() + 4000);
+    return;
+  }
   delay(50);  // let the serial log flush before restart
   ESP.restart();
 }
 
 void tick() {
-  if (!s_apUp) return;
+  drainWebSave();
   const uint32_t now = millis();
+  // An armed reboot fires even after the AP went down (an OTA's
+  // shutdownForOta): a landed web save freezes config saves until it. It
+  // waits while OTA quiet mode is held. A received update's own reboot loads
+  // the save too; a failed one, or a distribution to other lamps (which never
+  // reboots this one), leaves quiet mode and this reboot follows. Past
+  // kRebootOtaWaitMaxMs the OTA is taken as stuck and the reboot goes ahead.
+  const bool otaQuiet = lamp::ota_quiet_mode::isQuiet();
+  if (webappRebootDue(now, s_rebootArmed, s_rebootAtMs, otaQuiet)) {
+    if (otaQuiet) Serial.println("[webapp] reboot after 10 min OTA wait");
+    rebootNow();  // save path; restart frees the server, never delete s_server
+    return;
+  }
+  if (!s_apUp) return;
 
   // A BLE client's connect proves no station is associated (association takes
   // BLE down), so the heavy server cannot be up and stopAp() has no server to
@@ -385,21 +549,16 @@ void tick() {
   if (s_pendingServerStart.exchange(false)) startServer();
   if (s_pendingServerStop.exchange(false) && WiFi.softAPgetStationNum() == 0 &&
       ble_control::isDownForWebapp()) {
-    s_rebootAtMs = now;  // station left -> reboot restores BLE
+    armReboot(now);  // station left -> reboot restores BLE
   }
-  if (s_rebootAtMs == 0 &&
+  if (!s_rebootArmed &&
       webappShouldRestoreBle(now, s_deadlineMs, ble_control::isDownForWebapp())) {
-    s_rebootAtMs = now;  // idle (browser closed) -> reboot
-  }
-
-  if (s_rebootAtMs != 0 && static_cast<int32_t>(now - s_rebootAtMs) >= 0) {
-    rebootNow();  // save path; restart frees the server, never delete s_server
-    return;
+    armReboot(now);  // idle (browser closed) -> reboot
   }
 
   // A connected station blocks expiry indefinitely; never reboot someone still
   // associated. A station mid-save (reboot armed) is likewise left alone.
-  if (s_rebootAtMs == 0 && WiFi.softAPgetStationNum() == 0 &&
+  if (!s_rebootArmed && WiFi.softAPgetStationNum() == 0 &&
       webappShouldTeardown(now, s_deadlineMs, s_neverExpire)) {
     if (s_serverUp) {
       rebootNow();  // reclaim the async task + server cleanly; delete races it

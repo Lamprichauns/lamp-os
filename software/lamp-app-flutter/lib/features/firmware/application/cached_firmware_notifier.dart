@@ -28,7 +28,8 @@ class CachedFirmwareNotifier extends _$CachedFirmwareNotifier {
   static const String _metaSuffix = 'meta.json';
 
   Directory? _cacheDir;
-  bool _busy = false;
+  bool _synced = false;
+  final Set<String> _seenLampTypes = {};
 
   @override
   Future<Map<String, CachedFirmware>> build() async {
@@ -78,73 +79,62 @@ class CachedFirmwareNotifier extends _$CachedFirmwareNotifier {
   String _metaPathFor(Directory dir, String lampType, FirmwareChannel channel) =>
       '${dir.path}/lamp-firmware-$lampType-${channel.name}.$_metaSuffix';
 
-  /// Compute the set of {lampType, channel} pairs to auto-download: both the
-  /// stable and beta channel for each owned lampType, so a mixed fleet can be
-  /// pushed whichever channel a given lamp is on (`otaAcceptable` picks the
-  /// right entry per lamp, incl. beta→stable promotion). A stable-`latest` 404
-  /// is caught and skipped in `syncForInventory`; that's expected until a
-  /// conventions-matching stable release exists. Lamps with no lampType yet
-  /// (never connected on the new firmware) are skipped: nothing to fetch until
-  /// their variant identity is known.
-  Set<({String lampType, FirmwareChannel channel})> _wantedFor(
-      List<InventoryLamp> inventory) {
-    final out = <({String lampType, FirmwareChannel channel})>{};
-    for (final lamp in inventory) {
-      final t = lamp.lampType;
-      if (t == null || t.isEmpty) continue;
-      out.add((lampType: t, channel: FirmwareChannel.stable));
-      out.add((lampType: t, channel: FirmwareChannel.beta));
-    }
-    return out;
-  }
+  static Set<String> _lampTypesOf(List<InventoryLamp> inventory) => {
+        for (final lamp in inventory)
+          if (lamp.lampType case final t? when t.isNotEmpty) t,
+      };
 
-  /// Sync the cache to the user's current inventory. For each wanted
-  /// {lampType, channel} pair: fetch from GitHub Releases, verify the
-  /// LSIG signature, write bytes + meta sidecar to disk, update state.
-  /// Failures are logged + skipped; the previous cached copy survives.
+  /// Keeps the cache in step with the owned variants, fetching each variant
+  /// at most once per app launch, one GitHub request per channel. The first
+  /// call fetches every owned variant; a later call fetches only a variant it
+  /// has never seen that has nothing cached. Every other call is free, so the
+  /// caller may pass each inventory change. A failed fetch keeps the previous
+  /// cached copy and is not retried until the next launch.
   Future<void> syncForInventory(List<InventoryLamp> inventory) async {
-    if (_busy) return; // coalesce concurrent triggers
-    _busy = true;
-    try {
-      final wanted = _wantedFor(inventory);
-      if (wanted.isEmpty) return;
-      final client = ref.read(firmwareReleaseClientProvider);
-      final dir = await _ensureCacheDir();
-      // Await the initial load so `next` reflects the real on-disk cache,
-      // not the empty map `index` reads mid-build (a sync triggered right
-      // after app launch would otherwise see every slot as uncached and
-      // let a stale GitHub release clobber a newer manually-pushed build).
-      final loaded = await future;
-      final next = Map<String, CachedFirmware>.from(loaded);
-      for (final w in wanted) {
+    final launch = !_synced;
+    _synced = true;
+    final newTypes = _lampTypesOf(inventory).difference(_seenLampTypes);
+    if (newTypes.isEmpty) return;
+    _seenLampTypes.addAll(newTypes);
+
+    // Awaiting the initial load keeps a launch sync from reading the empty
+    // mid-build index and letting an older GitHub release clobber a newer
+    // manually-pushed build.
+    final loaded = await future;
+    final toFetch = launch
+        ? newTypes
+        : newTypes.where((t) => !loaded.values.any((m) => m.lampType == t));
+    final client = ref.read(firmwareReleaseClientProvider);
+    final dir = await _ensureCacheDir();
+    for (final lampType in toFetch) {
+      // Both channels, so a mixed fleet can be pushed whichever channel a
+      // lamp is on. A stable-`latest` 404 is expected until a stable release
+      // matching the asset naming exists.
+      for (final channel in FirmwareChannel.values) {
         try {
-          final bytes = await client.fetchLatest(w.channel,
-              lampType: w.lampType);
+          final bytes = await client.fetchLatest(channel, lampType: lampType);
           final verified = await verifyFirmwareImage(bytes);
-          final cached = next['${w.lampType}-${w.channel.name}'];
+          final key = '$lampType-${channel.name}';
           if (!shouldReplaceCachedFirmware(
-              cached?.version, verified.footer.version)) {
+              index[key]?.version, verified.footer.version)) {
             continue;
           }
-          final binPath = _binPathFor(dir, w.lampType, w.channel);
-          final metaPath = _metaPathFor(dir, w.lampType, w.channel);
-          await File(binPath).writeAsBytes(bytes, flush: true);
+          await File(_binPathFor(dir, lampType, channel))
+              .writeAsBytes(bytes, flush: true);
           final meta = CachedFirmware(
-            lampType: w.lampType,
-            channel: w.channel,
+            lampType: lampType,
+            channel: channel,
             version: verified.footer.version,
             byteLength: bytes.length,
             fetchedAtMs: DateTime.now().millisecondsSinceEpoch,
           );
-          await File(metaPath).writeAsString(jsonEncode(meta.toJson()));
-          next[meta.key] = meta;
-          state = AsyncData(next);
+          await File(_metaPathFor(dir, lampType, channel))
+              .writeAsString(jsonEncode(meta.toJson()));
+          state = AsyncData({...index, meta.key: meta});
         } catch (_) {
           // Network / verify failure. Keep the previous entry (if any).
         }
       }
-    } finally {
-      _busy = false;
     }
   }
 

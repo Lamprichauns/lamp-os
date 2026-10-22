@@ -8,6 +8,7 @@ import '../../../../core/widgets/password_prompt_dialog.dart';
 import '../../../../core/widgets/settings_row.dart';
 import '../../../lamp_shell/presentation/widgets/wifi_network_picker.dart';
 import '../../application/wisp_notifier.dart';
+import '../../domain/wisp_source_mode.dart';
 import '../../domain/wisp_status.dart';
 
 // Tappable settings row for WiFi config. The lamp owns the scan radio;
@@ -28,14 +29,24 @@ class _WifiConfigRowState extends ConsumerState<WifiConfigRow> {
 
   @override
   Widget build(BuildContext context) {
-    final mismatch = widget.status.wifiChannelMismatch;
+    final ethIp = widget.status.ethIp;
+    // On Ethernet the WiFi join is off, so a held mismatch flag is stale; the
+    // wisp clears it once the join is wanted again.
+    final mismatch = widget.status.wifiChannelMismatch && ethIp.isEmpty;
+    // The wisp joins WiFi only while following Straylight, so outside that
+    // mode "not connected" says nothing about the saved network.
+    final followsStraylight = widget.status.source == WispSourceMode.osc;
     final subtitle = _busy
         ? 'Sending credentials to wisp…'
         : mismatch
             ? 'Wi-Fi channel conflict. Tap to change network.'
-            : (widget.status.wifiConnected
-                ? 'Connected. Tap to change network.'
-                : 'Not connected. Tap to configure.');
+            : !followsStraylight
+                ? 'Joins only while following Straylight. Tap to configure.'
+                : ethIp.isNotEmpty
+                    ? 'Off while on Ethernet ($ethIp). Tap to configure.'
+                    : (widget.status.wifiConnected
+                        ? 'Connected. Tap to change network.'
+                        : 'Not connected. Tap to configure.');
     final row = SettingsRow(
       key: const Key('wifi-config-row'),
       icon: Icons.wifi,

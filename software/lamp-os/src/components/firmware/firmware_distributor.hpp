@@ -3,8 +3,8 @@
 // Lamp-side gossip-OTA distributor: single-peer-at-a-time state machine that
 // pushes this lamp's running firmware image to one nearby stale peer per
 // session (Idle -> OfferSent -> Streaming -> Finalizing -> Done/Failed -> Idle).
-// Targeting is event-driven: SocialBehavior::control calls considerPeerForOta
-// for each nearby below-version peer; no periodic scan.
+// Targeting is event-driven: tickOtaOffers (ota_offer.hpp) calls
+// considerPeerForOta for each reachable ESP-NOW peer once a second.
 //
 // Three contexts touch session state, all serialized by portMUX_TYPE stateMux_:
 // the WiFi recv task (Core 0) parses ACCEPT/REQ/RESULT and pivots state; the
@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "components/firmware/inter_session_quiet_hold.hpp"
 #include "components/network/protocol/fw_ota.hpp"  // FW_CHUNK_SIZE_BASELINE/_MAX
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
@@ -86,8 +87,8 @@ class FirmwareDistributor {
   // Drive the state machine. Called every loop() on Core 1; cheap when Idle.
   void tick(uint32_t nowMs);
 
-  // Idempotent peer-trigger. Called from SocialBehavior::control on Core 1 per
-  // nearby peer. No-op unless state == Idle, peer is below FIRMWARE_VERSION,
+  // Idempotent peer-trigger. Called from tickOtaOffers on Core 1 per
+  // reachable peer. No-op unless state == Idle, peer is below FIRMWARE_VERSION,
   // and the peer isn't in the backoff ring; otherwise transitions Idle ->
   // OfferSent, sends OFFER, kicks the streaming task. Additional gates (mesh
   // quiesce, receiver-busy) live in the wiring layer.
@@ -127,6 +128,10 @@ class FirmwareDistributor {
   // NOT in-progress so a follow-up considerPeerForOta on a different peer
   // isn't rejected before the reaping tick runs.
   bool isInProgress() const;
+
+  // True while Idle inside an inter-session quiet hold a new offer may inherit
+  // (InterSessionQuietHold::inheritable). Loop task.
+  bool holdingIdleQuiet() const { return quietHold_.inheritable(); }
 
   // Snapshot the active OTA target's MAC into out[6]. True while mid-flow. Used
   // by the OTA indicator to look up the receiver's base color from LampRoster.
@@ -338,13 +343,9 @@ class FirmwareDistributor {
 
   PeerPenalty penalties_[kPenaltyRingSize] = {};
 
-  // Inter-session quiet hold. During a fleet OTA wave several below-version
-  // peers queue; without the latch each session's enterQuiet/exitQuiet leaves a
-  // gap where the compositor flickers normal animation between indicators. Hold
-  // quiet until kInterSessionQuietHoldMs of idle passes, and remember the last
-  // peer so the indicator paints a held full bar through the gap.
-  static constexpr uint32_t kInterSessionQuietHoldMs = 10000;
-  bool     quietHeld_                   = false;
+  // The last peer is remembered so the indicator paints a held full bar
+  // through the hold.
+  InterSessionQuietHold quietHold_;
   // Set once the streaming task has entered quiet + torn down the radio for the
   // active session; reset in resetSession(). Radio teardown is deferred off the
   // recv task (enterQuiet's BLE-host/webserver shutdown isn't recv-task-safe) and
@@ -352,7 +353,6 @@ class FirmwareDistributor {
   // streaming task's first Streaming step. Guards against re-tearing on a
   // Finalizing→Streaming REQ bounce.
   bool     sessionQuietArmed_          = false;
-  uint32_t quietHoldUntilMs_            = 0;
   uint8_t  lastSessionPeerMac_[6]       = {0};
   uint16_t lastSessionTotalChunks_      = 0;
   bool     lastSessionValid_            = false;

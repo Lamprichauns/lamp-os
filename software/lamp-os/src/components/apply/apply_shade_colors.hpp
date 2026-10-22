@@ -4,12 +4,14 @@
 //                        drag). Updates config.shade.colors so a later
 //                        CHAR_COMMIT can persist the user's choice.
 //                        Then calls the existing render path.
-//   shadeColorsToRender: mesh-relayed cascade. Render-only. Matches
+//   shadeColorsToRender: the app's CHAR_REMOTE_OP write. Render-only. Matches
 //                        applyShadeColorsLocal behavior exactly.
 
 #pragma once
 
 #include <ArduinoJson.h>
+
+#include <algorithm>
 
 #include <vector>
 
@@ -35,8 +37,9 @@ namespace apply {
 inline void shadeColorsToConfig(JsonArray arr) {
   if (arr.isNull() || arr.size() == 0) return;
   std::vector<Color> next;
-  next.reserve(arr.size());
+  next.reserve(std::min(arr.size(), kMaxSurfaceColors));
   for (JsonVariant v : arr) {
+    if (next.size() == kMaxSurfaceColors) break;
     next.push_back(hexStringToColor(v));
   }
   ::config.shade.broadcastColors() = next;
@@ -50,16 +53,17 @@ inline void shadeSegmentColorsToConfig(uint8_t seg, JsonArray arr) {
   if (arr.isNull() || arr.size() == 0) return;
   if (seg >= ::config.shade.segments.size()) return;
   std::vector<Color> next;
-  next.reserve(arr.size());
+  next.reserve(std::min(arr.size(), kMaxSurfaceColors));
   for (JsonVariant v : arr) {
+    if (next.size() == kMaxSurfaceColors) break;
     next.push_back(hexStringToColor(v));
   }
   ::config.shade.segments[seg].colors = next;
   if (seg == 0) ::lamp::renderShadeColors(arr);
 }
 
-// Cascade-source variant. Render-only.
-// Does NOT mutate config so cascade transients cannot contaminate a
+// Remote-op variant. Render-only.
+// Does NOT mutate config so a preview cannot contaminate a
 // subsequent CHAR_COMMIT persistence sweep.
 inline void shadeColorsToRender(JsonArray arr) {
   ::lamp::renderShadeColors(arr);

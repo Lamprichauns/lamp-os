@@ -17,18 +17,17 @@ import '../application/manual_palette_draft.dart';
 import '../application/wisp_notifier.dart';
 import '../domain/wisp_source_mode.dart';
 import '../domain/wisp_status.dart';
-import '../domain/zone_source.dart';
 import 'palette_gradient_bar.dart';
 import 'widgets/drift_controls.dart';
 import 'widgets/wisp_led_config.dart';
 import 'widgets/wisp_manual_palette.dart';
 import 'widgets/wisp_off_color.dart';
+import 'widgets/wisp_osc_source.dart';
 import 'widgets/wisp_painted_lamps.dart';
 import 'widgets/wisp_password_field.dart';
 import 'widgets/space_brightness_slider.dart';
 import 'widgets/wisp_source_picker.dart';
 import 'widgets/wisp_wifi_config.dart';
-import 'widgets/wisp_zones.dart';
 
 /// Wisp config screen. Controls how the wisp drives the lamp grid's paint.
 ///
@@ -95,12 +94,13 @@ class _WispBodyState extends ConsumerState<_WispBody> {
     super.initState();
     // The lamp shell keeps the notifier alive, so its build() won't re-run
     // on screen open; poll here so a stale relay cache refreshes now
-    // instead of on the wisp's 30 s heartbeat.
+    // instead of on the wisp's 30 s heartbeat, and the lamp holds the
+    // wisp's current settings for the forms.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(
-        ref.read(wispNotifierProvider(widget.lampId).notifier).pollStatus(),
-      );
+      final notifier = ref.read(wispNotifierProvider(widget.lampId).notifier);
+      // In turn: FbpBleClient has no internal lock to serialize two writes.
+      unawaited(notifier.pollStatus().then((_) => notifier.pollConfig()));
     });
   }
 
@@ -125,7 +125,6 @@ class _WispBodyState extends ConsumerState<_WispBody> {
     final notifier = ref.read(wispNotifierProvider(widget.lampId).notifier);
     final source = status.source;
     final draft = ref.watch(manualPaletteDraftProvider(widget.lampId));
-    const auroraEnabled = true;
 
     // Schedule on the next frame to avoid mutating notifier state mid-build.
     if (source == WispSourceMode.manual &&
@@ -155,7 +154,6 @@ class _WispBodyState extends ConsumerState<_WispBody> {
                 status: status,
                 notifier: notifier,
                 source: source,
-                auroraEnabled: auroraEnabled,
               ),
               _SettingsTab(
                 lampId: widget.lampId,
@@ -185,14 +183,12 @@ class _SourcesTab extends StatefulWidget {
     required this.status,
     required this.notifier,
     required this.source,
-    required this.auroraEnabled,
   });
 
   final String lampId;
   final WispStatus status;
   final WispNotifier notifier;
   final WispSourceMode source;
-  final bool auroraEnabled;
 
   @override
   State<_SourcesTab> createState() => _SourcesTabState();
@@ -221,7 +217,6 @@ class _SourcesTabState extends State<_SourcesTab> {
       children: [
         SourcePicker(
           current: source,
-          auroraEnabled: widget.auroraEnabled,
           onSelect: (m) => _runWispOp(() => notifier.setSource(m)),
         ),
         if (source == WispSourceMode.off) ...[
@@ -233,46 +228,24 @@ class _SourcesTabState extends State<_SourcesTab> {
         if (source == WispSourceMode.manual) ...[
           ManualPaletteEditor(lampId: lampId),
         ],
-        if (source == WispSourceMode.aurora) ...[
+        if (source == WispSourceMode.osc) ...[
           const SizedBox(height: AppSpace.xl),
-          if (!status.auroraConnected) ...[
+          if (!status.sourceLive) ...[
             Semantics(
               liveRegion: true,
-              label: 'Aurora not connected',
-              child: AuroraNotConnectedNotice(
-                wifiConnected: status.wifiConnected,
-              ),
+              label: 'Waiting for Straylight',
+              child: const WaitingForStraylightNotice(),
             ),
             const SizedBox(height: AppSpace.lg),
           ],
-          CurrentZone(status: status),
-          const SizedBox(height: AppSpace.lg),
-          ObservedZonesPicker(
-            status: status,
-            onPickZone: (z) => _runWispOp(() => notifier.setZone(z)),
+          OscRolePicker(
+            current: status.oscRole,
+            onSelect: (r) => _runWispOp(() => notifier.setOscRole(r)),
           ),
-          if (_canClearSelection(status)) ...[
-            const SizedBox(height: AppSpace.lg),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _runWispOp(notifier.clearZone),
-                icon: const Icon(Icons.close, size: 16),
-                label: const Text('Clear selection'),
-                style: TextButton.styleFrom(
-                  foregroundColor:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
         ],
       ],
     );
   }
-
-  bool _canClearSelection(WispStatus s) =>
-      s.zoneSource == ZoneSource.appOp || s.zoneSource == ZoneSource.nvs;
 }
 
 class _SettingsTab extends ConsumerWidget {

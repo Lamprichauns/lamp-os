@@ -74,7 +74,7 @@ final class FirmwareAutoInstallerProvider
 }
 
 String _$firmwareAutoInstallerHash() =>
-    r'9244117ac002107aefd0f5095c675c12bd150279';
+    r'7f7c76a372a905a226c1cbf6acf573df07dd60a8';
 
 /// Auto-sends a newer cached image the moment a lamp connects, so the user
 /// never taps Install. Kept alive by LampShell's watch; disposed (latch

@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/uuids.dart';
 import '../../control/domain/lamp_color.dart';
-import 'connect_with_retry.dart';
+import '../../../core/ble/connect_with_retry.dart';
 
 /// Connects to an unclaimed lamp and re-fires a `pulse` test_expression in the
 /// lamp's own shade colour on the BASE strip, so the physical lamp pulses for
@@ -25,7 +25,8 @@ class AdoptPulseController {
     _timer?.cancel();
     _deviceId = deviceId;
     _stopped = false;
-    await connectWithRetry(_ble, deviceId, shouldAbort: () => _stopped);
+    await connectWithRetry(_ble, deviceId,
+        owner: this, shouldAbort: () => _stopped);
     if (_stopped) return;
     await _writePulse(deviceId, shadeColor);
     if (_stopped) return;

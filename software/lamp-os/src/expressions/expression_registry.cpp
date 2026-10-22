@@ -88,15 +88,15 @@ const std::vector<const ExpressionDescriptor*>& ExpressionRegistry::all() const 
 }
 
 void ExpressionRegistry::applyDefaults(const ExpressionDescriptor& d,
-                                       std::map<std::string, uint32_t>& params,
+                                       ExpressionParams& params,
                                        uint16_t window) const {
   for (const auto& p : d.params) {
-    params.emplace(p.key, resolveBound(p.def, window));
+    params.setDefault(p.key, resolveBound(p.def, window));
   }
   auto foldRange = [&params](const std::optional<RangeSpec>& r) {
     if (!r.has_value()) return;
-    if (r->minKey) params.emplace(r->minKey, static_cast<uint32_t>(r->defLo));
-    if (r->maxKey) params.emplace(r->maxKey, static_cast<uint32_t>(r->defHi));
+    if (r->minKey) params.setDefault(r->minKey, static_cast<uint32_t>(r->defLo));
+    if (r->maxKey) params.setDefault(r->maxKey, static_cast<uint32_t>(r->defHi));
   };
   foldRange(d.interval);
   foldRange(d.duration);

@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:lamp_app/core/ble/ble_client.dart';
 import '../../_support/in_memory_ble_client.dart';
 import 'package:lamp_app/core/ble/ble_client_provider.dart';
 import 'package:lamp_app/core/ble/uuids.dart';
@@ -29,7 +28,7 @@ class _FakeLampNearbyPeers extends LampNearbyPeersNotifier {
 const _devId = 'lamp-x';
 
 Future<ProviderContainer> _makeContainer({
-  String wispStatusJson = '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}',
+  String wispStatusJson = '{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}',
   String wifiStateJson =
       '{"state":"idle","scanResults":[{"ssid":"homenet","rssi":-55,"encrypted":true}]}',
 }) async {
@@ -102,7 +101,7 @@ void main() {
       (tester) async {
     final c = await _makeContainer(
       wispStatusJson:
-          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"aurora"}',
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"osc"}',
     );
     addTearDown(c.dispose);
     await _pumpScreen(tester, c);
@@ -121,7 +120,7 @@ void main() {
       (tester) async {
     final c = await _makeContainer(
       wispStatusJson:
-          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":true,"source":"aurora"}',
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":true,"source":"osc"}',
     );
     addTearDown(c.dispose);
     await _pumpScreen(tester, c);
@@ -129,6 +128,54 @@ void main() {
 
     expect(find.byKey(const Key('wifi-config-row')), findsOneWidget);
     expect(find.textContaining('Connected'), findsWidgets);
+  });
+
+  testWidgets(
+      'outside Straylight the WiFi row says it joins only while following it',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson:
+          '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,"source":"manual"}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.byKey(const Key('wifi-config-row')), findsOneWidget);
+    expect(find.textContaining('Joins only while following Straylight'),
+        findsOneWidget);
+    expect(find.textContaining('Not connected'), findsNothing);
+  });
+
+  testWidgets('on Ethernet the WiFi row says WiFi is off and shows the IP',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,'
+          '"source":"osc","ethIp":"10.0.0.42"}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.textContaining('Off while on Ethernet (10.0.0.42)'),
+        findsOneWidget);
+    expect(find.textContaining('Not connected'), findsNothing);
+  });
+
+  testWidgets('on Ethernet a held channel mismatch is not shown',
+      (tester) async {
+    final c = await _makeContainer(
+      wispStatusJson: '{"wispMac":"AA:BB:CC:DD:EE:FF","wifiConnected":false,'
+          '"source":"osc","ethIp":"10.0.0.42",'
+          '"wifiChannelMismatch":true,"wifiApChannel":1}',
+    );
+    addTearDown(c.dispose);
+    await _pumpScreen(tester, c);
+    await _tapSettingsTab(tester);
+
+    expect(find.textContaining('Off while on Ethernet (10.0.0.42)'),
+        findsOneWidget);
+    expect(find.textContaining('channel conflict'), findsNothing);
   });
 
   testWidgets('tapping the WiFi row opens the network picker sheet',
@@ -162,7 +209,7 @@ void main() {
       _devId,
       BleUuids.controlService,
       BleUuids.wispStatus,
-      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}')),
+      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}')),
     );
     await ble.write(
       _devId,
@@ -233,7 +280,7 @@ void main() {
       _devId,
       BleUuids.controlService,
       BleUuids.wispStatus,
-      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"aurora"}')),
+      Uint8List.fromList(utf8.encode('{"wispMac":"AA:BB:CC:DD:EE:FF","source":"osc"}')),
     );
     await ble.write(
       _devId,

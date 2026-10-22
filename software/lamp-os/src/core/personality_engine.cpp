@@ -46,7 +46,7 @@ void PersonalityEngine::tick(uint32_t nowMs) {
   // window is uniformly-spaced regardless of loop jitter.
   if (nowMs - lastSampleMs_ >= kSamplePeriodMs || lastSampleMs_ == 0) {
     lastSampleMs_ = nowMs;
-    sampleAndSmoothCrowd_(nowMs, snapshotBlePeers_());
+    sampleAndSmoothCrowd_(nowMs, nearbyPeers());
   }
 }
 
@@ -63,7 +63,7 @@ float PersonalityEngine::smoothedCrowdWeight() const {
 CrowdComposition PersonalityEngine::crowdComposition() const {
   CrowdComposition c;
   if (!config_) return c;
-  const std::vector<RosterEntry>& peers = snapshotBlePeers_();
+  const std::vector<NearbyCopy>& peers = nearbyPeers();
   for (const auto& p : peers) {
     if (p.name[0] == '\0') continue;
     const uint8_t d = p.hasMac ? config_->getDisposition(p.mac) : 3;
@@ -96,7 +96,7 @@ GreetingTuning PersonalityEngine::greetingFor(const std::string& peerLampId) con
 }
 
 #if defined(LAMP_TEST) || defined(LAMP_DEBUG)
-void PersonalityEngine::setNearbyOverride(std::vector<RosterEntry> peers) {
+void PersonalityEngine::setNearbyOverride(std::vector<NearbyCopy> peers) {
   nearbyOverride_ = std::move(peers);
   nearbyOverrideActive_ = true;
 }
@@ -143,7 +143,7 @@ float PersonalityEngine::weightForDisposition_(uint8_t d, SocialMode mode) const
 }
 
 float PersonalityEngine::computeWeightedCount_(
-    const std::vector<RosterEntry>& peers, SocialMode mode) const {
+    const std::vector<NearbyCopy>& peers, SocialMode mode) const {
   if (!config_) return 0.0f;
   float w = 0.0f;
   for (const auto& p : peers) {
@@ -173,7 +173,7 @@ float PersonalityEngine::dimFactorForCount_(float weightedCount, float floor) co
   return factor;
 }
 
-const std::vector<RosterEntry>& PersonalityEngine::snapshotBlePeers_() const {
+const std::vector<NearbyCopy>& PersonalityEngine::nearbyPeers() const {
   // Gate must match setNearbyOverride() in the header; that method
   // compiles under (LAMP_TEST || LAMP_DEBUG), so the read side has to
   // honor the override in both build flavors. Without LAMP_DEBUG here,
@@ -182,11 +182,11 @@ const std::vector<RosterEntry>& PersonalityEngine::snapshotBlePeers_() const {
 #if defined(LAMP_TEST) || defined(LAMP_DEBUG)
   if (nearbyOverrideActive_) return nearbyOverride_;
 #endif
-  return lampRoster.getNear(LAMP_PRUNE_TIME_MS);
+  return lampRoster.snapshotNear(LAMP_PRUNE_TIME_MS);
 }
 
 void PersonalityEngine::sampleAndSmoothCrowd_(
-    uint32_t /*nowMs*/, const std::vector<RosterEntry>& peers) {
+    uint32_t /*nowMs*/, const std::vector<NearbyCopy>& peers) {
   if (!config_) return;
   const SocialMode mode = config_->lamp.socialMode;
   const float rawW = computeWeightedCount_(peers, mode);

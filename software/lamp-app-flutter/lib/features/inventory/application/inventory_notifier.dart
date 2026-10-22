@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -104,38 +105,43 @@ class InventoryNotifier extends _$InventoryNotifier {
 
   Future<void> updateSeen(
     String id, {
+    required int seenAtMs,
     List<int>? shade,
     List<int>? base,
   }) =>
       _mutate((current) {
-        final now = DateTime.now().millisecondsSinceEpoch;
         return current.map((l) {
           if (l.id != id) return l;
           return l.copyWith(
-            lastSeenEpochMs: now,
+            lastSeenEpochMs: seenAtMs,
             lastShadeColor: shade ?? l.lastShadeColor,
             lastBaseColor: base ?? l.lastBaseColor,
           );
         }).toList();
       });
 
-  /// Bump only `lastSeenEpochMs` for the given id. Used by the BLE-adv
-  /// stream to keep My Lamps' "last seen" subtitle accurate without
-  /// having to round-trip a GATT connect first. Returns silently when
-  /// the id isn't paired or when the timestamp is fresher than 30 s
-  /// (so a 44 Hz adv stream doesn't burn SharedPreferences I/O; see
-  /// nearby_lamps_notifier debounce too, but this is the belt-and-
-  /// suspenders cap so the inventory provider can't be hammered by a
-  /// future caller that forgets the gate).
-  Future<void> touchLastSeen(String id) => _mutate((current) {
-        final now = DateTime.now().millisecondsSinceEpoch;
-        final idx = current.indexWhere((l) => l.id == id);
-        if (idx < 0) return current;
-        final prior = current[idx].lastSeenEpochMs ?? 0;
-        if (now - prior < 30000) return current;
-        final updated = [...current];
-        updated[idx] = current[idx].copyWith(lastSeenEpochMs: now);
-        return updated;
+  /// Record when the phone last saw each paired lamp in [seenAtMsById]. An
+  /// entry is written only when it is newer than the stored one by at least
+  /// [minStep], so a caller on the adv stream can pass a step that caps disk
+  /// writes. Unpaired ids are ignored.
+  Future<void> recordLastSeen(
+    Map<String, int> seenAtMsById, {
+    Duration minStep = Duration.zero,
+  }) =>
+      _mutate((current) {
+        var changed = false;
+        final updated = current.map((l) {
+          final seenAt = seenAtMsById[l.id];
+          if (seenAt == null) return l;
+          final prior = l.lastSeenEpochMs;
+          if (prior != null &&
+              seenAt - prior < math.max(minStep.inMilliseconds, 1)) {
+            return l;
+          }
+          changed = true;
+          return l.copyWith(lastSeenEpochMs: seenAt);
+        }).toList();
+        return changed ? updated : current;
       });
 
   /// Remember the latest observed `isMesh` for this lamp. Called by

@@ -72,6 +72,7 @@ jobs:
       env:
         LAMP_FIRMWARE_CHANNEL: ${{ inputs.channel }}
         LAMP_COMMAND_KEY_HEX: ${{ secrets.LAMP_COMMAND_KEY_HEX }}
+        UV_CONSTRAINT: ${{ github.workspace }}/pio-penv-constraints.txt
       run: |
         pio run --environment upesy_wroom_${{ matrix.lamp_variant }}
         pio run --target buildfs --environment upesy_wroom_${{ matrix.lamp_variant }}

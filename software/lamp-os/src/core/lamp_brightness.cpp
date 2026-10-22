@@ -17,6 +17,7 @@
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "core/compositor.hpp"
+#include "core/crowd_dim_fade.hpp"
 #include "core/frame_buffer.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/personality_engine.hpp"
@@ -86,57 +87,21 @@ void settleBrightnessFade() {
 
 // Crowd-dim micro-fade. PersonalityEngine commits a new crowdDimFactor()
 // when its smoothed weighted-peer count crosses the deadband (>= 2/100
-// change). The factor is a hard step: without interpolation a deadband
-// crossing snaps brightness by >= 2 levels in one frame, visible at low
-// overall brightness. This triple interpolates between successive engine
-// targets over kCrowdDimFadeMs so the transition reads smooth.
-//
-// Distinct from the user-write triple (s_userBrightness*): that path only
-// runs while no transient override is active and is driven by BLE writes.
-// Crowd-dim fades run every frame inside effectiveBrightness() and stay out
-// of the OTA pulse multiplier's way by only re-arming when the engine's
-// TARGET factor changes (not when raw brightness changes).
-static constexpr uint16_t kCrowdDimFadeMs = 80;
-static float    s_crowdAppliedFactor = 1.0f;
-static float    s_crowdTargetFactor  = 1.0f;
-static uint32_t s_crowdFadeStartMs   = 0;
-static bool     s_crowdFadeActive    = false;
+// change). The factor is a hard step; CrowdDim ramps between successive
+// targets and re-arms only when the target factor changes, so it stays out
+// of the OTA pulse multiplier's way.
+// Lamp::tick reapplies brightness while crowdDimFading(). Distinct from the
+// user-write micro-fade (s_userBrightness*), which BLE writes drive.
+static lamp::CrowdDim s_crowdDim;
 
-// Current interpolated crowd-dim factor. Detects target changes against the
-// engine and (re)starts a fade from the current value, so a mid-fade
-// retrigger glides instead of snapping.
 static float currentCrowdDimFactor(uint32_t nowMs) {
-  const float engineTarget = lamp::personalityEngine.crowdDimFactor();
-  if (engineTarget != s_crowdTargetFactor) {
-    float startFrom = s_crowdAppliedFactor;
-    if (s_crowdFadeActive) {
-      const uint32_t elapsed = nowMs - s_crowdFadeStartMs;
-      if (elapsed >= kCrowdDimFadeMs) {
-        startFrom = s_crowdTargetFactor;
-      } else {
-        const float span = s_crowdTargetFactor - s_crowdAppliedFactor;
-        startFrom = s_crowdAppliedFactor +
-                    span * (static_cast<float>(elapsed) /
-                            static_cast<float>(kCrowdDimFadeMs));
-      }
-    }
-    s_crowdAppliedFactor = startFrom;
-    s_crowdTargetFactor  = engineTarget;
-    s_crowdFadeStartMs   = nowMs;
-    s_crowdFadeActive    = true;
-  }
-  if (!s_crowdFadeActive) return s_crowdTargetFactor;
-  const uint32_t elapsed = nowMs - s_crowdFadeStartMs;
-  if (elapsed >= kCrowdDimFadeMs) {
-    s_crowdAppliedFactor = s_crowdTargetFactor;
-    s_crowdFadeActive = false;
-    return s_crowdTargetFactor;
-  }
-  const float span = s_crowdTargetFactor - s_crowdAppliedFactor;
-  return s_crowdAppliedFactor +
-         span * (static_cast<float>(elapsed) /
-                 static_cast<float>(kCrowdDimFadeMs));
+  return s_crowdDim.at(lamp::personalityEngine.crowdDimFactor(),
+                       compositor.blocksRemote(lamp::TransientSource::Remote), nowMs);
 }
+
+namespace lamp {
+bool crowdDimFading(uint32_t nowMs) { return s_crowdDim.fading(nowMs); }
+}  // namespace lamp
 
 // Crowd-dim output floor, in percent. Deliberately above the space-dim floor
 // (20) — 30% is already very dim, and crowd-dim is a mood nudge, not a shutoff.
@@ -196,15 +161,31 @@ void setSurfaceFactor(Surface surface, uint8_t factor) {
 //      has enabled it AND has a saved SSID AND the most recent wifi scan
 //      saw that SSID nearby. The lamp never associates, just sniffs
 //      beacons. No password ever leaves the lamp.
-bool calculateEffectiveHomeMode() {
+// isClientConnected() flips on Core 0, so it is read once per decision.
+static lamp::HomeModeState currentHomeModeState() {
   if (ble_control::isClientConnected()) {
-    return ble_control::isHomeModePageActive();
+    return lamp::homeModeState(true, ble_control::isHomeModePageActive(), false);
   }
-  return lamp::effectiveHomeModeFromConfig(
-      config.homeMode.enabled,
-      config.homeMode.networkBound,
-      config.homeMode.ssid.empty(),
-      wifi::homeSsidVisible(config.homeMode.ssid));
+  return lamp::homeModeState(false, false,
+                             lamp::effectiveHomeModeFromConfig(
+                                 config.homeMode.enabled,
+                                 config.homeMode.networkBound,
+                                 config.homeMode.ssid.empty(),
+                                 wifi::homeSsidVisible(config.homeMode.ssid)));
+}
+
+// The snapshot reapplyHomeModeState last took, so brightness and the
+// compositor's gate never read two different states. Taken on first use for
+// the boot path that runs before any reapply.
+static lamp::HomeModeState s_homeState;
+static bool s_homeStateTaken = false;
+
+bool calculateEffectiveHomeMode() {
+  if (!s_homeStateTaken) {
+    s_homeState = currentHomeModeState();
+    s_homeStateTaken = true;
+  }
+  return s_homeState.active;
 }
 
 // Single funnel for "home mode state may have changed". Keeps the
@@ -214,6 +195,9 @@ bool calculateEffectiveHomeMode() {
 void reapplyHomeModeState() {
   compositor.setHomeModePolicy(config.homeMode.socialDisabled,
                                config.homeMode.disabledExpressionTypes);
-  compositor.setHomeMode(calculateEffectiveHomeMode());
+  s_homeState = currentHomeModeState();
+  s_homeStateTaken = true;
+  compositor.setHomeMode(s_homeState.active);
+  compositor.homePreview = s_homeState.preview;
   lamp::applyEffectiveBrightness();
 }

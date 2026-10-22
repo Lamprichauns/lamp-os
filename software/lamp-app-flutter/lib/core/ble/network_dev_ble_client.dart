@@ -2,16 +2,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../utils/serial_by_key.dart';
 import 'ble_client.dart';
 import 'bridge_protocol.dart';
 import 'bridge_transport.dart';
 
-class NetworkDevBleClient implements BleClient {
+class NetworkDevBleClient extends BleClient {
   NetworkDevBleClient(this._t);
   final BridgeTransport _t;
   final Map<String, bool> _connected = {};
   final Map<String, StreamController<bool>> _connCtrls = {};
   final Set<String> _watchStarted = {};
+  /// A device's connects and disconnects, one at a time in call order, as
+  /// [BleClient.disconnect] requires.
+  final _linkOps = SerialByKey();
 
   Never _throw(String deviceId, BridgeResponse r) {
     final code = bridgeErrorCodeFromWire(r.json['error'] as String? ?? 'UNKNOWN');
@@ -24,17 +28,17 @@ class NetworkDevBleClient implements BleClient {
   }
 
   @override
-  Future<void> connect(String deviceId) async {
-    final r = await _t.request('POST', '/connect/$deviceId');
-    if (!r.ok) _throw(deviceId, r);
-    _setConnected(deviceId, true);
-  }
+  Future<void> connect(String deviceId) => _linkOps.run(deviceId, () async {
+        final r = await _t.request('POST', '/connect/$deviceId');
+        if (!r.ok) _throw(deviceId, r);
+        _setConnected(deviceId, true);
+      });
 
   @override
-  Future<void> disconnect(String deviceId) async {
-    await _t.request('POST', '/disconnect/$deviceId');
-    _setConnected(deviceId, false);
-  }
+  Future<void> disconnect(String deviceId) => _linkOps.run(deviceId, () async {
+        await _t.request('POST', '/disconnect/$deviceId');
+        _setConnected(deviceId, false);
+      });
 
   @override
   bool isConnected(String deviceId) => _connected[deviceId] ?? false;
@@ -43,9 +47,6 @@ class NetworkDevBleClient implements BleClient {
   // negotiated MTU to report; 0 sends OTA callers to the safe baseline.
   @override
   int mtu(String deviceId) => 0;
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<Uint8List> read(String deviceId, String serviceUuid, String charUuid) async {

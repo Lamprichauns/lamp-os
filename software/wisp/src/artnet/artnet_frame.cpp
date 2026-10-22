@@ -36,8 +36,7 @@ size_t buildArtnetDmxFrame(const CurrentPalette& palette, uint8_t seq,
   out[14] = 0x01;
   out[15] = 0x00;
 
-  // DMX payload length = 512, big-endian (matches lamp decode at
-  // artnet.cpp:54: dmxDataLength = artnetPacket[17] | artnetPacket[16] << 8).
+  // DMX payload length = 512, big-endian.
   out[16] = 0x02;
   out[17] = 0x00;
 
@@ -48,12 +47,10 @@ size_t buildArtnetDmxFrame(const CurrentPalette& palette, uint8_t seq,
     uint8_t mac[6] = {0x02, 0x57, 0x49, 0x53, 0x50, i};
     ColorTuple t = sampleTupleForMac(palette, mac);
     uint8_t* f = out + kDmxStart + (i * kBytesPerFixture);
-    // base = tuple[0], shade = tuple[1] (aligns with TupleSampler.h's
-    // "[0] → base surface, [1] → shade surface" convention, and matches
-    // PaintDistributor's mesh path, which puts t[0] as the primary base
-    // color via OverrideSurface::Base). Without this, mixed-fleet rooms
-    // (mesh + pre-mesh lamps) would show flipped surfaces for the same
-    // palette. Channel layout is unchanged: 0..3 shade, 4..7 base.
+    // base = tuple[0], shade = tuple[1], matching PaintDistributor's mesh
+    // path, which puts t[0] on OverrideSurface::Base. Without the swap a
+    // room running both mesh and pre-mesh lamps shows flipped surfaces for
+    // the same palette. Channel layout is fixed: 0..3 shade, 4..7 base.
     f[0] = t.r[1]; f[1] = t.g[1]; f[2] = t.b[1]; f[3] = t.w[1];
     f[4] = t.r[0]; f[5] = t.g[0]; f[6] = t.b[0]; f[7] = t.w[0];
     f[8] = 0;  // mode = ArtNet pass-through

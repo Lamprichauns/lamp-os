@@ -1,7 +1,5 @@
-// CurrentPalette is the most recently resolved Aurora palette for the shadowed zone.
-//
-// Aurora's amber channel folds into the warm-white W channel (the grid's
-// dedicated warm emitter).
+// CurrentPalette is the palette the wisp is painting from the active source
+// (Manual or OSC), quantized to the grid's RGBW (W = warm white).
 // update() and paletteId()/colors() are loop-task only. copyPaletteIdPrefix()
 // is mutex-guarded for timer-task callers. A mutex (not spinlock) is required
 // because paletteId_ assignment heap-allocates; malloc cannot run with IRQs off.
@@ -12,9 +10,15 @@
 #include <string>
 #include <vector>
 
-#include "aurora/PaletteList.h"  // Palette, PaletteColor
-
 namespace wisp {
+
+// Float channels 0..1; out-of-range values clamp on quantize.
+struct PaletteColor { float r = 0, g = 0, b = 0, w = 0; };
+
+struct Palette {
+  std::string id;
+  std::vector<PaletteColor> colors;
+};
 
 struct RGBW {
   uint8_t r = 0;
@@ -28,9 +32,9 @@ class CurrentPalette {
   CurrentPalette();
   ~CurrentPalette();
 
-  // Replace the held palette with the resolved Aurora colors. `nowMs` is the
-  // wall-clock at the time of replacement (caller supplies millis() so the
-  // header can stay framework-free).
+  // Replace the held palette. `nowMs` is the wall-clock at the time of
+  // replacement (caller supplies millis() so the header can stay
+  // framework-free).
   void update(const Palette& p, uint32_t nowMs);
 
   void clear();

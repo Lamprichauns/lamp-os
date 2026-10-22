@@ -45,6 +45,9 @@ inline constexpr size_t kPendingJsonOp =
         : lamp_protocol::CONTROL_MAX_PAYLOAD + 1;
 static_assert(kPendingJsonOp >= lamp_protocol::CONTROL_MAX_PAYLOAD + 1,
               "control-op ingest slot must fit the max control-op payload");
+// A wispConfig payload is a fixed field set (worst case 148 B, pinned by the
+// wisp's test_status_json); a larger one is dropped at post.
+inline constexpr size_t kPendingWispConfig = 256;
 // Full settings save: two LED roles' segments/colors/byteOrder/px plus a
 // knockout array reaches ~1 KB decoded JSON.
 inline constexpr size_t kPendingSettingsBlob = 2048;
@@ -85,10 +88,9 @@ struct PendingJsonSlot {
 };
 
 // Variant carrying a 6-byte source MAC alongside the JSON payload. Used
-// for the CONTROL_OP ingest path (ESP-NOW receiver memcpys the sender's
-// MAC alongside the payload so the loop's applyRemoteOpLocal() can
-// coalesce same-sender cascades). The BLE-only slots don't need this;
-// they pass the lamp's own MAC at the drain site.
+// for the CONTROL_OP ingest path: the ESP-NOW receiver memcpys the sender's
+// MAC alongside the payload so the wisp's status and config are cached
+// against the wisp that sent them. The BLE-only slots don't need this.
 template <size_t N>
 struct PendingJsonSlotWithMac {
   bool valid = false;

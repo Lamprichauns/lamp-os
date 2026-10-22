@@ -1,4 +1,4 @@
-platformio>=6.1.17
+platformio==6.1.19
 esptool
 # Required by scripts/sign_firmware.py — matches the firmware's libsodium
 # verifier exactly. Skip becomes a no-op via LAMP_FIRMWARE_SKIP_SIGN=1 in

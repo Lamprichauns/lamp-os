@@ -3,14 +3,19 @@
 // ets_printf (interrupt-safe direct UART; interrupts are off at panic time).
 // pc may be _invalid_pc_placeholder when ESP-IDF cannot determine the fault address.
 // Coredump-to-flash is disabled on this build (SPIFFS occupies that partition;
-// see platformio.ini), so this hook is the only crash-diagnostic path before reset.
+// see platformio.ini), so this hook is the only crash-diagnostic path before
+// reset. It also stamps the RTC crash record, which the next boot persists.
 
 #include <Arduino.h>
 #include <esp32-hal.h>
 #include <rom/ets_sys.h>
 
+#include "core/crash_record.hpp"
+
 static void lamp_panic_handler(arduino_panic_info_t* info, void* arg) {
   (void)arg;
+  lamp::crash_record::capturePanic(info->reason, info->pc, info->backtrace,
+                                   info->backtrace_len, info->core);
   ets_printf("\n\n[LAMP PANIC]\n");
   ets_printf("  reason: %s\n", info->reason ? info->reason : "(null)");
   ets_printf("  core:   %d\n", info->core);

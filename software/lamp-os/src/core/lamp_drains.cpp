@@ -21,11 +21,13 @@
 #include "components/firmware/fs_ota.hpp"
 #include "components/network/ble/ble_control.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
+#include "components/network/mesh/wisp_status_merge.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "config/config.hpp"
 #include "components/firmware/ota_quiet_mode.hpp"
 #include "core/compositor.hpp"
+#include "core/moments.hpp"
 #include "core/override_aggregate.hpp"
 #include "core/pending_slot_aggregate.hpp"
 
@@ -34,20 +36,12 @@ namespace lamp {
 
 namespace {
 
-// Local state for drainCommit only.
+// Loop-task state for drainCommit and drainSettingsBlob.
 bool      commitDirty = false;
+bool      rebootWhenSaved = false;  // drainSettingsBlob: a deferred save owes a reboot
+uint32_t  rebootWhenSavedSinceMs = 0;
 uint32_t  lastCommitSignalMs = 0;
-uint32_t  lastPersistedHash = 0;  // FNV-1a of last successfully persisted serialized JSON
 constexpr uint32_t kCommitFlushIdleMs = 2500;
-
-uint32_t fnv1aHash(const String& s) {
-  uint32_t h = 2166136261u;
-  for (size_t i = 0; i < s.length(); ++i) {
-    h ^= static_cast<uint8_t>(s[i]);
-    h *= 16777619u;
-  }
-  return h;
-}
 
 }  // namespace
 
@@ -181,7 +175,7 @@ void Lamp::drainExpressionOp() {
   }
 }
 
-// Debounced 2500 ms; hash-dedup skips redundant NVS writes.
+// Debounced 2500 ms; NVS skips rewriting unchanged keys.
 // Force-flush path on BLE disconnect. Runs after live-preview drains.
 void Lamp::drainCommit() {
   lamp::Config& config = ::config;
@@ -206,34 +200,12 @@ void Lamp::drainCommit() {
       Serial.println("[loop] commit drain: OTA in progress, deferred");
 #endif
     } else {
-      JsonDocument doc = config.asJsonDocument();
-      String serialized;
-      // Reserve up front; growing by doubling would momentarily need ~2x the
-      // final size contiguous on a heap this fragmented, tipping into
-      // bad_alloc.
-      serialized.reserve(measureJson(doc));
-      try {
-        serializeJson(doc, serialized);
-        uint32_t hash = fnv1aHash(serialized);
-        if (hash == lastPersistedHash) {
-#ifdef LAMP_DEBUG
-          Serial.println("[loop] commit drain: hash-dedup skip");
-#endif
-          commitDirty = false;
-        } else {
-          bool persisted = config.persistConfig("commit");
-          if (persisted) {
-            lastPersistedHash = hash;
-            config.invalidateAllSections();
-            commitDirty = false;
-          }
-          // Persist failure leaves commitDirty set; next tick retries.
-        }
-      } catch (const std::bad_alloc&) {
-#ifdef LAMP_DEBUG
-        Serial.println("[loop] commit drain: OOM during dedup hash, deferred");
-#endif
-        // commitDirty stays set; next tick retries.
+      // A failed save backs off inside Config; commitDirty stays set until a
+      // retry lands, and an unchanged config is a no-op write in NVS.
+      if (config.persistDue(millis()) && config.persistConfig("commit")) {
+        config.invalidateAllSections();
+        lamp::refreshDefaultScene();
+        commitDirty = false;
       }
     }
   }
@@ -243,6 +215,21 @@ void Lamp::drainCommit() {
 // Runs after drainExpressionOp. OTA-in-progress guard discards the write.
 void Lamp::drainSettingsBlob() {
   lamp::Config& config = ::config;
+  if (rebootWhenSaved) {
+    switch (lamp::deferredReboot(config.persistPending(), firmwareReceiver.isInProgress(),
+                                 rebootWhenSavedSinceMs, millis())) {
+      case lamp::DeferredReboot::Reboot:
+        rebootWhenSaved = false;
+        lamp::fadeOutRebootRequested = true;
+        break;
+      case lamp::DeferredReboot::GiveUp:
+        rebootWhenSaved = false;
+        Serial.println("[loop] settingsBlob: save never landed; no reboot");
+        break;
+      case lamp::DeferredReboot::Wait:
+        break;
+    }
+  }
   if (lamp::pendingSlots.settingsBlob.valid) {
     // static: 2 KB is too big for the loop-task stack; this drain is the
     // slot's only consumer and runs only on Core 1.
@@ -288,16 +275,15 @@ void Lamp::drainSettingsBlob() {
       recomputeEffectiveCeiling();  // new brightnessCeiling takes effect without reboot
       reapplyHomeModeState();
       bool persisted = config.persistConfig("settings_blob");
+      if (persisted) lamp::refreshDefaultScene();
       config.invalidateAllSections();
       ble_control::notifyStateChange();
       if (wantsReboot && persisted) {
         lamp::fadeOutRebootRequested = true;
       } else if (wantsReboot && !persisted) {
-#ifdef LAMP_DEBUG
-        Serial.println(
-            "[loop] settingsBlob: persist failed; skipping reboot to avoid "
-            "rebooting into a half-applied config");
-#endif
+        Serial.println("[loop] settingsBlob: save deferred; reboot waits for it");
+        rebootWhenSaved = true;
+        rebootWhenSavedSinceMs = millis();
       }
     }
   }
@@ -371,7 +357,6 @@ void Lamp::drainWifiOp() {
   }
 }
 
-// JSON parse and dispatch via the cascade router.
 void Lamp::drainInboundOp() {
   if (lamp::pendingSlots.inboundOp.valid) {
     char buf[lamp::kPendingJsonOp + 1];
@@ -380,11 +365,10 @@ void Lamp::drainInboundOp() {
 #ifdef LAMP_DEBUG
     Serial.printf("[loop] drain inboundOp len=%u\n", (unsigned)len);
 #endif
-    applyRemoteOpRouted(buf, len, srcMac, RemoteOpTransport::EspNow);
+    applyInboundControlOp(buf, len, srcMac);
   }
 }
 
-// BLE has no network source MAC; selfMac lets app-driven triggers coalesce.
 void Lamp::drainRemoteOp() {
   if (lamp::pendingSlots.remoteOp.valid) {
     char buf[lamp::kPendingJsonOp + 1];
@@ -392,9 +376,7 @@ void Lamp::drainRemoteOp() {
 #ifdef LAMP_DEBUG
     Serial.printf("[loop] drain remoteOp len=%u\n", (unsigned)len);
 #endif
-    uint8_t selfMac[6];
-    meshLink.getMyMac(selfMac);
-    applyRemoteOpRouted(buf, len, selfMac, RemoteOpTransport::BLE);
+    applyRemoteOp(buf, len);
   }
 }
 
@@ -480,7 +462,7 @@ void Lamp::drainWispClaim() {
 // a fresh frame that omits it (Off, or unclaimed) -> ease home now. Every
 // entry feeds the app's painted-lamps preview.
 void Lamp::drainWispState() {
-  // static: the 1440 B entry array is too big for the loop-task stack; this
+  // static: the 1.4 KB slot is too big for the loop-task stack; this
   // drain is the slot's only consumer and runs only on Core 1.
   static lamp::PendingWispState cmd;
   if (!lamp::pendingSlots.wispState.drain(pendingMux, cmd)) return;
@@ -492,7 +474,7 @@ void Lamp::drainWispState() {
       std::memcmp(dispMac, cmd.sourceMac, 6) != 0) {
     return;
   }
-  lamp::lampRoster.cacheWispPaint(cmd.sourceMac, cmd.entries, cmd.count, now);
+  lamp::lampRoster.cacheWispState(cmd, now);
 
   // Yield the render to an open operator color edit; the preview above still
   // updates.
@@ -505,23 +487,19 @@ void Lamp::drainWispState() {
   const Color prevBase = compositor.wispStateBaseColor();
   uint8_t selfMac[6];
   meshLink.getMyMac(selfMac);
-  const uint8_t* e =
-      lamp_protocol::findWispStateEntry(cmd.entries, cmd.count, selfMac);
-  if (e) {
-    compositor.applyWispState(Color(e[6], e[7], e[8], 0),
-                              Color(e[9], e[10], e[11], 0), now);
-  } else {
-    compositor.clearWispState(now);
-  }
+  const bool painted = compositor.applyWispStateSlot(cmd, selfMac, now);
   const bool active = compositor.wispActive();
   if (active != wasActive ||
       (active && !(compositor.wispStateBaseColor() == prevBase))) {
     ble_control::notifyWispStatus();
   }
 #ifdef LAMP_DEBUG
-  if (e) {
-    Serial.printf("[loop] drain wispState base=%u,%u,%u shade=%u,%u,%u\n",
-                  e[6], e[7], e[8], e[9], e[10], e[11]);
+  if (painted) {
+    const Color base = compositor.wispStateBaseColor();
+    const Color shade = compositor.wispStateShadeColor();
+    Serial.printf("[loop] drain wispState base=%u,%u,%u,%u shade=%u,%u,%u,%u\n",
+                  base.r, base.g, base.b, base.w, shade.r, shade.g, shade.b,
+                  shade.w);
   } else {
     Serial.printf("[loop] drain wispState: not painted (ease home)\n");
   }
@@ -538,8 +516,7 @@ void Lamp::drainWispOp() {
     uint16_t len = lamp::pendingSlots.wispOp.drain(pendingMux, buf);
     if (len > 0) {
       // No OTA gate here: wispOps are low-rate config; they reach the wisp
-      // even during OTA. applyRemoteOpRouted() still quiesces (gossip-relay,
-      // much higher volume).
+      // even during OTA.
       uint8_t mac[6];
       if (lamp::lampRoster.copyDisplayWispMac(mac, millis())) {
 #ifdef LAMP_DEBUG
@@ -578,12 +555,29 @@ void Lamp::drainWispStatus() {
   }
 }
 
+// Cache wispConfig and, when it changed, notify CHAR_WISP_STATUS subscribers,
+// whose merged configLastSeenMs is the app's cue to re-read wispconfig.
+void Lamp::drainWispConfig() {
+  if (lamp::pendingSlots.wispConfig.valid) {
+    char buf[lamp::kPendingWispConfig + 1];
+    uint8_t srcMac[6];
+    uint16_t len = lamp::pendingSlots.wispConfig.drain(pendingMux, buf, srcMac);
+    if (len > 0 && lamp::isJsonObject(buf, len) &&
+        lamp::lampRoster.cacheWispConfig(srcMac, buf, len)) {
+      ble_control::notifyWispStatus();
+    }
+  }
+}
+
 void Lamp::drainCommand() {
   {
     // static: the 1444 B payload is too big for the loop-task stack; this drain
     // is the slot's only consumer and runs only on Core 1.
     static lamp::PendingCommand cmd;
     if (lamp::pendingSlots.command.drain(pendingMux, cmd)) {
+      // Refused here too so a delayed cascade is never booked to fire after
+      // home mode ends.
+      if (expressionManager.ignoresPeers()) return;
       JsonDocument doc;
       if (deserializeJson(doc, cmd.payload, cmd.payloadLen) != DeserializationError::Ok) return;
       lamp::ExpressionInvocation inv;
@@ -648,11 +642,8 @@ void Lamp::drainEvent() {
   {
     lamp::PendingEvent ev;
     if (lamp::pendingSlots.event.drain(pendingMux, ev)) {
-      JsonDocument doc;
-      if (deserializeJson(doc, ev.payload, ev.payloadLen) != DeserializationError::Ok) return;
-      lamp::ExpressionInvocation inv;
-      if (!lamp::parseInvocation(doc.as<JsonObjectConst>(), inv)) return;
-      expressionObserverRegistry.fanOut(ev.sourceMac, inv);
+      lamp::deliverEvent(ev.payload, ev.payloadLen, ev.sourceMac, millis(),
+                         lamp::momentDirector, expressionObserverRegistry);
     }
   }
 }

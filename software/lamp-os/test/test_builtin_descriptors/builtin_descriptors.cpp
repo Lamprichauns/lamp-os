@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 
 #include <cstring>
+#include <vector>
 
 #include "expressions/breathing/breathing_expression.hpp"
 #include "expressions/shimmer/shimmer_expression.hpp"
@@ -12,6 +13,10 @@
 #include "expressions/pulse/pulse_expression.hpp"
 #include "expressions/shifty/shifty_expression.hpp"
 #include "expressions/spotty/spotty_expression.hpp"
+#include "expressions/bloom/bloom_expression.hpp"
+#include "expressions/expr_variant_sets.hpp"
+#include "config/config_types.hpp"
+#include "expressions/expression_invocation.hpp"
 
 #include "../../src/expressions/expression_registry.cpp"
 
@@ -388,6 +393,22 @@ void test_pulse_loop_param() {
   TEST_ASSERT_EQUAL_STRING("Continuous", opts[1]["label"].as<const char*>());
 }
 
+void test_pulse_direction_param() {
+  JsonObject e = findById("pulse");
+  JsonObject travel;
+  for (JsonObject p : e["params"].as<JsonArray>()) {
+    if (std::string(p["key"].as<const char*>()) == "travel") { travel = p; break; }
+  }
+  TEST_ASSERT_FALSE(travel.isNull());
+  TEST_ASSERT_EQUAL_STRING("enum", travel["type"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Direction", travel["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_INT(0, travel["default"].as<int>());
+  auto opts = travel["options"].as<JsonArray>();
+  TEST_ASSERT_EQUAL_size_t(2, opts.size());
+  TEST_ASSERT_EQUAL_STRING("Up", opts[0]["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Down", opts[1]["label"].as<const char*>());
+}
+
 static bool hasOpacity(const ExpressionDescriptor& d) {
   for (const auto& p : d.params)
     if (std::strcmp(p.key, "opacity") == 0)
@@ -434,8 +455,91 @@ void test_shimmer_has_no_colors_and_has_opacity() {
   TEST_ASSERT_TRUE(hasOpacity(kShimmerDescriptorData));
 }
 
+static void assertKeyStored(const char* key) {
+  if (!key || !std::strcmp(key, "intervalMin") || !std::strcmp(key, "intervalMax")) return;
+  TEST_ASSERT_TRUE_MESSAGE(expressionParamKeyIndex(key) >= 0, key);
+}
+
+// Stored configs carry a parameter as its index in kExpressionParamKeys, and
+// a key missing from it is dropped at parse. Every key a descriptor offers
+// the app has to be in the table.
+void test_every_descriptor_key_has_a_stored_index() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) {
+    for (const ParamSpec& p : d->params) assertKeyStored(p.key);
+    for (const auto* r : {&d->interval, &d->duration}) {
+      if (!r->has_value()) continue;
+      assertKeyStored((*r)->minKey);
+      assertKeyStored((*r)->maxKey);
+    }
+  }
+  TEST_ASSERT_TRUE(expressionParamKeyIndex("posMin") >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex("posMax") >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kParamCascadeEnabled) >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kParamCascadeStaggerMs) >= 0);
+  TEST_ASSERT_TRUE(expressionParamKeyIndex(kLoopParamKey) >= 0);
+}
+
+// The stored and wire parameter cap holds every key a type can carry: its
+// params, its duration range keys, the three zone keys and the two cascade
+// keys.
+void test_every_type_fits_the_parameter_cap() {
+  const ExpressionDescriptor* all[] = {
+      &kGlitchyDescriptorData, &kPulseDescriptorData, &kBreathingDescriptorData,
+      &kShiftyDescriptorData,  &kSpottyDescriptorData, &kShimmerDescriptorData,
+      &kBloomDescriptorData};
+  for (const ExpressionDescriptor* d : all) {
+    size_t keys = d->params.size() + 2;
+    if (d->duration.has_value() && d->duration->minKey) keys += 2;
+    if (d->hasZone) keys += 3;
+    TEST_ASSERT_TRUE_MESSAGE(keys <= kMaxExpressionParams, d->id);
+  }
+}
+
+// A Moment frame rides MSG_EVENT as `"type":"moment"`; an older lamp builds
+// no transient for it only because no variant registers that id. Walks the
+// same per-variant sets the runtime registration expands (standard, lioness
+// and loaf register the base set).
+void test_no_variant_registers_the_moment_sentinel() {
+#define X(N) &k##N##DescriptorData,
+  const std::vector<std::vector<const ExpressionDescriptor*>> variants = {
+      {LAMPOS_BASE_EXPRESSIONS(X)},
+      {LAMPOS_SNAFU_EXPRESSIONS(X)},
+      {LAMPOS_STAFF_EXPRESSIONS(X)},
+  };
+#undef X
+  for (const auto& registry : variants) {
+    for (const ExpressionDescriptor* d : registry) {
+      TEST_ASSERT_NOT_EQUAL(0, std::strcmp(d->id, "moment"));
+    }
+  }
+}
+
+// The table is append-only: an index already written to a lamp's NVS must
+// keep naming the same key.
+void test_param_key_table_prefix_is_pinned() {
+  const char* pinned[] = {
+      "breathSpeed",  "cascadeEnabled",   "cascadeStaggerMs", "count",
+      "durationMax",  "durationMin",      "easing",           "fadeDuration",
+      "fillMode",     "fire",             "fullStrip",        "loop",
+      "opacity",      "posMax",           "posMin",           "pulseSpeed",
+      "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
+      "spotSpeed"};
+  TEST_ASSERT_TRUE(kExpressionParamKeyCount >= sizeof(pinned) / sizeof(pinned[0]));
+  for (size_t i = 0; i < sizeof(pinned) / sizeof(pinned[0]); ++i) {
+    TEST_ASSERT_EQUAL_STRING(pinned[i], kExpressionParamKeys[i]);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_every_descriptor_key_has_a_stored_index);
+  RUN_TEST(test_param_key_table_prefix_is_pinned);
+  RUN_TEST(test_no_variant_registers_the_moment_sentinel);
+  RUN_TEST(test_every_type_fits_the_parameter_cap);
   RUN_TEST(test_all_five_ids_present);
   RUN_TEST(test_continuous_flags);
   RUN_TEST(test_glitchy_zone_optional);
@@ -465,6 +569,7 @@ int main(int, char**) {
   RUN_TEST(test_shifty_easing_param_defaults_linear);
   RUN_TEST(test_breathing_easing_param_defaults_smooth);
   RUN_TEST(test_pulse_loop_param);
+  RUN_TEST(test_pulse_direction_param);
   RUN_TEST(test_all_types_expose_opacity);
   RUN_TEST(test_shimmer_is_continuous_and_zoneable);
   RUN_TEST(test_shimmer_is_not_advanced);

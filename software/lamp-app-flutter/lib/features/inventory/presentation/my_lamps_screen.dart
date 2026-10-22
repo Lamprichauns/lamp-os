@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/routing/routes.dart';
+import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/ble_client_provider.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/utils/clock.dart';
 import '../../control/application/control_notifier.dart';
 import '../../firmware/application/firmware_notifier.dart';
 import '../../firmware/domain/firmware_state.dart';
@@ -15,6 +17,7 @@ import '../../inventory/application/active_lamp_notifier.dart';
 import '../../inventory/application/inventory_notifier.dart';
 import '../../inventory/domain/inventory_lamp.dart';
 import '../../inventory/domain/lamp_colors.dart';
+import '../../inventory/domain/lamp_presence.dart';
 import '../../lamp_shell/application/lamp_status.dart';
 import '../../nearby/application/lamp_route_resolver.dart';
 import '../../nearby/application/nearby_lamps_notifier.dart';
@@ -30,23 +33,64 @@ import 'lamp_grid_tile.dart';
 /// an "Adopt a lamp" tile at the end. The active lamp is
 /// pinned to the top; the rest hold a fixed alphabetical order (see
 /// [sortMyLamps]) so tiles don't churn as lamps move in and out of range.
+/// Only lamps the phone has seen recently are listed (see [lampPresence]).
 ///
 /// The scanner is mounted while this screen is alive (via the watch on
 /// `nearbyLampsNotifierProvider`) and torn down when the user navigates
 /// away. A scanning chip near the top signals the live feed.
-class MyLampsScreen extends ConsumerWidget {
+class MyLampsScreen extends ConsumerStatefulWidget {
   const MyLampsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyLampsScreen> createState() => _MyLampsScreenState();
+}
+
+/// How often the list re-reads the clock, so a lamp turns unreachable and
+/// then drops off with no new scan result to trigger a rebuild.
+const _presenceTick = Duration(seconds: 1);
+
+class _MyLampsScreenState extends ConsumerState<MyLampsScreen> {
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(_presenceTick, (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final inventory =
         ref.watch(inventoryNotifierProvider).value ?? const [];
     final nearby = ref.watch(nearbyLampsNotifierProvider);
     final activeId = ref.watch(activeLampNotifierProvider).value;
     final inScanGrace = ref.watch(scanGraceActiveProvider);
+    final ble = ref.watch(bleClientProvider);
+    final now = ref.watch(clockProvider)();
     final nearbyById = <String, NearbyLamp>{for (final n in nearby) n.id: n};
 
-    final ordered = sortMyLamps(inventory, activeId);
+    final ordered = [
+      for (final lamp in sortMyLamps(inventory, activeId))
+        if (_connected(ref, ble, lamp.id) case final connected)
+          (
+            lamp: lamp,
+            connected: connected,
+            presence: lampPresence(
+              lastSeenEpochMs: _latest(
+                lamp.lastSeenEpochMs,
+                nearbyById[lamp.id]?.lastSeenEpochMs,
+              ),
+              connected: connected,
+              now: now,
+            ),
+          ),
+    ].where((e) => e.presence != LampPresence.hidden);
 
     return Scaffold(
       appBar: AppBar(
@@ -63,11 +107,13 @@ class MyLampsScreen extends ConsumerWidget {
             childAspectRatio: 0.62,
           ),
           children: [
-            for (final lamp in ordered)
+            for (final e in ordered)
               _LampTile(
-                lamp: lamp,
+                lamp: e.lamp,
+                presence: e.presence,
+                connected: e.connected,
                 nearbyById: nearbyById,
-                isCurrent: lamp.id == activeId,
+                isCurrent: e.lamp.id == activeId,
                 inScanGrace: inScanGrace,
               ),
             const _AddLampTile(),
@@ -76,6 +122,18 @@ class MyLampsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Connected lamps don't advertise (NimBLE peripheral default), so the scan
+/// never sees them. Watching the link repaints the list on a drop; the
+/// synchronous read makes the first paint right before the stream emits.
+bool _connected(WidgetRef ref, BleClient ble, String id) =>
+    ref.watch(lampConnectedProvider(id)).value ?? ble.isConnected(id);
+
+int? _latest(int? a, int? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a > b ? a : b;
 }
 
 /// The active lamp pins to the top; every other lamp orders alphabetically by
@@ -99,12 +157,16 @@ List<InventoryLamp> sortMyLamps(List<InventoryLamp> inv, String? activeId) {
 class _LampTile extends ConsumerWidget {
   const _LampTile({
     required this.lamp,
+    required this.presence,
+    required this.connected,
     required this.nearbyById,
     required this.isCurrent,
     required this.inScanGrace,
   });
 
   final InventoryLamp lamp;
+  final LampPresence presence;
+  final bool connected;
   final Map<String, NearbyLamp> nearbyById;
   final bool isCurrent;
   final bool inScanGrace;
@@ -190,25 +252,6 @@ class _LampTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Connected lamps don't advertise (NimBLE peripheral default), so the
-    // BLE scan never sees them. Checking only `nearbyById` would render
-    // them as "offline". Watch the lamp's live connection state so an
-    // unsolicited link drop (powered-off lamp hitting supervision timeout)
-    // repaints this tile immediately, instead of holding green until an
-    // unrelated rebuild. Seed with the synchronous `isConnected` read so the
-    // first paint is correct before the stream's initial emit lands.
-    final bleClient = ref.watch(bleClientProvider);
-    final connectedToThisLamp =
-        ref.watch(lampConnectedProvider(lamp.id)).value ??
-            bleClient.isConnected(lamp.id);
-    // For the active lamp, also fold in the controlNotifier's `connected`
-    // signal. fbp may report connected mid-handshake before the app has
-    // a usable GATT session. The `.select` keeps slider drags from
-    // rebuilding this tile.
-    final notifierConnected = isCurrent &&
-        ref.watch(controlNotifierProvider(lamp.id).select(
-          (async) => async.value?.connected ?? false,
-        ));
     // Keyed by BLE deviceId (== lamp.id), the firmwareNotifier family key.
     // `.select` so a Streaming chunk-progress tick doesn't rebuild the tile;
     // only a push-phase transition does. A phone push means the lamp is
@@ -218,10 +261,10 @@ class _LampTile extends ConsumerWidget {
       firmwareNotifierProvider(lamp.id).select((s) => s.isPushing),
     );
     final hit = nearbyById[lamp.id];
-    final status = statusForById(
-      lampId: lamp.id,
-      nearbyById: nearbyById,
-      connected: connectedToThisLamp || notifierConnected,
+    final status = statusForPresence(
+      presence: presence,
+      connected: connected,
+      isMesh: hit?.isMesh ?? lamp.lastKnownIsMesh ?? true,
       receiving: receiving,
       sending: hit?.otaDistributing ?? false,
       inScanGrace: inScanGrace,

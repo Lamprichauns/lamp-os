@@ -1,13 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart';
-
 import '../../control/domain/lamp_color.dart';
+import 'wisp_config.dart';
 import 'wisp_source_mode.dart';
-import 'zone_source.dart';
-
-const _observedZonesEq = ListEquality<int>();
 
 /// Default Off-mode color. Matches the wisp firmware's NVS-default for
 /// `offColor` (warm candle-amber); also the fallback when the wispStatus
@@ -24,13 +20,11 @@ const LampColor _defaultOffColor = LampColor(r: 255, g: 150, b: 50, w: 0);
 /// gracefully.
 class WispStatus {
   const WispStatus({
-    this.currentZone,
-    this.zoneSource = ZoneSource.none,
-    this.observedZones = const <int>[],
     this.wifiConnected = false,
     this.wifiChannelMismatch = false,
     this.wifiApChannel = 0,
-    this.auroraConnected = false,
+    this.ethIp = '',
+    this.sourceLive = false,
     this.paletteIdPrefix = '',
     this.lastSeenMs,
     this.wispMac,
@@ -39,7 +33,8 @@ class WispStatus {
     this.helloPaletteIdPrefix,
     this.helloLastSeenMs,
     this.statusLastSeenMs,
-    this.source = WispSourceMode.aurora,
+    this.source = WispSourceMode.off,
+    this.oscRole = OscRole.primary,
     this.offColor = _defaultOffColor,
     this.controllingBase = false,
     this.controllingShade = false,
@@ -54,22 +49,15 @@ class WispStatus {
     this.pixelCount = 30,
     this.opSeq = 0,
     this.brightness = 100,
+    this.configKnown = false,
+    this.carriesConfig = false,
+    this.configSplit = false,
+    this.configLastSeenMs,
   });
 
   /// Sentinel for "no wisp has been heard on this lamp yet" (lamp
   /// returned `"{}"`) and the parse-failure fallback.
   static const empty = WispStatus();
-
-  /// Zone the wisp is currently following (i.e. the zone whose palette
-  /// it forwards). `null` when [zoneSource] is `"none"`.
-  final int? currentZone;
-
-  /// Where [currentZone] came from. See [ZoneSource] for the enum semantics.
-  final ZoneSource zoneSource;
-
-  /// Zone IDs the wisp has heard recently on the mesh. Drives the
-  /// zone-picker chip list in the UI.
-  final List<int> observedZones;
 
   /// Wisp's WiFi radio link to the home AP.
   final bool wifiConnected;
@@ -84,9 +72,15 @@ class WispStatus {
   /// 0 when absent/unknown.
   final int wifiApChannel;
 
-  /// Wisp's TCP/WS link to Aurora. False whenever WiFi is down; can
-  /// also be false while WiFi is up but Aurora is unreachable.
-  final bool auroraConnected;
+  /// The wisp's Ethernet address while its cable link holds a DHCP lease;
+  /// empty otherwise. While set the wisp keeps WiFi off and takes the
+  /// Straylight feed over the cable, so [wifiConnected] is false.
+  final String ethIp;
+
+  /// True while the wisp's palette stream is live: source is
+  /// [WispSourceMode.osc] and a palette arrived recently. False in every
+  /// other source mode.
+  final bool sourceLive;
 
   /// First 8 hex chars of the palette ID the wisp last published.
   /// Empty string when the wisp hasn't published a palette yet.
@@ -175,13 +169,38 @@ class WispStatus {
   /// legacy wisps and omitted at the default; defaults to 100.
   final int brightness;
 
+  /// True when [ledType], [pixelCount], [brightness], the drift fields,
+  /// [shuffleSeed] and [opSeq] hold the wisp's real settings: either the
+  /// status [carriesConfig] or a `wispConfig` was merged in ([withConfig]).
+  /// False means those fields are placeholders a settings form must not show
+  /// or write back.
+  final bool configKnown;
+
+  /// True when this status's own payload carried the wisp's settings (the
+  /// wisp sent it and it is not [configSplit]). Such a status is
+  /// authoritative for them; a merged `wispConfig` never overrides it.
+  final bool carriesConfig;
+
+  /// The wisp marked this status as carrying no settings; they come only
+  /// from its `wispConfig`.
+  final bool configSplit;
+
+  /// Lamp-side `millis()` when the lamp cached the wisp's latest
+  /// `wispConfig`. Absent on lamps that predate it, or until one arrives; a
+  /// change means the `wispconfig` section holds something new.
+  final int? configLastSeenMs;
+
   /// Convenience: is either surface currently wisp-painted?
   bool get controlling => controllingBase || controllingShade;
 
-  /// Source-mode: off / manual / aurora. Drives the top-of-pane pill
+  /// Source-mode: off / manual / osc. Drives the top-of-pane pill
   /// picker. Parsed via `parseWispSourceMode`; defaults to `off` when
   /// the key is absent or unknown.
   final WispSourceMode source;
+
+  /// Straylight palette role the wisp follows in [WispSourceMode.osc].
+  /// Absent on the wire at the default, [OscRole.primary].
+  final OscRole oscRole;
 
   /// Color the wisp renders on its own 30-pixel ring when sourceMode is
   /// Off. Does NOT propagate to the lamp grid. Off mode broadcasts
@@ -189,13 +208,6 @@ class WispStatus {
   /// candle-amber matching the firmware fallback so pre-feature wisps
   /// (or `{}` payloads) land on a sensible value.
   final LampColor offColor;
-
-  /// True when Aurora is viable: either `auroraConnected` is true or at
-  /// least one zone has been observed. Either is sufficient evidence that
-  /// there's a zone to follow. Selecting Aurora with no zones produces
-  /// an empty palette.
-  bool get auroraDetected =>
-      auroraConnected || observedZones.isNotEmpty || currentZone != null;
 
   /// True iff the lamp has observed any wisp on the mesh. A wisp is
   /// "present" once either a hello or a status has arrived; the merged
@@ -237,16 +249,6 @@ class WispStatus {
       return '';
     }
 
-    List<int> asIntList(Object? v) {
-      if (v is List) {
-        return [
-          for (final item in v)
-            if (asInt(item) != null) asInt(item)!,
-        ];
-      }
-      return const <int>[];
-    }
-
     LampColor parseOffColor(Object? v) {
       if (v is String) {
         try {
@@ -276,16 +278,16 @@ class WispStatus {
       }
     }
 
-    final zoneSrc = asString(json['zoneSource']);
     final sourceRaw = json['source'];
+    final oscRoleRaw = json['oscRole'];
+    final configSplit = json['configSplit'] == true;
+    final carriesConfig = json.containsKey('source') && !configSplit;
     return WispStatus(
-      currentZone: asInt(json['currentZone']),
-      zoneSource: parseZoneSource(zoneSrc.isEmpty ? null : zoneSrc),
-      observedZones: asIntList(json['observedZones']),
       wifiConnected: asBool(json['wifiConnected']),
       wifiChannelMismatch: asBool(json['wifiChannelMismatch']),
       wifiApChannel: asInt(json['wifiApChannel']) ?? 0,
-      auroraConnected: asBool(json['auroraConnected']),
+      ethIp: asString(json['ethIp']),
+      sourceLive: asBool(json['sourceLive']),
       paletteIdPrefix: asString(json['paletteIdPrefix']),
       lastSeenMs: asInt(json['lastSeenMs']),
       wispMac: json['wispMac'] is String
@@ -300,6 +302,7 @@ class WispStatus {
       statusLastSeenMs: asInt(json['statusLastSeenMs']),
       // parseWispSourceMode tolerates null + unknown strings; defaults to off.
       source: parseWispSourceMode(sourceRaw is String ? sourceRaw : null),
+      oscRole: parseOscRole(oscRoleRaw is String ? oscRoleRaw : null),
       offColor: parseOffColor(json['offColor']),
       controllingBase: asBool(json['controllingBase']),
       controllingShade: asBool(json['controllingShade']),
@@ -314,14 +317,31 @@ class WispStatus {
       pixelCount: asInt(json['px']) ?? 30,
       opSeq: asInt(json['opSeq']) ?? 0,
       brightness: asInt(json['brightness']) ?? 100,
+      configKnown: carriesConfig,
+      carriesConfig: carriesConfig,
+      configSplit: configSplit,
+      configLastSeenMs: asInt(json['configLastSeenMs']),
+    );
+  }
+
+  /// This status with [config]'s settings in place of whatever the status
+  /// carried, marked [configKnown].
+  WispStatus withConfig(WispConfig config) {
+    return _copy(
+      ledType: config.ledType,
+      pixelCount: config.pixelCount,
+      brightness: config.brightness,
+      driftIntervalMs: config.driftIntervalMs,
+      driftFadePct: config.driftFadePct,
+      shuffleSeed: config.shuffleSeed,
+      opSeq: config.opSeq,
+      configKnown: true,
     );
   }
 
   WispStatus copyWith({
-    int? currentZone,
-    ZoneSource? zoneSource,
-    List<int>? observedZones,
     WispSourceMode? source,
+    OscRole? oscRole,
     LampColor? offColor,
     int? driftIntervalMs,
     int? driftFadePct,
@@ -331,14 +351,41 @@ class WispStatus {
     int? pixelCount,
     int? brightness,
   }) {
+    return _copy(
+      source: source,
+      oscRole: oscRole,
+      offColor: offColor,
+      driftIntervalMs: driftIntervalMs,
+      driftFadePct: driftFadePct,
+      name: name,
+      hasPassword: hasPassword,
+      ledType: ledType,
+      pixelCount: pixelCount,
+      brightness: brightness,
+    );
+  }
+
+  WispStatus _copy({
+    WispSourceMode? source,
+    OscRole? oscRole,
+    LampColor? offColor,
+    int? driftIntervalMs,
+    int? driftFadePct,
+    String? name,
+    bool? hasPassword,
+    String? ledType,
+    int? pixelCount,
+    int? brightness,
+    int? shuffleSeed,
+    int? opSeq,
+    bool? configKnown,
+  }) {
     return WispStatus(
-      currentZone: currentZone ?? this.currentZone,
-      zoneSource: zoneSource ?? this.zoneSource,
-      observedZones: observedZones ?? this.observedZones,
       wifiConnected: wifiConnected,
       wifiChannelMismatch: wifiChannelMismatch,
       wifiApChannel: wifiApChannel,
-      auroraConnected: auroraConnected,
+      ethIp: ethIp,
+      sourceLive: sourceLive,
       paletteIdPrefix: paletteIdPrefix,
       lastSeenMs: lastSeenMs,
       wispMac: wispMac,
@@ -348,20 +395,25 @@ class WispStatus {
       helloLastSeenMs: helloLastSeenMs,
       statusLastSeenMs: statusLastSeenMs,
       source: source ?? this.source,
+      oscRole: oscRole ?? this.oscRole,
       offColor: offColor ?? this.offColor,
       controllingBase: controllingBase,
       controllingShade: controllingShade,
       baseWispColor: baseWispColor,
       shadeWispColor: shadeWispColor,
-      shuffleSeed: shuffleSeed,
+      shuffleSeed: shuffleSeed ?? this.shuffleSeed,
       driftIntervalMs: driftIntervalMs ?? this.driftIntervalMs,
       driftFadePct: driftFadePct ?? this.driftFadePct,
       name: name ?? this.name,
       hasPassword: hasPassword ?? this.hasPassword,
       ledType: ledType ?? this.ledType,
       pixelCount: pixelCount ?? this.pixelCount,
-      opSeq: opSeq,
+      opSeq: opSeq ?? this.opSeq,
       brightness: brightness ?? this.brightness,
+      configKnown: configKnown ?? this.configKnown,
+      carriesConfig: carriesConfig,
+      configSplit: configSplit,
+      configLastSeenMs: configLastSeenMs,
     );
   }
 
@@ -369,13 +421,11 @@ class WispStatus {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is WispStatus &&
-          currentZone == other.currentZone &&
-          zoneSource == other.zoneSource &&
-          _observedZonesEq.equals(observedZones, other.observedZones) &&
           wifiConnected == other.wifiConnected &&
           wifiChannelMismatch == other.wifiChannelMismatch &&
           wifiApChannel == other.wifiApChannel &&
-          auroraConnected == other.auroraConnected &&
+          ethIp == other.ethIp &&
+          sourceLive == other.sourceLive &&
           paletteIdPrefix == other.paletteIdPrefix &&
           lastSeenMs == other.lastSeenMs &&
           wispMac == other.wispMac &&
@@ -385,6 +435,7 @@ class WispStatus {
           helloLastSeenMs == other.helloLastSeenMs &&
           statusLastSeenMs == other.statusLastSeenMs &&
           source == other.source &&
+          oscRole == other.oscRole &&
           offColor == other.offColor &&
           controllingBase == other.controllingBase &&
           controllingShade == other.controllingShade &&
@@ -398,23 +449,24 @@ class WispStatus {
           ledType == other.ledType &&
           pixelCount == other.pixelCount &&
           opSeq == other.opSeq &&
-          brightness == other.brightness;
+          brightness == other.brightness &&
+          configKnown == other.configKnown &&
+          carriesConfig == other.carriesConfig &&
+          configSplit == other.configSplit &&
+          configLastSeenMs == other.configLastSeenMs;
 
   @override
   int get hashCode => Object.hash(
-        currentZone,
-        zoneSource,
-        _observedZonesEq.hash(observedZones),
         wifiConnected,
-        auroraConnected,
+        sourceLive,
         paletteIdPrefix,
         lastSeenMs,
         wispMac,
         wispVersion,
-        Object.hash(wifiChannelMismatch, wifiApChannel, helloFlags,
+        Object.hash(wifiChannelMismatch, wifiApChannel, ethIp, helloFlags,
             helloPaletteIdPrefix, helloLastSeenMs),
         statusLastSeenMs,
-        source,
+        Object.hash(source, oscRole),
         offColor,
         Object.hash(controllingBase, controllingShade, baseWispColor,
             shadeWispColor),
@@ -422,6 +474,14 @@ class WispStatus {
         driftIntervalMs,
         driftFadePct,
         Object.hash(
-            name, hasPassword, ledType, pixelCount, opSeq, brightness),
+          name,
+          hasPassword,
+          ledType,
+          pixelCount,
+          opSeq,
+          brightness,
+          configKnown,
+          Object.hash(carriesConfig, configSplit, configLastSeenMs),
+        ),
       );
 }

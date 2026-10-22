@@ -16,7 +16,7 @@
 //    0    6    header (see header.hpp)
 //    6    6    sourceMac
 //   12    4    wispVersion (LE, packed semver)
-//   16    1    flags (WISP_HELLO_FLAG_PAINT_MODE|WIFI_CONNECTED|AURORA_CONNECTED)
+//   16    1    flags (WISP_HELLO_FLAG_PAINT_MODE|WIFI_CONNECTED|SOURCE_LIVE)
 //   17    8    paletteIdPrefix (WISP_HELLO_PALETTE_ID_PREFIX_LEN)
 //   25   16    carriedFwChannel ({type}-{channel}, WISP_HELLO_FW_CHANNEL_LEN)
 //   41    4    carriedFwVersion (LE)
@@ -47,14 +47,16 @@
 //              Fixed prefix WISP_PAINT_FIXED_PREFIX = 13. The whole painted set
 //              rides one v2 frame; no windowing.
 //
-// MSG_WISP_STATE (0x28), declarative per-lamp state broadcast (MAX_SIZE == 1459):
+// MSG_WISP_STATE (0x28), declarative per-lamp state broadcast (MAX_SIZE == 1461):
 //    0    6    header
 //    6    6    sourceMac
 //   12    1    brightness (per-frame global)
 //   13    4    driftRateMs (LE, per-frame global; matches WispConfig driftIntervalMs)
 //   17    1    presenceFlags (per-frame global)
-//   18    1    count (≤ WISP_STATE_MAX_ENTRIES = 120)
+//   18    1    count (≤ WISP_STATE_MAX_ENTRIES = 103)
 //   19  12*n   entries: each WISP_STATE_ENTRY_SIZE = lampMac(6)+baseRGB(3)+shadeRGB(3)
+//   +    2*n   w plane: baseW,shadeW per entry, in entry order (length-gated
+//              trailer; frames without it parse with w == nullptr, W = 0).
 //              Fixed prefix WISP_STATE_FIXED_PREFIX = 19. The whole state rides
 //              one v2 frame; no windowing, no relay (re-covers on its cadence).
 
@@ -70,7 +72,8 @@ constexpr size_t WISP_HELLO_FIXED_SIZE            = HEADER_SIZE + 6 + 4 + 1 +
                                                     WISP_HELLO_FW_CHANNEL_LEN + 4;  // 45
 constexpr uint8_t WISP_HELLO_FLAG_PAINT_MODE        = 0x01;
 constexpr uint8_t WISP_HELLO_FLAG_WIFI_CONNECTED    = 0x02;
-constexpr uint8_t WISP_HELLO_FLAG_AURORA_CONNECTED  = 0x04;
+// Set while the wisp's streamed palette source (OSC) is fresh.
+constexpr uint8_t WISP_HELLO_FLAG_SOURCE_LIVE       = 0x04;
 // WISP_HELLO TLV trailer (v0x05+). Same shape as HELLO's:
 //   [tlv_count 1] [type 1][len 1][value len] x tlv_count
 // Sized at 96 to hold the fixed fields plus a full TLV trailer without
@@ -92,9 +95,8 @@ constexpr size_t kMaxWispClaimEntries    = 100;
 // + w[count]. The W plane rides after the RGB block so parsers that read
 // only count*3 stay compatible (parseWispPalette is `len <` tolerant).
 // Cap kMaxWispPaletteColors at 50 to keep the frame well under the
-// 250-byte ESP-NOW limit: 13 + 50*3 + 50 = 213 bytes. Aurora palettes can
-// be larger than 50; the wisp truncates when emitting and logs once on
-// truncation so an operator notices the shape mismatch.
+// 250-byte ESP-NOW limit: 13 + 50*3 + 50 = 213 bytes. The wisp truncates a
+// larger palette when emitting and logs once so an operator notices.
 constexpr size_t WISP_PALETTE_FIXED_PREFIX = HEADER_SIZE + 6 + 1;  // 13
 constexpr size_t WISP_PALETTE_ENTRY_SIZE   = 3;                    // R, G, B
 constexpr size_t kMaxWispPaletteColors     = 50;
@@ -120,17 +122,24 @@ static_assert(WISP_PAINT_MAX_SIZE <= ESPNOW_V2_FRAME_MAX,
               "MSG_WISP_PAINT exceeds ESP-NOW v2 frame cap");
 
 // MSG_WISP_STATE: header(6) + sourceMac(6) + brightness(1) + driftRateMs(4 LE)
-// + presenceFlags(1) + count(1) + entries[count * 12]. Brightness / drift-rate
-// / presence are per-frame globals, not per-lamp. Each entry: lampMac(6) +
-// baseRGB(3) + shadeRGB(3) = 12 bytes. One v2 frame carries the whole state:
-// 19 + 120*12 = 1459 B, under the v2 cap.
+// + presenceFlags(1) + count(1) + entries[count * 12] + w[count * 2].
+// Brightness / drift-rate / presence are per-frame globals, not per-lamp. Each
+// entry: lampMac(6) + baseRGB(3) + shadeRGB(3) = 12 bytes. The W plane rides
+// after the entries so parsers that read only count*12 stay compatible. The
+// entry cap is whatever fits one v2 frame with the W plane.
 constexpr size_t WISP_STATE_ENTRY_SIZE   = 6 + 3 + 3;  // 12
+constexpr size_t WISP_STATE_W_SIZE       = 2;          // baseW + shadeW
 constexpr size_t WISP_STATE_FIXED_PREFIX = HEADER_SIZE + 6 + 1 + 4 + 1 + 1;  // 19
-constexpr size_t WISP_STATE_MAX_ENTRIES  = 120;
+constexpr size_t WISP_STATE_MAX_ENTRIES  =
+    (ESPNOW_V2_FRAME_MAX - WISP_STATE_FIXED_PREFIX) /
+    (WISP_STATE_ENTRY_SIZE + WISP_STATE_W_SIZE);  // 103
 constexpr size_t WISP_STATE_MAX_SIZE     = WISP_STATE_FIXED_PREFIX +
                                             WISP_STATE_MAX_ENTRIES *
-                                            WISP_STATE_ENTRY_SIZE;  // 1459
+                                            (WISP_STATE_ENTRY_SIZE +
+                                             WISP_STATE_W_SIZE);  // 1461
 static_assert(WISP_STATE_ENTRY_SIZE == 12, "WISP_STATE entry is mac(6)+base(3)+shade(3)");
+static_assert(WISP_STATE_MAX_ENTRIES == 103,
+              "WISP_STATE cap moved: update networking.md and every sizing of it");
 static_assert(WISP_STATE_FIXED_PREFIX == 19,
               "WISP_STATE prefix is header(6)+mac(6)+brightness(1)+drift(4)+presence(1)+count(1)");
 static_assert(WISP_STATE_MAX_SIZE <= ESPNOW_V2_FRAME_MAX,
@@ -187,9 +196,13 @@ struct ParsedWispState {
   uint32_t driftRateMs;
   uint8_t  presenceFlags;
   uint8_t  count;
-  // Pointer into the recv buffer; caller must not retain past this call.
-  // `count * WISP_STATE_ENTRY_SIZE` bytes of packed lampMac(6)+baseRGB(3)+shadeRGB(3).
+  // Pointers into the recv buffer; caller must not retain past this call.
+  // `entries` is `count * WISP_STATE_ENTRY_SIZE` bytes of packed
+  // lampMac(6)+baseRGB(3)+shadeRGB(3). `w` is `count * WISP_STATE_W_SIZE`
+  // bytes of baseW,shadeW in entry order, nullptr when the frame carries no
+  // W plane (W reads as 0).
   const uint8_t* entries;
+  const uint8_t* w;
 };
 
 // Build a MSG_WISP_CLAIM frame. `entries` is `count` packed records, each
@@ -266,21 +279,26 @@ inline size_t buildWispPaint(uint8_t* buf, size_t bufLen, uint16_t seq,
 }
 
 // Build a MSG_WISP_STATE frame. `entries` is `count` packed records, each
-// WISP_STATE_ENTRY_SIZE bytes: lampMac(6) + baseRGB(3) + shadeRGB(3).
-// `brightness`, `driftRateMs`, and `presenceFlags` are per-frame globals.
-// `count` must be ≤ WISP_STATE_MAX_ENTRIES. Returns total bytes written on
-// success, 0 on bad args / insufficient buffer / count overflow.
+// WISP_STATE_ENTRY_SIZE bytes: lampMac(6) + baseRGB(3) + shadeRGB(3). `w` is
+// `count * WISP_STATE_W_SIZE` bytes (baseW, shadeW per entry) appended as the
+// W plane, or nullptr to omit it. `brightness`, `driftRateMs`, and
+// `presenceFlags` are per-frame globals. `count` must be ≤
+// WISP_STATE_MAX_ENTRIES. Returns total bytes written on success, 0 on bad
+// args / insufficient buffer / count overflow.
 inline size_t buildWispState(uint8_t* buf, size_t bufLen, uint16_t seq,
                              const uint8_t sourceMac[6],
                              uint8_t brightness,
                              uint32_t driftRateMs,
                              uint8_t presenceFlags,
                              const uint8_t* entries,
+                             const uint8_t* w,
                              uint8_t count) {
   if (!buf || !sourceMac) return 0;
   if (count > WISP_STATE_MAX_ENTRIES) return 0;
   if (count > 0 && !entries) return 0;
-  const size_t total = WISP_STATE_FIXED_PREFIX + count * WISP_STATE_ENTRY_SIZE;
+  const size_t entriesEnd =
+      WISP_STATE_FIXED_PREFIX + count * WISP_STATE_ENTRY_SIZE;
+  const size_t total = entriesEnd + (w ? count * WISP_STATE_W_SIZE : 0);
   if (bufLen < total) return 0;
   detail::writeHeader(buf, MSG_WISP_STATE, seq);
   std::memcpy(&buf[6], sourceMac, 6);
@@ -294,6 +312,7 @@ inline size_t buildWispState(uint8_t* buf, size_t bufLen, uint16_t seq,
   if (count) {
     std::memcpy(&buf[WISP_STATE_FIXED_PREFIX], entries,
                 count * WISP_STATE_ENTRY_SIZE);
+    if (w) std::memcpy(&buf[entriesEnd], w, count * WISP_STATE_W_SIZE);
   }
   return total;
 }
@@ -415,6 +434,9 @@ inline bool parseWispState(const uint8_t* data, size_t len, ParsedWispState& out
   out.presenceFlags = data[17];
   out.count = count;
   out.entries = count ? &data[WISP_STATE_FIXED_PREFIX] : nullptr;
+  out.w = (count && len >= expected + count * WISP_STATE_W_SIZE)
+              ? &data[expected]
+              : nullptr;
   return true;
 }
 

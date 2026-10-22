@@ -93,7 +93,8 @@ struct BehaviorContext {
   // Behaviors must null-check (same field policy as lampRoster/greeting).
   MeshLink* meshLink = nullptr;
 
-  // Hand the strongest-RSSI ungreeted near arrival to `cb`. `cb` returns true
+  // Hand the strongest-RSSI ungreeted near arrival to `cb`. Hands none while
+  // ignoresPeers(), and consumes it while discardsPeers(). `cb` returns true
   // when it delivered a greeting; the roster acknowledges that peer. A false
   // return leaves the peer retriable next call (the un-acked arrival is the
   // retry token). No auto-ack on visitation. maxAgeMs bounds how recent a near
@@ -103,16 +104,30 @@ struct BehaviorContext {
                       const std::function<bool(const PeerView&)>& cb);
 
   // Visit currently-near peers, strongest-RSSI first. `cb` returns true to
-  // stop early. Read-only; never acks.
+  // stop early. Read-only; never acks. Visits none while ignoresPeers().
   void forEachNearby(const std::function<bool(const PeerView&)>& cb);
+
+  // True while home mode ignores other lamps (homeModeBlocksRemote): the room
+  // reads as empty and no arrival reaches a callback.
+  bool ignoresPeers() const;
+  // ignoresPeers() outside the app's Home Mode preview. Arrivals seen
+  // meanwhile are consumed for every greeting, so leaving home does not greet
+  // peers that were near all along.
+  bool discardsPeers() const;
+
+  // Framework arrival pass, once per loop: consumes arrivals while
+  // discardsPeers(), then runs the onArrival notifier (ArrivalPass::Silence
+  // while discarding, Hold during the app's preview, Fire otherwise).
+  void tickArrivals(uint32_t nowMs, uint32_t nearWindowMs);
 
   // Per-peer greeting waveform for `peerLampId` (colon-hex mac).
   GreetingTuning greetingFor(const std::string& peerLampId) const;
   // Stored disposition tier for `peerLampId` (3 = neutral default).
   uint8_t dispositionOf(const std::string& peerLampId) const;
-  // Current near-crowd grouped by disposition.
+  // Current near-crowd grouped by disposition; empty while ignoresPeers().
   CrowdComposition crowd() const;
-  // Smoothed weighted-crowd value before the per-mode floor/curve.
+  // Smoothed weighted-crowd value before the per-mode floor/curve; 0 while
+  // ignoresPeers().
   float crowdWeight() const;
 
   // Physical author facade (per-tick, from input behaviors). setSolidColor is

@@ -115,7 +115,7 @@ void test_rearms_on_near_window_edge_not_prune() {
 
   // Age past the near window without ever pruning: the entry is still there.
   const uint32_t departed = 100000 + nearWindow + 5000;
-  set_mock_millis(departed);  // getNear reads millis() internally; keep it in step
+  set_mock_millis(departed);  // snapshotNear reads millis() internally; keep it in step
   n.tick(departed, roster, nearWindow);
   TEST_ASSERT_EQUAL_INT(1, sink.fires);        // no re-fire on departure
   TEST_ASSERT_EQUAL_size_t(0, n.firedCount());  // re-armed
@@ -148,22 +148,77 @@ void test_no_greeting_ack_coupling() {
   TEST_ASSERT_EQUAL_STRING("jacko", ungreeted.name);
 }
 
-void test_fired_set_heap_safe_and_capacity_bounded() {
+// The fired set has a slot for every peer the roster can hold, so a crowd of
+// 20 is tracked whole: everyone fires once, and a silenced pass marks
+// all of them.
+void seedCrowd(LampRoster& roster, int n) {
+  for (int i = 0; i < n; ++i) {
+    char addr[18];
+    std::snprintf(addr, sizeof(addr), "AA:BB:CC:DD:%02X:F0", i);
+    seedNear(roster, "peer", addr, static_cast<int8_t>(-40 - i));
+  }
+}
+
+void test_fired_set_covers_every_near_peer() {
   LampRoster roster;
   ArrivalNotifier n;
   Sink sink;
   n.onArrival([&](const PeerView& p) { sink(p); });
 
   set_mock_millis(100000);
-  for (int i = 0; i < 20; ++i) {
-    char addr[18];
-    std::snprintf(addr, sizeof(addr), "AA:BB:CC:DD:%02X:F0", i);
-    seedNear(roster, "peer", addr, static_cast<int8_t>(-40 - i));
-  }
+  seedCrowd(roster, 20);
   n.tick(100010, roster, 240000);
 
-  TEST_ASSERT_EQUAL_size_t(ArrivalNotifier::kMaxFired, n.firedCount());
-  TEST_ASSERT_EQUAL_INT(static_cast<int>(ArrivalNotifier::kMaxFired), sink.fires);
+  TEST_ASSERT_EQUAL_size_t(20, n.firedCount());
+  TEST_ASSERT_EQUAL_INT(20, sink.fires);
+}
+
+void test_silenced_pass_marks_whole_crowd() {
+  LampRoster roster;
+  ArrivalNotifier n;
+  Sink sink;
+  n.onArrival([&](const PeerView& p) { sink(p); });
+
+  set_mock_millis(100000);
+  seedCrowd(roster, 20);
+  n.tick(100010, roster, 240000, ArrivalPass::Silence);
+  TEST_ASSERT_EQUAL_size_t(20, n.firedCount());
+  TEST_ASSERT_EQUAL_INT(0, sink.fires);
+
+  n.tick(100020, roster, 240000);  // silencing ends, everyone still near
+  TEST_ASSERT_EQUAL_INT(0, sink.fires);
+}
+
+// A held pass marks and fires nothing but still re-arms a departure, so a peer
+// that leaves and returns during the hold fires once it ends.
+void test_hold_rearms_departures_without_marking() {
+  LampRoster roster;
+  ArrivalNotifier n;
+  Sink sink;
+  n.onArrival([&](const PeerView& p) { sink(p); });
+  const uint32_t nearWindow = 20000;
+
+  set_mock_millis(100000);
+  seedNear(roster, "wanderer", "AA:BB:CC:DD:EE:F0", -50);
+  n.tick(100010, roster, nearWindow);
+  TEST_ASSERT_EQUAL_INT(1, sink.fires);
+
+  const uint32_t departed = 100000 + nearWindow + 5000;
+  set_mock_millis(departed);
+  n.tick(departed, roster, nearWindow, ArrivalPass::Hold);
+  TEST_ASSERT_EQUAL_size_t(0, n.firedCount());
+
+  const uint32_t back = departed + 2000;
+  set_mock_millis(back);
+  seedNear(roster, "wanderer", "AA:BB:CC:DD:EE:F0", -50);
+  n.tick(back, roster, nearWindow, ArrivalPass::Hold);
+  TEST_ASSERT_EQUAL_INT(1, sink.fires);
+  TEST_ASSERT_EQUAL_size_t(0, n.firedCount());
+
+  const uint32_t after = back + 1000;
+  set_mock_millis(after);
+  n.tick(after, roster, nearWindow);
+  TEST_ASSERT_EQUAL_INT(2, sink.fires);
 }
 
 void test_zero_observers_is_noop() {
@@ -196,7 +251,9 @@ int main(int, char**) {
   RUN_TEST(test_new_peer_fires_after_snapshot_cache_window);
   RUN_TEST(test_rearms_on_near_window_edge_not_prune);
   RUN_TEST(test_no_greeting_ack_coupling);
-  RUN_TEST(test_fired_set_heap_safe_and_capacity_bounded);
+  RUN_TEST(test_fired_set_covers_every_near_peer);
+  RUN_TEST(test_silenced_pass_marks_whole_crowd);
+  RUN_TEST(test_hold_rearms_departures_without_marking);
   RUN_TEST(test_zero_observers_is_noop);
   RUN_TEST(test_only_fresh_arrivals_fire);
   return UNITY_END();

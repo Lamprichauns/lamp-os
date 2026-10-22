@@ -1,19 +1,19 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
 #include <variant>
 #include <vector>
 
 #include "core/animated_behavior.hpp"
 #include "expressions/expression_schema.hpp"
+#include "config/config_types.hpp"
 #include "util/color.hpp"
 #include "util/easing.hpp"
 #include "util/fast_rng.hpp"
 
 namespace lamp {
 
-enum ExpressionTarget {
+enum ExpressionTarget : uint8_t {
   TARGET_SHADE = 1,
   TARGET_BASE = 2,
   TARGET_BOTH = 3
@@ -37,6 +37,8 @@ class Expression : public AnimatedBehavior {
   Easing easing_ = Easing::Linear;
   uint32_t easingRaw_ = 0;
   uint8_t previewCyclesDone_ = 0;
+  bool retiring_ = false;
+  uint32_t retireStartMs_ = 0;
 
   /**
    * Schedule next trigger within configured interval range.
@@ -49,28 +51,36 @@ class Expression : public AnimatedBehavior {
   void saveBufferState();
 
   /**
-   * Check if this expression should affect current buffer.
+   * Check if this expression should affect current buffer, or `surface`.
+   * trigger() gates on the no-argument form.
    */
-  bool shouldAffectBuffer();
+  virtual bool shouldAffectBuffer() { return shouldAffectBuffer(fb); }
+  bool shouldAffectBuffer(FrameBuffer* surface);
 
   /**
    * Per-pixel contribution scale in [0,1] for a yielding expression drawing
-   * on this fb's surface: opacityPct_/100 capped further by the compositor's
-   * wisp presence `w`, lerping toward wispDimFloor() as w rises. Opacity 100
-   * with no wisp present (or a type that doesn't yield) returns 1.0. Reads
-   * the same `w` that composites the wisp, so on release the expression
-   * returns to its opacity cap in lockstep with the wisp fade. Per-surface:
-   * base presence for a base fb, shade presence for a shade fb.
+   * on this fb's surface (or `surface`): opacityPct_/100 capped further by
+   * the compositor's wisp presence `w`, lerping toward wispDimFloor() as w
+   * rises. Opacity 100 with no wisp present (or a type that doesn't yield)
+   * returns 1.0. Reads the same `w` that composites the wisp, so on release
+   * the expression returns to its opacity cap in lockstep with the wisp fade.
+   * Per-surface: base presence for a base fb, shade presence for a shade fb.
+   * A retired expression's scale also ramps to 0 over kRetireFadeMs.
    */
-  float wispDimScale();
+  float wispDimScale() { return wispDimScale(fb); }
+  float wispDimScale(FrameBuffer* surface);
+
+  // The retire fade alone: 1.0 until retire(), then ramping to 0 over
+  // kRetireFadeMs.
+  float retireScale() const;
 
   // Read the shared "opacity" param (clamped 10..100, default 100) into
   // opacityPct_. Call from each subclass configureFromParameters.
-  void configureOpacity(const std::map<std::string, uint32_t>& parameters);
+  void configureOpacity(const ExpressionParams& parameters);
 
   // Read the shared "easing" param (default defVal). Resolves Random to a
   // concrete curve immediately; trigger() re-rolls it on each fire.
-  void configureEasing(const std::map<std::string, uint32_t>& parameters, uint32_t defVal);
+  void configureEasing(const ExpressionParams& parameters, uint32_t defVal);
 
  public:
   using AnimatedBehavior::AnimatedBehavior;
@@ -95,9 +105,13 @@ class Expression : public AnimatedBehavior {
   // Surfaces the expression id string for the compositor home-mode gate.
   const char* homeModeExpressionId() const override { return descriptor().id; }
 
+  // Hands a spansSurfaces type the shade above its base fb. The manager calls
+  // it on the one TARGET_BOTH instance, before configureFromParameters.
+  virtual void joinSurfaceAbove(FrameBuffer* above) { (void)above; }
+
   // Apply expression-specific tuning params keyed as in descriptor().params.
   virtual void configureFromParameters(
-      const std::map<std::string, uint32_t>& parameters) = 0;
+      const ExpressionParams& parameters) = 0;
 
   void control() override;
 
@@ -143,9 +157,21 @@ class Expression : public AnimatedBehavior {
     return animationState == STOPPED && lastCompletedLoop > 0;
   }
 
+  // Fade this expression out over kRetireFadeMs from the first call; later
+  // calls do not restart the fade. retired() is true once it has finished,
+  // and the owner then removes the expression.
+  void retire();
+  bool retiring() const { return retiring_; }
+  bool retired() const;
+  static constexpr uint32_t kRetireFadeMs = 1000;
+
   // Suppresses auto-trigger from control() while true. Manual trigger() and
   // chain-triggered firing still work. Listing's enabled toggle drives this.
   bool autoTriggerEnabled = true;
+
+  // A one-shot built by ExpressionManager::triggerInvocation, as opposed to a
+  // configured instance (enabled or not).
+  bool isTransient = false;
 
   // Floor this expression's per-pixel contribution dims to while the wisp is
   // fully present, in [0,1]. 1.0 (default) ignores the wisp and paints at full

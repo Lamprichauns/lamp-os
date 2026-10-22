@@ -29,26 +29,33 @@ void PaintDistributor::begin(LampInventory* inventory, MeshLink* mesh,
 
 void PaintDistributor::setPaintMode(bool on) {
   stateDirty_ = true;
-  if (on == paintMode_) {
-    if (on) assignAllClaimed();
-    return;
-  }
+  const bool was = painting();
   paintMode_ = on;
-  if (on) {
+  if (!painting()) return;
+  if (!was) refreshDriftRoster();
+  assignAllClaimed();
+}
+
+void PaintDistributor::setSourceLive(bool live) {
+  const bool was = painting();
+  sourceLive_ = live;
+  if (painting() == was) return;
+  stateDirty_ = true;
+  if (painting()) {
     refreshDriftRoster();
     assignAllClaimed();
   }
 }
 
 void PaintDistributor::onPaletteChanged() {
-  if (!paintMode_) return;
+  if (!painting()) return;
   assignAllClaimed();
 }
 
 void PaintDistributor::tick(uint32_t nowMs) {
   // Re-color one lamp per drift slot so every lamp shifts within one interval;
   // STATE broadcasts the roster colors on its own cadence.
-  if (paintMode_ && driftSlotMs_ > 0 && driftCount_ > 0 &&
+  if (painting() && driftSlotMs_ > 0 && driftCount_ > 0 &&
       (nowMs - lastDriftFireMs_) >= driftSlotMs_) {
     lastDriftFireMs_ = nowMs;
     assignDriftColor(driftIdx_ % driftCount_);
@@ -152,7 +159,7 @@ void PaintDistributor::refreshDriftRoster(bool paintNewcomers) {
   driftSlotMs_ = driftSlotMs(driftIntervalMs_, driftCount_);
   driftIdx_    = driftCount_ ? driftIdx_ % driftCount_ : 0;
 
-  if (paintNewcomers && paintMode_) {
+  if (paintNewcomers && painting()) {
     for (size_t i = 0; i < driftCount_; i++) {
       bool known = false;
       for (size_t j = 0; j < prevCount; j++) {
@@ -166,21 +173,17 @@ void PaintDistributor::refreshDriftRoster(bool paintNewcomers) {
 void PaintDistributor::assignDriftColor(size_t idx) {
   if (!roster_ || !palette_) return;
   if (palette_->colors().empty()) return;
-  ColorTuple t = sampleTupleAtPositions(palette_->colors(), esp_random(), esp_random());
-  const uint8_t base3[3]  = {t.r[0], t.g[0], t.b[0]};
-  const uint8_t shade3[3] = {t.r[1], t.g[1], t.b[1]};
-  roster_->setLampPaint(driftMacs_[idx], base3, shade3);
+  storeTuplePaint(*roster_, driftMacs_[idx],
+                  sampleTupleAtPositions(palette_->colors(), esp_random(),
+                                         esp_random()));
 }
 
 void PaintDistributor::assignPaintColor(const uint8_t mac[6]) {
   if (!roster_ || !palette_) return;
-  // paintMode can flip on before the first Aurora callback populates the
-  // palette; an empty palette would store an all-zero color.
+  // paintMode can flip on before the source's first palette lands; an empty
+  // palette would paint every claimed lamp black.
   if (palette_->colors().empty()) return;
-  ColorTuple t = sampleTupleForMac(*palette_, mac, shuffleSeed_);
-  const uint8_t base3[3]  = {t.r[0], t.g[0], t.b[0]};
-  const uint8_t shade3[3] = {t.r[1], t.g[1], t.b[1]};
-  roster_->setLampPaint(mac, base3, shade3);
+  storeTuplePaint(*roster_, mac, sampleTupleForMac(*palette_, mac, shuffleSeed_));
 }
 
 }  // namespace wisp

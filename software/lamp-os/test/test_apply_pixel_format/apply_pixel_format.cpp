@@ -112,6 +112,20 @@ void test_byte_order_absent_leaves_current() {
   TEST_ASSERT_EQUAL_STRING("GRBW", s.byteOrder.c_str());
 }
 
+// An unknown or over-long order is ignored, so the stored field stays one of
+// the driver's own and the saved config cannot grow without bound.
+void test_unknown_byte_order_ignored() {
+  lamp::SurfaceMirror s = twoSeg(16, 12);
+  s.byteOrder = "GRBW";
+  std::string body = "{\"byteOrder\":\"" + std::string(5000, 'X') + "\"}";
+  JsonDocument doc = blob(body.c_str());
+  lamp::apply::pixelFormatLocal(doc.as<JsonObjectConst>(), s);
+  TEST_ASSERT_EQUAL_STRING("GRBW", s.byteOrder.c_str());
+  JsonDocument rgb = blob("{\"byteOrder\":\"RGB\"}");
+  lamp::apply::pixelFormatLocal(rgb.as<JsonObjectConst>(), s);
+  TEST_ASSERT_EQUAL_STRING("GRBW", s.byteOrder.c_str());
+}
+
 void test_byte_order_string_maps_to_enum() {
   lamp::ByteOrder order = lamp::ByteOrder::GRBW;
   TEST_ASSERT_TRUE(lamp::byteOrderFromString("BGR", order));
@@ -149,6 +163,7 @@ int main(int, char**) {
   RUN_TEST(test_byte_order_applied_from_blob);
   RUN_TEST(test_byte_order_applied_alongside_segments);
   RUN_TEST(test_byte_order_absent_leaves_current);
+  RUN_TEST(test_unknown_byte_order_ignored);
   RUN_TEST(test_byte_order_string_maps_to_enum);
   RUN_TEST(test_byte_order_empty_falls_back_to_default);
   RUN_TEST(test_byte_order_unrecognized_falls_back_to_default);

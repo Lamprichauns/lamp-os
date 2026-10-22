@@ -1,8 +1,8 @@
 // Native-host proof of the roster's re-entrancy safety, exercised with
 // LAMP_DEBUG on:
-//   1. snapshotNear() isolates the caller from a re-entrant getNear(): a
-//      callback that refills the shared buffer mid-iteration cannot corrupt
-//      or mutate the stack snapshot the caller is walking.
+//   1. snapshotNear() isolates the caller from a re-entrant getMesh()/getAll():
+//      a callback that refills those buffers mid-iteration cannot corrupt or
+//      mutate the near snapshot the caller is walking.
 //   2. the debug getter guard fires on an unexpected-task call and on a
 //      re-entrant fill, so a future off-loop-task or nested caller fails fast
 //      on the bench instead of silently corrupting the field heap.
@@ -33,7 +33,7 @@ void recordViolation(const char* reason) {
 }
 
 // Seed `n` distinct NEAR peers (BLE path sets lastSeenNearMs + a recovered
-// mac), descending RSSI so getNear's sort order is deterministic.
+// mac), descending RSSI so snapshotNear's sort order is deterministic.
 void seedNear(LampRoster& r, uint8_t n) {
   for (uint8_t i = 0; i < n; i++) {
     char addr[18];
@@ -65,59 +65,37 @@ void setUp(void) {
 }
 void tearDown(void) { LampRoster::s_debugGetterViolation = nullptr; }
 
-void test_snapshot_survives_reentrant_getNear() {
+void test_snapshot_sorted_by_rssi_desc() {
   LampRoster r;
   seedNear(r, 5);
 
-  std::vector<NearbyCopy> snap = r.snapshotNear(240000);
-  size_t n = snap.size();
-  TEST_ASSERT_TRUE(n > 0);
-
-  // The snapshot must match getNear's order/content (correct results).
-  {
-    auto& near = r.getNear(240000);
-    TEST_ASSERT_EQUAL_size_t(near.size(), n);
-    for (size_t i = 0; i < n; i++) {
-      TEST_ASSERT_EQUAL_MEMORY(near[i].mac, snap[i].mac, 6);
-      TEST_ASSERT_EQUAL_INT8(near[i].lastRssi, snap[i].lastRssi);
-    }
+  const std::vector<NearbyCopy>& snap = r.snapshotNear(240000);
+  TEST_ASSERT_EQUAL_size_t(5, snap.size());
+  for (size_t i = 0; i < snap.size(); i++) {
+    TEST_ASSERT_EQUAL_INT8(static_cast<int8_t>(-40 - i), snap[i].lastRssi);
+    TEST_ASSERT_TRUE(snap[i].hasMac);
   }
-
-  std::vector<std::array<uint8_t, 6>> expected;
-  for (size_t i = 0; i < n; i++) {
-    std::array<uint8_t, 6> m{};
-    std::memcpy(m.data(), snap[i].mac, 6);
-    expected.push_back(m);
-  }
-
-  // Simulate a callback re-entering getNear on each iteration: it clears and
-  // refills the shared nearBuf_. The stack snapshot must be untouched.
-  for (size_t i = 0; i < n; i++) {
-    auto& reentrant = r.getNear(240000);
-    (void)reentrant;
-    TEST_ASSERT_EQUAL_MEMORY(expected[i].data(), snap[i].mac, 6);
-  }
-  TEST_ASSERT_EQUAL_INT(0, g_violations);  // same task, no nesting: clean
+  TEST_ASSERT_EQUAL_INT(0, g_violations);
 }
 
 void test_guard_fires_on_unexpected_task() {
   LampRoster r;
-  seedNear(r, 3);
+  seedMesh(r, 3);
 
   set_mock_current_task(reinterpret_cast<void*>(1));
-  r.getNear(240000);  // captures task 1
+  r.getMesh(240000);  // captures task 1
   TEST_ASSERT_EQUAL_INT(0, g_violations);
 
   set_mock_current_task(reinterpret_cast<void*>(2));
-  r.getNear(240000);  // wrong task
+  r.getMesh(240000);  // wrong task
   TEST_ASSERT_EQUAL_INT(1, g_violations);
   TEST_ASSERT_NOT_NULL(g_lastReason);
 }
 
-// The RETURNED REFERENCE stays valid while a callback re-enters getNear/getMesh
+// The RETURNED REFERENCE stays valid while a callback re-enters getMesh/getAll
 // mid-walk: those refill distinct buffers, so the in-flight snapshot keeps its
 // size and content even as the live roster grows underneath. Fails if
-// nearSnapshot_ ever aliases nearBuf_/meshBuf_.
+// nearSnapshot_ ever aliases meshBuf_/allBuf_.
 void test_snapshot_reference_stable_across_reentrant_getters() {
   LampRoster r;
   seedNear(r, 5);
@@ -141,9 +119,9 @@ void test_snapshot_reference_stable_across_reentrant_getters() {
       grew = true;
     }
     auto& reMesh = r.getMesh(240000);
-    auto& reNear = r.getNear(240000);
+    auto& reAll = r.getAll();
     (void)reMesh;
-    TEST_ASSERT_TRUE(reNear.size() > n);  // the re-entrant getter sees the growth
+    TEST_ASSERT_TRUE(reAll.size() > n);  // the re-entrant getter sees the growth
     TEST_ASSERT_EQUAL_size_t(n, near.size());  // the held reference does not
     TEST_ASSERT_EQUAL_MEMORY(expected[i].data(), near[i].mac, 6);
   }
@@ -177,7 +155,7 @@ int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
-  RUN_TEST(test_snapshot_survives_reentrant_getNear);
+  RUN_TEST(test_snapshot_sorted_by_rssi_desc);
   RUN_TEST(test_snapshot_reference_stable_across_reentrant_getters);
   RUN_TEST(test_snapshot_visits_all_near_above_old_cap);
   RUN_TEST(test_guard_fires_on_unexpected_task);

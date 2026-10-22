@@ -62,7 +62,7 @@ class SpottyExpression : public Expression {
  public:
   using Expression::Expression;
   SpottyExpression(FrameBuffer* inBuffer, uint32_t inFrames = 90);
-  void configureFromParameters(const std::map<std::string, uint32_t>& parameters) override;
+  void configureFromParameters(const ExpressionParams& parameters) override;
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
   void draw() override;

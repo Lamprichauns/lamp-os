@@ -104,17 +104,19 @@ void WispRoster::recomputeClaims(const LampObservation* observations,
   OwnClaim next[WISP_ROSTER_MAX_LAMPS];
   size_t   nextCount = 0;
 
-  // Carries prior paint colors forward; zeroes them for a fresh claim.
+  // Carries prior paint forward; a fresh claim starts unpainted.
   auto appendClaim = [&](const LampObservation& o, size_t prevIdx) {
     OwnClaim& c = next[nextCount++];
     std::memcpy(c.lampMac, o.mac, 6);
     c.rssi = o.rssi;
     if (prevIdx != ownCount_) {
-      std::memcpy(c.base,  ownClaims_[prevIdx].base,  3);
-      std::memcpy(c.shade, ownClaims_[prevIdx].shade, 3);
+      std::memcpy(c.base,  ownClaims_[prevIdx].base,  4);
+      std::memcpy(c.shade, ownClaims_[prevIdx].shade, 4);
+      c.painted = ownClaims_[prevIdx].painted;
     } else {
-      std::memset(c.base,  0, 3);
-      std::memset(c.shade, 0, 3);
+      std::memset(c.base,  0, 4);
+      std::memset(c.shade, 0, 4);
+      c.painted = false;
     }
   };
 
@@ -204,13 +206,14 @@ size_t WispRoster::snapshotClaimsForBroadcast(uint8_t* outBuf,
   return n;
 }
 
-void WispRoster::setLampPaint(const uint8_t mac[6], const uint8_t base[3],
-                              const uint8_t shade[3]) {
+void WispRoster::setLampPaint(const uint8_t mac[6], const uint8_t base[4],
+                              const uint8_t shade[4]) {
   if (xSemaphoreTake(asHandle(mutex_), portMAX_DELAY) != pdTRUE) return;
   const size_t idx = findOwnLocked(mac);
   if (idx != ownCount_) {
-    std::memcpy(ownClaims_[idx].base,  base,  3);
-    std::memcpy(ownClaims_[idx].shade, shade, 3);
+    std::memcpy(ownClaims_[idx].base,  base,  4);
+    std::memcpy(ownClaims_[idx].shade, shade, 4);
+    ownClaims_[idx].painted = true;
   }
   xSemaphoreGive(asHandle(mutex_));
 }
@@ -235,28 +238,25 @@ size_t WispRoster::snapshotPaintForBroadcast(uint8_t* out, size_t cap) {
   return n;
 }
 
-size_t WispRoster::snapshotStateForBroadcast(uint8_t* out, size_t cap) {
-  if (!out) return 0;
+size_t WispRoster::snapshotStateForBroadcast(uint8_t* out, size_t cap,
+                                             uint8_t* w, size_t wCap) {
+  if (!out || !w) return 0;
   if (xSemaphoreTake(asHandle(mutex_), portMAX_DELAY) != pdTRUE) return 0;
-  constexpr size_t kStateEntry = 12;  // mac(6) + base(3) + shade(3)
-  const size_t maxByBuf = cap / kStateEntry;
-  const size_t maxEntries = lamp_protocol::WISP_STATE_MAX_ENTRIES < maxByBuf
-                                ? lamp_protocol::WISP_STATE_MAX_ENTRIES
-                                : maxByBuf;
+  constexpr size_t kStateEntry = lamp_protocol::WISP_STATE_ENTRY_SIZE;
+  constexpr size_t kStateW = lamp_protocol::WISP_STATE_W_SIZE;
+  size_t maxEntries = lamp_protocol::WISP_STATE_MAX_ENTRIES;
+  if (cap / kStateEntry < maxEntries) maxEntries = cap / kStateEntry;
+  if (wCap / kStateW < maxEntries) maxEntries = wCap / kStateW;
   size_t out_i = 0;
   for (size_t i = 0; i < ownCount_ && out_i < maxEntries; ++i) {
     const OwnClaim& c = ownClaims_[i];
-    // Skip an uncolored claim (freshly claimed, not yet assigned): all-zero on
-    // both surfaces is the unpainted sentinel. Packing it paints the lamp
-    // black; its absence lets the lamp hold its own scene until color lands.
-    if (c.base[0] == 0 && c.base[1] == 0 && c.base[2] == 0 &&
-        c.shade[0] == 0 && c.shade[1] == 0 && c.shade[2] == 0) {
-      continue;
-    }
+    if (!c.painted) continue;
     uint8_t* dst = out + out_i * kStateEntry;
     std::memcpy(dst,     c.lampMac, 6);
     std::memcpy(dst + 6, c.base,    3);
     std::memcpy(dst + 9, c.shade,   3);
+    w[out_i * kStateW]     = c.base[3];
+    w[out_i * kStateW + 1] = c.shade[3];
     ++out_i;
   }
   xSemaphoreGive(asHandle(mutex_));

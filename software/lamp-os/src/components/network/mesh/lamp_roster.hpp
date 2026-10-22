@@ -29,6 +29,8 @@
 
 namespace lamp {
 
+struct PendingWispState;
+
 /**
  * One peer in the roster. Identity keys on `mac`, the stable social
  *        identity: the ESP-NOW/HELLO path stores it raw, the BLE-scan path
@@ -59,6 +61,9 @@ struct RosterEntry {
   bool hasMac = false;
   uint32_t lastSeenNearMs = 0;
   uint32_t lastSeenMeshMs = 0;
+  // Last BLE sighting that carried an RSSI, so it moves with lastRssi. A
+  // direct HELLO can renew lastSeenNearMs while lastRssi stands still.
+  uint32_t lastSeenBleMs = 0;
   bool acknowledged = false;  // SocialBehavior's per-MAC greeting state
   // Packed semver (major<<16|minor<<8|patch) from MSG_HELLO.
   // Zero until the first HELLO (BLE adv doesn't carry it).
@@ -97,7 +102,7 @@ struct RosterEntry {
   lamp_protocol::LampVariant variant = lamp_protocol::LampVariant::Unknown;
   // BLE-scan RSSI (dBm). Written only by addOrUpdateFromBle (single-transport
   // invariant for PersonalityEngine hysteresis). -127 = unknown, sorts to back.
-  // getNear() sorts descending; getMesh() does not.
+  // snapshotNear() sorts descending; getMesh() does not.
   int8_t lastRssi = -127;
   // ESP-NOW HELLO RSSI (dBm), written only by addOrUpdateFromEspNow. Distinct
   // from lastRssi (BLE-scan RSSI): feeds the OTA distributor's signal-floor
@@ -119,9 +124,8 @@ static_assert(std::is_trivially_copyable<RosterEntry>::value,
 
 // Compact projection of a near peer for the callback-iteration path. A caller
 // that invokes a user callback per peer copies the near set (snapshotNear)
-// before iterating, so a callback that re-enters getNear/getMesh/getAll can't
-// invalidate the in-flight iteration. Smaller than RosterEntry to keep the
-// reused snapshot buffer light on the fragmented heap.
+// before iterating, so a callback that re-enters getMesh/getAll can't
+// invalidate the in-flight iteration.
 struct NearbyCopy {
   char     name[lamp_protocol::HELLO_MAX_NAME + 1] = {0};
   uint8_t  mac[6] = {0};
@@ -130,9 +134,49 @@ struct NearbyCopy {
   Color    shadeColor = Color();
   int8_t   lastRssi = -127;
   uint32_t lastSeenNearMs = 0;
+  uint32_t lastSeenBleMs = 0;
   lamp_protocol::LampVariant variant = lamp_protocol::LampVariant::Unknown;
 };
 static_assert(std::is_trivially_copyable<NearbyCopy>::value,
+              "snapshot entries must be a trivial copy");
+
+// The fields the OTA scan and expression cascade read off a mesh peer.
+struct MeshPeer {
+  uint32_t firmwareVersion = 0;
+  uint16_t maxChunk = 0;
+  uint8_t  mac[6] = {0};
+  uint8_t  otaSendingTo[6] = {0};
+  uint8_t  fsDigest[8] = {0};
+  char     fwChannel[lamp_protocol::HELLO_FW_CHANNEL_LEN + 1] = {0};
+  uint8_t  otaState = 0;
+  uint8_t  protocolVersion = 0;
+  bool     hasMac = false;
+  bool     hasFsDigest = false;
+  bool     needsFs = false;
+  bool     hasOtaSendingTo = false;
+  int8_t   espnowRssi = -127;
+  int8_t   lastRssi = -127;
+};
+static_assert(std::is_trivially_copyable<MeshPeer>::value,
+              "snapshot entries must be a trivial copy");
+
+// The fields the app-facing nearby JSON renders.
+struct ListedPeer {
+  char     name[lamp_protocol::HELLO_MAX_NAME + 1] = {0};
+  char     fwChannel[lamp_protocol::HELLO_FW_CHANNEL_LEN + 1] = {0};
+  uint8_t  mac[6] = {0};
+  uint8_t  otaSendingTo[6] = {0};
+  Color    baseColor = Color();
+  Color    shadeColor = Color();
+  uint32_t lastSeenNearMs = 0;
+  uint32_t lastSeenMeshMs = 0;
+  uint32_t firmwareVersion = 0;
+  int8_t   lastRssi = -127;
+  uint8_t  otaState = 0;
+  bool     hasMac = false;
+  bool     hasOtaSendingTo = false;
+};
+static_assert(std::is_trivially_copyable<ListedPeer>::value,
               "snapshot entries must be a trivial copy");
 
 /**
@@ -155,6 +199,13 @@ class LampRoster {
 
   LampRoster();
 
+  // `bleAddr` is the six address bytes in display order (most significant
+  // first). Called per lamp advertisement on the NimBLE host task, so it
+  // builds no string.
+  void addOrUpdateFromBle(const char* name, const uint8_t bleAddr[6],
+                          const Color& base, const Color& shade,
+                          int8_t rssi = -127);
+  // Colon-hex form of the above; an unparseable address is ignored.
   void addOrUpdateFromBle(const std::string& name,
                           const std::string& bleAddr,
                           const Color& base, const Color& shade,
@@ -179,25 +230,17 @@ class LampRoster {
   // is older than `maxAgeMs`.
   void prune(uint32_t maxAgeMs);
 
-  // Peers seen via BLE within maxAgeMs, sorted by RSSI descending
-  // (front = physically closest). Returns a reference to an internal buffer
-  // reused across calls to avoid per-call heap churn on the fragmented lamp
-  // heap. Loop-task (Core 1) callers only (LAMP_DEBUG asserts the task); the
-  // result is invalidated by the next getNear/getMesh/getAll call, so a path
-  // that hands each peer to a user callback must snapshotNear first rather
-  // than iterate this reference across the callbacks.
-  std::vector<RosterEntry>& getNear(uint32_t maxAgeMs);
-
-  // Near peers (getNear order, all within maxAgeMs up to kCapacity) projected
-  // into a reused internal buffer. The seam for paths that invoke a user
-  // callback per peer: iterate the returned reference, which a callback
-  // re-entering getNear/getMesh/getAll cannot invalidate (distinct buffers).
-  // Repeated calls with the same maxAgeMs within kSnapshotCacheMs return the
-  // cached copy without re-locking or sorting, so a behavior may call this
-  // per frame; a different maxAgeMs rebuilds.
-  // Keep near-walks non-nested: a snapshotNear called from inside a callback
-  // walking this reference (a forEachNearby/crowd inside a Lions ambient or
-  // Staff arrival callback) silently clobbers the buffer mid-walk. The
+  // Peers seen near within maxAgeMs, sorted by RSSI descending (front =
+  // physically closest; equal RSSI breaks on mac ascending), projected into a
+  // member buffer reserved to kCapacity at construction. Loop-task (Core 1)
+  // only; LAMP_DEBUG asserts the task. Iterate the returned reference across
+  // user callbacks: a callback re-entering getMesh/getAll fills a different
+  // buffer. Repeated calls with the same maxAgeMs within kSnapshotCacheMs
+  // return the cached copy without re-locking or sorting, so a behavior may
+  // call this per frame; a different maxAgeMs rebuilds.
+  // Keep near-walks non-nested: a snapshotNear that rebuilds from inside a
+  // callback walking this reference (a forEachNearby/crowd inside a Lions
+  // ambient or Staff arrival callback) overwrites the buffer mid-walk. The
   // LAMP_DEBUG getter guard catches an off-task caller, not a same-task nest.
   const std::vector<NearbyCopy>& snapshotNear(uint32_t maxAgeMs);
 
@@ -230,17 +273,26 @@ class LampRoster {
     return found;
   }
 
-  // Peers seen via ESP-NOW within maxAgeMs (mesh-reachable; OTA and
-  // remote-config candidates). Same reused-buffer contract as getNear.
-  std::vector<RosterEntry>& getMesh(uint32_t maxAgeMs);
+  // Peers seen via ESP-NOW within maxAgeMs (mesh-reachable; OTA and cascade
+  // candidates), unsorted, in a member buffer reserved to kCapacity at
+  // construction. Loop-task (Core 1) only and non-reentrant; the reference is
+  // invalidated by the next getMesh call. Callers may reorder it in place.
+  std::vector<MeshPeer>& getMesh(uint32_t maxAgeMs);
 
-  // Full snapshot, used by CHAR_NEARBY_LAMPS for the app's unified list.
-  // Same reused-buffer contract as getNear.
-  std::vector<RosterEntry>& getAll();
+  // Every roster entry, for the app-facing nearby list. The buffer is reserved
+  // to kCapacity in one allocation on first use and held until releaseAll, so
+  // it is resident only while an app/webapp client is connected. On a heap too
+  // fragmented for that it reserves just the current count instead, and throws
+  // std::bad_alloc only if that fails too. Same task/reentrancy contract as
+  // getMesh.
+  std::vector<ListedPeer>& getAll();
+  void releaseAll();
 
   // Monotonic counter, bumped on every entry mutation. Change detection
   // for the nearby-JSON cache rebuild in ble_control::tick().
   uint32_t generation();
+
+  size_t size();
 
 #ifdef LAMP_DEBUG
   // The shared getter buffers are non-reentrant and read outside the mutex, so
@@ -287,6 +339,16 @@ class LampRoster {
   void cacheWispStatus(const uint8_t mac[6],
                        const char* json, size_t jsonLen);
 
+  // Cache the latest wispConfig JSON broadcast. Same display-slot admission
+  // as cacheWispStatus. Returns true only when the cached bytes changed,
+  // which is when configLastSeenMs moves. Loop-task-only writer (Core 1).
+  bool cacheWispConfig(const uint8_t mac[6],
+                       const char* json, size_t jsonLen);
+
+  // Copy the cached wispConfig JSON into `out` for the `wispconfig` page
+  // section; "{}" when none is cached or the bounded take times out.
+  void copyWispConfigJson(std::string& out);
+
   // Cache the latest MSG_WISP_PALETTE. Same display-slot admission as
   // cacheWispHello. `rgbw` is `count * 4` interleaved R,G,B,W bytes;
   // `count` is clamped to kMaxWispPaletteColors. Loop-task-only writer
@@ -303,19 +365,14 @@ class LampRoster {
                       const uint8_t lampMacs[][6], uint8_t count,
                       const uint8_t selfMac[6], uint32_t nowMs);
 
-  // Accumulate one MSG_WISP_PAINT frame into the fleet cache. Same
-  // display-slot admission as cacheWispHello. `entries` is
-  // `count * WISP_PAINT_ENTRY_SIZE` bytes: lampMac(6)+baseRGB(3)+shadeRGB(3)
-  // per entry. Loop-task-only writer (Core 1).
-  void cacheWispPaint(const uint8_t srcMac[6],
-                      const uint8_t* entries, uint8_t count,
-                      uint32_t nowMs);
+  // Accumulate one drained MSG_WISP_STATE slot's entries, W included, into
+  // the fleet cache. Same display-slot admission as cacheWispHello.
+  // Loop-task-only writer (Core 1).
+  void cacheWispState(const PendingWispState& slot, uint32_t nowMs);
 
   // Build the binary blob served on CHAR_WISP_CLAIMS and the `wispclaims`
-  // page section: [count:1][mac:6*count][colorPair:6*count], see
-  // WispFleetCache::buildClaimsBlob. Entries beyond (outCap-1)/12 are
-  // dropped, so a small direct-read buffer serves a truncated set while
-  // the page section serves the full accumulation.
+  // page section, see WispFleetCache::buildClaimsBlob for what a small
+  // `outCap` drops.
   size_t buildWispClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs);
 
   // Record the source of an addressed wisp OVERRIDE_COLORS frame and assert
@@ -334,10 +391,10 @@ class LampRoster {
   // bounded take times out. The unicast target for the lamp's wisp control op.
   bool copyDisplayWispMac(uint8_t out[6], uint32_t nowMs);
 
-  // Build and return the JSON to serve on CHAR_WISP_STATUS reads.
-  // Merges the cached wispStatus payload with the last MSG_WISP_HELLO
-  // data. Returns "{}" if nothing has been cached for either path.
-  std::string getWispStatusReadJson();
+  // Build and return the merged wispStatus JSON (see mergeWispStatusJson).
+  // `maxLen` 0 serves it whole for the `wispstatus` page section;
+  // CHAR_WISP_STATUS passes kWispStatusCharMaxLen.
+  std::string getWispStatusReadJson(size_t maxLen);
 
   // Copy the cached manual palette (interleaved R,G,B,W per color) into
   // `out`, returning bytes written. Served on the `wisppalette` page
@@ -362,11 +419,10 @@ class LampRoster {
  private:
   LampWispStateProvider lampWispStateProvider_ = nullptr;
   std::array<RosterEntry, kCapacity> store_;
-  // Reused snapshot buffers for getNear/getMesh/getAll. Core-1-only, refilled
-  // in place so a steady-state query never allocates once warmed.
-  std::vector<RosterEntry> nearBuf_;
-  std::vector<RosterEntry> meshBuf_;
-  std::vector<RosterEntry> allBuf_;
+  // Core-1-only snapshot buffers. meshBuf_ and nearSnapshot_ are reserved to
+  // kCapacity at construction so a growing roster never reallocates them.
+  std::vector<MeshPeer> meshBuf_;
+  std::vector<ListedPeer> allBuf_;
   std::vector<NearbyCopy> nearSnapshot_;
   uint32_t lastSnapshotMs_ = 0;
   uint32_t lastSnapshotMaxAge_ = 0;

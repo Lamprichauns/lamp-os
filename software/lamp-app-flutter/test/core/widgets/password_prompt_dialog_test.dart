@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:lamp_app/core/lamp_password.dart';
 import 'package:lamp_app/core/widgets/password_prompt_dialog.dart';
 
 /// Mounts an Open button that calls [showPasswordPromptDialog] and
@@ -143,5 +144,55 @@ void main() {
     expect(find.byKey(const Key('password-prompt-field')), findsNothing);
     expect(captured, 'correct');
     expect(callCount, 2);
+  });
+
+  testWidgets('validate blocks a rejected password and keeps the dialog open',
+      (tester) async {
+    String? captured;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (ctx) {
+        return TextButton(
+          onPressed: () async {
+            captured = await showPasswordPromptDialog(
+              ctx,
+              title: 'Change password',
+              validate: lampPasswordError,
+            );
+          },
+          child: const Text('open'),
+        );
+      }),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    await tester.enterText(
+        find.byKey(const Key('password-prompt-field')), 'short');
+    await tester.tap(find.byKey(const Key('password-prompt-confirm')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.text('Must be at least 8 characters'), findsOneWidget);
+    expect(find.byKey(const Key('password-prompt-field')), findsOneWidget);
+    expect(captured, isNull);
+
+    await tester.enterText(
+        find.byKey(const Key('password-prompt-field')), 'longenough');
+    await tester.tap(find.byKey(const Key('password-prompt-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('password-prompt-field')), findsNothing);
+    expect(captured, 'longenough');
+  });
+
+  test('lampPasswordError bounds match the firmware WPA2 window', () {
+    expect(lampPasswordError('short'), 'Must be at least 8 characters');
+    expect(lampPasswordError('a' * 8), isNull);
+    expect(lampPasswordError('a' * 16), isNull);
+    expect(lampPasswordError('a' * 17), 'Must be at most 16 characters');
+    expect(lampPasswordError('caf\u00e9pass'), 'Letters, numbers and symbols only');
+    expect(lampPasswordError('p@ss w0rd!'), isNull);
   });
 }

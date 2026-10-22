@@ -28,6 +28,7 @@ the caller side, the framework already wires + ticks the engine.
 | `crowdDimFactor()` | `float [floor, 1.0]` | Ready-to-use brightness multiplier, log-curved + per-mode floored | You want to dim your lamp the same way personality does |
 | `smoothedCrowdWeight()` | `float [0, ∞)` | Raw weighted W, the signal that feeds `crowdDimFactor()` before curve/floor | You want to apply your own curve, floor, or target axis |
 | `crowdComposition()` | `CrowdComposition` (5 `uint8_t` counts) | Currently-visible peer counts by disposition | You want to react to specific disposition patterns |
+| `nearbyPeers()` | `const std::vector<NearbyCopy>&` | The BLE-reachable near view the engine samples, or the `inject_nearby` override while one is active | You want the same peers crowd-dim and Moments see |
 | `greetingFor(lampId)` | `GreetingTuning` struct | The greeting waveform the engine would play for that peer | You're driving your own greeting renderer on a non-Standard lamp |
 
 `CrowdComposition`:
@@ -126,7 +127,7 @@ disposition the same way the rest of the fleet does.
 ## What's NOT exposed (and why)
 
 - **Per-peer raw RSSI**, already on `LampRoster` directly. Iterate
-  `lampRoster.getNear(...)` if you need distance.
+  `lampRoster.snapshotNear(...)` if you need distance.
 - **The smoothing state buffer** (`sampleBuf_`, `sampleHead_`,
   `emaSeeded_`), internal to the smoother. Leaking it would freeze
   the smoother's internals as an external contract; don't want that.

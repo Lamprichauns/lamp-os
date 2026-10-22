@@ -1,7 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
-#include <map>
+#include <cstring>
+#include <initializer_list>
+#include <utility>
 #include <string>
 #include <variant>
 #include <vector>
@@ -17,6 +20,25 @@ namespace lamp {
 // color, so a configured lamp never matches.
 constexpr Color kBaseDefaultColor(0x30, 0x07, 0x83, 0x00);
 constexpr Color kShadeDefaultColor(0x00, 0x00, 0x00, 0xFF);
+
+// True when both roles still hold exactly what applyDefaults() installed: the
+// variant's injected hex where it supplies one, the class default where it
+// omits the field. A variant that omits a color never equals its own empty hex
+// string, so the fallback has to mirror applyDefaults or the role reads as
+// user-configured on a factory lamp.
+inline bool colorsAreFactoryDefault(const std::vector<Color>& baseColors,
+                                    const std::vector<Color>& shadeColors,
+                                    const std::string& variantBaseHex,
+                                    const std::string& variantShadeHex) {
+  const Color baseDefault = variantBaseHex.empty()
+                                ? kBaseDefaultColor
+                                : hexStringToColor(variantBaseHex);
+  const Color shadeDefault = variantShadeHex.empty()
+                                 ? kShadeDefaultColor
+                                 : hexStringToColor(variantShadeHex);
+  return baseColors.size() == 1 && baseColors[0] == baseDefault &&
+         shadeColors.size() == 1 && shadeColors[0] == shadeDefault;
+}
 
 // Name a fresh lamp loads from empty NVS, and the sentinel a variant replaces
 // with its own default in applyDefaults(). A stored name equal to this or the
@@ -168,6 +190,151 @@ inline bool resolveNamed(bool namedKeyPresent, bool loadedNamed,
   return variantDefault.empty() || name != variantDefault;
 }
 
+// Caps on stored and incoming expressions (config entries, upserts, mesh
+// invocations). Colours and the target range match the app's editor; 21
+// entries holds every type at every target on the largest variant (staff, 7
+// types x 3). The stored config fits NVS at these caps; see
+// docs/dev/embedded-heap.md.
+constexpr uint8_t kExpressionTargetMin = 1;
+constexpr uint8_t kExpressionTargetMax = 3;
+constexpr size_t kMaxExpressionColors = 8;
+constexpr size_t kMaxExpressionParams = 12;
+constexpr size_t kMaxExpressions = 21;
+constexpr size_t kMaxExpressionTypeLen = 15;
+
+// Caps on the rest of the stored config, so its JSON has a known ceiling.
+// Surface colours sit above the app's 6 stops; segments above the most any
+// variant defines (3); SSIDs are 32 bytes by 802.11.
+constexpr size_t kMaxSurfaceColors = 8;
+constexpr size_t kMaxSegments = 4;
+constexpr size_t kMaxSegmentNameLen = 16;
+constexpr size_t kMaxPasswordLen = 64;
+constexpr size_t kMaxSsidLen = 32;
+constexpr size_t kMaxDisabledExpressionTypes = 8;
+
+// True for an expression type id as the registry names them: lowercase
+// letters, digits and '_' (so it never needs JSON escaping), 1 to
+// kMaxExpressionTypeLen bytes.
+inline bool isExpressionTypeId(const char* s) {
+  if (!s || !*s) return false;
+  size_t n = 0;
+  for (; s[n]; ++n) {
+    const char c = s[n];
+    if (n == kMaxExpressionTypeLen) return false;
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+  }
+  return true;
+}
+
+// Every parameter key an expression reads, in byte-wise order (the order the
+// wire JSON carries them). A split save's expression records carry a key as
+// its index here, so the table is append-only: never reorder or remove an
+// entry, and an appended key out of byte-wise order changes the wire's key
+// order. A key not listed has no reader and is dropped at parse.
+inline constexpr const char* kExpressionParamKeys[] = {
+    "breathSpeed",  "cascadeEnabled",   "cascadeStaggerMs", "count",
+    "durationMax",  "durationMin",      "easing",           "fadeDuration",
+    "fillMode",     "fire",             "fullStrip",        "loop",
+    "opacity",      "posMax",           "posMin",           "pulseSpeed",
+    "scatter",      "shiftDurationMax", "shiftDurationMin", "size",
+    "spotSpeed",    "travel",
+};
+constexpr size_t kExpressionParamKeyCount =
+    sizeof(kExpressionParamKeys) / sizeof(kExpressionParamKeys[0]);
+
+// Index of `key` in kExpressionParamKeys, or -1 when it has no reader.
+inline int expressionParamKeyIndex(const char* key) {
+  for (size_t i = 0; i < kExpressionParamKeyCount; ++i) {
+    if (std::strcmp(kExpressionParamKeys[i], key) == 0) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+// An expression's parameters: one optional uint32 per kExpressionParamKeys
+// slot, so it holds every key without allocating, copies as a plain value,
+// and iterates in key-index order (byte-wise key order, the order the wire
+// JSON has always carried). A key with no index is never stored. Parse sites
+// cap how many keys arrive (kMaxExpressionParams); the container itself can
+// hold all of them, so registry defaults always fit on top.
+class ExpressionParams {
+ public:
+  struct Item {
+    const char* first;
+    uint32_t second;
+  };
+  class Iterator {
+   public:
+    Iterator(const ExpressionParams* p, size_t i) : p_(p), i_(i) { skip(); }
+    Item operator*() const { return {kExpressionParamKeys[i_], p_->values_[i_]}; }
+    Iterator& operator++() {
+      ++i_;
+      skip();
+      return *this;
+    }
+    bool operator!=(const Iterator& o) const { return i_ != o.i_; }
+
+   private:
+    void skip() {
+      while (i_ < kExpressionParamKeyCount && !(p_->present_ & (1u << i_))) ++i_;
+    }
+    const ExpressionParams* p_;
+    size_t i_;
+  };
+
+  ExpressionParams() = default;
+  ExpressionParams(std::initializer_list<std::pair<const char*, uint32_t>> items) {
+    for (const auto& kv : items) set(kv.first, kv.second);
+  }
+
+  Iterator begin() const { return Iterator(this, 0); }
+  Iterator end() const { return Iterator(this, kExpressionParamKeyCount); }
+  size_t size() const { return static_cast<size_t>(__builtin_popcount(present_)); }
+  bool empty() const { return present_ == 0; }
+  void clear() { present_ = 0; }
+
+  // Value for `key`, or `fallback` when absent or unknown.
+  uint32_t get(const char* key, uint32_t fallback) const {
+    const int i = expressionParamKeyIndex(key);
+    return i >= 0 && (present_ & (1u << i)) ? values_[i] : fallback;
+  }
+  bool contains(const char* key) const {
+    const int i = expressionParamKeyIndex(key);
+    return i >= 0 && (present_ & (1u << i));
+  }
+  // False, storing nothing, when `key` has no index.
+  bool set(const char* key, uint32_t value) {
+    const int i = expressionParamKeyIndex(key);
+    if (i < 0) return false;
+    setIndex(static_cast<size_t>(i), value);
+    return true;
+  }
+  // Sets `key` only when absent.
+  void setDefault(const char* key, uint32_t value) {
+    if (!contains(key)) set(key, value);
+  }
+  void setIndex(size_t index, uint32_t value) {
+    present_ |= 1u << index;
+    values_[index] = value;
+  }
+  void erase(const char* key) {
+    const int i = expressionParamKeyIndex(key);
+    if (i >= 0) present_ &= ~(1u << i);
+  }
+
+  bool operator==(const ExpressionParams& o) const {
+    if (present_ != o.present_) return false;
+    for (size_t i = 0; i < kExpressionParamKeyCount; ++i) {
+      if ((present_ & (1u << i)) && values_[i] != o.values_[i]) return false;
+    }
+    return true;
+  }
+
+ private:
+  static_assert(kExpressionParamKeyCount <= 32, "presence mask is one uint32");
+  uint32_t present_ = 0;
+  std::array<uint32_t, kExpressionParamKeyCount> values_{};
+};
+
 /**
  * Configuration for a single expression with generic parameter system
  */
@@ -180,21 +347,12 @@ class ExpressionConfig {
   uint32_t intervalMax = 900;      // Max interval in seconds
   uint8_t target = 3;              // TARGET_SHADE=1, TARGET_BASE=2, TARGET_BOTH=3
 
-  // Generic parameter storage for expression-specific values
-  std::map<std::string, uint32_t> parameters;
+  ExpressionParams parameters;
 
-  // Helper methods for parameter access
-  uint32_t getParameter(const std::string& name, uint32_t defaultValue) const {
-    auto it = parameters.find(name);
-    if (it != parameters.end()) {
-      return it->second;
-    }
-    return defaultValue;
+  uint32_t getParameter(const char* name, uint32_t defaultValue) const {
+    return parameters.get(name, defaultValue);
   }
-
-  void setParameter(const std::string& name, uint32_t value) {
-    parameters[name] = value;
-  }
+  void setParameter(const char* name, uint32_t value) { parameters.set(name, value); }
 };
 
 class ExpressionSettings {

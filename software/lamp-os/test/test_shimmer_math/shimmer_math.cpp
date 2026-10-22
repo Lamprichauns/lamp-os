@@ -1,8 +1,11 @@
 #include <unity.h>
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "expressions/shimmer/shimmer_math.hpp"
 #include "util/color.hpp"
+#include "util/fast_rng.hpp"
 
 using namespace lamp;
 
@@ -110,7 +113,7 @@ void test_roll_wind_target_still_air_is_zero() {
 }
 
 void test_next_gust_at_within_dwell_window() {
-  const FireStyle s = fireStyle(2);  // Candle, gust [4500, 9000]
+  const FireStyle s = fireStyle(2);  // Candle
   LoRng lo;
   HiRng hi;
   TEST_ASSERT_EQUAL_UINT32(5000u + s.gustLoMs, nextGustAt(5000u, s, lo));
@@ -144,7 +147,9 @@ void test_flutter_calm_styles_unperturbed() {
     const FireStyle s = fireStyle(idx);
     TEST_ASSERT_EQUAL_FLOAT(0.0f, s.flutterAmp);
     CountingRng rng;
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, advanceFlutter(0.25f, s.flutterAmp, rng));
+    Flutter f{0.25f, 0.25f, 0};
+    TEST_ASSERT_EQUAL_FLOAT(
+        0.0f, advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 16, rng));
     TEST_ASSERT_EQUAL_UINT32(0, rng.calls);
   }
 }
@@ -156,25 +161,192 @@ void test_flutter_stays_within_amplitude() {
   // it must never escape [-amp, +amp].
   HiRng hi;
   LoRng lo;
-  float f = 0.0f;
-  for (int i = 0; i < 200; ++i) {
-    f = advanceFlutter(f, candle.flutterAmp, hi);
-    TEST_ASSERT_TRUE(f <= candle.flutterAmp + 1e-4f);
-    TEST_ASSERT_TRUE(f >= -candle.flutterAmp - 1e-4f);
+  Flutter f;
+  for (int i = 0; i < 400; ++i) {
+    const float v = advanceFlutter(f, candle.flutterAmp, candle.flutterStepMs,
+                                   16, hi);
+    TEST_ASSERT_TRUE(v <= candle.flutterAmp + 1e-4f);
+    TEST_ASSERT_TRUE(v >= -candle.flutterAmp - 1e-4f);
   }
-  for (int i = 0; i < 200; ++i) {
-    f = advanceFlutter(f, candle.flutterAmp, lo);
-    TEST_ASSERT_TRUE(f <= candle.flutterAmp + 1e-4f);
-    TEST_ASSERT_TRUE(f >= -candle.flutterAmp - 1e-4f);
+  for (int i = 0; i < 400; ++i) {
+    const float v = advanceFlutter(f, candle.flutterAmp, candle.flutterStepMs,
+                                   16, lo);
+    TEST_ASSERT_TRUE(v <= candle.flutterAmp + 1e-4f);
+    TEST_ASSERT_TRUE(v >= -candle.flutterAmp - 1e-4f);
   }
 }
 
+// Runs a flutter at a fixed frame period and records the shown value at every
+// multiple of sampleMs, over totalMs of wall time.
+static std::vector<float> flutterTrace(float amp, uint32_t stepMs,
+                                       uint32_t frameMs, uint32_t sampleMs,
+                                       uint32_t totalMs) {
+  FastRng rng(12345);
+  Flutter f;
+  std::vector<float> out;
+  for (uint32_t t = frameMs; t <= totalMs; t += frameMs) {
+    const float v = advanceFlutter(f, amp, stepMs, frameMs, rng);
+    if (t % sampleMs == 0) out.push_back(v);
+  }
+  return out;
+}
+
+void test_flutter_is_frame_rate_independent() {
+  // 33 ms (~30 fps) and 8 ms (125 fps) frames over the same wall time, sampled
+  // where both land on a frame: the same seed shows the same value, for every
+  // flame style's step period.
+  for (uint32_t idx = 2; idx <= 3; ++idx) {
+    const FireStyle s = fireStyle(idx);
+    const auto slow = flutterTrace(s.flutterAmp, s.flutterStepMs, 33, 264, 26400);
+    const auto fast = flutterTrace(s.flutterAmp, s.flutterStepMs, 8, 264, 26400);
+    TEST_ASSERT_EQUAL_UINT32(100, slow.size());
+    TEST_ASSERT_EQUAL_UINT32(slow.size(), fast.size());
+    for (size_t i = 0; i < slow.size(); ++i) {
+      TEST_ASSERT_FLOAT_WITHIN(1e-5f, slow[i], fast[i]);
+    }
+  }
+}
+
+void test_flutter_zero_delta_holds() {
+  FastRng rng(7);
+  CountingRng counter;
+  Flutter f;
+  const FireStyle s = fireStyle(2);
+  const float a = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 130, rng);
+  const Flutter before = f;
+  const float b = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 0, counter);
+  TEST_ASSERT_EQUAL_FLOAT(a, b);
+  TEST_ASSERT_EQUAL_UINT32(0, counter.calls);
+  TEST_ASSERT_EQUAL_UINT32(before.carryMs, f.carryMs);
+}
+
+void test_flutter_large_delta_bounded() {
+  // A stall of any length catches up at most kFlutterMaxCatchUpMs of steps,
+  // stays in band and leaves less than one step pending.
+  const FireStyle s = fireStyle(3);
+  CountingRng rng;
+  Flutter f;
+  const float v = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 0xFFFFFFFFu, rng);
+  TEST_ASSERT_EQUAL_UINT32(kFlutterMaxCatchUpMs / s.flutterStepMs, rng.calls);
+  TEST_ASSERT_TRUE(f.carryMs < s.flutterStepMs);
+  TEST_ASSERT_TRUE(v <= s.flutterAmp + 1e-4f && v >= -s.flutterAmp - 1e-4f);
+}
+
+// Flutter brightness travel per second, at 60 fps over 10 s.
+static float flutterTravelPerSecond(const FireStyle& s) {
+  FastRng rng(99);
+  Flutter f;
+  float prev = 0.0f;
+  float travel = 0.0f;
+  for (uint32_t t = 0; t < 10000; t += 16) {
+    const float v = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 16, rng);
+    travel += std::fabs(v - prev);
+    prev = v;
+  }
+  return travel / 10.0f;
+}
+
+void test_candle_flutter_travel_per_second_bounded() {
+  TEST_ASSERT_TRUE(flutterTravelPerSecond(fireStyle(2)) <= 0.20f);
+}
+
+void test_candle_heat_closes_at_most_4pct_per_frame() {
+  TEST_ASSERT_TRUE(approachFactor(16, fireStyle(2).stepMs) <= 0.04f);
+}
+
+void test_campfire_flutter_travel_per_second_bounded() {
+  TEST_ASSERT_TRUE(flutterTravelPerSecond(fireStyle(3)) <= 0.15f);
+}
+
+void test_campfire_heat_closes_at_most_6pct_per_frame() {
+  TEST_ASSERT_TRUE(approachFactor(16, fireStyle(3).stepMs) <= 0.06f);
+}
+
+void test_flutter_glides_between_steps() {
+  // Halfway through a step the shown value is halfway between the two points.
+  CountingRng rng;
+  Flutter f{0.0f, 0.02f, 40};
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.01f, advanceFlutter(f, 0.04f, 80, 0, rng));
+  TEST_ASSERT_EQUAL_UINT32(0, rng.calls);
+}
+
+void test_flutter_frame_moves_at_most_its_share_of_a_step() {
+  // At 16 ms frames each frame moves at most step * 16 / flutterStepMs.
+  for (uint32_t idx = 2; idx <= 3; ++idx) {
+    const FireStyle s = fireStyle(idx);
+    const float maxMove =
+        s.flutterAmp * kFlutterStepFrac * 16.0f / s.flutterStepMs + 1e-5f;
+    FastRng rng(4242);
+    Flutter f;
+    float prev = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 0, rng);
+    for (int i = 0; i < 2000; ++i) {
+      const float v = advanceFlutter(f, s.flutterAmp, s.flutterStepMs, 16, rng);
+      TEST_ASSERT_TRUE(std::fabs(v - prev) <= maxMove);
+      prev = v;
+    }
+  }
+}
+
+void test_calm_styles_pinned() {
+  const FireStyle t = fireStyle(0);  // Twinkle
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, t.restLevel);
+  TEST_ASSERT_EQUAL_FLOAT(0.02f, t.amp);
+  TEST_ASSERT_EQUAL_UINT32(900, t.stepMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, t.windAmp);
+  TEST_ASSERT_EQUAL_UINT32(0, t.gustLoMs);
+  TEST_ASSERT_EQUAL_UINT32(0, t.gustHiMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.030f, t.sparkChance);
+  TEST_ASSERT_EQUAL_FLOAT(0.60f, t.sparkLo);
+  TEST_ASSERT_EQUAL_FLOAT(1.00f, t.sparkHi);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, t.flutterAmp);
+  TEST_ASSERT_EQUAL_UINT32(0, t.flutterStepMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.15f, t.warmthSwing);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, t.whiteHot);
+  TEST_ASSERT_EQUAL_FLOAT(0.80f, t.minBright);
+  const FireStyle c = fireStyle(1);  // Coals
+  TEST_ASSERT_EQUAL_FLOAT(0.06f, c.restLevel);
+  TEST_ASSERT_EQUAL_FLOAT(0.05f, c.amp);
+  TEST_ASSERT_EQUAL_UINT32(1600, c.stepMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, c.windAmp);
+  TEST_ASSERT_EQUAL_UINT32(0, c.gustLoMs);
+  TEST_ASSERT_EQUAL_UINT32(0, c.gustHiMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.045f, c.sparkChance);
+  TEST_ASSERT_EQUAL_FLOAT(0.55f, c.sparkLo);
+  TEST_ASSERT_EQUAL_FLOAT(0.85f, c.sparkHi);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, c.flutterAmp);
+  TEST_ASSERT_EQUAL_UINT32(0, c.flutterStepMs);
+  TEST_ASSERT_EQUAL_FLOAT(0.30f, c.warmthSwing);
+  TEST_ASSERT_EQUAL_FLOAT(0.00f, c.whiteHot);
+  TEST_ASSERT_EQUAL_FLOAT(0.40f, c.minBright);
+}
+
+void test_liveliness_order() {
+  // Coals < Candle < Campfire: faster heat easing, faster flutter, deeper wind.
+  TEST_ASSERT_TRUE(fireStyle(1).stepMs > fireStyle(2).stepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).stepMs > fireStyle(3).stepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).flutterStepMs > fireStyle(3).flutterStepMs);
+  TEST_ASSERT_TRUE(fireStyle(2).windAmp < fireStyle(3).windAmp);
+}
+
 void test_approach_heat_moves_toward_target() {
-  const float a = approachHeat(0.0f, 1.0f, 90, 180);   // half a step
+  const float a = approachHeat(0.0f, 1.0f, approachFactor(90, 180));
   TEST_ASSERT_TRUE(a > 0.0f && a < 1.0f);
-  const float full = approachHeat(0.0f, 1.0f, 500, 180);  // dt > step, cap at target
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, full);
-  TEST_ASSERT_EQUAL_FLOAT(1.0f, approachHeat(0.3f, 1.0f, 10, 0));  // stepMs 0 snaps
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, approachHeat(0.3f, 1.0f, approachFactor(10, 0)));
+}
+
+void test_approach_frame_rate_independent() {
+  // Two 8 ms draws land where one 16 ms draw does.
+  const float k8 = approachFactor(8, 220);
+  const float twice = approachHeat(approachHeat(0.0f, 1.0f, k8), 1.0f, k8);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, approachHeat(0.0f, 1.0f, approachFactor(16, 220)),
+                           twice);
+}
+
+void test_approach_zero_and_large_delta_stable() {
+  TEST_ASSERT_EQUAL_FLOAT(0.4f, approachHeat(0.4f, 0.9f, approachFactor(0, 500)));
+  const float k = approachFactor(0xFFFFFFFFu, 500);
+  TEST_ASSERT_TRUE(k >= 0.0f && k <= 1.0f);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.9f, approachHeat(0.4f, 0.9f, k));
 }
 
 void test_heat_brightness_monotonic_with_floor() {
@@ -256,6 +428,80 @@ void test_warmth_modulate_black_anchor_stays_black() {
   TEST_ASSERT_EQUAL_UINT8(0, hot.w);  // no fake-fire: shimmer of nothing is nothing
 }
 
+void test_spark_target_lands_in_the_spark_band() {
+  const FireStyle twinkle = fireStyle(0);
+  LoRng lo;
+  HiRng hi;
+  TEST_ASSERT_EQUAL_FLOAT(twinkle.sparkLo, rollSparkTarget(twinkle, lo));
+  TEST_ASSERT_EQUAL_FLOAT(twinkle.sparkHi, rollSparkTarget(twinkle, hi));
+}
+
+// Twinkle at the burst paint threshold paints its anchor, so a spark crossing
+// it fades in and out of the surface with no step. A saturated channel has no
+// headroom to brighten into, so the anchors stay below full scale.
+void test_burst_threshold_paints_the_anchor() {
+  const FireStyle twinkle = fireStyle(0);
+  const Color anchors[] = {Color(200, 120, 40, 0), Color(40, 80, 220, 30),
+                           Color(180, 180, 180, 180)};
+  for (const Color& a : anchors) {
+    const Color p = shimmerPaint(a, kBurstPaintHeat, twinkle, 1.0f);
+    TEST_ASSERT_INT_WITHIN(a.r / 25 + 2, a.r, p.r);
+    TEST_ASSERT_INT_WITHIN(a.g / 25 + 2, a.g, p.g);
+    TEST_ASSERT_INT_WITHIN(a.b / 25 + 2, a.b, p.b);
+  }
+}
+
+// Steps a spark at the compositor's 16 ms cadence and returns its peak heat
+// and its heat at the frame the burst completes.
+static void runBurst(uint32_t burstMs, float target, float& peak, float& atEnd) {
+  float heat = 0.0f;
+  float t = target;
+  peak = 0.0f;
+  for (uint32_t ms = 16;; ms += 16) {
+    if (burstFalling(ms, burstMs)) t = 0.0f;
+    heat = approachHeat(heat, t, approachFactor(16, burstStepMs(burstMs)));
+    peak = std::max(peak, heat);
+    if (burstDone(ms, burstMs)) break;
+  }
+  atEnd = heat;
+}
+
+void test_burst_spark_rises_visible_and_ends_dark() {
+  const FireStyle twinkle = fireStyle(0);
+  for (uint32_t ms : {160u, 700u, 2000u}) {
+    float peak = 0.0f, atEnd = 1.0f;
+    runBurst(ms, twinkle.sparkLo, peak, atEnd);
+    TEST_ASSERT_TRUE_MESSAGE(peak > kBurstPaintHeat, "weakest spark never shows");
+    TEST_ASSERT_TRUE_MESSAGE(atEnd < kBurstPaintHeat, "spark still lit at completion");
+    runBurst(ms, twinkle.sparkHi, peak, atEnd);
+    TEST_ASSERT_TRUE_MESSAGE(atEnd < kBurstPaintHeat, "hottest spark lit at completion");
+  }
+}
+
+// A tinted star starts from the colour under it and reaches the tint's own
+// ramp at the hottest spark.
+void test_tinted_burst_fades_from_the_anchor_to_the_tint() {
+  const FireStyle twinkle = fireStyle(0);
+  const Color anchor(200, 40, 0, 0);
+  const Color tint(0, 0, 220, 0);
+  const Color cool = tintedBurstPaint(anchor, tint, kBurstPaintHeat, twinkle);
+  TEST_ASSERT_TRUE(cool == anchor);
+  const Color hot = tintedBurstPaint(anchor, tint, 1.0f, twinkle);
+  TEST_ASSERT_TRUE(hot == shimmerPaint(tint, 1.0f, twinkle, 1.0f));
+  const Color mid = tintedBurstPaint(anchor, tint, 0.7f, twinkle);
+  TEST_ASSERT_TRUE(mid.b > 0 && mid.b < hot.b);
+}
+
+void test_burst_length_clamps() {
+  TEST_ASSERT_EQUAL_UINT32(kBurstMinMs, clampBurstMs(1));
+  TEST_ASSERT_EQUAL_UINT32(kBurstMaxMs, clampBurstMs(60000));
+  TEST_ASSERT_EQUAL_UINT32(700, clampBurstMs(700));
+  TEST_ASSERT_FALSE(burstFalling(349, 700));
+  TEST_ASSERT_TRUE(burstFalling(350, 700));
+  TEST_ASSERT_FALSE(burstDone(699, 700));
+  TEST_ASSERT_TRUE(burstDone(700, 700));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_fire_style_table_values);
@@ -270,7 +516,20 @@ int main(int, char**) {
   RUN_TEST(test_fire_styles_split_sparkle_and_flame);
   RUN_TEST(test_flutter_calm_styles_unperturbed);
   RUN_TEST(test_flutter_stays_within_amplitude);
+  RUN_TEST(test_flutter_is_frame_rate_independent);
+  RUN_TEST(test_flutter_zero_delta_holds);
+  RUN_TEST(test_flutter_large_delta_bounded);
+  RUN_TEST(test_candle_flutter_travel_per_second_bounded);
+  RUN_TEST(test_candle_heat_closes_at_most_4pct_per_frame);
+  RUN_TEST(test_campfire_flutter_travel_per_second_bounded);
+  RUN_TEST(test_campfire_heat_closes_at_most_6pct_per_frame);
+  RUN_TEST(test_flutter_glides_between_steps);
+  RUN_TEST(test_flutter_frame_moves_at_most_its_share_of_a_step);
+  RUN_TEST(test_calm_styles_pinned);
+  RUN_TEST(test_liveliness_order);
   RUN_TEST(test_approach_heat_moves_toward_target);
+  RUN_TEST(test_approach_frame_rate_independent);
+  RUN_TEST(test_approach_zero_and_large_delta_stable);
   RUN_TEST(test_heat_brightness_monotonic_with_floor);
   RUN_TEST(test_warmth_modulate_neutral_returns_anchor);
   RUN_TEST(test_warmth_modulate_direction_warm_anchor);
@@ -278,5 +537,10 @@ int main(int, char**) {
   RUN_TEST(test_warmth_modulate_zero_swing_is_pure_brightness);
   RUN_TEST(test_warmth_modulate_cool_anchor_valid);
   RUN_TEST(test_warmth_modulate_black_anchor_stays_black);
+  RUN_TEST(test_spark_target_lands_in_the_spark_band);
+  RUN_TEST(test_burst_threshold_paints_the_anchor);
+  RUN_TEST(test_burst_spark_rises_visible_and_ends_dark);
+  RUN_TEST(test_tinted_burst_fades_from_the_anchor_to_the_tint);
+  RUN_TEST(test_burst_length_clamps);
   return UNITY_END();
 }

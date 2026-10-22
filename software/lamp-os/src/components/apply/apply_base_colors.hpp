@@ -4,12 +4,14 @@
 //   baseColorsToConfig: user-direct BLE write. Mutates config.base.colors
 //                       so a later CHAR_COMMIT can persist the user's
 //                       choice. Then calls the existing render path.
-//   baseColorsToRender: mesh-relayed cascade. Render-only. Matches
+//   baseColorsToRender: the app's CHAR_REMOTE_OP write. Render-only. Matches
 //                       applyBaseColorsLocal behavior exactly.
 
 #pragma once
 
 #include <ArduinoJson.h>
+
+#include <algorithm>
 
 #include <vector>
 
@@ -35,16 +37,17 @@ namespace apply {
 inline void baseColorsToConfig(JsonArray arr) {
   if (arr.isNull() || arr.size() == 0) return;
   std::vector<Color> next;
-  next.reserve(arr.size());
+  next.reserve(std::min(arr.size(), kMaxSurfaceColors));
   for (JsonVariant v : arr) {
+    if (next.size() == kMaxSurfaceColors) break;
     next.push_back(hexStringToColor(v));
   }
   ::config.base.broadcastColors() = next;
   ::lamp::renderBaseColors(arr);
 }
 
-// Cascade-source variant. Render-only.
-// Does NOT mutate config so cascade transients cannot contaminate a
+// Remote-op variant. Render-only.
+// Does NOT mutate config so a preview cannot contaminate a
 // subsequent CHAR_COMMIT persistence sweep.
 inline void baseColorsToRender(JsonArray arr) {
   ::lamp::renderBaseColors(arr);

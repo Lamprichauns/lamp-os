@@ -26,9 +26,10 @@ any nearby peer running an older version. No central scheduler.
 - **Event-driven targeting** (not scan-based): `SocialBehavior` already iterates
   nearby peers each tick; when the distributor is `Idle` and a peer's version <
   ours, it calls `considerPeerForOta(peerMac, peerVersion, ...)` — throttled to
-  `kOtaScanIntervalMs` (500 ms) and gated by a **receive-first policy**: a lamp
-  skips all outbound offers while it is itself receiving, or while any reachable
-  peer advertises a *higher* version (let the newest image flow inward first).
+  `kOtaScanIntervalMs` (500 ms; superseded by a 1 s interval, see the currency
+  note below) and gated by a **receive-first policy**: a lamp skips all outbound
+  offers while it is itself receiving, or while any reachable peer advertises a
+  *higher* version (let the newest image flow inward first).
   Single peer per session; the fleet propagates by gossip (whoever-is-higher
   offers whoever-is-lower, in range).
 - **Sender-side type/channel gate**: a distributor skips offering to a peer whose
@@ -132,6 +133,14 @@ and (with upfront-erase) reliable at speed without the erase-stall failure class
 
 > **Currency note.** A sibling **filesystem-image OTA** (`fs_ota`, signed via
 > `scripts/sign_fs.py`, state carried in `HELLO_TLV_FS_STATE`) now rides the same
-> `SocialBehavior` targeting path and chunk transport described here. This ADR
-> covers the firmware-image case; the FS-image path is the same shape applied to
-> the SPIFFS partition.
+> targeting path and chunk transport described here. The scan interval was
+> raised to 1 s while targeting still lived in `SocialBehavior`. Targeting has
+> since moved into the framework loop (`tickOtaOffers`,
+> `components/firmware/ota_offer.cpp`), keeping that 1 s interval
+> (`OtaOfferThrottle::kIntervalMs`) and holding offers until the compositor's
+> startup phase ends, so every variant offers in every mode. The scan also runs
+> through the distributor's own inter-session quiet hold after a session that
+> ended Done, so the next session arms inside it and inherits its quiet as
+> designed; after a failed session the hold expires as before. This ADR covers
+> the firmware-image case; the FS-image path is the same shape applied to the
+> SPIFFS partition.

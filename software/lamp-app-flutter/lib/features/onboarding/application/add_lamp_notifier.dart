@@ -13,7 +13,7 @@ import '../../inventory/application/active_lamp_notifier.dart';
 import '../../inventory/application/inventory_notifier.dart';
 import '../../inventory/domain/inventory_lamp.dart';
 import '../domain/add_lamp_state.dart';
-import 'connect_with_retry.dart';
+import '../../../core/ble/connect_with_retry.dart';
 
 part 'add_lamp_notifier.g.dart';
 
@@ -151,6 +151,7 @@ class AddLampNotifier extends _$AddLampNotifier {
       await connectWithRetry(
         ble,
         state.deviceId,
+        owner: this,
         attempts: 2,
         backoff: const Duration(milliseconds: 1500),
       );

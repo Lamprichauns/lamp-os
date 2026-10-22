@@ -35,18 +35,21 @@ int8_t lastRssiByName(LampRoster& r, const std::string& name) {
   return -127;
 }
 
-int8_t espnowRssiByName(LampRoster& r, const std::string& name) {
+// Full entry for `name`; getAll carries only the app-list fields.
+RosterEntry entryByName(LampRoster& r, const std::string& name) {
+  RosterEntry out;
   for (const auto& e : r.getAll()) {
-    if (name == e.name) return e.espnowRssi;
+    if (name == e.name && e.hasMac) r.findByMac(e.mac, out);
   }
-  return -127;
+  return out;
+}
+
+int8_t espnowRssiByName(LampRoster& r, const std::string& name) {
+  return entryByName(r, name).espnowRssi;
 }
 
 std::string macStrByName(LampRoster& r, const std::string& name) {
-  for (const auto& e : r.getAll()) {
-    if (name == e.name) return e.macStr();
-  }
-  return {};
+  return entryByName(r, name).macStr();
 }
 
 bool hasUngreetedArrival(LampRoster& r, uint32_t maxAgeMs = 240000) {
@@ -75,6 +78,17 @@ void test_ble_scan_updates_last_rssi_on_existing_entry() {
   r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -75);
   TEST_ASSERT_EQUAL_UINT(1u, r.getAll().size());
   TEST_ASSERT_EQUAL_INT8(-75, lastRssiByName(r, "jacko"));
+}
+
+// The scan callback passes raw address bytes in display order; they key the
+// same entry the colon-hex form does.
+void test_ble_scan_raw_address_merges_with_colon_hex() {
+  LampRoster r;
+  const uint8_t addr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+  r.addOrUpdateFromBle("jacko", addr, kNoColor, kNoColor, -60);
+  r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -61);
+  TEST_ASSERT_EQUAL_UINT(1u, r.getAll().size());
+  TEST_ASSERT_EQUAL_INT8(-61, lastRssiByName(r, "jacko"));
 }
 
 void test_ble_scan_sentinel_does_not_clobber_existing_value() {
@@ -232,13 +246,59 @@ void test_empty_ble_name_does_not_clobber_known_name() {
   TEST_ASSERT_EQUAL_STRING("gramp", r.getAll()[0].name);
 }
 
+// lastSeenBleMs moves with lastRssi: an advert with an RSSI renews it, a
+// sentinel advert does not, and the near view carries it.
+void test_ble_stamp_moves_with_rssi_and_reaches_the_near_view() {
+  LampRoster r;
+  r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -72);
+  TEST_ASSERT_EQUAL_UINT32(100000, entryByName(r, "jacko").lastSeenBleMs);
+  set_mock_millis(105000);
+  r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -70);
+  TEST_ASSERT_EQUAL_UINT32(105000, entryByName(r, "jacko").lastSeenBleMs);
+  set_mock_millis(107000);
+  r.addOrUpdateFromBle("jacko", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -127);
+  TEST_ASSERT_EQUAL_UINT32(105000, entryByName(r, "jacko").lastSeenBleMs);
+  const std::vector<NearbyCopy>& near = r.snapshotNear(240000);
+  TEST_ASSERT_EQUAL_UINT(1u, near.size());
+  TEST_ASSERT_EQUAL_UINT32(105000, near[0].lastSeenBleMs);
+}
+
+void test_a_hello_does_not_renew_the_ble_stamp() {
+  LampRoster r;
+  r.addOrUpdateFromBle("flora", "AA:BB:CC:DD:EE:FF", kNoColor, kNoColor, -40);
+  set_mock_millis(130000);
+  const uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFD};
+  r.addOrUpdateFromEspNow("flora", mac, kNoColor, kNoColor);
+  r.markNear(mac);
+  TEST_ASSERT_EQUAL_UINT32(100000, entryByName(r, "flora").lastSeenBleMs);
+  TEST_ASSERT_EQUAL_UINT32(130000, entryByName(r, "flora").lastSeenNearMs);
+}
+
+// A HELLO carries RGBW; the RGB-only advert keeps that W while its RGB agrees.
+void test_an_advert_keeps_the_hellos_white() {
+  LampRoster r;
+  const uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFD};
+  r.addOrUpdateFromEspNow("flora", mac, Color(0, 0, 0, 200), Color(10, 0, 0, 90));
+  r.addOrUpdateFromBle("flora", "AA:BB:CC:DD:EE:FF", Color(0, 0, 0, 0), Color(10, 0, 0, 0), -50);
+  TEST_ASSERT_TRUE(entryByName(r, "flora").baseColor == Color(0, 0, 0, 200));
+  TEST_ASSERT_TRUE(entryByName(r, "flora").shadeColor == Color(10, 0, 0, 90));
+  TEST_ASSERT_TRUE(r.snapshotNear(240000)[0].baseColor == Color(0, 0, 0, 200));
+  // A new colour from the advert replaces the old one whole.
+  r.addOrUpdateFromBle("flora", "AA:BB:CC:DD:EE:FF", Color(0, 90, 0, 0), Color(10, 0, 0, 0), -50);
+  TEST_ASSERT_TRUE(entryByName(r, "flora").baseColor == Color(0, 90, 0, 0));
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
 
   RUN_TEST(test_ble_scan_sets_last_rssi_on_insert);
+  RUN_TEST(test_ble_stamp_moves_with_rssi_and_reaches_the_near_view);
+  RUN_TEST(test_a_hello_does_not_renew_the_ble_stamp);
+  RUN_TEST(test_an_advert_keeps_the_hellos_white);
   RUN_TEST(test_ble_scan_updates_last_rssi_on_existing_entry);
+  RUN_TEST(test_ble_scan_raw_address_merges_with_colon_hex);
   RUN_TEST(test_ble_scan_sentinel_does_not_clobber_existing_value);
   RUN_TEST(test_esp_now_does_not_write_last_rssi);
   RUN_TEST(test_esp_now_only_peer_has_sentinel_last_rssi);

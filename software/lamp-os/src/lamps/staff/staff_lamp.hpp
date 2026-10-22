@@ -93,7 +93,8 @@ class StaffLamp : public Lamp {
       lamp::ExpressionInvocation inv;
       inv.type = "bloom";
       inv.target = lamp::TARGET_BOTH;
-      expressionManager.triggerInvocation(inv, peer.mac, /*broadcast=*/false);
+      expressionManager.triggerInvocation(inv, peer.mac, /*broadcast=*/false,
+                                          TransientSource::Local);
     });
   }
 

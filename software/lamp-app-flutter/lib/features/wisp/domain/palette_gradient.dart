@@ -25,7 +25,7 @@
 import 'dart:ui' show Color;
 
 /// Warm-white fallback used when the gradient has no palette to display
-/// (sourceMode=Off, or Manual/Aurora with an empty palette). Same R/G/B
+/// (sourceMode=Off or Osc, or Manual with an empty palette). Same R/G/B
 /// values as `kWarmWhiteR/G/B` in `StatusRing.h`, tuned to read as a
 /// tungsten bulb on a NEO_GRB WS2812 strip, slightly amber, no blue
 /// bias. Defined here (not pulled from Brand.warmWhite, #FABB3E) so the
@@ -33,7 +33,7 @@ import 'dart:ui' show Color;
 /// what the LED ring is actually showing, not the app's editorial palette.
 const Color kWarmWhite = Color.fromARGB(0xFF, 255, 180, 100);
 
-/// Fold an Aurora RGBW sample down to RGB for the on-screen bar (which
+/// Fold an RGBW sample down to RGB for the on-screen bar (which
 /// has no W channel). The W contribution biases warm: most of it lands
 /// on R, some on G, almost none on B, so a palette that's mostly
 /// "white" still reads as warm rather than washed-out. Each channel is

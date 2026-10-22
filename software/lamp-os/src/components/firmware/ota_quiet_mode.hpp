@@ -43,6 +43,9 @@ void exitQuiet();
 // query this hot path.
 bool isQuiet();
 
+// How many enterQuiet calls are unmatched; isQuiet() is holders() > 0.
+int holders();
+
 // The active session's visibility, latched at the 0->1 enterQuiet that
 // started it. Meaningful only while isQuiet() is true.
 bool visibleOtaActive();

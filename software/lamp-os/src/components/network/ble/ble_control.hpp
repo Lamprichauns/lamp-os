@@ -1,6 +1,5 @@
 #pragma once
 #include <Arduino.h>
-#include <Preferences.h>
 #include <functional>
 #include <string>
 
@@ -60,8 +59,8 @@ constexpr const char* CHAR_WIFI_STATE      = "5f64f4db-d6d9-4a44-9b3f-3a8d6f7e6b
 // streams host→lamp (write), pagination streams lamp→host (read).
 constexpr const char* CHAR_PAGE_CTRL       = "5f64f4dc-d6d9-4a44-9b3f-3a8d6f7e6b40";
 constexpr const char* CHAR_PAGE_DATA       = "5f64f4dd-d6d9-4a44-9b3f-3a8d6f7e6b40";
-// remote_op (write-with-response, encrypted): forward a BLE control write
-// to a far lamp via ESP-NOW.
+// remote_op (write-with-response, encrypted): a render-only control write
+// applied on this lamp when its targetMac is this lamp or "broadcast".
 constexpr const char* CHAR_REMOTE_OP       = "5f64f4e4-d6d9-4a44-9b3f-3a8d6f7e6b40";
 // home_mode_focus (write-without-response): single u8 bool. The app
 // writes 1 while the user is on the Home Mode setup page and 0 when
@@ -85,7 +84,7 @@ constexpr const char* CHAR_SOCIAL_DISPOSITIONS = "5f64f4e6-d6d9-4a44-9b3f-3a8d6f
 // from the app over ESP-NOW. The lamp does NOT apply this locally; it
 // only broadcasts a MSG_CONTROL_OP carrying the payload, and the wisp(s)
 // on the mesh consume it. Open-set by design: the wire format is
-// {"char":"wispOp","op":"setZone","zoneId":N,...} and the wisp owns the
+// {"char":"wispOp","op":"setOscRole","role":"fill",...} and the wisp owns the
 // op vocabulary; lamps never interpret. Auth-gated like the rest of the
 // write surface.
 constexpr const char* CHAR_WISP_OP         = "5f64f4e1-d6d9-4a44-9b3f-3a8d6f7e6b40";
@@ -127,8 +126,18 @@ constexpr const char* CHAR_EDIT_SESSION    = "5f64f4e9-d6d9-4a44-9b3f-3a8d6f7e6b
 // to NVS, debounced 1500ms, OTA-gated, FNV-1a hash-deduped.
 inline constexpr const char* CHAR_COMMIT_UUID = "48537d49-11a7-4f54-a69a-9425b9288c50";
 
+// Disables BT-controller modem sleep. WiFi is already held awake
+// (WiFi.setSleep(false), ESP-NOW is unbuffered) so BT sleep saves ~no
+// power on the shared radio, but its PHY sleep/wake toggle around
+// connection events triggers a libphy RF-calib allocation that aborts
+// under heap fragmentation. Call after every controller bring-up
+// (NimBLEDevice::init resets controller state).
+void disableBtModemSleep();
+
 void start(lamp::Config* config);
 
+// Loop task only: also frees the nearby-JSON cache and roster buffer, which
+// tick() stops maintaining once the service is down.
 void stop();
 bool isRunning();
 

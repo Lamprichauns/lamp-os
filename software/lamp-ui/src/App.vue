@@ -253,7 +253,9 @@ const nameValid = computed(() => {
 })
 const passwordValid = computed(() => {
   const p = password.value
-  return p === '' || (p.length >= 8 && p.length <= 16)
+  // Printable ASCII only: the password keys the setup WiFi, and a WPA2 key is
+  // PBKDF2 over raw bytes, so a normalization mismatch locks the owner out.
+  return p === '' || (p.length >= 8 && p.length <= 16 && /^[ -~]+$/.test(p))
 })
 // Build-time version, injected by the lamp-ui build (VITE_FW_VERSION). Shown
 // in the info tab; doubles as a visible signal of which build's UI is live.
@@ -267,6 +269,11 @@ const password = ref('')
 // The current password revealed by /api/unlock, shown read-only so the user
 // can see it without the value counting as an edit or hitting the length gate.
 const revealedPassword = ref('')
+
+// The lamp keys the setup network with its password, so a password too short
+// for WPA2 leaves this page reachable by anyone nearby.
+const hasPassword = ref(false)
+const apSecured = ref(false)
 
 // A password-protected lamp gates the editor until /api/unlock confirms.
 const locked = ref(false)
@@ -471,8 +478,13 @@ onMounted(async () => {
     if (!Array.isArray(cfg.value.expressions)) cfg.value.expressions = []
     if (!Array.isArray(cfg.value.homeMode.disabledExpressionTypes))
       cfg.value.homeMode.disabledExpressionTypes = []
-    locked.value = cfg.value.lamp.hasPassword === true
+    hasPassword.value = cfg.value.lamp.hasPassword === true
+    locked.value = hasPassword.value
+    apSecured.value = cfg.value.lamp.apSecured === true
+    // Both are GET-only: the lamp saves a PUT through its config model, which
+    // ignores them, so the held doc drops them to stay what the editor edits.
     delete cfg.value.lamp.hasPassword
+    delete cfg.value.lamp.apSecured
     loadedRealConfig.value = true
   } catch {
     // Leave defaults on screen but keep Save gated; see loadedRealConfig.
@@ -709,10 +721,15 @@ onUnmounted(() => {
               />
               <div class="info-text">
                 Optional password to protect your lamp from changes. Between 8-16 characters. Leave
-                empty to keep the current password.
+                empty to keep the current password. The password also locks the setup WiFi network,
+                so you'll need it to get back to this page.
               </div>
               <div v-if="!passwordValid" class="field-error">
-                Password must be between 8 and 16 characters.
+                Password must be 8 to 16 letters, numbers or symbols.
+              </div>
+              <div v-if="hasPassword && !apSecured" class="field-error">
+                This lamp's password can't lock the setup WiFi, so this page is open to anyone
+                nearby. Save one of 8-16 characters to protect it.
               </div>
             </FormField>
 
@@ -730,6 +747,11 @@ onUnmounted(() => {
               </select>
               <div class="info-text">
                 How long the setup WiFi network stays available after the lamp boots.
+                {{
+                  apSecured
+                    ? 'It needs the lamp password to join.'
+                    : 'It is open: anyone nearby can join and change settings.'
+                }}
               </div>
             </FormField>
 

@@ -30,6 +30,7 @@ const _seedStatus = WispStatus(
   wispMac: 'AA:BB:CC:DD:EE:FF',
   ledType: 'GRBW',
   pixelCount: 45,
+  configKnown: true,
 );
 
 Future<ProviderContainer> _makeContainer() async {

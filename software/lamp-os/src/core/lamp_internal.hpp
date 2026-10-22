@@ -2,7 +2,8 @@
 //
 // Private header. Internal to the lamp.cpp TU family:
 //   core/lamp.cpp, core/lamp_drains.cpp, core/lamp_remote_op.cpp,
-//   core/lamp_brightness.cpp, core/lamp_behaviors.cpp, core/lamp_test_action.cpp
+//   core/lamp_brightness.cpp, core/lamp_behaviors.cpp, core/lamp_test_action.cpp,
+//   core/lamp_moments.cpp
 //
 // Exposes the file-scope statics and helpers that the split method bodies
 // need to reach back into lamp.cpp state. The DEFINITIONS still live in
@@ -92,17 +93,13 @@ extern lamp::FadeOutBehavior shadeFadeOutBehavior;
 extern lamp::FadeOutBehavior baseFadeOutBehavior;
 extern lamp::KnockoutBehavior baseKnockoutBehavior;
 
-// Selects the transport-flavour branch inside applyRemoteOpRouted. The
-// BLE drain passes BLE so the router unwraps the targetMac envelope;
-// the ESP-NOW drain passes EspNow so the router dispatches directly
-// (the WiFi task already did the addressed-to-self / rebroadcast decision).
-enum class RemoteOpTransport { BLE, EspNow };
+// The app's CHAR_REMOTE_OP write, applied when it targets this lamp or
+// "broadcast". Defined in lamp_remote_op.cpp.
+void applyRemoteOp(const char* payloadJson, size_t len);
 
-// Unified cascade-receive router. See lamp.cpp definition for the
-// full BLE-vs-EspNow asymmetry note. Used by drainInboundOp / drainRemoteOp.
-void applyRemoteOpRouted(const char* payloadJson, size_t len,
-                         const uint8_t srcMac[6],
-                         RemoteOpTransport origin);
+// A CONTROL_OP delivered by the mesh, already relayed. Only the wisp's status
+// and config are taken. Defined in lamp_remote_op.cpp.
+void applyInboundControlOp(const char* payloadJson, size_t len, const uint8_t srcMac[6]);
 
 // Test-panel action dispatcher. drainTestAction calls this with a parsed
 // JsonDocument. Defined in lamp_test_action.cpp.
@@ -122,6 +119,13 @@ bool calculateEffectiveHomeMode();
 uint8_t effectiveBrightness();
 void reapplyHomeModeState();
 namespace lamp {
+// Re-seed each role's fallback scene from the saved config colors. IdleBehavior
+// paints defaultColors whenever the configurator idle-stops, so a persist that
+// skips this strands the fallback on the colors the lamp booted with. Call only
+// from persist paths; live-preview writes must leave it alone so an abandoned
+// web-config drag still falls back to the last saved scene.
+void refreshDefaultScene();
+
 // Last pre-clamp level handed to setAllStripsBrightness. The governor's
 // engage/release hysteresis keys on this, and ceiling changes re-min it
 // without recomputing the brightness baseline.
@@ -135,6 +139,10 @@ void setSurfaceFactor(Surface surface, uint8_t factor);
 
 // lamp_test_action.cpp (LAMP_DEBUG builds only)
 void pollSerialCommands();
+
+// lamp_moments.cpp: wire the Moment director to this lamp. Call once the mesh
+// and the expression manager are up.
+void beginMoments(const uint8_t ownMac[6]);
 
 // lamp_behaviors.cpp
 void initBehaviors(lamp::Features features, lamp::Lamp& self);

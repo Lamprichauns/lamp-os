@@ -5,6 +5,254 @@ add an entry here in the **same change** that bumps it. Entries describe what's
 new for someone upgrading — what changed for you, not how it was built.
 Highlights grouped Added / Fixed / Changed, not every commit.
 
+## 1.3.0
+
+### Fixed
+- **Opening a lamp connects more reliably.** The app retries a failed connect
+  a few times before giving up, and holds its Bluetooth scan off while it
+  connects so the two don't fight over the phone's radio.
+- **The app no longer connects to lamps in the background.** My Lamps doesn't
+  open a link to every paired lamp it hears; the app connects only to the lamp
+  you open.
+- **Re-opening a lamp right after backing out keeps the connection.** Back out
+  of a lamp while it's still connecting or loading, open it again, and it
+  connects and stays connected. It can take several seconds longer while the
+  phone finishes with the earlier attempt.
+- **A lamp you had open stays on My Lamps after the app is closed.** Leave the
+  app with a lamp open and close it soon after, and the lamp is still listed
+  when you relaunch. If the phone keeps the app in the background for a long
+  while before closing it, the lamp can show offline or drop off the list
+  until it's heard again.
+- **Wisp paints black and warm white.** A lamp the wisp paints black, or warm
+  white with no colour in it, takes that paint instead of dropping back to its
+  own colours, and warm white from a wisp palette now reaches the lamps. Black
+  needs only the wisp updated. Warm white needs both the wisp and the lamp on
+  the new firmware: an older lamp ignores the warm white and shows only the
+  colour part (so warm white alone shows as black), and an older wisp sends
+  none. The app's painted-lamps preview shows warm white and black as painted,
+  for up to 34 lamps under the wisp; past 34 it shows colour only, as before.
+  That needs both the lamp firmware and the app updated; with either one
+  older, the preview shows the lamp's predicted colour as before.
+- **Wisp-painted lamps hold their colour.** Lamps painted by a wisp no longer
+  drop back to their own colours for a minute or two at a time. The wisp now
+  sends its colour updates twice as often and at a varying moment, so a lamp
+  that kept missing them at one fixed moment catches them.
+
+### Changed
+- **My Lamps lists the lamps around you.** A paired lamp the phone can't hear
+  shows as offline for five minutes after it was last seen, then leaves the
+  list until it's heard again. It stays paired and keeps everything the app
+  knows about it. With no paired lamp heard in the last five minutes, My
+  Lamps shows just the "Adopt a lamp" tile.
+- **The app downloads lamp firmware once each time it starts.** It used to
+  download it again every time your list of saved lamps changed. Now it
+  fetches firmware for each kind of lamp you own once when the app starts, and
+  once more for a new kind of lamp you add that it has no firmware for yet. If
+  you're offline it keeps the firmware it already has and tries again the
+  next time the app is restarted. Updating a lamp when it connects, and the
+  firmware panel, work from what's already downloaded, and the panel's empty
+  message now says firmware downloads when the app starts online.
+
+## 1.2.9
+
+### Added
+- **Moments.** Once in a long while a room of lamps that like each other
+  shares a moment, with nothing to set up, on each lamp's base and in a colour
+  that stands out against it. **Fireflies**: when three or more lamps a lamp
+  is fond of have stayed together for ten minutes, the room's bases start
+  sparkling faintly with stars in each lamp's shade colours, scattered at
+  first, then drawing into one shared beat for a couple of minutes.
+  **Whisper**: a soft glow in the starting lamp's colour travels across a base
+  and is handed on, lamp to lamp for up to eight hops, each time to the
+  closest lamp (strongest signal) it is fond of or smitten with that hasn't
+  had it yet. Salty and Wary lamps sit out. Each lamp's Moments grow rarer the
+  more it takes part (back to normal after a restart), Extroverts start them
+  more often and Introverts less, and nothing happens during an update, while
+  the wisp is painting, while you preview in the app, or in home mode with
+  social off. Lamps on older firmware just ignore them.
+
+### Fixed
+- **Breathing fades more smoothly.** Breathing blends at full precision instead
+  of stepping in whole percents, so a slow breath moves in finer steps.
+
+## 1.2.8
+
+### Added
+- **The wisp can follow Straylight.** Pick Straylight as the wisp's palette
+  source in the app and choose which of Straylight's palettes to follow —
+  Primary, Secondary, Tertiary or Fill. The wisp takes it over USB or the
+  network (USB is the steadier of the two). If Straylight goes quiet for
+  about thirty seconds, or the palette you picked has nothing in it, your
+  lamps ease back to their own colours and the app says it's waiting; when
+  Straylight comes back the lamps pick its palette up again on their own.
+- **The wisp can take Straylight over a network cable.** Fit a W5500
+  Ethernet module (wiring in the wisp README) and plug the wisp into the
+  venue network: Straylight's feed arrives over the cable, the wisp's WiFi
+  stays off so the mesh keeps its radio, and the app shows the wisp's
+  network address. A wisp with no module works exactly as before.
+- **Pulse has a Direction.** Up is the default. Down runs the other way: on
+  both surfaces it drips from the top of the shade down to the bottom of the
+  base.
+
+### Fixed
+- **Home mode with social off now ignores other lamps completely.** Before,
+  another lamp could still make yours pulse, flicker or shift while it was
+  resting at home; only glitch was kept out. Now, while home mode is on with
+  social switched off, your lamp ignores every effect other lamps send it,
+  doesn't greet them and behaves as if it were alone in the room, whichever
+  kind of lamp it is: a Lioness's lions stop showing neighbours' colours and
+  a Loaf's ring stops speeding up for nearby loaves. Effects other lamps had
+  already sent fade out gently when home mode comes on, and when you leave
+  home your lamp doesn't greet the lamps that were there all along. It also
+  stops dimming itself for a crowd, easing back to its full home brightness
+  over about a second. Previewing home mode from the app shows what home mode
+  looks like without using up arrivals, so the lamps around it are greeted as
+  usual once you leave the page; a greeting or borrowed palette the preview
+  cuts off stays ended, and the app's greet button still plays a greeting
+  during the preview. Your own expressions, the app's Test button and your
+  wisp keep working, and your lamp still passes messages
+  along so the lamps around it keep talking.
+- **A staff lamp blooms for every friend in a big crowd.** With more than 16
+  lamps nearby, friends past the sixteenth used to arrive without a bloom.
+- **Crowd dimming follows the crowd right away.** When a lamp decided to dim
+  or brighten for a change in the crowd, the change could wait until the next
+  unrelated brightness change to show. It now eases in within a moment.
+- **Every lamp passes updates on.** A lamp at home with social turned off,
+  and snafu and lioness lamps at any time, never offered a firmware or web-UI
+  update to the lamps around them, so an update could stall at them. Every
+  lamp type now passes updates on in every mode.
+- **Lamps passing an update along stay on the update display.** A lamp
+  updating several neighbours in a row no longer flashes back to its normal
+  colours between one neighbour and the next. If an update to a neighbour
+  fails, the lamp goes back to its normal colours about ten seconds later, as
+  before.
+- **Shimmer's Candle and Campfire are calmer.** Candle is now a slow sway
+  with a soft flicker now and then instead of a fast buzz, and Campfire keeps
+  its gusts and flaring embers without looking hectic. Neither speeds up on a
+  lamp that runs faster.
+- **Lamps hold up in big crowds.** A lamp among dozens of others could run out
+  of memory and restart, with or without the app open: saving settings or
+  social dispositions on a crowded lamp could crash it outright, and a crowd's
+  traffic piled up memory on its own. A save that can't go through now waits
+  and tries again a few seconds later instead of crashing, keeping the
+  settings stored before it, and the lamp caps how much a crowd can make it hold
+  at once: other lamps' effects can take at most half of its four effect
+  slots, leaving the rest for its own Test and greetings while memory allows.
+  When the lamp is too short of memory to show a Test itself, the Test still
+  goes out to the lamps around it. A cascade still reaches every lamp around,
+  sent in waves rather than all at once, so in a crowd of 50 the farthest
+  lamps can fire up to about a second after their usual moment, nearly two
+  seconds when two cascades go off together, and later still on a busy mesh.
+  Expressions keep at most 8 colours each, and a stored setup beyond the app's
+  limits is trimmed back to them when the lamp updates.
+- **Big setups keep saving.** A lamp with many expressions could run out of
+  room to store its settings and quietly stop saving changes, and a full
+  store could leave a lamp unable to start Bluetooth until it was
+  reflashed. Settings are now stored compactly and in pieces the storage can
+  always place, so every expression the app allows fits with room to spare,
+  and a lamp whose storage is already full frees space on its first start.
+  Your existing settings carry over on update. If the lamp's storage reports
+  itself unusable at startup it is cleared so the lamp still comes up and
+  can be set up again from the app. A big setup saved from the web page now
+  fits more often, since the lamp reads the page's settings once instead of
+  twice. A setup near the limits may still be refused by the web page when
+  the lamp is short of memory; save it from the app instead. A second save
+  from the web page while the first waits for its restart is refused, so the
+  first one is kept.
+- **Settings the lamp can't keep are refused up front.** A control password
+  longer than 64 characters, or a home network name longer than 32, is
+  refused from the app and from the web page, instead of being stored in a
+  form that could never work. An expression type the lamp doesn't have is
+  refused instead of being saved and never showing.
+- **Going back to an older firmware.** A lamp with a small setup (about two
+  expressions with full colour lists) keeps its settings on an older
+  release. A larger setup keeps only its name, password, brightness and
+  setup state there; everything else comes up as defaults, and that release
+  may fail to save. Social dispositions reset there either way. Updating
+  again brings the larger setup back unless the older release saved over
+  it.
+- **A fully set-up wisp no longer blanks the app's wisp screen.** With a name,
+  a password, Ethernet and custom LED and drift settings, the wisp's status
+  could outgrow what one Bluetooth read carries, and the app showed no wisp at
+  all. The app now reads the wisp's status and its settings separately, in
+  pieces, with no size limit, once your lamps are updated. Updated lamps also
+  trim what they hand older apps, which brings a typical fully set-up wisp
+  back under the limit, though not every possible one. Until the wisp's settings
+  have arrived, the drift, brightness and LED controls show that they're
+  loading instead of showing made-up values you could accidentally save.
+
+### Changed
+- **Lamps no longer pass settings on to other lamps.** A lamp used to be able
+  to forward brightness, colour and expression changes it was handed to
+  another lamp across the mesh. No released app has ever used this, so
+  it is gone: a lamp only takes settings from the app connected to it. Lamps
+  still pass along everything your wisp sends and receives, so the wisp keeps
+  working everywhere it did, and lamps on older firmware keep talking to
+  newer ones.
+- **The wisp sends its settings on their own.** Its LED, brightness and drift
+  settings now go out when they change or when the app asks, rather than only
+  inside the status every lamp passes along every thirty seconds. For this
+  release the status still carries them too, so lamps that haven't updated
+  keep showing them; the mesh airtime this saves arrives with a later update,
+  once every lamp understands the new message.
+- **Aurora is gone.** The wisp's Aurora palette source, which never shipped
+  past "untested", has been removed from the wisp and the app, along with its
+  zone picker. A wisp that was set to Aurora comes up Off.
+- **The wisp stops hunting for missing WiFi.** It joins its saved network
+  only while following Straylight, looks for it on the lamps' own channel
+  only, joins only when it finds it there, and waits longer between tries (up
+  to five minutes) when it doesn't. Searching for a network that was gone kept pulling the wisp away
+  from your lamps until they dropped out and went back to their own colours.
+- **A Pulse on both base and shade is one pulse rising up the lamp.** It
+  starts at the bottom of the base, climbs to its top and carries straight on
+  up through the shade, instead of two pulses running side by side. At the
+  default speed it takes about as long as each half used to; at slower
+  settings Pulse speed is the time to climb the whole lamp, so each pixel goes
+  by faster than before. Size is measured against the whole lamp. A Region
+  applies to each surface, and a Pulse on just the shade looks exactly as it
+  did. On a lamp whose base and shade don't stack, the
+  pulse sweeps one and then the other. While lamps are partway through an
+  update, a lamp still on the old firmware shows a received both-surface
+  Pulse as two pulses side by side, ignores Down, and still runs a base-only
+  Pulse down the base.
+- **A Pulse on just the base rises.** It used to run down the base; Up now
+  climbs it from the bottom, like the shade, and Down runs it downward.
+
+## 1.2.7
+
+### Changed
+- **Your lamp password now locks its setup WiFi.** The setup network a lamp
+  puts up for its web config page used to be open, so anyone nearby could join
+  and change settings even on a password-protected lamp. Set a password and the
+  setup network is WPA2-encrypted with it — you'll need that password to reach
+  the web config page. Lamps with no password, or a password shorter than 8
+  characters, still put up an open network, and the web config page says which
+  of the two you have instead of implying it's private. On a lamp whose
+  password is too short to lock the network, the web page goes read-only rather
+  than handing settings — or the password itself — to anyone who joins.
+
+### Added
+- **Forgot your lamp's password?** Hold the small BOOT button on the lamp's
+  board for five seconds within a minute of switching it on and the password is
+  cleared, so the app can connect again. The whole lamp pulses twice to confirm
+  it worked. The lamp keeps its name, colours and everything else. Its setup
+  WiFi re-opens the next time the lamp restarts.
+
+### Fixed
+- **Lamp names can't hide a space any more.** A name with a space in it made
+  the setup WiFi network appear under a different name than the app showed
+  ("gramp -lamp" for a lamp called "gramp"), so it looked missing. Spaces are
+  now rejected as you type and stripped from names already saved, which also
+  tidies the lamp's Bluetooth name.
+- **Your colours stay where you put them.** A lamp would quietly fall back to
+  its factory colours about a minute after you set new ones, so it looked like
+  nothing had saved. Your colours were always stored correctly — the lamp was
+  painting the wrong ones, which is why reopening the app or restarting the
+  lamp brought them back.
+- **Every lamp starts with its own colours.** New lamps were all coming up on
+  the same blue and red instead of the distinct colour pair each lamp is meant
+  to pick for itself the first time it's set up.
+
 ## 1.2.6
 
 ### Fixed

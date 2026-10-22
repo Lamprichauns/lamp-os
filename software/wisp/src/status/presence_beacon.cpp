@@ -3,13 +3,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include <esp_random.h>
+
 #include <cstring>
 
 #include "paint/current_palette.hpp"
 #include "net/mesh_link.hpp"
 #include "paint/paint_distributor.hpp"
 #include "fleet/wisp_roster.hpp"
-#include "aurora/AuroraPaletteClient.h"
+#include "status/state_frame.hpp"
+#include "core/wisp_controller.hpp"
 #include "wire/lamp_protocol.hpp"
 #include "status/status_emitter.hpp"
 #include "status/seq_source.hpp"
@@ -18,13 +21,14 @@
 namespace wisp {
 
 void PresenceBeacon::begin(MeshLink* mesh, PaintDistributor* paint,
-                           CurrentPalette* palette, AuroraPaletteClient* aurora,
+                           CurrentPalette* palette,
+                           const WispController* controller,
                            WispRoster* roster, SeqSource* seq,
                            StatusEmitter* statusEmitter, WispConfig* config) {
   mesh_ = mesh;
   paint_ = paint;
   palette_ = palette;
-  aurora_ = aurora;
+  controller_ = controller;
   roster_ = roster;
   seq_ = seq;
   statusEmitter_ = statusEmitter;
@@ -50,36 +54,44 @@ void PresenceBeacon::startTimer() {
   }
 }
 
-void PresenceBeacon::pump() {
+void PresenceBeacon::pump(bool fatFrameSentThisPass) {
   const uint32_t now = millis();
-  serviceResends(now);
-  bool emittedThisPump = false;
+  bool passBusy = serviceResends(now) || fatFrameSentThisPass;
   if (helloDue_.exchange(false, std::memory_order_relaxed)) {
     emit();
-    emittedThisPump = true;
+    passBusy = true;
   }
-  if (paint_ && paint_->consumeStateDirty()) {
-    stateBurstUntilMs_ = now + kStateBurstMs;
-    emitStateEvent();
-  } else if (!emittedThisPump && stateBurstUntilMs_ != 0) {
-    // Skip the pump that already ran a tick emit so a burst STATE never lands
-    // in the same loop pass as the HELLO/CLAIM/STATE fat frames.
-    if (stateBurstDue(now, stateBurstUntilMs_, lastStateEmitMs_,
-                      kStateBurstIntervalMs)) {
-      emitStateEvent();
-    } else if (static_cast<int32_t>(now - stateBurstUntilMs_) >= 0) {
-      stateBurstUntilMs_ = 0;
-    }
+  if (stateBurstUntilMs_ != 0 &&
+      static_cast<int32_t>(now - stateBurstUntilMs_) >= 0) {
+    stateBurstUntilMs_ = 0;
   }
+  switch (nextStateSend(passBusy, paint_ && paint_->stateDirty(),
+                        stateBurstDue(now, stateBurstUntilMs_,
+                                      lastStateEmitMs_, kStateBurstIntervalMs),
+                        tickState_.due(now))) {
+    case StateSend::None:
+      return;
+    case StateSend::Edge:
+      paint_->consumeStateDirty();
+      stateBurstUntilMs_ = now + kStateBurstMs;
+      break;
+    case StateSend::Burst:
+      break;
+    case StateSend::Tick:
+      tickState_.markSent();
+      break;
+  }
+  emitStateEvent();
 }
 
-uint8_t PresenceBeacon::computePresenceFlags(bool wifiNow, bool auroraNow) const {
+uint8_t PresenceBeacon::computePresenceFlags(bool wifiNow,
+                                             bool sourceLiveNow) const {
   uint8_t flags = 0;
   if (paint_ && paint_->paintMode()) {
     flags |= lamp_protocol::WISP_HELLO_FLAG_PAINT_MODE;
   }
   if (wifiNow)   flags |= lamp_protocol::WISP_HELLO_FLAG_WIFI_CONNECTED;
-  if (auroraNow) flags |= lamp_protocol::WISP_HELLO_FLAG_AURORA_CONNECTED;
+  if (sourceLiveNow) flags |= lamp_protocol::WISP_HELLO_FLAG_SOURCE_LIVE;
   return flags;
 }
 
@@ -87,8 +99,8 @@ void PresenceBeacon::emitStateEvent() {
   if (!mesh_ || !roster_) return;
   uint8_t srcMac[6] = {0};
   mesh_->getMac(srcMac);
-  const uint8_t flags = computePresenceFlags(WiFi.isConnected(),
-                                             aurora_ && aurora_->isStreaming());
+  const uint8_t flags = computePresenceFlags(
+      WiFi.isConnected(), controller_ && controller_->sourceLive());
   emitState(srcMac, flags);
 }
 
@@ -99,9 +111,9 @@ void PresenceBeacon::emit() {
   mesh_->getMac(srcMac);
 
   // Snapshot once so the HELLO frame and on-change diff see the same values.
-  const bool wifiNow   = WiFi.isConnected();
-  const bool auroraNow = aurora_ && aurora_->isStreaming();
-  const uint8_t flags  = computePresenceFlags(wifiNow, auroraNow);
+  const bool wifiNow       = WiFi.isConnected();
+  const bool sourceLiveNow = controller_ && controller_->sourceLive();
+  const uint8_t flags      = computePresenceFlags(wifiNow, sourceLiveNow);
 
   // mux-guarded snapshot: this timer task can race a loop-task update().
   char paletteIdPrefix[lamp_protocol::WISP_HELLO_PALETTE_ID_PREFIX_LEN] = {0};
@@ -130,25 +142,22 @@ void PresenceBeacon::emit() {
   WISP_SEQ_PORTMUX_EXIT(&seq_->mux);
   if (!n) return;
   mesh_->broadcast(buf, n);
-  queueResend(buf, n, kHelloResends, millis());
+  const uint32_t helloMs = millis();
+  queueResend(buf, n, kHelloResends, helloMs);
 
-  // Alternate the two fat full-set frames so they never collide on the single
-  // core: claim on odd ticks, state on even ticks (each every 4s).
   const uint32_t t = beaconTick_++;
   if (roster_) {
-    if (t % 2 == 1) {
-      emitClaim(srcMac);
-    } else {
-      emitState(srcMac, flags);
-    }
+    if (t % 2 == 1) emitClaim(srcMac);
+    tickState_.schedule(helloMs, stateTickOffsetMs(esp_random()));
   }
 
-  // WiFi/Aurora flips would otherwise wait up to 30s for the wispStatus heartbeat.
+  // WiFi/source-live flips would otherwise wait up to 30s for the wispStatus
+  // heartbeat.
   const bool helloFlagsChanged =
       haveLastHelloConn_ &&
-      (wifiNow != lastHelloWifi_ || auroraNow != lastHelloAurora_);
-  lastHelloWifi_     = wifiNow;
-  lastHelloAurora_   = auroraNow;
+      (wifiNow != lastHelloWifi_ || sourceLiveNow != lastHelloSourceLive_);
+  lastHelloWifi_       = wifiNow;
+  lastHelloSourceLive_ = sourceLiveNow;
   haveLastHelloConn_ = true;
   if (helloFlagsChanged && statusEmitter_) {
     statusEmitter_->triggerOnChange();
@@ -175,13 +184,6 @@ void PresenceBeacon::emitClaim(const uint8_t srcMac[6]) {
 }
 
 void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
-  uint8_t stateEntries[lamp_protocol::WISP_STATE_MAX_ENTRIES *
-                       lamp_protocol::WISP_STATE_ENTRY_SIZE];
-  // Off packs no colors: the lamp finds its entry absent and eases home.
-  const size_t stateCount =
-      (paint_ && paint_->paintMode())
-          ? roster_->snapshotStateForBroadcast(stateEntries, sizeof(stateEntries))
-          : 0;
   const uint8_t brightness = config_ ? config_->brightness() : 100;
   const uint32_t driftRateMs = config_ ? config_->driftIntervalMs() : 0;
   uint8_t stateBuf[lamp_protocol::WISP_STATE_MAX_SIZE];
@@ -189,12 +191,11 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
   WISP_SEQ_PORTMUX_ENTER(&seq_->mux);
   stateSeq = seq_->next();
   WISP_SEQ_PORTMUX_EXIT(&seq_->mux);
-  const size_t stateLen = lamp_protocol::buildWispState(
-      stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness, driftRateMs,
-      presenceFlags, stateCount > 0 ? stateEntries : nullptr,
-      static_cast<uint8_t>(stateCount));
-  // No resend: at up to 1459 B STATE overflows the paint-sized resend slot.
-  // Edge coverage comes from the burst window in pump(); the 4s cadence backs
+  const size_t stateLen = buildStateFrame(
+      *roster_, stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness,
+      driftRateMs, presenceFlags, paint_ && paint_->painting());
+  // No resend: at up to 1461 B STATE overflows the claim-sized resend slot.
+  // Edge coverage comes from the burst window in pump(); the 2s cadence backs
   // both up.
   if (stateLen) {
     mesh_->broadcast(stateBuf, stateLen);
@@ -215,15 +216,18 @@ void PresenceBeacon::queueResend(const uint8_t* frame, size_t len,
   s.nextMs = now + kResendGapMs;
 }
 
-void PresenceBeacon::serviceResends(uint32_t now) {
-  if (!mesh_) return;
+bool PresenceBeacon::serviceResends(uint32_t now) {
+  if (!mesh_) return false;
+  bool sent = false;
   for (ResendSlot& s : resends_) {
     if (s.remaining == 0) continue;
     if (static_cast<int32_t>(now - s.nextMs) < 0) continue;
     mesh_->broadcast(s.frame, s.len);
     --s.remaining;
     s.nextMs += kResendGapMs;
+    sent = true;
   }
+  return sent;
 }
 
 }  // namespace wisp

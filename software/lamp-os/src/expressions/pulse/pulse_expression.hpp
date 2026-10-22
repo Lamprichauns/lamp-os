@@ -13,6 +13,10 @@ inline constexpr EnumOption kPulseLoopOpts[] = {
   { .value = 0, .label = "Trigger"    },
   { .value = 1, .label = "Continuous" },
 };
+inline constexpr EnumOption kPulseTravelOpts[] = {
+  { .value = 0, .label = "Up"   },
+  { .value = 1, .label = "Down" },
+};
 inline constexpr ParamSpec kPulseParams[] = {
   {
     .key        = "pulseSpeed",
@@ -47,6 +51,14 @@ inline constexpr ParamSpec kPulseParams[] = {
     .help    = "Trigger runs one sweep then stops. Continuous ping-pongs back and forth forever.",
     .options = kPulseLoopOpts,
   },
+  {
+    .key     = "travel",
+    .kind    = ParamKind::Enum,
+    .label   = "Direction",
+    .max     = 1,
+    .help    = "Up rises toward the top of the lamp. Down falls.",
+    .options = kPulseTravelOpts,
+  },
   kOpacityParam,
 };
 inline constexpr ExpressionDescriptor kPulseDescriptorData{
@@ -62,16 +74,22 @@ inline constexpr ExpressionDescriptor kPulseDescriptorData{
     .defHi = 900,
     .help  = kIntervalHelp,
   },
-  .hasZone      = true,
-  .zoneOptional = true,
-  .params       = kPulseParams,
+  .hasZone       = true,
+  .zoneOptional  = true,
+  .params        = kPulseParams,
+  .spansSurfaces = true,
 };
+
+// Per-pixel step at the fastest pulseSpeed a surface allows.
+inline constexpr uint32_t kPulseFloorMsPerPx = 100;
 
 /**
  * Pulse expression - creates a vertical wave that travels through the strips.
  *
  * Creates a smooth pulse effect that moves vertically, with configurable
  * speed and colors. The pulse blends with existing colors for a layered effect.
+ * Targeting both surfaces, one wave rises from the bottom of the base and on
+ * up through the shade: base logical 0 is its top, shade logical 0 its bottom.
  */
 class PulseExpression : public Expression {
  private:
@@ -86,7 +104,11 @@ class PulseExpression : public Expression {
   uint32_t pulseSpeedMs = 100;    // Time for wave to move one pixel (ms)
   uint32_t pulseWidth = 3;        // Fade radius in pixels on each side
   Color pulseColor;                // Current pulse color
-  Zone zone_;                      // Wave travel bounds
+  Zone zone_;                      // Wave travel bounds, in strip positions
+  FrameBuffer* above_ = nullptr;   // Shade continuing the strip past lowerEnd_
+  uint16_t lowerEnd_ = 0;          // Last strip position on fb
+  uint16_t aboveMin_ = 0;          // above_ pixel at strip position lowerEnd_ + 1
+  bool down_ = false;              // Direction Down: travel mirrored across zone_
   bool loopContinuous_ = false;   // Ping-pong forever instead of ending on exit
   bool reachedFarEnd_ = false;    // Continuous wave has touched the far end; arms preview one-cycle stop
   bool firstEntranceDone_ = false;  // Continuous leg 0 enters off-strip; later legs ping-pong the visible edges
@@ -130,7 +152,8 @@ class PulseExpression : public Expression {
    * Configure pulse-specific parameters from generic parameter map.
    * @param parameters Map containing expression-specific parameters
    */
-  void configureFromParameters(const std::map<std::string, uint32_t>& parameters) override;
+  void configureFromParameters(const ExpressionParams& parameters) override;
+  void joinSurfaceAbove(FrameBuffer* above) override { above_ = above; }
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
 
@@ -138,6 +161,10 @@ class PulseExpression : public Expression {
   void control() override;
 
 protected:
+  // Live while either joined surface is.
+  using Expression::shouldAffectBuffer;
+  bool shouldAffectBuffer() override;
+
   void onTrigger() override;
   void onUpdate() override;
 };

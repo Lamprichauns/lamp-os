@@ -4,11 +4,12 @@
 #include <esp_wifi.h>
 
 #include "config/wisp_config.hpp"
-#include "config/zone_selector.hpp"
 #include "fleet/lamp_inventory.hpp"
 #include "net/mesh_link.hpp"
 #include "net/stage_beacon.hpp"
+#include "net/eth_link.hpp"
 #include "net/wifi_link.hpp"
+#include "osc/osc_listener.hpp"
 #include "paint/paint_distributor.hpp"
 #include "status/status_emitter.hpp"
 
@@ -17,7 +18,6 @@ namespace wisp {
 SerialConsole::SerialConsole(PaintDistributor& paint, WispConfig& config,
                              StageBeacon& stage, WifiLink& wifi,
                              StatusEmitter& status, LampInventory& inventory,
-                             ZoneSelector& zones,
                              SourceTransitionFn onSourceTransition)
     : paint_(paint),
       config_(config),
@@ -25,13 +25,24 @@ SerialConsole::SerialConsole(PaintDistributor& paint, WispConfig& config,
       wifi_(wifi),
       status_(status),
       inventory_(inventory),
-      zones_(zones),
       onSourceTransition_(std::move(onSourceTransition)) {}
 
 void SerialConsole::pump() {
   while (Serial.available() > 0) {
     int ch = Serial.read();
     if (ch < 0) break;
+    const SlipDecoder::Result r =
+        slip_.feed(static_cast<uint8_t>(ch), millis());
+    if (r != SlipDecoder::Result::Text) {
+      // A frame byte ends any partial text line, so the tail of a frame cut
+      // off by the idle reset cannot join a command at the next frame.
+      buf_ = String();
+    }
+    if (r == SlipDecoder::Result::Frame) {
+      if (osc_) osc_->handlePacket(slip_.frame(), slip_.frameLen(), "serial");
+      continue;
+    }
+    if (r == SlipDecoder::Result::Consumed) continue;
     if (ch == '\r') continue;  // strip CR from CRLF line endings
     if (ch == '\n') {
       String cmd = buf_;
@@ -66,10 +77,6 @@ void SerialConsole::dumpInventory() {
                   e.name, formatVersion(e.firmwareVersion).c_str(),
                   (unsigned long)ageMs);
   }
-  Serial.printf("[wisp] zone=%d source=%s observed=%u\n",
-                zones_.currentZone(),
-                zoneSourceName(zones_.source()),
-                (unsigned)zones_.observedCount());
 #endif
 }
 
@@ -81,15 +88,26 @@ void SerialConsole::handleCommand(const String& cmd) {
   } else if (cmd == "paint:off") {
     paint_.setPaintMode(false);
     Serial.println("[wisp.cmd] paint mode OFF");
-  } else if (cmd == "src:off" || cmd == "src:manual" || cmd == "src:aurora") {
+  } else if (cmd == "src:off" || cmd == "src:manual" || cmd == "src:osc") {
     const WispSourceMode m =
         cmd.endsWith("off")    ? WispSourceMode::Off
       : cmd.endsWith("manual") ? WispSourceMode::Manual
-                               : WispSourceMode::Aurora;
+                               : WispSourceMode::Osc;
     config_.setSourceMode(m);
     onSourceTransition_(m);
     status_.triggerOnChange();
     Serial.printf("[wisp.cmd] source mode = %s\n", cmd.c_str() + 4);
+  } else if (cmd.startsWith("osc:role ")) {
+    OscRole role = OscRole::Primary;
+    if (!oscRoleFromName(cmd.c_str() + 9, role)) {
+      Serial.println(
+          "[wisp.cmd] usage: osc:role <primary|secondary|tertiary|fill>");
+      return;
+    }
+    config_.setOscRole(role);
+    status_.triggerOnChange();
+    Serial.printf("[wisp.cmd] osc role = %s (%s)\n", oscRoleName(role),
+                  oscPaletteAddress(role));
   } else if (cmd == "stage:on") {
     stage_.refreshAdvert();
   } else if (cmd == "stage:off") {
@@ -98,6 +116,8 @@ void SerialConsole::handleCommand(const String& cmd) {
     Serial.printf("[wifi] ssid='%s' connected=%d ip=%s\n",
                   wifi_.ssid().c_str(), wifi_.isConnected() ? 1 : 0,
                   WiFi.localIP().toString().c_str());
+  } else if (cmd == "eth:show") {
+    eth::printStatus(Serial);
   } else if (cmd == "wifi:retry") {
     wifi_.reconnect();
     Serial.println("[wisp.cmd] wifi retry: reconnecting with stored creds");

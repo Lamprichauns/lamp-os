@@ -11,12 +11,26 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "fleet/wisp_roster.hpp"
+#include "paint/tuple_sampler.hpp"
+
 namespace wisp {
 
 class CurrentPalette;
 class LampInventory;
 class MeshLink;
-class WispRoster;
+
+// Store `t` on `mac`'s claim as RGBW base (color 0) and shade (color 1).
+// Header-inline so native tests reach the assignment path without the Arduino
+// build.
+inline void storeTuplePaint(WispRoster& roster, const uint8_t mac[6],
+                            const ColorTuple& t) {
+  uint8_t base[4];
+  uint8_t shade[4];
+  t.rgbw(0, base);
+  t.rgbw(1, shade);
+  roster.setLampPaint(mac, base, shade);
+}
 
 class PaintDistributor {
  public:
@@ -29,9 +43,18 @@ class PaintDistributor {
   void setPaintMode(bool on);
   bool paintMode() const { return paintMode_; }
 
+  // False while the active source has no fresh palette. Painting stops (STATE
+  // packs nothing, lamps ease home) but paintMode() keeps the opt-in, so a
+  // returning stream resumes painting. Either painting edge marks STATE dirty.
+  void setSourceLive(bool live);
+
+  // Paint mode on and the source live: STATE carries paint.
+  bool painting() const { return paintMode_ && sourceLive_; }
+
   // Consumed by the beacon: a paint-mode edge wants an out-of-cadence STATE
   // emit so a lamp responds within a frame, not up to one STATE tick.
   bool consumeStateDirty() { const bool d = stateDirty_; stateDirty_ = false; return d; }
+  bool stateDirty() const { return stateDirty_; }
 
   // Shuffle seed passed through to TupleSampler. Changing it re-rolls
   // per-lamp color assignments on the next pass.
@@ -72,6 +95,7 @@ class PaintDistributor {
   // Null roster: assignment is a no-op (used in tests).
   WispRoster* roster_ = nullptr;
   bool paintMode_ = false;
+  bool sourceLive_ = true;
   bool stateDirty_ = false;
   uint16_t seqCounter_ = 0;
 

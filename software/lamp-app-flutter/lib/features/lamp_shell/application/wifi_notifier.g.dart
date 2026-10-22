@@ -62,7 +62,7 @@ final class WifiNotifierProvider
   }
 }
 
-String _$wifiNotifierHash() => r'28ca8267c8a373a0cbaef1f2bb43a72c456fc5fb';
+String _$wifiNotifierHash() => r'e0822101e8d3c2a0062e268e4cc113f4d788dbdf';
 
 /// Owns the live `wifiOp` write surface and the `wifiState` notify stream
 /// for a single lamp. Seeded by a read on build(); notifies thereafter.

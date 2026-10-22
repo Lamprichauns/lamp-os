@@ -1,7 +1,7 @@
 // Full-width palette gradient bar at the top of the wisp pane.
-// Aurora mode falls back to warm-white: the wisp publishes only a
-// paletteId prefix over BLE, not the full stops (carrying them would
-// exceed CONTROL_MAX_PAYLOAD). See domain/palette_gradient.dart for math.
+// Osc mode falls back to warm-white: the wisp publishes only a
+// paletteId prefix over BLE, not the streamed stops. See
+// domain/palette_gradient.dart for math.
 
 import 'package:flutter/material.dart';
 
@@ -18,8 +18,8 @@ import '../domain/wisp_source_mode.dart';
 ///   - Off    → the operator-chosen [offColor] as a single solid color
 ///   - Manual → the manual palette draft (so edits preview live before
 ///              the operator hits Save)
-///   - Aurora → warm-white fill until the app gets an Aurora palette
-///              over the wire (currently never; see file-level comment)
+///   - Osc    → warm-white fill; the Straylight palette is not carried
+///              to the app (see file-level comment)
 class PaletteGradientBar extends StatelessWidget {
   const PaletteGradientBar({
     super.key,
@@ -75,8 +75,8 @@ class PaletteGradientBar extends StatelessWidget {
     switch (mode) {
       case WispSourceMode.manual:
         return [for (final c in manual) foldRgbwWarmBias(c.r, c.g, c.b, c.w)];
-      case WispSourceMode.aurora:
-        // No app-side Aurora palette; see file-level comment.
+      case WispSourceMode.osc:
+        // No app-side Straylight palette; see file-level comment.
         return const <Color>[];
       case WispSourceMode.off:
         return [

@@ -7,7 +7,7 @@ app's wisp status goes stale.
 
 The wisp is **USB-flash-only** (`PLATFORMIO_UPLOAD_PORT=<wisp-port> npm run
 wisp:flash`) and its serial console is line-command based (`paint:on/off`,
-`src:off|manual|aurora`, `wifi:show`, `wifi:set <ssid> <pass>`, `wifi:clear`,
+`src:off|manual|osc`, `osc:role <role>`, `wifi:show`, `wifi:set <ssid> <pass>`, `wifi:clear`,
 `stage:on/off`) — no JSON action grammar like the lamps.
 
 ## First: get eyes on it
@@ -43,7 +43,9 @@ give it a few seconds to rejoin.
 grep "wispStatus JSON build failed" /tmp/wisp.log
 ```
 
-Exact line: `[wisp.beacon] wispStatus JSON build failed`
+Exact line: `[wisp.beacon] wispStatus JSON build failed` (or `wispConfig JSON
+build failed`, the settings message; its worst case is pinned at 148 B, so
+this one means the emitter's buffer shrank or a field was added)
 (`status_emitter.cpp`; cap is `CONTROL_MAX_PAYLOAD = 576` in the shared
 `control_op.hpp`). Effect: the status beacon stops (app-side wisp status goes
 stale/absent) while paint keeps working. Fix is trimming whatever grew the
@@ -83,8 +85,8 @@ path.
 ESP32-C6; a continuous BLE scan starves mesh receive (the lamps' 1.5% scan
 duty does NOT transfer). Signature: the wisp stops HEARING — roster ages grow
 unbounded, then the roster empties — while its own TX (paint sends, beacons)
-may keep going. The current wisp code runs NO BLE scan (Aurora comes in over
-WiFi/WebSocket), so this cause only applies if someone reintroduced a
+may keep going. The current wisp code runs NO BLE scan (palettes come in as
+OSC over USB serial or UDP), so this cause only applies if someone reintroduced a
 BLE-scanning feature — check recent wisp diffs for BLE scan code before
 chasing it.
 

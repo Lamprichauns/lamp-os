@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
-#include <Preferences.h>
 #include <esp_bt.h>
 #include <esp_heap_caps.h>
 
@@ -36,6 +35,7 @@
 #include "expressions/expression_manager.hpp"
 #include "components/network/mesh/lamp_roster.hpp"
 #include "components/network/mesh/proximity.hpp"
+#include "components/network/mesh/wisp_status_merge.hpp"
 #include "components/network/mesh/mesh_link.hpp"
 #include "components/network/transport/wifi.hpp"
 #include "write_router.hpp"
@@ -52,9 +52,8 @@ void postPendingTestActionJson(const char* data, size_t len);
 void postPendingRemoteOpJson(const char* data, size_t len);
 void postPendingSettingsBlobJson(const char* data, size_t len);
 void postPendingSocialDispositionsJson(const char* data, size_t len);
-// CHAR_WISP_OP. drain broadcasts as MSG_CONTROL_OP. Bypasses
-// applyRemoteOpLocal so a gossip-relayed wispOp is not re-applied on
-// every lamp; only the wisp(s) consume it.
+// CHAR_WISP_OP. drain unicasts it as MSG_CONTROL_OP to the display wisp;
+// lamps relay it and never apply it, only the wisp(s) consume it.
 void postPendingWispOpJson(const char* data, size_t len);
 void postPendingApplyEffectiveBrightness();
 // NVS commits cannot run on Core 0 (NimBLE host task). onDisconnect posts
@@ -481,15 +480,14 @@ static void logNearbyHeapSkip(uint32_t largest, uint32_t needed, uint32_t lamps)
 
 static constexpr uint32_t kNearbyHeapMargin = 1024;
 
-// Builds into `out`, reused in place (cleared, capacity retained) so a
-// steady-state rebuild never allocates once the buffer has grown to the
-// fleet's high-water size.
+// Builds a fresh string into `out`, reserved to the worst-case size of `lamps`
+// so the build never reallocates mid-string.
 static void buildNearbyJson(uint32_t& membershipHashOut,
-                            std::vector<lamp::RosterEntry>& lamps,
+                            std::vector<lamp::ListedPeer>& lamps,
                             std::string& out) {
   // Sort by name for stable rendering.
   std::sort(lamps.begin(), lamps.end(),
-            [](const lamp::RosterEntry& a, const lamp::RosterEntry& b) {
+            [](const lamp::ListedPeer& a, const lamp::ListedPeer& b) {
               return std::strcmp(a.name, b.name) < 0;
             });
   out.clear();
@@ -604,16 +602,26 @@ void copyNearbyJson(std::string& out) {
 // Keep the kNearbyMaxLamps most-relevant entries at the front of `lamps` and
 // drop the rest: near peers before mesh-only, then most-recently-seen, then
 // strongest RSSI. buildNearbyJson re-sorts the survivors by name.
-static void capNearby(std::vector<lamp::RosterEntry>& lamps, uint32_t now) {
+static void capNearby(std::vector<lamp::ListedPeer>& lamps, uint32_t now) {
   if (lamps.size() <= kNearbyMaxLamps) return;
   std::partial_sort(lamps.begin(), lamps.begin() + kNearbyMaxLamps,
                     lamps.end(),
-                    [now](const lamp::RosterEntry& a,
-                          const lamp::RosterEntry& b) {
+                    [now](const lamp::ListedPeer& a,
+                          const lamp::ListedPeer& b) {
                       return lamp::nearbyMoreRelevant(a, b, now,
                                                       LAMP_PRUNE_TIME_MS);
                     });
   lamps.resize(kNearbyMaxLamps);
+}
+
+static void releaseNearby() {
+  xSemaphoreTake(nearbyCacheMutex(), portMAX_DELAY);
+  if (s_nearbyReady) {
+    std::string("[]").swap(s_nearbyJson);  // SSO, reclaims the build heap
+    s_nearbyReady = false;
+  }
+  xSemaphoreGive(nearbyCacheMutex());
+  lamp::lampRoster.releaseAll();
 }
 
 // Core 1 only (tick). Materializes the nearby JSON while an app/webapp client
@@ -634,12 +642,7 @@ static void maintainNearbyJson() {
   wanted = wanted || webapp::hasClient();
 #endif
   if (!wanted) {
-    xSemaphoreTake(nearbyCacheMutex(), portMAX_DELAY);
-    if (s_nearbyReady) {
-      std::string("[]").swap(s_nearbyJson);  // SSO, reclaims the build heap
-      s_nearbyReady = false;
-    }
-    xSemaphoreGive(nearbyCacheMutex());
+    releaseNearby();
     builtGen    = 0;
     lastBuildMs = 0;
     seeded      = false;
@@ -649,9 +652,19 @@ static void maintainNearbyJson() {
   const uint32_t gen = lamp::lampRoster.generation();
   if (gen == builtGen && s_nearbyReady) return;
   const uint32_t now = millis();
-  if (s_nearbyReady && now - lastBuildMs < 1000) return;
+  // lastBuildMs is 0 only before the first attempt since connect; after a
+  // failed attempt it holds the retry to the same 1 Hz.
+  if (lastBuildMs != 0 && now - lastBuildMs < 1000) return;
 
-  auto& lamps = lamp::lampRoster.getAll();
+  std::vector<lamp::ListedPeer>* all = nullptr;
+  try {
+    all = &lamp::lampRoster.getAll();
+  } catch (const std::bad_alloc&) {
+    logBleSectionOom("nearby roster");
+    lastBuildMs = now;
+    return;
+  }
+  auto& lamps = *all;
   capNearby(lamps, now);
   uint32_t needed = 2;
   for (auto& e : lamps) needed += 240 + 6 * std::strlen(e.name);
@@ -703,13 +716,18 @@ class SocialDispositionsCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
+    // A map the heap could not build reads as "!", never "" or "{}": the app
+    // writes the whole map back, so an empty one would erase every entry.
     try {
-      c->setValue(s_config->asDispositionsJson().c_str());
+      const std::string json = s_config->asDispositionsJson();
+      if (!json.empty()) {
+        c->setValue(json);
+        return;
+      }
     } catch (const std::bad_alloc&) {
-      c->setValue("");
-      logBleSectionOom("dispositions");
-      return;
     }
+    c->setValue("!");
+    logBleSectionOom("dispositions");
   }
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
     if (!isAuthed(connInfo.getConnHandle())) return;
@@ -736,7 +754,7 @@ class WispStatusCallback : public NimBLECharacteristicCallbacks {
       c->setValue("");
       return;
     }
-    c->setValue(lamp::lampRoster.getWispStatusReadJson());
+    c->setValue(lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen));
   }
 };
 
@@ -745,7 +763,7 @@ void notifyWispStatus() {
   // No subscriber to push to, and the onRead callback rebuilds fresh, so
   // skip the serialize+notify churn on every wisp mesh event with no client.
   if (!s_clientConnected) return;
-  auto json = lamp::lampRoster.getWispStatusReadJson();
+  auto json = lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen);
 #ifdef LAMP_DEBUG
   const bool sawCB = json.find("\"controllingBase\":true") != std::string::npos;
   const bool sawCS = json.find("\"controllingShade\":true") != std::string::npos;
@@ -916,7 +934,10 @@ struct SectionEntry {
 // the 512-byte ATT ceiling that caps the CHAR_WISP_CLAIMS direct read.
 // wisppalette is binary too (raw RGBW): a dedicated read path so the
 // frequent palette-less status NOTIFY can't clobber it.
-static const std::array<SectionEntry, 9> kSections = {{
+// wispstatus serves the CHAR_WISP_STATUS merge whole, past its 512 B ceiling;
+// wispconfig serves the cached wispConfig, "{}" until one arrives, so an
+// empty read means a lamp that predates both.
+static const std::array<SectionEntry, 11> kSections = {{
   {"lamp",    [](std::string& out) { s_config->lampSectionJsonCached(out); }},
   {"base",    [](std::string& out) { s_config->baseSectionJsonCached(out); }},
   {"shade",   [](std::string& out) { s_config->shadeSectionJsonCached(out); }},
@@ -925,7 +946,8 @@ static const std::array<SectionEntry, 9> kSections = {{
   {"nearby",  [](std::string& out) { copyNearbyJson(out); }},
   {"exprcat", nullptr, lamp::kExprCatalog, lamp::kExprCatalogLen},
   {"wispclaims", [](std::string& out) {
-    static uint8_t buf[1 + lamp::WispFleetCache::kCapacity * 12];
+    static uint8_t buf[1 + lamp::WispFleetCache::kCapacity *
+                              lamp::WispFleetCache::kBlobEntrySize];
     const size_t n = lamp::lampRoster.buildWispClaimsBlob(buf, sizeof(buf),
                                                           millis());
     out.assign(reinterpret_cast<const char*>(buf), n);
@@ -934,6 +956,13 @@ static const std::array<SectionEntry, 9> kSections = {{
     static uint8_t buf[200];
     const size_t n = lamp::lampRoster.copyManualPaletteBlob(buf, sizeof(buf));
     out.assign(reinterpret_cast<const char*>(buf), n);
+  }},
+  {"wispstatus", [](std::string& out) {
+    const std::string json = lamp::lampRoster.getWispStatusReadJson(0);
+    out.assign(json.data(), json.size());
+  }},
+  {"wispconfig", [](std::string& out) {
+    lamp::lampRoster.copyWispConfigJson(out);
   }},
 }};
 
@@ -1163,12 +1192,24 @@ void tick() {
   }
 
   // Proactively rebuild dirty section caches on Core 1 so the BLE host
-  // task (Core 0) rarely serialises JSON inside a NimBLE callback.
-  s_config->lampSectionRebuildIfDirty();
-  s_config->baseSectionRebuildIfDirty();
-  s_config->shadeSectionRebuildIfDirty();
-  s_config->expressionsSectionRebuildIfDirty();
-  s_config->homeSectionRebuildIfDirty();
+  // task (Core 0) rarely serialises JSON inside a NimBLE callback. Only while
+  // a client holds the link: a mesh cascade dirties the expressions section
+  // with no reader, and a rebuild per cascade is pure heap churn.
+  // notifyStateChange skips with no client, so the characteristic may hold a
+  // stale greeting; refresh it once on connect.
+  static bool s_wasConnected = false;
+  if (s_clientConnected && !s_wasConnected) notifyStateChange();
+  s_wasConnected = s_clientConnected;
+
+  if (!s_clientConnected) {
+    s_config->releaseSectionCaches();
+  } else {
+    s_config->lampSectionRebuildIfDirty();
+    s_config->baseSectionRebuildIfDirty();
+    s_config->shadeSectionRebuildIfDirty();
+    s_config->expressionsSectionRebuildIfDirty();
+    s_config->homeSectionRebuildIfDirty();
+  }
   maintainNearbyJson();
 }
 
@@ -1177,7 +1218,9 @@ void setGreetingStateProvider(std::function<lamp::GreetingState()> fn) {
 }
 
 void notifyStateChange() {
-  if (!s_stateNotify) return;
+  // A greeting edge fires this with no phone attached; the payload has no
+  // reader then, and a connecting client reads the state fresh.
+  if (!s_stateNotify || !s_clientConnected) return;
   const bool preview = ::expressionManager.isAnyTestActive();
   std::string payload = "{\"previewActive\":";
   payload += preview ? "true" : "false";
@@ -1201,14 +1244,26 @@ void notifyStateChange() {
   s_stateNotify->notify();
 }
 
+void disableBtModemSleep() {
+  esp_err_t err = esp_bt_sleep_disable();
+  if (err != ESP_OK) {
+#ifdef LAMP_DEBUG
+    Serial.printf("[ble_control] esp_bt_sleep_disable failed: %d\n", err);
+#endif
+  }
+}
+
 void start(lamp::Config* config) {
   if (s_running) return;
 
   s_config = config;
 
-  if (!NimBLEDevice::isInitialized()) {
-    NimBLEDevice::init(config->lamp.name.substr(0, 12));
+  if (!NimBLEDevice::isInitialized() &&
+      !NimBLEDevice::init(config->lamp.name.substr(0, 12))) {
+    Serial.println("[ble_control] NimBLE init failed; GATT service not started");
+    return;
   }
+  disableBtModemSleep();
 
   // createServer() returns the existing instance if one was already created
   // (NimBLE supports only one server per device).
@@ -1223,11 +1278,10 @@ void start(lamp::Config* config) {
 
   s_service = s_server->createService(SERVICE_UUID);
 
-  // Binary blob: [count:1][mac:6]*count[colorPair:6]*count. count=0 when
-  // no claim heard in 60 s. Truncated to the 32 entries the buffer holds
-  // (ATT value ceiling is 512 B); the `wispclaims` page section serves the
-  // full accumulated fleet. Separate from CHAR_WISP_STATUS because that
-  // payload is already at the MTU soft budget (466/509 B).
+  // Binary blob, see WispFleetCache::buildClaimsBlob. count=0 when every
+  // claim and paint entry is stale. The `wispclaims` page section serves the
+  // larger accumulated set. Separate from CHAR_WISP_STATUS because that payload is already at
+  // the MTU soft budget (466/509 B).
   class WispClaimsCallback : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
       if (!isAuthed(connInfo.getConnHandle())) {
@@ -1235,7 +1289,9 @@ void start(lamp::Config* config) {
         c->setValue(kEmpty, 1);
         return;
       }
-      static uint8_t buf[1 + lamp_protocol::kMaxWispClaimEntries * 12];
+      static uint8_t buf[lamp::WispFleetCache::kAttValueMax];
+      static_assert(sizeof(buf) <= lamp::WispFleetCache::kAttValueMax,
+                    "a value over the ATT cap reads back empty");
       size_t n = lamp::lampRoster.buildWispClaimsBlob(buf, sizeof(buf),
                                                         millis());
       c->setValue(buf, n);
@@ -1368,7 +1424,7 @@ void start(lamp::Config* config) {
 
   if (s_wifiStateChar) s_wifiStateChar->setValue(buildWifiStateJson(false));
   if (s_wispStatusChar) {
-    s_wispStatusChar->setValue(lamp::lampRoster.getWispStatusReadJson());
+    s_wispStatusChar->setValue(lamp::lampRoster.getWispStatusReadJson(lamp::kWispStatusCharMaxLen));
   }
   if (s_stateNotify) s_stateNotify->setValue("{}");
   if (schemaVersionChar) {
@@ -1411,6 +1467,7 @@ void stop() {
   s_server  = nullptr;
   s_running = false;
   clearAllSlots();
+  releaseNearby();
 
 #ifdef LAMP_DEBUG
   Serial.printf("[ble_control] GATT control service stopped\n");
@@ -1425,8 +1482,10 @@ void pauseRadioForOta() {
   // Stop both adv and scan so the IDF coex arbiter stops gating WiFi RX
   // during BLE windows. Phone app loses connection briefly; reconnects
   // on resumeRadioAfterOta or after the OTA-driven reboot.
-  NimBLEDevice::getAdvertising()->stop();
-  NimBLEDevice::getScan()->stop();
+  if (NimBLEDevice::isInitialized()) {
+    NimBLEDevice::getAdvertising()->stop();
+    NimBLEDevice::getScan()->stop();
+  }
   // Also tear down the boot-window SoftAP webapp. AP beacons fire every
   // ~100 ms and contend with the ESP-NOW chunk stream for WiFi airtime;
   // shutting the AP off frees the band for the OTA. The webapp is a
@@ -1475,6 +1534,7 @@ void resumeRadioAfterOta() {
   s_otaRadioPaused = false;
   // Two independent scan-pause flags: OTA and active GATT client. Only
   // restart if the client flag isn't also holding the scan down.
+  if (!NimBLEDevice::isInitialized()) return;
   if (!s_scanPausedForGattClient) {
     NimBLEDevice::getScan()->start(0);
   }

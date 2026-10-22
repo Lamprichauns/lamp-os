@@ -11,6 +11,8 @@ import '../../../core/utils/tap_counter.dart';
 import '../../../core/widgets/app_sheet.dart';
 import '../../../core/widgets/app_snackbar.dart';
 import '../../../core/widgets/friendly_error.dart';
+import '../../../core/lamp_name.dart';
+import '../../../core/lamp_password.dart';
 import '../../../core/widgets/password_prompt_dialog.dart';
 import '../../../core/widgets/rename_dialog.dart';
 import '../../../core/widgets/settings_row.dart';
@@ -89,6 +91,7 @@ class _SetupBody extends ConsumerWidget {
             context,
             title: 'Rename lamp',
             label: 'Name',
+            inputFormatters: lampNameFormatters,
             initial: state.lamp.name.toTitleCase(),
             onSave: (name) => n().setLampName(name),
           ),
@@ -105,8 +108,11 @@ class _SetupBody extends ConsumerWidget {
             final pw = await showPasswordPromptDialog(
               context,
               title: 'Change password',
-              subtitle: 'Saving restarts the lamp (~10s).',
+              subtitle: 'Also locks the lamp\'s setup WiFi, so you\'ll need '
+                  'this password to reach its web config. Saving restarts '
+                  'the lamp (~10s).',
               confirmLabel: 'Save',
+              validate: lampPasswordError,
             );
             if (pw != null) unawaited(n().setLampPassword(pw));
           },

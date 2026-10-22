@@ -45,11 +45,39 @@ void test_restore_ble_reboots_once_idle_regardless_of_station() {
   TEST_ASSERT_FALSE(webappShouldRestoreBle(200000, 100000, false));
 }
 
+// A web save's reboot fires once due; only an OTA in progress holds it.
+void test_armed_reboot_waits_for_ota_only() {
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(1000, false, 1000, false));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(999, true, 1000, false));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(1000, true, 1000, false));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(5000, true, 1000, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(0x00000010u, true, 0xFFFFFFF0u, false));
+}
+
+// A reboot armed for millis() 0 still fires.
+void test_a_reboot_armed_at_zero_fires() {
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(0, true, 0, false));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(5, true, 0, false));
+}
+
+// A stuck OTA holds the reboot only kRebootOtaWaitMaxMs past its time.
+void test_armed_reboot_waits_out_ota_up_to_the_ceiling() {
+  const uint32_t at = 1000;
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs - 1, true, at, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs, true, at, true));
+  TEST_ASSERT_TRUE(webapp::webappRebootDue(0x00000010u + webapp::kRebootOtaWaitMaxMs, true,
+                                           0x00000010u, true));
+  TEST_ASSERT_FALSE(webapp::webappRebootDue(at + webapp::kRebootOtaWaitMaxMs, false, at, true));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_never_expire_always_false);
   RUN_TEST(test_finite_deadline_before_and_after);
   RUN_TEST(test_wrap_safe_finite);
   RUN_TEST(test_restore_ble_reboots_once_idle_regardless_of_station);
+  RUN_TEST(test_armed_reboot_waits_for_ota_only);
+  RUN_TEST(test_armed_reboot_waits_out_ota_up_to_the_ceiling);
+  RUN_TEST(test_a_reboot_armed_at_zero_fires);
   return UNITY_END();
 }

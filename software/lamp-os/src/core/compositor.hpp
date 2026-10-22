@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "animated_behavior.hpp"
+#include "components/network/mesh/pending_slots.hpp"
 #include "behavior_context.hpp"
 #include "frame_buffer.hpp"
 #include "home_mode_gate.hpp"
@@ -37,9 +38,6 @@ class Compositor {
   // Home-mode suppression policy. Updated via setHomeModePolicy().
   bool homeSocialDisabled_ = true;
   std::vector<std::string> homeDisabledExprIds_ = {"glitchy"};
-
-  // Returns true if `b` should be skipped during a home-mode tick.
-  bool homeModeSkips(AnimatedBehavior* b) const;
 
   // true once a quiet-mode frame has painted; the next false->true edge on
   // ota_quiet_mode::isQuiet() signals ota_indicator::paint() to (re)init its
@@ -89,6 +87,8 @@ class Compositor {
   bool behaviorsComputed = false;
   unsigned long lastDrawTimeMs = 0;
   bool homeMode = false;
+  // True while home mode is on because the app is showing its Home Mode page.
+  bool homePreview = false;
 
   Compositor();
 
@@ -99,6 +99,9 @@ class Compositor {
   bool wispActive() const;
   Color wispStateBaseColor() const { return wispStateBase_; }
   Color wispStateShadeColor() const { return wispStateShade_; }
+  const LayerStack& wispLayer(bool base) const {
+    return base ? wispBaseStack_ : wispShadeStack_;
+  }
 
   /**
    * @param [in] inBehaviors list of behaviors to execute in priority sequence. last item
@@ -136,13 +139,37 @@ class Compositor {
    */
   void setHomeModePolicy(bool socialDisabled, std::vector<std::string> disabledIds);
 
+  // Home mode is active with social off: the lamp ignores other lamps.
+  bool homeSuppressesSocial() const { return homeMode && homeSocialDisabled_; }
+
   /**
    * True when home mode is active AND `type` is in the home-disabled set.
    * Shared with the render-skip decision so the mesh receive path can drop
    * a home-disabled cascade at receipt instead of creating a squatting
    * transient the render gate then refuses to draw.
    */
-  bool homeModeSkipsType(const std::string& type) const;
+  bool homeModeSkipsType(const std::string& type) const {
+    return homeMode && homeModeExpressionSkips(type.c_str(), homeDisabledExprIds_);
+  }
+
+  // homeModeTick for `b` under this compositor's home state and policy.
+  HomeModeTick homeModeTickFor(AnimatedBehavior* b) const {
+    return homeModeTick(homeMode, homeSocialDisabled_, b->isSocialBehavior(),
+                        b->playsAppGreeting(),
+                        homeModeExpressionSkips(b->homeModeExpressionId(), homeDisabledExprIds_));
+  }
+
+  // homeModeBlocksRemote over this compositor's live home state and policy.
+  bool blocksRemote(TransientSource source) const {
+    return homeModeBlocksRemote(homeMode, homeSocialDisabled_, source);
+  }
+
+  // True while blocksRemote(source) and outside the app's Home Mode preview:
+  // only then is a blocked arrival consumed or a running peer transient
+  // retired, so previewing home mode changes nothing that outlasts it.
+  bool discardsRemote(TransientSource source) const {
+    return blocksRemote(source) && !homePreview;
+  }
 
   /**
    * Mark the expression band bounds [start, end) within the
@@ -198,6 +225,20 @@ class Compositor {
   void clearWispState(uint32_t nowMs) {
     wispStatePresent_ = false;
     wispStateFreshMs_ = nowMs;
+  }
+  // Feed a drained STATE slot: this lamp's RGBW entry is applied, its absence
+  // clears. Returns whether the slot paints `selfMac`. Header-inline as the
+  // native-test seam for the drain.
+  bool applyWispStateSlot(const PendingWispState& slot, const uint8_t selfMac[6],
+                          uint32_t nowMs) {
+    Color base;
+    Color shade;
+    if (!wispStateColorsFor(slot, selfMac, base, shade)) {
+      clearWispState(nowMs);
+      return false;
+    }
+    applyWispState(base, shade, nowMs);
+    return true;
   }
 
   // Failsafe window: presence ages out this long after the last STATE frame

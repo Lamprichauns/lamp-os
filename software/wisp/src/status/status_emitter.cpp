@@ -7,14 +7,15 @@
 #include <lampos/led_types.hpp>
 
 #include "paint/current_palette.hpp"
+#include "net/eth_link.hpp"
 #include "net/mesh_link.hpp"
 #include "net/wifi_link.hpp"
 #include "config/wisp_config.hpp"
-#include "config/zone_selector.hpp"
-#include "aurora/AuroraPaletteClient.h"
+#include "core/wisp_controller.hpp"
 #include "wire/lamp_protocol.hpp"
 #include "status/status_json.hpp"
 #include "status/seq_source.hpp"
+#include "util/fnv1a.hpp"
 
 namespace wisp {
 
@@ -25,13 +26,11 @@ constexpr size_t kPaletteIdPrefixLen = lamp_protocol::WISP_HELLO_PALETTE_ID_PREF
 
 }  // namespace
 
-void StatusEmitter::begin(MeshLink* mesh, ZoneSelector* zone,
-                          AuroraPaletteClient* aurora, WispConfig* config,
-                          CurrentPalette* palette, SeqSource* seq,
-                          WifiLink* wifi) {
+void StatusEmitter::begin(MeshLink* mesh, const WispController* controller,
+                          WispConfig* config, CurrentPalette* palette,
+                          SeqSource* seq, WifiLink* wifi) {
   mesh_ = mesh;
-  zone_ = zone;
-  aurora_ = aurora;
+  controller_ = controller;
   config_ = config;
   palette_ = palette;
   seq_ = seq;
@@ -65,9 +64,16 @@ void StatusEmitter::triggerOnChange() {
   burstUntilMs_ = millis() + kStatusBurstMs;
 }
 
-void StatusEmitter::pump() {
+void StatusEmitter::pollConfig() {
+  configPollDue_.store(true, std::memory_order_relaxed);
+}
+
+bool StatusEmitter::pump() {
   checkConnEdges();
   const uint32_t now = millis();
+  if (configPollDue_.exchange(false, std::memory_order_relaxed)) {
+    configCadence_.poll();
+  }
   bool bursting = false;
   if (burstUntilMs_ != 0) {
     if (static_cast<int32_t>(now - burstUntilMs_) < 0) {
@@ -76,28 +82,41 @@ void StatusEmitter::pump() {
       burstUntilMs_ = 0;
     }
   }
-  if (!statusDue_.load(std::memory_order_relaxed) && !bursting) return;
-  const uint32_t minInterval = bursting ? kStatusBurstIntervalMs : kMinEmitIntervalMs;
-  if (haveEmitted_ && now - lastEmitMs_ < minInterval) return;
-  statusDue_.store(false, std::memory_order_relaxed);
-  haveEmitted_ = true;
-  lastEmitMs_ = now;
-  emitStatus();
+  if (statusDue_.load(std::memory_order_relaxed) || bursting) {
+    const uint32_t minInterval = bursting ? kStatusBurstIntervalMs : kMinEmitIntervalMs;
+    if ((!haveEmitted_ || now - lastEmitMs_ >= minInterval) &&
+        configCadence_.statusClear(now)) {
+      statusDue_.store(false, std::memory_order_relaxed);
+      haveEmitted_ = true;
+      lastEmitMs_ = now;
+      emitStatus();
+      char configJson[kConfigJsonBufLen];
+      const size_t n = buildConfig(configJson, sizeof(configJson));
+      configCadence_.onStatusEmitted(
+          now, fnv1a(reinterpret_cast<const uint8_t*>(configJson), n));
+      return true;
+    }
+  }
+  if (configCadence_.configDue(now)) {
+    configCadence_.onConfigEmitted(now);
+    emitConfig();
+    return true;
+  }
+  return false;
 }
 
 void StatusEmitter::checkConnEdges() {
-  const bool wifiConn   = WiFi.isConnected();
-  const bool auroraConn = aurora_ && aurora_->isStreaming();
+  const bool wifiConn = WiFi.isConnected();
+  const bool ethUp = eth::up();
   if (!haveLastConnState_) {
     haveLastConnState_ = true;
-  } else if (wifiConn != lastWifiConnected_ ||
-             auroraConn != lastAuroraConnected_) {
-    Serial.printf("[wisp.beacon] connectivity edge wifi=%d aurora=%d\n",
-                  (int)wifiConn, (int)auroraConn);
+  } else if (wifiConn != lastWifiConnected_ || ethUp != lastEthUp_) {
+    Serial.printf("[wisp.beacon] connectivity edge wifi=%d eth=%d\n",
+                  (int)wifiConn, (int)ethUp);
     triggerOnChange();
   }
-  lastWifiConnected_   = wifiConn;
-  lastAuroraConnected_ = auroraConn;
+  lastWifiConnected_ = wifiConn;
+  lastEthUp_ = ethUp;
 }
 
 void StatusEmitter::emitStatus() {
@@ -109,23 +128,12 @@ void StatusEmitter::emitStatus() {
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 #endif
 
-  uint8_t srcMac[6] = {0};
-  mesh_->getMac(srcMac);
-
   const bool wifiConn   = WiFi.isConnected();
-  const bool auroraConn = aurora_ && aurora_->isStreaming();
+  const bool sourceLive = controller_ && controller_->sourceLive();
   const bool wifiChannelMismatch = wifi_ && wifi_->channelMismatch();
   const int  wifiApChannel = wifi_ ? wifi_->apChannel() : 0;
-  const int  currentZone = zone_ ? zone_->currentZone() : -1;
-  const char* zoneSrc    = zone_ ? zoneSourceName(zone_->source())
-                                 : zoneSourceName(ZoneSource::None);
-
-  // copyObserved is mux-guarded against concurrent observe() calls.
-  int obsBuf[kMaxObservedZones];
-  size_t obsCount = 0;
-  if (zone_) {
-    obsCount = zone_->copyObserved(obsBuf, kMaxObservedZones);
-  }
+  char ethIp[16];
+  eth::formatIp(ethIp, sizeof(ethIp));
 
   char paletteIdPrefix[kPaletteIdPrefixLen + 1] = {0};
   if (palette_) {
@@ -137,51 +145,38 @@ void StatusEmitter::emitStatus() {
   const uint32_t lastSeenMs = millis();
 
   // manualPalette excluded: emitted separately via MSG_WISP_PALETTE (buildWispPalette).
-  const char* sourceName = "aurora";  // safe default for nullptr config
+  const char* sourceName = "off";
+  const char* oscRole = nullptr;
   if (config_) {
     switch (config_->sourceMode()) {
       case WispSourceMode::Off:    sourceName = "off";    break;
       case WispSourceMode::Manual: sourceName = "manual"; break;
-      case WispSourceMode::Aurora: sourceName = "aurora"; break;
+      case WispSourceMode::Osc:    sourceName = "osc";    break;
     }
+    oscRole = oscRoleName(config_->oscRole());
   }
 
   uint8_t offR = 0, offG = 0, offB = 0, offW = 0;
   bool hasOffColor = false;
-  uint8_t shuffleSeed = 0;
-  uint32_t driftIntervalMs = 0;
-  uint8_t driftFadePct = 0;
   const char* wispName = "";
   bool hasPassword = false;
-  const char* ledType = "GRB";
-  uint16_t pixelCount = 30;
-  uint32_t opSeq = 0;
-  uint8_t brightness = 100;
   if (config_) {
     const auto off = config_->offColor();
     offR = off.r; offG = off.g; offB = off.b; offW = off.w;
     hasOffColor = true;
-    shuffleSeed = config_->shuffleSeed();
-    driftIntervalMs = config_->driftIntervalMs();
-    driftFadePct = config_->driftFadePct();
     wispName = config_->name().c_str();
     hasPassword = config_->password().length() > 0;
-    ledType = lampos::led::byteOrderToString(config_->ledFormat());
-    pixelCount = config_->pixelCount();
-    opSeq = config_->opSeq();
-    brightness = config_->brightness();
   }
   const WispStatusFields fields{
-      currentZone, zoneSrc, obsBuf, obsCount,
-      wifiConn, auroraConn, paletteIdPrefix, lastSeenMs,
-      sourceName, offR, offG, offB, offW, hasOffColor, shuffleSeed,
-      driftIntervalMs, driftFadePct, wispName, hasPassword,
-      ledType, pixelCount, opSeq, brightness,
-      wifiChannelMismatch, wifiApChannel };
+      wifiConn, sourceLive, paletteIdPrefix, lastSeenMs,
+      sourceName, oscRole, offR, offG, offB, offW, hasOffColor,
+      wispName, hasPassword, wifiChannelMismatch, wifiApChannel, ethIp };
+  const WispConfigFields configCopy = configFields();
 
   char jsonBuf[kStatusJsonBufLen];
   const size_t jsonLen = buildWispStatusJson(
-      fields, jsonBuf, sizeof(jsonBuf), lamp_protocol::CONTROL_MAX_PAYLOAD);
+      fields, &configCopy, jsonBuf, sizeof(jsonBuf),
+      lamp_protocol::CONTROL_MAX_PAYLOAD);
 
   // Emit palette first: a wispStatus build failure must not suppress it.
   emitPalette();
@@ -190,8 +185,42 @@ void StatusEmitter::emitStatus() {
     Serial.println("[wisp.beacon] wispStatus JSON build failed");
     return;
   }
+  broadcastControlOp(jsonBuf, jsonLen, "wispStatus");
+}
 
-  // SeqSource mux: concurrent HELLO and wispStatus emits must not share a seq.
+WispConfigFields StatusEmitter::configFields() const {
+  WispConfigFields c;
+  if (!config_) return c;
+  c.ledType = lampos::led::byteOrderToString(config_->ledFormat());
+  c.pixelCount = config_->pixelCount();
+  c.brightness = config_->brightness();
+  c.driftIntervalMs = config_->driftIntervalMs();
+  c.driftFadePct = config_->driftFadePct();
+  c.shuffleSeed = config_->shuffleSeed();
+  c.opSeq = config_->opSeq();
+  return c;
+}
+
+size_t StatusEmitter::buildConfig(char* out, size_t outCap) const {
+  return buildWispConfigJson(configFields(), out, outCap);
+}
+
+void StatusEmitter::emitConfig() {
+  if (!mesh_) return;
+  char jsonBuf[kConfigJsonBufLen];
+  const size_t jsonLen = buildConfig(jsonBuf, sizeof(jsonBuf));
+  if (jsonLen == 0) {
+    Serial.println("[wisp.beacon] wispConfig JSON build failed");
+    return;
+  }
+  broadcastControlOp(jsonBuf, jsonLen, "wispConfig");
+}
+
+void StatusEmitter::broadcastControlOp(const char* json, size_t jsonLen,
+                                       const char* what) {
+  uint8_t srcMac[6] = {0};
+  mesh_->getMac(srcMac);
+  // SeqSource mux: concurrent HELLO and control-op emits must not share a seq.
   uint8_t frame[lamp_protocol::CONTROL_MAX_SIZE];
   size_t frameLen = 0;
   uint16_t seq = 0;
@@ -200,10 +229,10 @@ void StatusEmitter::emitStatus() {
   frameLen = lamp_protocol::buildControlOp(
       frame, sizeof(frame), seq,
       kBroadcastMac, srcMac,
-      reinterpret_cast<const uint8_t*>(jsonBuf), jsonLen);
+      reinterpret_cast<const uint8_t*>(json), jsonLen);
   WISP_SEQ_PORTMUX_EXIT(&seq_->mux);
   if (!frameLen) {
-    Serial.println("[wisp.beacon] buildControlOp(wispStatus) failed");
+    Serial.printf("[wisp.beacon] buildControlOp(%s) failed\n", what);
     return;
   }
   mesh_->broadcast(frame, frameLen);

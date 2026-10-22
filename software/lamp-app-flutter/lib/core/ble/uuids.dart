@@ -49,8 +49,8 @@ abstract class BleUuids {
 
   // wisp_op (write-with-response, plaintext): JSON op forwarded to the
   // wisp via MSG_CONTROL_OP broadcast. Shape:
-  //   {"char":"wispOp","op":"setZone","zoneId":N}
-  //   {"char":"wispOp","op":"clearZone"}
+  //   {"char":"wispOp","op":"setSource","mode":"osc"}
+  //   {"char":"wispOp","op":"setOscRole","role":"secondary"}
   //   {"char":"wispOp","op":"setWifi","ssid":"…","pw":"…"}
   // The lamp broadcasts these on the mesh; it does not interpret them.
   static const wispOp = '5f64f4e1-d6d9-4a44-9b3f-3a8d6f7e6b40';
@@ -60,9 +60,9 @@ abstract class BleUuids {
   // data. See features/wisp/data/wisp_repository.dart for the parsed shape.
   static const wispStatus = '5f64f4e2-d6d9-4a44-9b3f-3a8d6f7e6b40';
 
-  // wisp_claims (read-only, binary): the set of lamp mesh macs the wisp
-  // currently claims. Format: [count:1][mac:6]*count, count ≤ 32.
-  // count=0 means no claims / wisp stale. See parseClaimedMacs().
+  // wisp_claims (read-only, binary): the lamp mesh macs the wisp claims or
+  // paints, with their live paint. count=0 means nothing fresh. Format and
+  // parsing: parseWispClaims().
   static const wispClaims = '5f64f4eb-d6d9-4a44-9b3f-3a8d6f7e6b40';
 
   // Firmware OTA. Both auth-gated. App writes MSG_FW_OFFER and MSG_FW_DONE

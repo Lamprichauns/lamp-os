@@ -74,7 +74,9 @@ While you can program boards through the IDE, Lamp OS intends to be deployed on 
 
 ## OTA Updating
 
-Join your lamp's wifi and navigate to <http://lamp.local/update> and update the following two files in pairs:
+Join your lamp's wifi (its setup network asks for the lamp's password once one
+is set) and navigate to <http://lamp.local/update> and update the following two
+files in pairs:
 
 Lamp's main firmware:
 

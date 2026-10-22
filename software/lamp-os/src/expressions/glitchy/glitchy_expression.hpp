@@ -69,6 +69,7 @@ class GlitchyExpression : public Expression {
   uint16_t scatter_ = kGlitchScatterMax;
 
   void paintGlitch_(float wispWeight);
+  void restoreSaved_();
 
  public:
   using Expression::Expression;
@@ -83,7 +84,7 @@ class GlitchyExpression : public Expression {
    * Configure glitchy-specific parameters from generic parameter map.
    * @param parameters Map containing expression-specific parameters
    */
-  void configureFromParameters(const std::map<std::string, uint32_t>& parameters) override;
+  void configureFromParameters(const ExpressionParams& parameters) override;
   static const ExpressionDescriptor& classDescriptor();
   const ExpressionDescriptor& descriptor() const override;
 

@@ -4,9 +4,9 @@
 //   brightnessToConfig:   user-direct BLE write (slider live-preview).
 //                         Mutates config + seeds the micro-fade triple
 //                         for smooth slider drags + applies initial sample.
-//   brightnessToRender:   mesh-relayed CONTROL_OP (cascade brightness).
+//   brightnessToRender:   the app's CHAR_REMOTE_OP write (a preview).
 //                         Render-only: applies setBrightness directly, NO
-//                         config mutation, NO fade triple. The cascade is
+//                         config mutation, NO fade triple. The preview is
 //                         transient; persisting it would contaminate
 //                         CHAR_COMMIT's next persistence sweep.
 //   brightnessImmediate:  settings_blob path. Mutates config + applies
@@ -59,6 +59,10 @@ void stampConfiguratorActivity(uint32_t nowMs);
 // existing routing/dimming logic. Used by brightnessImmediate.
 void applyEffectiveBrightness();
 
+// True while the crowd-dim factor is still ramping toward its target, so the
+// loop keeps reapplying brightness until it lands.
+bool crowdDimFading(uint32_t nowMs);
+
 namespace apply {
 
 // User-direct BLE write. Routes to homeMode.brightness vs lamp.brightness
@@ -82,12 +86,11 @@ inline void brightnessToConfig(uint8_t level, bool isHomeMode, uint8_t maxBright
       ::lamp::calculateBrightnessLevel(maxBrightness, source));
 }
 
-// Mesh-relayed cascade brightness. Render-only: snap setBrightness,
-// no config mutation, no fade triple. Skipping the fade gives the
-// cascade its "instant change" UX (matches today's social-greet behavior
-// for shade/base color cascades).
+// Remote-op brightness. Render-only: snap setBrightness, no config
+// mutation, no fade triple, so the preview lands instantly like the
+// shade/base colour previews.
 inline void brightnessToRender(uint8_t level, bool isHomeMode, uint8_t maxBrightness) {
-  (void)isHomeMode;  // Cascade brightness isn't home-mode-routed.
+  (void)isHomeMode;  // Remote-op brightness isn't home-mode-routed.
   ::lamp::setAllStripsBrightness(
       ::lamp::calculateBrightnessLevel(maxBrightness, level));
 }

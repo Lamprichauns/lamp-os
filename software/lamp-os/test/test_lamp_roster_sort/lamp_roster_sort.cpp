@@ -1,4 +1,4 @@
-// Tests for the getNear / getUngreetedArrivals sort order.
+// Tests for the snapshotNear / getUngreetedArrivals sort order.
 //
 // The production path uses std::sort (in-place introsort, no merge-buffer
 // heap allocation) so it can't throw bad_alloc on the fragmented lamp heap,
@@ -23,7 +23,7 @@ struct RosterEntry {
   uint8_t mac[6] = {0};
 };
 
-// Mirror of the getNear / getUngreetedArrivals comparator: RSSI descending,
+// Mirror of the snapshotNear / getUngreetedArrivals comparator: RSSI descending,
 // mac bytes ascending on a tie.
 void sortByRssiThenMac(std::vector<RosterEntry>& out) {
   std::sort(out.begin(), out.end(),

@@ -211,6 +211,31 @@ void test_poll_status_plaintext_with_password() {
     TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollStatus, (int)result);
 }
 
+// pollConfig is accepted without a password and changes nothing.
+void test_poll_config_no_password() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+
+    wisp::WispOpDispatcher d(cfg);
+    const char* plain = R"({"char":"wispOp","op":"pollConfig"})";
+    auto result = d.dispatch(reinterpret_cast<const uint8_t*>(plain), strlen(plain));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollConfig, (int)result);
+    TEST_ASSERT_EQUAL_UINT32(0, cfg.opSeq());
+}
+
+// pollConfig rides the plaintext exception list beside pollStatus: it only
+// re-broadcasts state every lamp already relays.
+void test_poll_config_plaintext_with_password() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    cfg.setPassword("testpass");
+
+    wisp::WispOpDispatcher d(cfg);
+    const char* plain = R"({"char":"wispOp","op":"pollConfig"})";
+    auto result = d.dispatch(reinterpret_cast<const uint8_t*>(plain), strlen(plain));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::PollConfig, (int)result);
+}
+
 // --- Task 4b: setPassword op + replay window ---
 
 // setPassword sealed under the OLD password changes the password; subsequent
@@ -435,6 +460,80 @@ void test_set_brightness_out_of_bounds_malformed() {
     TEST_ASSERT_EQUAL_INT(100, (int)cfg.brightness());
 }
 
+// --- setSource / setOscRole ---
+
+static wisp::DispatchResult dispatchStr(wisp::WispOpDispatcher& d, const char* s) {
+    return d.dispatch(reinterpret_cast<const uint8_t*>(s), strlen(s));
+}
+
+void test_set_source_osc_accepted() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::AppliedSourceChange,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setSource","mode":"osc"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::WispSourceMode::Osc, (int)cfg.sourceMode());
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::AppliedSourceChange,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setSource","mode":1})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::WispSourceMode::Manual, (int)cfg.sourceMode());
+}
+
+// Aurora is gone: its string and its retired numeric value are unknown.
+void test_set_source_aurora_rejected() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setSource","mode":"aurora"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setSource","mode":2})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::WispSourceMode::Off, (int)cfg.sourceMode());
+}
+
+void test_set_osc_role_persists() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::AppliedOscRole,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setOscRole","role":"fill"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Fill, (int)cfg.oscRole());
+    wisp::WispConfig reload;
+    reload.begin();
+    TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Fill, (int)reload.oscRole());
+}
+
+void test_set_osc_role_invalid_malformed() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setOscRole","role":"quaternary"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setOscRole"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Primary, (int)cfg.oscRole());
+}
+
+// Role is config like any other: plaintext is refused once a password is set.
+void test_set_osc_role_plaintext_rejected_with_password() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    cfg.setPassword("testpass");
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Rejected,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setOscRole","role":"fill"})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::OscRole::Primary, (int)cfg.oscRole());
+}
+
+void test_zone_ops_unknown() {
+    wisp::WispConfig cfg;
+    cfg.begin();
+    wisp::WispOpDispatcher d(cfg);
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"setZone","zoneId":3})"));
+    TEST_ASSERT_EQUAL_INT((int)wisp::DispatchResult::Malformed,
+        (int)dispatchStr(d, R"({"char":"wispOp","op":"clearZone"})"));
+}
+
 // Nonce ring is bounded: pre-fill the ring to MAX_RECENT_NONCES and verify
 // that adding one more evicts the oldest entry instead of growing.
 // ponytail: RAM-only replay window; a forced reboot clears it.
@@ -478,6 +577,8 @@ int main(int, char**) {
     RUN_TEST(test_set_off_color_rgbw_tuple);
     RUN_TEST(test_poll_status_no_password);
     RUN_TEST(test_poll_status_plaintext_with_password);
+    RUN_TEST(test_poll_config_no_password);
+    RUN_TEST(test_poll_config_plaintext_with_password);
     RUN_TEST(test_set_password_sealed_changes_password);
     RUN_TEST(test_set_password_plaintext_factory_fresh);
     RUN_TEST(test_set_password_plaintext_rejected_when_password_set);
@@ -491,5 +592,11 @@ int main(int, char**) {
     RUN_TEST(test_set_led_strip_missing_pixel_count);
     RUN_TEST(test_set_brightness_happy_path);
     RUN_TEST(test_set_brightness_out_of_bounds_malformed);
+    RUN_TEST(test_set_source_osc_accepted);
+    RUN_TEST(test_set_source_aurora_rejected);
+    RUN_TEST(test_set_osc_role_persists);
+    RUN_TEST(test_set_osc_role_invalid_malformed);
+    RUN_TEST(test_set_osc_role_plaintext_rejected_with_password);
+    RUN_TEST(test_zone_ops_unknown);
     return UNITY_END();
 }
