@@ -180,10 +180,13 @@ void PresenceBeacon::emitClaim(const uint8_t srcMac[6]) {
 void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
   uint8_t stateEntries[lamp_protocol::WISP_STATE_MAX_ENTRIES *
                        lamp_protocol::WISP_STATE_ENTRY_SIZE];
+  uint8_t stateW[lamp_protocol::WISP_STATE_MAX_ENTRIES *
+                 lamp_protocol::WISP_STATE_W_SIZE];
   // Off packs no colors: the lamp finds its entry absent and eases home.
   const size_t stateCount =
       (paint_ && paint_->painting())
-          ? roster_->snapshotStateForBroadcast(stateEntries, sizeof(stateEntries))
+          ? roster_->snapshotStateForBroadcast(stateEntries, sizeof(stateEntries),
+                                               stateW, sizeof(stateW))
           : 0;
   const uint8_t brightness = config_ ? config_->brightness() : 100;
   const uint32_t driftRateMs = config_ ? config_->driftIntervalMs() : 0;
@@ -195,8 +198,8 @@ void PresenceBeacon::emitState(const uint8_t srcMac[6], uint8_t presenceFlags) {
   const size_t stateLen = lamp_protocol::buildWispState(
       stateBuf, sizeof(stateBuf), stateSeq, srcMac, brightness, driftRateMs,
       presenceFlags, stateCount > 0 ? stateEntries : nullptr,
-      static_cast<uint8_t>(stateCount));
-  // No resend: at up to 1459 B STATE overflows the paint-sized resend slot.
+      stateCount > 0 ? stateW : nullptr, static_cast<uint8_t>(stateCount));
+  // No resend: at up to 1461 B STATE overflows the paint-sized resend slot.
   // Edge coverage comes from the burst window in pump(); the 4s cadence backs
   // both up.
   if (stateLen) {

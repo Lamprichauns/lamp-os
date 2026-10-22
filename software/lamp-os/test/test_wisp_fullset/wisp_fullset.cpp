@@ -72,11 +72,20 @@ void test_paint_over_cap_rejected() {
 }
 
 void test_state_frame_caps() {
-  TEST_ASSERT_EQUAL_UINT32(120, lp::WISP_STATE_MAX_ENTRIES);
   TEST_ASSERT_EQUAL_UINT32(12, lp::WISP_STATE_ENTRY_SIZE);
+  TEST_ASSERT_EQUAL_UINT32(2, lp::WISP_STATE_W_SIZE);
   TEST_ASSERT_EQUAL_UINT32(19, lp::WISP_STATE_FIXED_PREFIX);
-  TEST_ASSERT_EQUAL_UINT32(1459, lp::WISP_STATE_MAX_SIZE);
+  constexpr size_t kPerEntry = lp::WISP_STATE_ENTRY_SIZE + lp::WISP_STATE_W_SIZE;
+  // The cap is the largest count whose full frame, W plane included, fits v2.
+  TEST_ASSERT_EQUAL_UINT32(
+      lp::WISP_STATE_FIXED_PREFIX + lp::WISP_STATE_MAX_ENTRIES * kPerEntry,
+      lp::WISP_STATE_MAX_SIZE);
   TEST_ASSERT_TRUE(lp::WISP_STATE_MAX_SIZE <= lp::ESPNOW_V2_FRAME_MAX);
+  TEST_ASSERT_TRUE(lp::WISP_STATE_FIXED_PREFIX +
+                       (lp::WISP_STATE_MAX_ENTRIES + 1) * kPerEntry >
+                   lp::ESPNOW_V2_FRAME_MAX);
+  // Every lamp a wisp can claim fits one frame.
+  TEST_ASSERT_TRUE(lp::WISP_STATE_MAX_ENTRIES >= lp::kMaxWispClaimEntries);
 }
 
 void test_state_fullset_round_trip() {
@@ -84,11 +93,13 @@ void test_state_fullset_round_trip() {
   for (size_t i = 0; i < sizeof(entries); ++i) {
     entries[i] = static_cast<uint8_t>(i * 7 + 3);
   }
+  uint8_t w[lp::WISP_STATE_MAX_ENTRIES * lp::WISP_STATE_W_SIZE];
+  for (size_t i = 0; i < sizeof(w); ++i) w[i] = static_cast<uint8_t>(i * 5 + 1);
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
   const size_t n = lp::buildWispState(buf, sizeof(buf), /*seq=*/42, kSrc,
                                       /*brightness=*/200,
                                       /*driftRateMs=*/1234567,
-                                      /*presenceFlags=*/0x03, entries,
+                                      /*presenceFlags=*/0x03, entries, w,
                                       lp::WISP_STATE_MAX_ENTRIES);
   TEST_ASSERT_EQUAL_UINT32(lp::WISP_STATE_MAX_SIZE, n);
 
@@ -101,6 +112,8 @@ void test_state_fullset_round_trip() {
   TEST_ASSERT_EQUAL_UINT32(1234567, out.driftRateMs);
   TEST_ASSERT_EQUAL_UINT8(0x03, out.presenceFlags);
   TEST_ASSERT_EQUAL_MEMORY(entries, out.entries, sizeof(entries));
+  TEST_ASSERT_NOT_NULL(out.w);
+  TEST_ASSERT_EQUAL_MEMORY(w, out.w, sizeof(w));
 }
 
 void test_state_zero_entries_round_trip() {
@@ -108,7 +121,7 @@ void test_state_zero_entries_round_trip() {
   const size_t n = lp::buildWispState(buf, sizeof(buf), /*seq=*/7, kSrc,
                                       /*brightness=*/64,
                                       /*driftRateMs=*/60000,
-                                      /*presenceFlags=*/0x00, nullptr, 0);
+                                      /*presenceFlags=*/0x00, nullptr, nullptr, 0);
   TEST_ASSERT_EQUAL_UINT32(lp::WISP_STATE_FIXED_PREFIX, n);
 
   lp::ParsedWispState out;
@@ -119,6 +132,7 @@ void test_state_zero_entries_round_trip() {
   TEST_ASSERT_EQUAL_UINT32(60000, out.driftRateMs);
   TEST_ASSERT_EQUAL_UINT8(0x00, out.presenceFlags);
   TEST_ASSERT_NULL(out.entries);
+  TEST_ASSERT_NULL(out.w);
 }
 
 void test_state_globals_survive_independent_of_count() {
@@ -128,7 +142,7 @@ void test_state_globals_survive_independent_of_count() {
   const size_t n = lp::buildWispState(buf, sizeof(buf), /*seq=*/5, kSrc,
                                       /*brightness=*/255,
                                       /*driftRateMs=*/3600000,
-                                      /*presenceFlags=*/0xAA, entries, 3);
+                                      /*presenceFlags=*/0xAA, entries, nullptr, 3);
   TEST_ASSERT_TRUE(n > 0);
 
   lp::ParsedWispState out;
@@ -143,7 +157,7 @@ void test_state_over_cap_rejected() {
   uint8_t entries[lp::WISP_STATE_ENTRY_SIZE] = {0};
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
   const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 0, 0, 0, entries,
-                                      lp::WISP_STATE_MAX_ENTRIES + 1);
+                                      nullptr, lp::WISP_STATE_MAX_ENTRIES + 1);
   TEST_ASSERT_EQUAL_UINT32(0, n);
 }
 
@@ -151,7 +165,7 @@ void test_state_truncated_rejected() {
   uint8_t entries[lp::WISP_STATE_MAX_ENTRIES * lp::WISP_STATE_ENTRY_SIZE] = {0};
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
   const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 0, 0, 0, entries,
-                                      lp::WISP_STATE_MAX_ENTRIES);
+                                      nullptr, lp::WISP_STATE_MAX_ENTRIES);
   TEST_ASSERT_TRUE(n > 0);
   lp::ParsedWispState out;
   // A frame shorter than the fixed prefix, and one covering the prefix but not
@@ -171,7 +185,8 @@ void test_state_find_own_entry_picks_base_shade() {
   mine[9] = 25;  mine[10] = 75; mine[11] = 175;  // shadeRGB
 
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
-  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0, entries, 3);
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0, entries,
+                                      nullptr, 3);
   TEST_ASSERT_TRUE(n > 0);
   lp::ParsedWispState out;
   TEST_ASSERT_TRUE(lp::parseWispState(buf, n, out));
@@ -191,13 +206,120 @@ void test_state_find_own_entry_absent_returns_null() {
   uint8_t entries[3 * lp::WISP_STATE_ENTRY_SIZE];
   for (size_t i = 0; i < sizeof(entries); ++i) entries[i] = static_cast<uint8_t>(i);
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
-  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0, entries, 3);
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0, entries,
+                                      nullptr, 3);
   TEST_ASSERT_TRUE(n > 0);
   lp::ParsedWispState out;
   TEST_ASSERT_TRUE(lp::parseWispState(buf, n, out));
   TEST_ASSERT_NULL(lp::findWispStateEntry(out.entries, out.count, kMine));
   // Zero-entry frame: nothing to match.
   TEST_ASSERT_NULL(lp::findWispStateEntry(nullptr, 0, kMine));
+}
+
+// The STATE parser shipped in 1.2.7 and 1.2.9, frozen with its constants.
+// Deployed lamps run this; it must keep accepting what the wisp now emits.
+bool legacyParseWispState(const uint8_t* data, size_t len,
+                          lp::ParsedWispState& out) {
+  constexpr size_t kPrefix = 19;
+  constexpr size_t kEntry = 12;
+  constexpr size_t kMaxEntries = 120;
+  if (lp::inspect(data, len) != lp::MSG_WISP_STATE) return false;
+  if (len < kPrefix) return false;
+  const uint8_t count = data[18];
+  if (count > kMaxEntries) return false;
+  const size_t expected = kPrefix + static_cast<size_t>(count) * kEntry;
+  if (len < expected) return false;
+  out.seq = static_cast<uint16_t>(data[4]) | (static_cast<uint16_t>(data[5]) << 8);
+  std::memcpy(out.sourceMac, &data[6], 6);
+  out.brightness = data[12];
+  out.driftRateMs = static_cast<uint32_t>(data[13]) |
+                    (static_cast<uint32_t>(data[14]) << 8) |
+                    (static_cast<uint32_t>(data[15]) << 16) |
+                    (static_cast<uint32_t>(data[16]) << 24);
+  out.presenceFlags = data[17];
+  out.count = count;
+  out.entries = count ? &data[kPrefix] : nullptr;
+  return true;
+}
+
+void fillPattern(uint8_t* p, size_t n, uint8_t mul, uint8_t add) {
+  for (size_t i = 0; i < n; ++i) p[i] = static_cast<uint8_t>(i * mul + add);
+}
+
+void test_state_legacy_parser_reads_w_frame() {
+  uint8_t entries[lp::WISP_STATE_MAX_ENTRIES * lp::WISP_STATE_ENTRY_SIZE];
+  uint8_t w[lp::WISP_STATE_MAX_ENTRIES * lp::WISP_STATE_W_SIZE];
+  fillPattern(entries, sizeof(entries), 11, 2);
+  fillPattern(w, sizeof(w), 3, 9);
+  uint8_t buf[lp::WISP_STATE_MAX_SIZE];
+  const size_t n = lp::buildWispState(buf, sizeof(buf), /*seq=*/0x1234, kSrc,
+                                      /*brightness=*/77, /*driftRateMs=*/90000,
+                                      /*presenceFlags=*/0x06, entries, w,
+                                      lp::WISP_STATE_MAX_ENTRIES);
+  TEST_ASSERT_EQUAL_UINT32(lp::WISP_STATE_MAX_SIZE, n);
+
+  lp::ParsedWispState legacy{};
+  TEST_ASSERT_TRUE(legacyParseWispState(buf, n, legacy));
+  TEST_ASSERT_EQUAL_UINT16(0x1234, legacy.seq);
+  TEST_ASSERT_EQUAL_MEMORY(kSrc, legacy.sourceMac, 6);
+  TEST_ASSERT_EQUAL_UINT8(77, legacy.brightness);
+  TEST_ASSERT_EQUAL_UINT32(90000, legacy.driftRateMs);
+  TEST_ASSERT_EQUAL_UINT8(0x06, legacy.presenceFlags);
+  TEST_ASSERT_EQUAL_UINT8(lp::WISP_STATE_MAX_ENTRIES, legacy.count);
+  TEST_ASSERT_EQUAL_MEMORY(entries, legacy.entries, sizeof(entries));
+}
+
+void test_state_w_plane_round_trip() {
+  const uint8_t kMine[6] = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+  uint8_t entries[3 * lp::WISP_STATE_ENTRY_SIZE];
+  fillPattern(entries, sizeof(entries), 1, 0x80);
+  std::memcpy(&entries[1 * lp::WISP_STATE_ENTRY_SIZE], kMine, 6);
+  const uint8_t w[3 * lp::WISP_STATE_W_SIZE] = {1, 2, 0xC8, 0x37, 5, 6};
+  uint8_t buf[lp::WISP_STATE_MAX_SIZE];
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0,
+                                      entries, w, 3);
+  TEST_ASSERT_EQUAL_UINT32(lp::WISP_STATE_FIXED_PREFIX +
+                               3 * (lp::WISP_STATE_ENTRY_SIZE + lp::WISP_STATE_W_SIZE),
+                           n);
+  lp::ParsedWispState out;
+  TEST_ASSERT_TRUE(lp::parseWispState(buf, n, out));
+  TEST_ASSERT_NOT_NULL(out.w);
+  TEST_ASSERT_EQUAL_MEMORY(w, out.w, sizeof(w));
+}
+
+void test_state_without_w_plane_parses_with_null_w() {
+  uint8_t entries[3 * lp::WISP_STATE_ENTRY_SIZE];
+  fillPattern(entries, sizeof(entries), 1, 0);
+  const uint8_t w[3 * lp::WISP_STATE_W_SIZE] = {9, 9, 9, 9, 9, 9};
+  uint8_t buf[lp::WISP_STATE_MAX_SIZE];
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 64, 8000, 0,
+                                      entries, w, 3);
+  TEST_ASSERT_TRUE(n > 0);
+  lp::ParsedWispState out;
+  // An older wisp's frame ends at the entries.
+  const size_t legacyLen = n - sizeof(w);
+  TEST_ASSERT_TRUE(lp::parseWispState(buf, legacyLen, out));
+  TEST_ASSERT_EQUAL_UINT8(3, out.count);
+  TEST_ASSERT_NULL(out.w);
+  // A partial W plane is not trusted either.
+  TEST_ASSERT_TRUE(lp::parseWispState(buf, n - 1, out));
+  TEST_ASSERT_NULL(out.w);
+}
+
+void test_state_parser_rejects_over_cap_count() {
+  // Room for count+1 entries with the W plane, so only the count cap rejects.
+  uint8_t buf[lp::WISP_STATE_FIXED_PREFIX +
+              (lp::WISP_STATE_MAX_ENTRIES + 1) *
+                  (lp::WISP_STATE_ENTRY_SIZE + lp::WISP_STATE_W_SIZE)];
+  std::memset(buf, 0, sizeof(buf));
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 0, 0, 0,
+                                      nullptr, nullptr, 0);
+  TEST_ASSERT_TRUE(n > 0);
+  buf[18] = static_cast<uint8_t>(lp::WISP_STATE_MAX_ENTRIES + 1);
+  lp::ParsedWispState out;
+  TEST_ASSERT_FALSE(lp::parseWispState(buf, sizeof(buf), out));
+  buf[18] = static_cast<uint8_t>(lp::WISP_STATE_MAX_ENTRIES);
+  TEST_ASSERT_TRUE(lp::parseWispState(buf, sizeof(buf), out));
 }
 
 int main(int argc, char** argv) {
@@ -216,5 +338,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_state_truncated_rejected);
   RUN_TEST(test_state_find_own_entry_picks_base_shade);
   RUN_TEST(test_state_find_own_entry_absent_returns_null);
+  RUN_TEST(test_state_legacy_parser_reads_w_frame);
+  RUN_TEST(test_state_w_plane_round_trip);
+  RUN_TEST(test_state_without_w_plane_parses_with_null_w);
+  RUN_TEST(test_state_parser_rejects_over_cap_count);
   return UNITY_END();
 }

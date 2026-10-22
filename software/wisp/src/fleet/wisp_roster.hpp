@@ -90,11 +90,11 @@ class WispRoster {
   // whatever `outCapacity` holds.
   size_t snapshotClaimsForBroadcast(uint8_t* outBuf, size_t outCapacity);
 
-  // Store the paint pick for a currently-claimed lamp. No-op if mac is
-  // not in the current own-claim set (the caller may have picked before
-  // the claim was established).
-  void setLampPaint(const uint8_t mac[6], const uint8_t base[3],
-                    const uint8_t shade[3]);
+  // Store the RGBW paint pick for a currently-claimed lamp and mark it painted.
+  // No-op if mac is not in the current own-claim set (the caller may have
+  // picked before the claim was established).
+  void setLampPaint(const uint8_t mac[6], const uint8_t base[4],
+                    const uint8_t shade[4]);
 
   // ponytail: orphaned — MSG_WISP_PAINT broadcast retired, STATE carries paint
   // via snapshotStateForBroadcast. Kept with its roster test; drop in cleanup.
@@ -102,12 +102,14 @@ class WispRoster {
   // entries; `cap` limits the byte budget. Returns entry count written.
   size_t snapshotPaintForBroadcast(uint8_t* out, size_t cap);
 
-  // Pack the whole own-claim set for `MSG_WISP_STATE` broadcasting: same
-  // 12-byte lampMac+base+shade entries as the paint snapshot, but every
-  // claimed lamp in one call with no rotation. STATE carries the full fleet
-  // in a single frame; `cap` bounds the byte budget, entries past it drop.
-  // Returns the entry count written (not bytes).
-  size_t snapshotStateForBroadcast(uint8_t* out, size_t cap);
+  // Pack every painted claim for `MSG_WISP_STATE` broadcasting: 12-byte
+  // lampMac+baseRGB+shadeRGB entries into `out`, and the matching baseW,shadeW
+  // pairs into `w`. A claim with no paint assigned yet is left out so the lamp
+  // holds its own scene; any assigned color, black included, is packed.
+  // `cap` / `wCap` bound the byte budgets, entries past either drop. Returns
+  // the entry count written (not bytes).
+  size_t snapshotStateForBroadcast(uint8_t* out, size_t cap, uint8_t* w,
+                                   size_t wCap);
 
   // Diagnostics. Both take the mutex briefly.
   size_t claimedCount() const;
@@ -135,8 +137,9 @@ class WispRoster {
   struct OwnClaim {
     uint8_t lampMac[6];
     int8_t  rssi;
-    uint8_t base[3];
-    uint8_t shade[3];
+    uint8_t base[4];   // RGBW
+    uint8_t shade[4];  // RGBW
+    bool    painted;
   };
   OwnClaim ownClaims_[WISP_ROSTER_MAX_LAMPS];
   size_t   ownCount_ = 0;

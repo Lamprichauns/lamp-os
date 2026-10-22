@@ -19,6 +19,14 @@ struct ColorTuple {
   uint8_t g[2] = {0, 0};
   uint8_t b[2] = {0, 0};
   uint8_t w[2] = {0, 0};
+
+  // Color `i` packed as R,G,B,W.
+  void rgbw(size_t i, uint8_t out[4]) const {
+    out[0] = r[i];
+    out[1] = g[i];
+    out[2] = b[i];
+    out[3] = w[i];
+  }
 };
 
 // Pure function: same palette + mac + shuffleSeed always returns the same

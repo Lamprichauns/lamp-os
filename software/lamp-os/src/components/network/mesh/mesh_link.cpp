@@ -479,16 +479,10 @@ void MeshLink::handleRecv(const uint8_t* srcMac, const uint8_t* data,
                                 lamp_protocol::MSG_WISP_STATE, ws.seq)) {
       return;
     }
-    // static: the 1440 B entry array is too big for the recv-task stack; handleRecv
+    // static: the 1.4 KB slot is too big for the recv-task stack; handleRecv
     // is the only writer and runs single-threaded on the WiFi recv callback.
     static PendingWispState slot;
-    std::memcpy(slot.sourceMac, ws.sourceMac, 6);
-    slot.count = ws.count;
-    if (ws.count > 0 && ws.entries) {
-      std::memcpy(slot.entries, ws.entries,
-                  static_cast<size_t>(ws.count) *
-                      lamp_protocol::WISP_STATE_ENTRY_SIZE);
-    }
+    fillPendingWispState(slot, ws);
     postPendingWispState(slot);
   } else if (msgType == lamp_protocol::MSG_OVERRIDE_COLORS) {
     lamp_protocol::ParsedOverrideColors p;

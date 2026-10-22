@@ -462,7 +462,7 @@ void Lamp::drainWispClaim() {
 // a fresh frame that omits it (Off, or unclaimed) -> ease home now. Every
 // entry feeds the app's painted-lamps preview.
 void Lamp::drainWispState() {
-  // static: the 1440 B entry array is too big for the loop-task stack; this
+  // static: the 1.4 KB slot is too big for the loop-task stack; this
   // drain is the slot's only consumer and runs only on Core 1.
   static lamp::PendingWispState cmd;
   if (!lamp::pendingSlots.wispState.drain(pendingMux, cmd)) return;
@@ -487,11 +487,11 @@ void Lamp::drainWispState() {
   const Color prevBase = compositor.wispStateBaseColor();
   uint8_t selfMac[6];
   meshLink.getMyMac(selfMac);
-  const uint8_t* e =
-      lamp_protocol::findWispStateEntry(cmd.entries, cmd.count, selfMac);
-  if (e) {
-    compositor.applyWispState(Color(e[6], e[7], e[8], 0),
-                              Color(e[9], e[10], e[11], 0), now);
+  Color base;
+  Color shade;
+  const bool painted = lamp::wispStateColorsFor(cmd, selfMac, base, shade);
+  if (painted) {
+    compositor.applyWispState(base, shade, now);
   } else {
     compositor.clearWispState(now);
   }
@@ -501,9 +501,10 @@ void Lamp::drainWispState() {
     ble_control::notifyWispStatus();
   }
 #ifdef LAMP_DEBUG
-  if (e) {
-    Serial.printf("[loop] drain wispState base=%u,%u,%u shade=%u,%u,%u\n",
-                  e[6], e[7], e[8], e[9], e[10], e[11]);
+  if (painted) {
+    Serial.printf("[loop] drain wispState base=%u,%u,%u,%u shade=%u,%u,%u,%u\n",
+                  base.r, base.g, base.b, base.w, shade.r, shade.g, shade.b,
+                  shade.w);
   } else {
     Serial.printf("[loop] drain wispState: not painted (ease home)\n");
   }
