@@ -163,6 +163,170 @@ void main() {
       );
     });
   });
+
+  _cadenceTests();
+}
+
+
+void _cadenceTests() {
+  group('fetch cadence', () {
+    late Directory tempDir;
+    late Uint8List savedPubKey;
+    late SimpleKeyPair keyPair;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('cached_fw_cadence_');
+      PathProviderPlatform.instance = _FakeDocsPath(tempDir.path);
+      savedPubKey = Uint8List.fromList(firmwarePublicKey);
+      keyPair = await Ed25519().newKeyPairFromSeed(List.filled(32, 7));
+      firmwarePublicKey.setAll(0, (await keyPair.extractPublicKey()).bytes);
+    });
+
+    tearDown(() async {
+      firmwarePublicKey.setAll(0, savedPubKey);
+      await tempDir.delete(recursive: true);
+    });
+
+    Future<Uint8List> image(String lampType, int version) =>
+        _signedImage(keyPair: keyPair, channel: '$lampType-stable', version: version);
+
+    ProviderContainer containerWith(FirmwareReleaseClient client) {
+      final c = ProviderContainer(
+        overrides: [firmwareReleaseClientProvider.overrideWithValue(client)],
+      );
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    Future<void> seedCache(String lampType, int version) async {
+      final dir = Directory('${tempDir.path}/firmware-cache');
+      await dir.create(recursive: true);
+      final bytes = await image(lampType, version);
+      final key = '$lampType-stable';
+      await File('${dir.path}/lamp-firmware-$key-signed.bin')
+          .writeAsBytes(bytes);
+      await File('${dir.path}/lamp-firmware-$key.meta.json')
+          .writeAsString(jsonEncode(CachedFirmware(
+        lampType: lampType,
+        channel: FirmwareChannel.stable,
+        version: version,
+        byteLength: bytes.length,
+        fetchedAtMs: 0,
+      ).toJson()));
+    }
+
+    test('launch fetches each owned variant once; later inventory changes '
+        'fetch nothing', () async {
+      final stub = _StubReleaseClient(await image('standard', 0x00010203));
+      final notifier =
+          containerWith(stub).read(cachedFirmwareNotifierProvider.notifier);
+
+      await Future.wait([
+        notifier.syncForInventory([_lamp('a', 'standard')]),
+        notifier.syncForInventory([_lamp('a', 'standard', lastSeen: 1)]),
+      ]);
+      final launchFetches = stub.calls.length;
+      expect(launchFetches, FirmwareChannel.values.length,
+          reason: 'one round at launch: every channel of the one owned variant');
+      expect(stub.calls.map((c) => c.lampType).toSet(), {'standard'});
+
+      for (final inventory in [
+        [_lamp('a', 'standard', name: 'renamed')],
+        [_lamp('a', 'standard', lastSeen: 2)],
+        [_lamp('a', 'standard'), _lamp('b', 'standard')],
+        [_lamp('b', 'standard')],
+        [_lamp('b', 'standard'), _lamp('c', null)],
+        <InventoryLamp>[],
+      ]) {
+        await notifier.syncForInventory(inventory);
+      }
+      expect(stub.calls.length, launchFetches,
+          reason: 'no inventory change may reach the network');
+    });
+
+    test('a variant first seen mid-session with nothing cached fetches once',
+        () async {
+      final stub = _StubReleaseClient(await image('snafu', 0x00010203));
+      final notifier =
+          containerWith(stub).read(cachedFirmwareNotifierProvider.notifier);
+
+      await notifier.syncForInventory([_lamp('a', 'standard')]);
+      final launchFetches = stub.calls.length;
+
+      for (var i = 0; i < 3; i++) {
+        await notifier.syncForInventory(
+            [_lamp('a', 'standard'), _lamp('b', 'snafu', lastSeen: i)]);
+      }
+      final midSession = stub.calls.skip(launchFetches).toList();
+      expect(midSession.map((c) => c.lampType).toSet(), {'snafu'});
+      expect(midSession.length, FirmwareChannel.values.length,
+          reason: 'one round for the new variant, never repeated');
+    });
+
+    test('mid-session, a variant already cached fetches nothing, even after '
+        'a launch with an empty inventory', () async {
+      await seedCache('snafu', 0x00010203);
+      final stub = _StubReleaseClient(await image('standard', 0x00010203));
+      final notifier =
+          containerWith(stub).read(cachedFirmwareNotifierProvider.notifier);
+
+      await notifier.syncForInventory(const []);
+      await notifier.syncForInventory([_lamp('b', 'snafu')]);
+      expect(stub.calls, isEmpty,
+          reason: 'snafu is cached, so adopting it waits for the next launch');
+
+      await notifier.syncForInventory([_lamp('b', 'snafu'), _lamp('a', 'standard')]);
+      expect(stub.calls.map((c) => c.lampType).toSet(), {'standard'},
+          reason: 'standard has nothing cached, so it fetches');
+    });
+
+    test('an offline launch keeps the cache, does not retry this session, '
+        'and the next launch tries again', () async {
+      const cachedVersion = 0x00010400;
+      await seedCache('standard', cachedVersion);
+      final offline = _OfflineReleaseClient();
+      final notifier =
+          containerWith(offline).read(cachedFirmwareNotifierProvider.notifier);
+
+      // standard has a cached copy; snafu has none.
+      final fleet = [_lamp('a', 'standard'), _lamp('b', 'snafu')];
+      await notifier.syncForInventory(fleet);
+      final launchAttempts = offline.calls;
+      expect(launchAttempts, 2 * FirmwareChannel.values.length);
+      for (var i = 0; i < 5; i++) {
+        await notifier.syncForInventory(
+            [_lamp('a', 'standard', lastSeen: i), _lamp('b', 'snafu')]);
+      }
+      expect(offline.calls, launchAttempts, reason: 'no retry loop');
+      expect(notifier.index['standard-stable']?.version, cachedVersion);
+
+      final relaunched =
+          containerWith(offline).read(cachedFirmwareNotifierProvider.notifier);
+      await relaunched.syncForInventory(fleet);
+      expect(offline.calls, launchAttempts * 2,
+          reason: 'a new app launch fetches again');
+    });
+  });
+}
+
+InventoryLamp _lamp(String id, String? lampType,
+        {String? name, int? lastSeen}) =>
+    InventoryLamp(
+      id: id,
+      name: name ?? id,
+      lampType: lampType,
+      lastSeenEpochMs: lastSeen,
+    );
+
+class _OfflineReleaseClient extends FirmwareReleaseClient {
+  int calls = 0;
+
+  @override
+  Future<Uint8List> fetchLatest(FirmwareChannel channel,
+      {required String lampType}) async {
+    calls++;
+    throw const FirmwareDownloadException('network error: offline');
+  }
 }
 
 class _FakeDocsPath extends PathProviderPlatform {
@@ -176,12 +340,13 @@ class _FakeDocsPath extends PathProviderPlatform {
 class _StubReleaseClient extends FirmwareReleaseClient {
   _StubReleaseClient(this.bytes);
   final Uint8List bytes;
-  final List<FirmwareChannel> channelsFetched = [];
+  final List<({String lampType, FirmwareChannel channel})> calls = [];
+  Iterable<FirmwareChannel> get channelsFetched => calls.map((c) => c.channel);
 
   @override
   Future<Uint8List> fetchLatest(FirmwareChannel channel,
       {required String lampType}) async {
-    channelsFetched.add(channel);
+    calls.add((lampType: lampType, channel: channel));
     return bytes;
   }
 }

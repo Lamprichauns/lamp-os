@@ -9,6 +9,6 @@ void main() {
     expect(appTextTheme.bodyMedium!.fontFamily, 'Inter');
     expect(appTextTheme.labelLarge!.fontFamily, 'Inter');
     // Josefin tops out at 700
-    expect(appTextTheme.displaySmall!.fontWeight!.index, lessThanOrEqualTo(FontWeight.w700.index));
+    expect(appTextTheme.displaySmall!.fontWeight!.value, lessThanOrEqualTo(FontWeight.w700.value));
   });
 }

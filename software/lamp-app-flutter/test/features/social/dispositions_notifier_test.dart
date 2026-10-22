@@ -30,7 +30,7 @@ void main() {
     final container =
         ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
     addTearDown(container.dispose);
-    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    final sub = container.listen(dispositionsProvider('lamp'), (_, _) {});
     addTearDown(sub.close);
     await container.read(dispositionsProvider('lamp').future);
     container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
@@ -43,7 +43,7 @@ void main() {
     final container =
         ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
     addTearDown(container.dispose);
-    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    final sub = container.listen(dispositionsProvider('lamp'), (_, _) {});
     addTearDown(sub.close);
     await container.read(dispositionsProvider('lamp').future);
     container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
@@ -56,7 +56,7 @@ void main() {
     final container =
         ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
     addTearDown(container.dispose);
-    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    final sub = container.listen(dispositionsProvider('lamp'), (_, _) {});
     addTearDown(sub.close);
     await container.read(dispositionsProvider('lamp').future);
     container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
@@ -69,7 +69,7 @@ void main() {
     final container =
         ProviderContainer(overrides: [bleClientProvider.overrideWithValue(ble)]);
     addTearDown(container.dispose);
-    final sub = container.listen(dispositionsProvider('lamp'), (_, __) {});
+    final sub = container.listen(dispositionsProvider('lamp'), (_, _) {});
     addTearDown(sub.close);
     await container.read(dispositionsProvider('lamp').future);
     container.read(dispositionsProvider('lamp').notifier).set('AA:BB:CC:DD:EE:FF', 5);
