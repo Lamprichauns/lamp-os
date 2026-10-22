@@ -100,3 +100,4 @@ behind the mesh, OTA, and dual-core decisions is in the
 - [`building-custom-lamps.md`](building-custom-lamps.md) — authoring a variant.
 - [`networking.md`](networking.md) — the authoritative wire-format spec.
 - [`debug-instruments.md`](debug-instruments.md) — the serial-log tag catalog.
+- [`app-ble.md`](app-ble.md) — how the app holds BLE links and lists lamps.

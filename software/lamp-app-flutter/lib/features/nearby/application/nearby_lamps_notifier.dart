@@ -19,9 +19,7 @@ const _staleAfter = kCurrentlySeenWindow;
 const _pruneInterval = Duration(seconds: 5);
 
 /// Minimum step between a paired lamp's stored last-seen writes from the adv
-/// stream. Exact times land when the lamp leaves the roster or the scan ends;
-/// an app kill skips both, so a relaunch can list a lamp up to this much less
-/// than its full listing window.
+/// stream, and so the most an app kill loses (docs/dev/app-ble.md).
 const _lastSeenWriteStep = Duration(seconds: 30);
 
 /// Max rate `state` is re-emitted to consumers. Leading-edge: the first change
