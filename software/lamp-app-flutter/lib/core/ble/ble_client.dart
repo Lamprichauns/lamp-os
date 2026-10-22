@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/serial_by_key.dart';
 import 'uuids.dart';
 
 
@@ -117,7 +118,7 @@ Future<Uint8List> readPagesUntilEmpty(
 /// shared page snapshot + cursor per connection, so two overlapping
 /// CTRL+DATA pairs corrupt each other (a CTRL write mid-DATA-drain resets
 /// the cursor and the in-flight reader pulls the other section's bytes).
-final Map<String, Future<void>> _pageSessions = {};
+final _pageSessions = SerialByKey();
 
 /// Reads a named page-protocol section from any [BleClient]: write the section
 /// name to CHAR_PAGE_CTRL, then pull CHAR_PAGE_DATA chunks until the empty
@@ -136,27 +137,28 @@ Future<Uint8List> readSectionVia(
             () => client.read(deviceId, BleUuids.controlService, BleUuids.pageData),
           ));
 
-  final prior = _pageSessions[deviceId] ?? Future<void>.value();
-  final result = prior.then((_) => run());
-  // Chain the next session behind this one regardless of outcome; a failure
-  // must not wedge the queue.
-  _pageSessions[deviceId] =
-      result.then((_) {}, onError: (_) {});
-  return result;
+  return _pageSessions.run(deviceId, run);
 }
 
 abstract class BleClient {
+  final Map<String, Object> _linkOwners = {};
+
+  /// Records [owner] as the latest connect to [deviceId]. A connect that gave
+  /// up drops the link it left only while [ownsLink] still holds for it.
+  void claimLink(String deviceId, Object owner) =>
+      _linkOwners[deviceId] = owner;
+
+  /// True while [owner] holds the latest claim on [deviceId].
+  bool ownsLink(String deviceId, Object owner) =>
+      identical(_linkOwners[deviceId], owner);
+
   Future<void> connect(String deviceId);
+
+  /// Drops [deviceId]'s link. The disconnect takes its place in the lamp's
+  /// queue during the call itself, so a [connect] issued later waits for the
+  /// link to go down and then connects afresh.
   Future<void> disconnect(String deviceId);
   bool isConnected(String deviceId);
-
-  /// Best-effort: open a GATT connection to [deviceId] and prime the
-  /// service-handle cache so a later [connect] / first op skips cold-connect
-  /// latency. Fire-and-forget from the adv stream; failures are swallowed and
-  /// an already-connected / in-flight device is a no-op. Implementations MUST
-  /// keep at most ONE prewarm in flight across all device ids: it holds the
-  /// lamp's peripheral and degrades mesh airtime, so fanning out hurts the fleet.
-  Future<void> prewarm(String deviceId) async {}
 
   /// Best-effort current negotiated ATT MTU for [deviceId], or 0 if
   /// unknown (not connected yet, negotiation still in flight, or the

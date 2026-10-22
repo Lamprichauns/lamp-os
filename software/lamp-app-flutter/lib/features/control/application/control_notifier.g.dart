@@ -50,7 +50,7 @@ final class ControlNotifierProvider
   }
 }
 
-String _$controlNotifierHash() => r'bbc7d42482b737add0f24ec6a9418a35a2889451';
+String _$controlNotifierHash() => r'287b40bebad516f986341bc4d1d939f615a6abc2';
 
 final class ControlNotifierFamily extends $Family
     with

@@ -311,7 +311,7 @@ packages:
     source: hosted
     version: "9.0.0"
   flutter_blue_plus_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: flutter_blue_plus_platform_interface
       sha256: "75384f8e97dfb8395dbfd647b729cd3889586e5efa4324d5581f0c34379b7f18"

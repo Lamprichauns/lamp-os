@@ -8,6 +8,21 @@ Highlights grouped Added / Fixed / Changed, not every commit.
 ## Unreleased
 
 ### Fixed
+- **Opening a lamp connects more reliably.** The app retries a failed connect
+  a few times before giving up, and holds its Bluetooth scan off while it
+  connects so the two don't fight over the phone's radio.
+- **The app no longer connects to lamps in the background.** My Lamps doesn't
+  open a link to every paired lamp it hears; the app connects only to the lamp
+  you open.
+- **Re-opening a lamp right after backing out keeps the connection.** Back out
+  of a lamp while it's still connecting or loading, open it again, and it
+  connects and stays connected. It can take several seconds longer while the
+  phone finishes with the earlier attempt.
+- **A lamp you had open stays on My Lamps after the app is closed.** Leave the
+  app with a lamp open and close it soon after, and the lamp is still listed
+  when you relaunch. If the phone keeps the app in the background for a long
+  while before closing it, the lamp can show offline or drop off the list
+  until it's heard again.
 - **Wisp paints black and warm white.** A lamp the wisp paints black, or warm
   white with no colour in it, takes that paint instead of dropping back to its
   own colours, and warm white from a wisp palette now reaches the lamps. Black
@@ -24,6 +39,11 @@ Highlights grouped Added / Fixed / Changed, not every commit.
   that kept missing them at one fixed moment catches them.
 
 ### Changed
+- **My Lamps lists the lamps around you.** A paired lamp the phone can't hear
+  shows as offline for five minutes after it was last seen, then leaves the
+  list until it's heard again. It stays paired and keeps everything the app
+  knows about it. With no paired lamp heard in the last five minutes, My
+  Lamps shows just the "Adopt a lamp" tile.
 - **The app downloads lamp firmware once each time it starts.** It used to
   download it again every time your list of saved lamps changed. Now it
   fetches firmware for each kind of lamp you own once when the app starts, and

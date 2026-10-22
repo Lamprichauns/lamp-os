@@ -4,11 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 
 import 'ble_client.dart';
+import 'scan_pause.dart';
 
 /// Production [BleClient] backed by flutter_blue_plus. Each public method
 /// resolves the device + service + characteristic from the plugin's live
 /// registry, errors out with a friendly exception type when it can't.
-class FbpBleClient implements BleClient {
+class FbpBleClient extends BleClient {
   /// Cache of discovered GATT services per device id. Populated lazily on the
   /// first `read`/`write`/`subscribe` after a successful connect. Without this
   /// every BLE write would re-run a full service discovery on the radio,
@@ -16,70 +17,21 @@ class FbpBleClient implements BleClient {
   /// slider drags. Cleared on disconnect so a reconnect gets a fresh discovery.
   final Map<String, List<fbp.BluetoothService>> _serviceCache = {};
 
-  /// Single-slot mutex for pre-warm. Pre-warming holds the lamp's BLE
-  /// peripheral and consumes some of its mesh airtime even at WIDE
-  /// conn-params, so concurrent pre-warms cap at one. The latest
-  /// caller waits behind the in-flight one or no-ops if it's already
-  /// connected by then.
-  Future<void>? _prewarmInFlight;
-
-  @override
-  Future<void> prewarm(String deviceId) async {
-    if (isConnected(deviceId)) return;
-    final inFlight = _prewarmInFlight;
-    if (inFlight != null) {
-      // Another pre-warm is in progress. Drop this request. The
-      // pre-warm payoff is "have a hot connection ready when the user
-      // taps"; if the in-flight pre-warm targets a different lamp, the
-      // user is no worse off than today.
-      return;
-    }
-    _prewarmInFlight = (() async {
-      try {
-        await connect(deviceId);
-        // Force service discovery now so the cache is hot before the
-        // user taps. _resolve() does this lazily on first I/O; this
-        // does it eagerly instead.
-        final device = fbp.BluetoothDevice(
-          remoteId: fbp.DeviceIdentifier(deviceId),
-        );
-        _serviceCache[deviceId] = await device.discoverServices();
-      } catch (_) {
-        // Best-effort: never let a pre-warm failure surface. If the
-        // user does end up tapping this lamp, the normal connect path
-        // will re-try and report any real failure.
-        try {
-          await disconnect(deviceId);
-        } catch (_) {}
-      } finally {
-        _prewarmInFlight = null;
-      }
-    })();
-    await _prewarmInFlight;
-  }
-
   @override
   Future<void> connect(String deviceId) async {
     final device = fbp.BluetoothDevice(
       remoteId: fbp.DeviceIdentifier(deviceId),
     );
-    // Scan/connect coex: does NOT explicitly pause the background scan
-    // here. flutter_blue_plus serializes scan and
-    // connect operations internally on both Android (BluetoothLeScanner
-    // pause during gatt.connect) and iOS (CoreBluetooth's
-    // centralManager defers scan callbacks during a connect-in-
-    // progress). If GATT MTU exchange failures ever correlate
-    // with continuous scanning (the cited iOS edge case), revisit by
-    // calling `FlutterBluePlus.stopScan()` here + a hook to re-issue
-    // start in NearbyLampsNotifier after `disconnect()`. Until then,
-    // the extra coordination cost (passing scanner refs into the BLE
-    // client) isn't worth the imagined gain.
-    //
-    await device.connect(
-      license: fbp.License.nonprofit,
-      autoConnect: false,
-      timeout: const Duration(seconds: 8),
-    );
+    await scanPause.during(() async {
+      if (fbp.FlutterBluePlus.isScanningNow) {
+        await fbp.FlutterBluePlus.stopScan();
+      }
+      await device.connect(
+        license: fbp.License.nonprofit,
+        autoConnect: false,
+        timeout: const Duration(seconds: 8),
+      );
+    });
     // Ask Android for a tighter connection interval (11.25-15ms vs the
     // default ~49ms), wraps BluetoothGatt.requestConnectionPriority(
     // CONNECTION_PRIORITY_HIGH). Without this, slider-rate live writes

@@ -1,4 +1,5 @@
 import '../../../core/widgets/status_dot.dart';
+import '../../inventory/domain/lamp_presence.dart';
 import '../../nearby/domain/nearby_lamp.dart';
 
 /// Derives a [StatusKind] for a lamp at the current moment.
@@ -13,9 +14,6 @@ import '../../nearby/domain/nearby_lamp.dart';
 /// - `searching`: not heard yet but the BLE scanner just started; the
 ///   caller passes `inScanGrace=true` while the grace window is open.
 /// - `offline`: not heard, scan grace has expired.
-///
-/// Pure function so both `LampChip` in the AppBar and the rows in
-/// `MyLampsScreen` share the same logic and stay in unit-test reach.
 StatusKind statusFor({
   required String lampId,
   required List<NearbyLamp> nearby,
@@ -37,13 +35,12 @@ StatusKind statusFor({
   return _kindFromHit(hit, inScanGrace);
 }
 
-/// Map-keyed overload for a caller that already has an id->NearbyLamp
-/// index materialised at a higher scope (e.g. screen-level for a list of
-/// inventory tiles). Saves the linear scan in [statusFor].
-StatusKind statusForById({
-  required String lampId,
-  required Map<String, NearbyLamp> nearbyById,
+/// My Lamps' status for a paired lamp in [presence]. [isMesh] is the lamp's
+/// last-known mesh capability, used while it is reachable.
+StatusKind statusForPresence({
+  required LampPresence presence,
   required bool connected,
+  required bool isMesh,
   bool receiving = false,
   bool sending = false,
   bool inScanGrace = false,
@@ -51,7 +48,10 @@ StatusKind statusForById({
   if (receiving) return StatusKind.otaReceiving;
   if (sending) return StatusKind.otaSending;
   if (connected) return StatusKind.mesh;
-  return _kindFromHit(nearbyById[lampId], inScanGrace);
+  if (presence == LampPresence.reachable) {
+    return isMesh ? StatusKind.mesh : StatusKind.bluetooth;
+  }
+  return inScanGrace ? StatusKind.searching : StatusKind.offline;
 }
 
 StatusKind _kindFromHit(NearbyLamp? hit, bool inScanGrace) {

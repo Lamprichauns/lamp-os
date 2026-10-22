@@ -86,6 +86,11 @@ it back upstream, see [Contributing](../../README.md#contributing).
   ESP-NOW mesh **and** the BLE GATT link. **The code wins ties**, update this
   doc when it doesn't.
 
+### Control app
+- [`app-ble.md`](app-ble.md), how the app holds BLE links to lamps: the shared
+  connect retry, link ownership, the scan hold during a connect, and My Lamps
+  presence and last-seen stamps.
+
 ### Operations + environment
 - [`environment/`](environment/README.md), toolchain setup, npm task catalog,
   flashing a lamp, and the emulator+bridge path for development without a phone.

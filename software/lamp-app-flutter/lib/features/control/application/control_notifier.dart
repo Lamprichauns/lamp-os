@@ -8,10 +8,12 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/ble/ble_client.dart';
 import '../../../core/ble/ble_client_provider.dart';
+import '../../../core/ble/connect_with_retry.dart';
 import '../../../core/ble/lamp_crypto.dart';
 import '../../../core/ble/uuids.dart';
 import '../../../core/ble/write_coalescer.dart';
 import '../../../core/lifecycle/app_lifecycle.dart';
+import '../../../core/utils/clock.dart';
 import '../../inventory/application/inventory_notifier.dart';
 import '../data/catalog_store.dart';
 import 'advanced_session.dart';
@@ -152,7 +154,9 @@ class ControlNotifier extends _$ControlNotifier {
   // those providers (the whole app) regardless of this notifier's
   // own dispose timing.
   late BleClient _ble;
+  final _linkOwner = Object();
   late InventoryNotifier _inv;
+  late DateTime Function() _now;
   final _catalogStore = const CatalogStore();
 
   /// RGBW list shape persisted in inventory (and read back by
@@ -193,7 +197,12 @@ class ControlNotifier extends _$ControlNotifier {
       for (var attempt = 0; attempt < maxAttempts; attempt++) {
         if (!ref.mounted) return;
         try {
-          await ble.connect(_deviceId);
+          if (!await connectWithRetry(ble, _deviceId,
+              attempts: 1,
+              owner: _linkOwner,
+              shouldAbort: () => !ref.mounted)) {
+            return;
+          }
           await AuthClient(ble: ble).authenticate(
               deviceId: _deviceId, password: password);
           fresh = await _readSections(ble);
@@ -244,10 +253,17 @@ class ControlNotifier extends _$ControlNotifier {
     // touch a disposed Riverpod ref.
     await _inv.updateSeen(
       _deviceId,
+      seenAtMs: _now().millisecondsSinceEpoch,
       shade: shade == null ? null : _rgbwList(shade),
       base: base == null ? null : _rgbwList(base),
     );
   }
+
+  /// Stamps the lamp as seen now. A held link hides the lamp from the scan, so
+  /// a session stamps it itself while it holds the link and when the link ends.
+  void _recordSeenNow() => unawaited(
+        _inv.recordLastSeen({_deviceId: _now().millisecondsSinceEpoch}),
+      );
 
   /// Coalesces "last-seen color" updates into one trailing disk write.
   /// Used by `setShadeColor` and `setBaseColors` so a continuous slider
@@ -277,6 +293,7 @@ class ControlNotifier extends _$ControlNotifier {
     // that can fire after this notifier's onDispose has run.
     _ble = ref.read(bleClientProvider);
     _inv = ref.read(inventoryNotifierProvider.notifier);
+    _now = ref.read(clockProvider);
     final ble = _ble;
     final inv = await ref.read(inventoryNotifierProvider.future);
     final lamp = inv.firstWhere(
@@ -284,27 +301,11 @@ class ControlNotifier extends _$ControlNotifier {
       orElse: () => throw StateError('lamp $deviceId not in inventory'),
     );
 
-    // Skip the cold GATT connect when a pre-warm has already established
-    // the link (BleClient.prewarm wired into the BLE adv stream; see
-    // nearby_lamps_notifier.dart). Saves the 200-500 ms `device.connect`
-    // handshake + 100-400 ms `discoverServices` round-trip on the
-    // common "user opens app, taps a nearby paired lamp" path. Cold-tap
-    // path (lamp out of range until just before the tap) still pays
-    // those costs normally.
-    if (!ble.isConnected(deviceId)) {
-      try {
-        await ble.connect(deviceId);
-      } catch (e) {
-        // ESP32 BLE+WiFi coexistence intermittently drops the
-        // LL_CONNECT_IND handshake, surfacing as Android
-        // HCI_ERR_CONN_FAILED_ESTABLISHMENT (status=133). One quiet
-        // retry with a short backoff smooths over the common transient
-        // case so the user doesn't have to manually retry from the
-        // error page on a routine tap.
-        if (e is LampAuthRequiredException) rethrow;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        await ble.connect(deviceId);
-      }
+    // Always connects, even onto a live link. A link left by an earlier
+    // session may carry a queued disconnect, and the connect waits behind it.
+    if (!await connectWithRetry(ble, deviceId,
+        owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
+      throw BleNotConnected(deviceId);
     }
     // Register disconnect only after a successful connect. If connect
     // itself threw, there's nothing to tear down, and registering this
@@ -317,6 +318,7 @@ class ControlNotifier extends _$ControlNotifier {
     // ref.onDispose callbacks are called FIFO; if flush were registered
     // later it would race with the disconnect.
     ref.onDispose(() {
+      if (ble.isConnected(deviceId)) _recordSeenNow();
       _flushPendingCommit();
       ble.disconnect(deviceId);
     });
@@ -488,6 +490,7 @@ class ControlNotifier extends _$ControlNotifier {
       }
       if (next == AppLifecycleState.paused) {
         _flushPendingCommit();
+        if (ble.isConnected(deviceId)) _recordSeenNow();
       }
     });
 
@@ -1715,6 +1718,7 @@ class ControlNotifier extends _$ControlNotifier {
       return;
     }
     if (!isConnected && cur.connected) {
+      _recordSeenNow();
       state = AsyncData(cur.copyWith(connected: false));
       ref.read(advancedSessionProvider(_deviceId).notifier).disable();
       _scheduleReconnect();
@@ -1806,7 +1810,10 @@ class ControlNotifier extends _$ControlNotifier {
       if (attempt >= _cycleAdapterAttempt) {
         await ble.cycleAdapter(_deviceId);
       }
-      await ble.connect(_deviceId);
+      if (!await connectWithRetry(ble, _deviceId,
+          attempts: 1, owner: _linkOwner, shouldAbort: () => !ref.mounted)) {
+        return;
+      }
       // Re-auth so subsequent writes get past the firmware's auth gate.
       final inv = await ref.read(inventoryNotifierProvider.future);
       final lamp = inv.firstWhere(

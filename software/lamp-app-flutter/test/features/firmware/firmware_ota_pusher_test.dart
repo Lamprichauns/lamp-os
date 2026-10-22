@@ -22,7 +22,7 @@ class RecordedWrite {
 }
 
 /// InMemoryBleClient-style fake with notify injection + write capture.
-class NotifyableBle implements BleClient {
+class NotifyableBle extends BleClient {
   final Set<String> _connected = {};
   final Map<String, StreamController<Uint8List>> _streams = {};
   final Map<String, Uint8List> _lastValue = {};
@@ -55,9 +55,6 @@ class NotifyableBle implements BleClient {
   void seedLastValue(String d, String s, String c, Uint8List bytes) {
     _lastValue[_key(d, s, c)] = bytes;
   }
-
-  @override
-  Future<void> prewarm(String deviceId) async {}
 
   @override
   Future<void> connect(String deviceId) async {

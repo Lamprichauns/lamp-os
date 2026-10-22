@@ -11,7 +11,7 @@ import '../../_support/in_memory_ble_client.dart';
 /// the next chunk of the currently-selected section, then an empty terminator.
 /// Overlapping CTRL+DATA pairs (no app-side lock) corrupt each other, exactly
 /// the flicker bug. All reads yield a microtask so two sessions can interleave.
-class _CursorPageBleClient implements BleClient {
+class _CursorPageBleClient extends BleClient {
   _CursorPageBleClient(this.sections);
   final Map<String, List<String>> sections;
   String? _selected;

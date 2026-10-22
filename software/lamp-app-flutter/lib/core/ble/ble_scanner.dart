@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 
+import 'scan_pause.dart';
+
 /// BLE Manufacturer ID the firmware advertises (0xA455). The 6 bytes after
 /// the company-ID prefix carry base RGB + shade RGB. See firmware:
 /// software/lamp-os/src/components/network/bluetooth.cpp:83-93.
@@ -137,9 +139,11 @@ class FbpBleScanner implements BleScanner {
   StreamSubscription<List<fbp.ScanResult>>? _sub;
   StreamSubscription<bool>? _scanningSub;
   StreamSubscription<fbp.BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<void>? _pauseSub;
   final _ctrl = StreamController<BleAdvertisement>.broadcast();
   bool _running = false;
   bool _restarting = false;
+  bool _restartAgain = false;
 
   // Delay before re-issuing a scan so a persistently failing startScan
   // (permission revoked, adapter mid-cycle) can't spin a hot retry loop.
@@ -168,20 +172,34 @@ class FbpBleScanner implements BleScanner {
     }
   }
 
-  // fbp's own 5-min startScan timeout, an unexpected radio stop, or the BLE
-  // adapter flipping back on all route here. Backoff-gated and re-entrancy
-  // guarded so overlapping triggers collapse to one delayed restart.
+  // fbp's own 5-min startScan timeout, an unexpected radio stop, the BLE
+  // adapter flipping back on, and the end of a connect's [scanPause] all route
+  // here. Backoff-gated and re-entrancy guarded so overlapping triggers
+  // collapse to one delayed restart. A trigger during a restart runs one more,
+  // since the scan state it reports may postdate that restart's checks.
   Future<void> _restartScan() async {
-    if (!_running || _restarting) return;
+    if (!_running) return;
+    if (_restarting) {
+      _restartAgain = true;
+      return;
+    }
     _restarting = true;
+    _restartAgain = false;
     try {
       await Future<void>.delayed(_restartBackoff);
-      if (!_running || fbp.FlutterBluePlus.isScanningNow) return;
+      if (!_running ||
+          scanPause.isPaused ||
+          fbp.FlutterBluePlus.isScanningNow) {
+        return;
+      }
       await _startNativeScan();
+      // A connect can take its hold while startScan is in flight.
+      if (scanPause.isPaused) await fbp.FlutterBluePlus.stopScan();
     } catch (e) {
       debugPrint('[ble_scanner] scan restart failed: $e');
     } finally {
       _restarting = false;
+      if (_restartAgain) unawaited(_restartScan());
     }
   }
 
@@ -216,6 +234,10 @@ class FbpBleScanner implements BleScanner {
       onError: (Object e) =>
           debugPrint('[ble_scanner] adapterState stream error: $e'),
     );
+    _pauseSub = scanPause.released.listen((_) {
+      if (_running) unawaited(_restartScan());
+    });
+    if (scanPause.isPaused) return;
     try {
       await _startNativeScan();
     } catch (e) {
@@ -234,6 +256,8 @@ class FbpBleScanner implements BleScanner {
     _scanningSub = null;
     await _adapterSub?.cancel();
     _adapterSub = null;
+    await _pauseSub?.cancel();
+    _pauseSub = null;
   }
 }
 

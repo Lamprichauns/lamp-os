@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lamp_app/features/inventory/domain/lamp_presence.dart';
 
 import 'package:lamp_app/core/widgets/status_dot.dart';
 import 'package:lamp_app/features/lamp_shell/application/lamp_status.dart';
@@ -85,13 +86,13 @@ void main() {
     });
   });
 
-  group('statusForById', () {
+  group('statusForPresence', () {
     test('receiving → otaReceiving', () {
       expect(
-        statusForById(
-          lampId: 'a',
-          nearbyById: const {},
+        statusForPresence(
+          presence: LampPresence.reachable,
           connected: true,
+          isMesh: true,
           receiving: true,
         ),
         StatusKind.otaReceiving,
@@ -100,13 +101,54 @@ void main() {
 
     test('sending → otaSending', () {
       expect(
-        statusForById(
-          lampId: 'a',
-          nearbyById: const {},
+        statusForPresence(
+          presence: LampPresence.reachable,
           connected: true,
+          isMesh: true,
           sending: true,
         ),
         StatusKind.otaSending,
+      );
+    });
+
+    test('connected → mesh even for a lamp last known BT-only', () {
+      expect(
+        statusForPresence(
+          presence: LampPresence.unreachable,
+          connected: true,
+          isMesh: false,
+        ),
+        StatusKind.mesh,
+      );
+    });
+
+    test('reachable follows the mesh capability', () {
+      expect(
+        statusForPresence(
+            presence: LampPresence.reachable, connected: false, isMesh: true),
+        StatusKind.mesh,
+      );
+      expect(
+        statusForPresence(
+            presence: LampPresence.reachable, connected: false, isMesh: false),
+        StatusKind.bluetooth,
+      );
+    });
+
+    test('unreachable is offline, or searching inside scan grace', () {
+      expect(
+        statusForPresence(
+            presence: LampPresence.unreachable, connected: false, isMesh: true),
+        StatusKind.offline,
+      );
+      expect(
+        statusForPresence(
+          presence: LampPresence.unreachable,
+          connected: false,
+          isMesh: true,
+          inScanGrace: true,
+        ),
+        StatusKind.searching,
       );
     });
   });
