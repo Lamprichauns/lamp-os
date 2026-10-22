@@ -60,6 +60,7 @@ void main() {
       async.elapse(const Duration(minutes: 1));
       expect(ble.connects, 3);
       expect('$error', contains('attempt 3'));
+      expect(ble.disconnects, 0, reason: 'nothing linked, nothing to drop');
     });
   });
 
@@ -76,6 +77,7 @@ void main() {
       expect(result, isFalse);
       expect(ble.connects, 1);
       expect(ble.isConnected('x'), isFalse);
+      expect(ble.disconnects, 0, reason: 'nothing linked, nothing to drop');
     });
   });
 
