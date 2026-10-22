@@ -143,6 +143,7 @@ class FbpBleScanner implements BleScanner {
   final _ctrl = StreamController<BleAdvertisement>.broadcast();
   bool _running = false;
   bool _restarting = false;
+  bool _restartAgain = false;
 
   // Delay before re-issuing a scan so a persistently failing startScan
   // (permission revoked, adapter mid-cycle) can't spin a hot retry loop.
@@ -174,10 +175,16 @@ class FbpBleScanner implements BleScanner {
   // fbp's own 5-min startScan timeout, an unexpected radio stop, the BLE
   // adapter flipping back on, and the end of a connect's [scanPause] all route
   // here. Backoff-gated and re-entrancy guarded so overlapping triggers
-  // collapse to one delayed restart.
+  // collapse to one delayed restart. A trigger during a restart runs one more,
+  // since the scan state it reports may postdate that restart's checks.
   Future<void> _restartScan() async {
-    if (!_running || _restarting) return;
+    if (!_running) return;
+    if (_restarting) {
+      _restartAgain = true;
+      return;
+    }
     _restarting = true;
+    _restartAgain = false;
     try {
       await Future<void>.delayed(_restartBackoff);
       if (!_running ||
@@ -192,6 +199,7 @@ class FbpBleScanner implements BleScanner {
       debugPrint('[ble_scanner] scan restart failed: $e');
     } finally {
       _restarting = false;
+      if (_restartAgain) unawaited(_restartScan());
     }
   }
 
