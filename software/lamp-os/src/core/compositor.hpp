@@ -99,6 +99,9 @@ class Compositor {
   bool wispActive() const;
   Color wispStateBaseColor() const { return wispStateBase_; }
   Color wispStateShadeColor() const { return wispStateShade_; }
+  const LayerStack& wispLayer(bool base) const {
+    return base ? wispBaseStack_ : wispShadeStack_;
+  }
 
   /**
    * @param [in] inBehaviors list of behaviors to execute in priority sequence. last item

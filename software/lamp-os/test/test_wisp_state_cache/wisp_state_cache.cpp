@@ -27,11 +27,13 @@ const uint8_t kBlack[6] = {0x20, 0x21, 0x22, 0x23, 0x24, 0x25};
 
 PendingWispState gSlot;
 
-void fill(bool withW) {
+const uint8_t kWarmThenBlackW[4] = {0xC8, 0x37, 0, 0};
+
+// kBlack's RGB is always zero; its W comes from `w`.
+void fill(bool withW, const uint8_t w[4] = kWarmThenBlackW) {
   uint8_t entries[2 * lp::WISP_STATE_ENTRY_SIZE] = {};
   std::memcpy(entries, kWarm, 6);
   std::memcpy(entries + 12, kBlack, 6);
-  const uint8_t w[4] = {0xC8, 0x37, 0, 0};
   uint8_t buf[lp::WISP_STATE_MAX_SIZE];
   const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 100, 60000, 0,
                                       entries, withW ? w : nullptr, 2);
@@ -43,6 +45,10 @@ void fill(bool withW) {
 
 void test_state_slot_reaches_claims_blob() {
   LampRoster roster;
+  // kBlack first paints warm white, so black must overwrite both W bytes.
+  const uint8_t warmBlackW[4] = {0xC8, 0x37, 0x51, 0x52};
+  fill(true, warmBlackW);
+  roster.cacheWispState(gSlot, 500);
   fill(true);
   roster.cacheWispState(gSlot, 1000);
 
@@ -62,6 +68,7 @@ void test_state_slot_reaches_claims_blob() {
     } else {
       TEST_ASSERT_EQUAL_MEMORY(kBlack, mac, 6);
       TEST_ASSERT_EQUAL_UINT8(0, e[1]);
+      TEST_ASSERT_EQUAL_UINT8(0, e[2]);
     }
   }
 }
@@ -85,9 +92,43 @@ void test_state_slot_without_w_caches_w_zero() {
   }
 }
 
+void test_state_slot_past_capacity_keeps_frame_head() {
+  constexpr size_t kOver = WispFleetCache::kCapacity + 3;
+  static_assert(kOver <= lp::WISP_STATE_MAX_ENTRIES,
+                "fixture must fit one STATE frame");
+  uint8_t entries[kOver * lp::WISP_STATE_ENTRY_SIZE] = {};
+  for (size_t i = 0; i < kOver; ++i) {
+    uint8_t* e = entries + i * lp::WISP_STATE_ENTRY_SIZE;
+    e[0] = 0x30;
+    e[5] = static_cast<uint8_t>(i);
+    e[6] = static_cast<uint8_t>(i + 1);
+  }
+  uint8_t buf[lp::WISP_STATE_MAX_SIZE];
+  const size_t n = lp::buildWispState(buf, sizeof(buf), 1, kSrc, 100, 60000, 0,
+                                      entries, nullptr,
+                                      static_cast<uint8_t>(kOver));
+  lp::ParsedWispState ws;
+  TEST_ASSERT_TRUE(lp::parseWispState(buf, n, ws));
+  lamp::fillPendingWispState(gSlot, ws);
+  TEST_ASSERT_EQUAL_UINT8(kOver, gSlot.count);
+
+  LampRoster roster;
+  roster.cacheWispState(gSlot, 1000);
+
+  constexpr size_t kCap = WispFleetCache::kCapacity;
+  static uint8_t blob[1 + kCap * WispFleetCache::kBlobEntrySize];
+  roster.buildWispClaimsBlob(blob, sizeof(blob), 1000);
+  TEST_ASSERT_EQUAL_UINT8(kCap, blob[0]);
+  bool seen[kOver] = {};
+  for (size_t i = 0; i < kCap; ++i) seen[blob[1 + i * 6 + 5]] = true;
+  for (size_t i = 0; i < kCap; ++i) TEST_ASSERT_TRUE_MESSAGE(seen[i], "head entry evicted");
+  for (size_t i = kCap; i < kOver; ++i) TEST_ASSERT_FALSE(seen[i]);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_state_slot_reaches_claims_blob);
   RUN_TEST(test_state_slot_without_w_caches_w_zero);
+  RUN_TEST(test_state_slot_past_capacity_keeps_frame_head);
   return UNITY_END();
 }

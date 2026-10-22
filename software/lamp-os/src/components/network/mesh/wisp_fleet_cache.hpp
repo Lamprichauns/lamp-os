@@ -6,11 +6,10 @@
 namespace lamp {
 
 /**
- * Accumulates MSG_WISP_CLAIM / MSG_WISP_PAINT entries across frames.
- *        The wisp rotates a partial window per 2 s beacon, so any single
- *        frame is an incomplete view; per-entry upsert with staleness
- *        eviction rebuilds full fleet coverage. Plain POD with no locking;
- *        LampRoster serialises access under its mutex.
+ * Accumulates MSG_WISP_CLAIM / MSG_WISP_STATE entries across frames.
+ *        Per-entry upsert with staleness eviction rides out frames lost to
+ *        coex. Plain POD with no locking; LampRoster serialises access under
+ *        its mutex.
  */
 struct WispFleetCache {
   static constexpr size_t kCapacity = 100;

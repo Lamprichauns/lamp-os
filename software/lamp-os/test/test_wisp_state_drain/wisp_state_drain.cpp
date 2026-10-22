@@ -64,6 +64,24 @@ void test_drain_applies_own_rgbw() {
   assertColor(Color(70, 80, 90, 0x37), c.wispStateShadeColor());
 }
 
+void test_drain_feeds_render_layers_rgbw() {
+  const uint8_t rgb[6] = {0, 0, 0, 0, 0, 0};
+  const uint8_t w[4] = {0x11, 0x22, 0xC8, 0x37};
+  fillTwo(rgb, w, true);
+  Compositor c;
+  TEST_ASSERT_TRUE(c.applyWispStateSlot(gSlot, kMine, 1000));
+  // Own scene is saturated RGB with no W; full wisp presence replaces it.
+  const Color own(200, 100, 50, 0);
+  lamp::LayerStack base = c.wispLayer(true);
+  lamp::LayerStack shade = c.wispLayer(false);
+  for (int i = 0; i < 600; ++i) {
+    base.tick(1.0f);
+    shade.tick(1.0f);
+  }
+  assertColor(Color(0, 0, 0, 0xC8), base.composite(own));
+  assertColor(Color(0, 0, 0, 0x37), shade.composite(own));
+}
+
 void test_drain_applies_warm_white_only() {
   const uint8_t rgb[6] = {0, 0, 0, 0, 0, 0};
   const uint8_t w[4] = {0x11, 0x22, 0xC8, 0x37};
@@ -113,6 +131,7 @@ void test_drain_absent_entry_reports_unpainted() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_drain_applies_own_rgbw);
+  RUN_TEST(test_drain_feeds_render_layers_rgbw);
   RUN_TEST(test_drain_applies_warm_white_only);
   RUN_TEST(test_drain_applies_black);
   RUN_TEST(test_drain_without_w_plane_applies_w_zero);

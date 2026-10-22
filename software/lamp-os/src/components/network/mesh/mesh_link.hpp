@@ -182,8 +182,7 @@ class MeshLink {
   // CHAR_WISP_STATUS.
   lamp_protocol::DedupRing<32> wispPaletteDedup_;
   // Per-lamp paint colors from the wisp. No relay; dedup prevents
-  // repeat-fire. Cached for CHAR_WISP_CLAIMS to serve the app's
-  // painted-lamps preview.
+  // repeat-fire.
   lamp_protocol::DedupRing<16> wispPaintDedup_;
   // Declarative per-lamp state from the wisp. No relay; dedup prevents
   // repeat-fire on direct reception.
