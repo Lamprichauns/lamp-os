@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lamp_app/features/control/domain/lamp_color.dart';
 import 'package:lamp_app/features/wisp/domain/tuple_sampler.dart';
+import 'package:lamp_app/features/wisp/domain/wisp_claims.dart';
 import 'package:lamp_app/features/wisp/presentation/widgets/wisp_painted_lamps.dart'
     show paintColorFor;
 
@@ -33,6 +34,45 @@ void main() {
     final pred = predictTuple(mac: parseMacFromBleId(lampId)!, palette: palette);
     final predPair = (base: pred!.base, shade: pred.shade);
     expect(result, isNot(predPair));
+  });
+
+  test('a live black or warm-white paint wins over prediction', () {
+    const warm = LampColor(r: 0, g: 0, b: 0, w: 200);
+    for (final live in [
+      (base: LampColor.black, shade: LampColor.black),
+      (base: warm, shade: warm),
+    ]) {
+      final result = paintColorFor(
+        lampId: lampId,
+        livePaint: {lampId: live},
+        palette: palette,
+        shuffleSeed: 0,
+      );
+      expect(result, live);
+    }
+  });
+
+  test('claims blob to preview: painted black shows black, unpainted predicts', () {
+    // lampId painted black; 01:..:06 claimed but unpainted.
+    const blob = [
+      0x02,
+      0x10, 0x20, 0x30, 0x40, 0x50, 0x60,
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x01, 0x00, 0x00,
+      0x00, 0x00, 0x00,
+    ];
+    final live = parseWispClaims(blob).colors;
+    final painted = paintColorFor(
+        lampId: lampId, livePaint: live, palette: palette, shuffleSeed: 0);
+    expect(painted, (base: LampColor.black, shade: LampColor.black));
+
+    const other = '01:02:03:04:05:06';
+    final pred = predictTuple(mac: parseMacFromBleId(other)!, palette: palette)!;
+    final unpainted = paintColorFor(
+        lampId: other, livePaint: live, palette: palette, shuffleSeed: 0);
+    expect(unpainted, (base: pred.base, shade: pred.shade));
   });
 
   test('falls back to predictTuple when lampId absent from livePaint', () {

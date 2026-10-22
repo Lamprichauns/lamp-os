@@ -946,7 +946,8 @@ static const std::array<SectionEntry, 11> kSections = {{
   {"nearby",  [](std::string& out) { copyNearbyJson(out); }},
   {"exprcat", nullptr, lamp::kExprCatalog, lamp::kExprCatalogLen},
   {"wispclaims", [](std::string& out) {
-    static uint8_t buf[1 + lamp::WispFleetCache::kCapacity * 12];
+    static uint8_t buf[1 + lamp::WispFleetCache::kCapacity *
+                              lamp::WispFleetCache::kBlobEntrySize];
     const size_t n = lamp::lampRoster.buildWispClaimsBlob(buf, sizeof(buf),
                                                           millis());
     out.assign(reinterpret_cast<const char*>(buf), n);
@@ -1277,10 +1278,9 @@ void start(lamp::Config* config) {
 
   s_service = s_server->createService(SERVICE_UUID);
 
-  // Binary blob: [count:1][mac:6]*count[colorPair:6]*count. count=0 when
-  // no claim heard in 60 s. Truncated to the 32 entries the buffer holds
-  // (ATT value ceiling is 512 B); the `wispclaims` page section serves the
-  // full accumulated fleet. Separate from CHAR_WISP_STATUS because that
+  // Binary blob, see WispFleetCache::buildClaimsBlob. count=0 when no claim
+  // heard in 60 s. The ATT value ceiling is 512 B; the `wispclaims` page
+  // section serves the full accumulated fleet. Separate from CHAR_WISP_STATUS because that
   // payload is already at the MTU soft budget (466/509 B).
   class WispClaimsCallback : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
@@ -1289,7 +1289,8 @@ void start(lamp::Config* config) {
         c->setValue(kEmpty, 1);
         return;
       }
-      static uint8_t buf[1 + lamp_protocol::kMaxWispClaimEntries * 12];
+      static uint8_t buf[1 + lamp_protocol::kMaxWispClaimEntries *
+                                lamp::WispFleetCache::kBlobEntrySize];
       size_t n = lamp::lampRoster.buildWispClaimsBlob(buf, sizeof(buf),
                                                         millis());
       c->setValue(buf, n);

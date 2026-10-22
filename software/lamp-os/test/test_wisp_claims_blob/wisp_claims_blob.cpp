@@ -22,9 +22,9 @@ void test_blob_size_for_n_macs() {
       {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03},
   };
   cache.upsertClaims(macs, 3, 1000);
-  uint8_t buf[1 + 3 * 12];
+  uint8_t buf[1 + 3 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
-  TEST_ASSERT_EQUAL_size_t(1 + 3 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 3 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(3, buf[0]);
 }
 
@@ -50,11 +50,11 @@ void test_color_positional_alignment() {
   paint[12 + 9] = 0xD4;
   paint[12 + 10] = 0xE5;
   paint[12 + 11] = 0xF6;
-  cache.upsertPaints(paint, 2, 1000);
+  cache.upsertPaints(paint, nullptr, 2, 1000);
 
-  uint8_t buf[1 + 2 * 12];
+  uint8_t buf[1 + 2 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
-  TEST_ASSERT_EQUAL_size_t(1 + 2 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 2 * lamp::WispFleetCache::kBlobEntrySize, n);
 
   // mac section: bytes 1..12; color section starts at 1 + 2*6 = 13.
   const size_t colorBase = 1 + 2 * 6;
@@ -78,7 +78,7 @@ void test_no_paint_emits_sentinel() {
   const uint8_t macs[1][6] = {{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01}};
   cache.upsertClaims(macs, 1, 1000);
 
-  uint8_t buf[1 + 1 * 12];
+  uint8_t buf[1 + 1 * lamp::WispFleetCache::kBlobEntrySize];
   cache.buildClaimsBlob(buf, sizeof(buf), 1000);
 
   const size_t colorBase = 1 + 1 * 6;
@@ -94,7 +94,7 @@ void test_claims_blob_carries_raw_mac() {
   const uint8_t macs[1][6] = {{0x10, 0x20, 0x30, 0x40, 0x50, 0x60}};
   cache.upsertClaims(macs, 1, 1000);
 
-  uint8_t buf[1 + 1 * 12];
+  uint8_t buf[1 + 1 * lamp::WispFleetCache::kBlobEntrySize];
   cache.buildClaimsBlob(buf, sizeof(buf), 1000);
 
   TEST_ASSERT_EQUAL_UINT8_ARRAY(mac, buf + 1, 6);
@@ -109,7 +109,7 @@ void test_mac_section_matches_raw_macs() {
   };
   cache.upsertClaims(macs, 2, 1000);
 
-  uint8_t buf[1 + 2 * 12];
+  uint8_t buf[1 + 2 * lamp::WispFleetCache::kBlobEntrySize];
   cache.buildClaimsBlob(buf, sizeof(buf), 1000);
 
   uint8_t want[1 + 2 * 6];
@@ -128,12 +128,12 @@ void test_paint_only_mac_appears_in_blob() {
   std::memcpy(paint, mac, 6);
   paint[6] = 0xAA; paint[7] = 0xBB; paint[8] = 0xCC;   // base
   paint[9] = 0xDD; paint[10] = 0xEE; paint[11] = 0xFF;  // shade
-  cache.upsertPaints(paint, 1, 1000);
+  cache.upsertPaints(paint, nullptr, 1, 1000);
 
-  uint8_t buf[1 + 1 * 12];
+  uint8_t buf[1 + 1 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
 
-  TEST_ASSERT_EQUAL_size_t(1 + 1 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 1 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(1, buf[0]);
   const size_t colorBase = 1 + 1 * 6;
   TEST_ASSERT_EQUAL_UINT8(0xAA, buf[colorBase + 0]);
@@ -151,12 +151,12 @@ void test_union_mac_appears_once_with_color() {
   std::memcpy(paint, mac, 6);
   paint[6] = 0x10; paint[7] = 0x20; paint[8] = 0x30;
   paint[9] = 0x40; paint[10] = 0x50; paint[11] = 0x60;
-  cache.upsertPaints(paint, 1, 1000);
+  cache.upsertPaints(paint, nullptr, 1, 1000);
 
-  uint8_t buf[1 + 2 * 12];  // room for 2, but expect only 1
+  uint8_t buf[1 + 2 * lamp::WispFleetCache::kBlobEntrySize];  // room for 2, but expect only 1
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
 
-  TEST_ASSERT_EQUAL_size_t(1 + 1 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 1 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(1, buf[0]);
 }
 
@@ -171,12 +171,12 @@ void test_stale_claim_fresh_paint_appears() {
   uint8_t paint[12] = {};
   std::memcpy(paint, mac, 6);
   paint[6] = 0x55;
-  cache.upsertPaints(paint, 1, nowMs);
+  cache.upsertPaints(paint, nullptr, 1, nowMs);
 
-  uint8_t buf[1 + 1 * 12];
+  uint8_t buf[1 + 1 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), nowMs);
 
-  TEST_ASSERT_EQUAL_size_t(1 + 1 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 1 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(1, buf[0]);
 }
 
@@ -203,9 +203,9 @@ void test_claims_accumulate_across_frames() {
   cache.upsertClaims(frame1, 2, 1000);
   cache.upsertClaims(frame2, 2, 3000);
 
-  uint8_t buf[1 + 4 * 12];
+  uint8_t buf[1 + 4 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 4000);
-  TEST_ASSERT_EQUAL_size_t(1 + 3 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 3 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(3, buf[0]);
 }
 
@@ -219,10 +219,89 @@ void test_blob_truncates_to_out_cap() {
   };
   cache.upsertClaims(macs, 3, 1000);
 
-  uint8_t buf[1 + 2 * 12];
+  uint8_t buf[1 + 2 * lamp::WispFleetCache::kBlobEntrySize];
   const size_t n = cache.buildClaimsBlob(buf, sizeof(buf), 1000);
-  TEST_ASSERT_EQUAL_size_t(1 + 2 * 12, n);
+  TEST_ASSERT_EQUAL_size_t(1 + 2 * lamp::WispFleetCache::kBlobEntrySize, n);
   TEST_ASSERT_EQUAL_UINT8(2, buf[0]);
+}
+
+// Painted-lamp extension: [painted, baseW, shadeW] per mac after the pairs.
+void test_ext_section_carries_w_and_painted() {
+  constexpr size_t kE = WispFleetCache::kBlobEntrySize;
+  WispFleetCache cache;
+  const uint8_t macs[3][6] = {
+      {0x01, 0x02, 0x03, 0x04, 0x05, 0x06},  // painted warm white only
+      {0x11, 0x12, 0x13, 0x14, 0x15, 0x16},  // painted black
+      {0x21, 0x22, 0x23, 0x24, 0x25, 0x26},  // claimed, never painted
+  };
+  cache.upsertClaims(macs, 3, 1000);
+  uint8_t paint[2 * 12] = {};
+  std::memcpy(paint, macs[0], 6);
+  std::memcpy(paint + 12, macs[1], 6);
+  const uint8_t w[4] = {0xC8, 0x37, 0x00, 0x00};
+  cache.upsertPaints(paint, w, 2, 1000);
+
+  uint8_t buf[1 + 3 * kE];
+  TEST_ASSERT_EQUAL_size_t(1 + 3 * kE, cache.buildClaimsBlob(buf, sizeof(buf), 1000));
+  const size_t ext = 1 + 3 * 12;
+  // mac0: painted, W intact, RGB zero.
+  TEST_ASSERT_EQUAL_UINT8(1, buf[ext + 0]);
+  TEST_ASSERT_EQUAL_UINT8(0xC8, buf[ext + 1]);
+  TEST_ASSERT_EQUAL_UINT8(0x37, buf[ext + 2]);
+  // mac1: painted black, distinct from mac2 by the flag alone.
+  TEST_ASSERT_EQUAL_UINT8(1, buf[ext + 3]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 4]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 5]);
+  // mac2: unpainted.
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 6]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 7]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 8]);
+  for (size_t i = 0; i < 18; ++i) TEST_ASSERT_EQUAL_UINT8(0, buf[1 + 3 * 6 + i]);
+}
+
+// A STATE without a W plane caches W = 0 and still marks the lamp painted.
+void test_ext_section_without_w_plane() {
+  WispFleetCache cache;
+  const uint8_t mac[6] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36};
+  uint8_t paint[12] = {};
+  std::memcpy(paint, mac, 6);
+  paint[6] = 0x40;
+  paint[11] = 0x50;
+  const uint8_t w[2] = {0x99, 0x88};
+  cache.upsertPaints(paint, w, 1, 1000);
+  cache.upsertPaints(paint, nullptr, 1, 2000);
+
+  uint8_t buf[1 + WispFleetCache::kBlobEntrySize];
+  cache.buildClaimsBlob(buf, sizeof(buf), 2000);
+  const size_t ext = 1 + 12;
+  TEST_ASSERT_EQUAL_UINT8(0x40, buf[1 + 6]);
+  TEST_ASSERT_EQUAL_UINT8(1, buf[ext + 0]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 1]);
+  TEST_ASSERT_EQUAL_UINT8(0, buf[ext + 2]);
+}
+
+// A deployed app's reader takes [count][mac][pair] and ignores what follows:
+// the prefix of the new blob is byte-identical to the old layout.
+void test_blob_prefix_matches_legacy_layout() {
+  WispFleetCache cache;
+  const uint8_t macs[2][6] = {
+      {0x41, 0x42, 0x43, 0x44, 0x45, 0x46},
+      {0x51, 0x52, 0x53, 0x54, 0x55, 0x56},
+  };
+  cache.upsertClaims(macs, 2, 1000);
+  uint8_t paint[12] = {};
+  std::memcpy(paint, macs[0], 6);
+  for (int i = 0; i < 6; ++i) paint[6 + i] = static_cast<uint8_t>(0x60 + i);
+  const uint8_t w[2] = {7, 8};
+  cache.upsertPaints(paint, w, 1, 1000);
+
+  uint8_t buf[1 + 2 * WispFleetCache::kBlobEntrySize];
+  cache.buildClaimsBlob(buf, sizeof(buf), 1000);
+  uint8_t want[1 + 2 * 12] = {2};
+  std::memcpy(want + 1, macs[0], 6);
+  std::memcpy(want + 7, macs[1], 6);
+  for (int i = 0; i < 6; ++i) want[13 + i] = static_cast<uint8_t>(0x60 + i);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(want, buf, sizeof(want));
 }
 
 int main(int, char**) {
@@ -238,5 +317,8 @@ int main(int, char**) {
   RUN_TEST(test_both_caches_empty_returns_count_zero);
   RUN_TEST(test_claims_accumulate_across_frames);
   RUN_TEST(test_blob_truncates_to_out_cap);
+  RUN_TEST(test_ext_section_carries_w_and_painted);
+  RUN_TEST(test_ext_section_without_w_plane);
+  RUN_TEST(test_blob_prefix_matches_legacy_layout);
   return UNITY_END();
 }

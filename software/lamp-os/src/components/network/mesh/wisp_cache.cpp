@@ -263,8 +263,8 @@ void LampRoster::cacheWispClaim(const uint8_t mac[6],
 }
 
 void LampRoster::cacheWispPaint(const uint8_t srcMac[6],
-                                  const uint8_t* entries, uint8_t count,
-                                  uint32_t nowMs) {
+                                  const uint8_t* entries, const uint8_t* w,
+                                  uint8_t count, uint32_t nowMs) {
   const uint8_t safeCount =
       count > lamp_protocol::WISP_PAINT_MAX_ENTRIES
           ? static_cast<uint8_t>(lamp_protocol::WISP_PAINT_MAX_ENTRIES)
@@ -274,7 +274,7 @@ void LampRoster::cacheWispPaint(const uint8_t srcMac[6],
     xSemaphoreGive(mutex_);
     return;
   }
-  wispFleet_.upsertPaints(entries, safeCount, nowMs);
+  wispFleet_.upsertPaints(entries, w, safeCount, nowMs);
   xSemaphoreGive(mutex_);
 }
 

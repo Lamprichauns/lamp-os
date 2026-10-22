@@ -16,6 +16,8 @@ struct WispFleetCache {
   static constexpr size_t kCapacity = 100;
   // Entries older than this are evicted; pairing lasts <=60 s.
   static constexpr uint32_t kStaleMs = 60000;
+  // Claims blob bytes per lamp: mac(6) + colorPair(6) + paintExt(3).
+  static constexpr size_t kBlobEntrySize = 6 + 6 + 3;
 
   struct ClaimEntry {
     uint8_t mac[6];
@@ -24,8 +26,8 @@ struct WispFleetCache {
   };
   struct PaintEntry {
     uint8_t mac[6];
-    uint8_t base[3];
-    uint8_t shade[3];
+    uint8_t base[4];   // RGBW
+    uint8_t shade[4];  // RGBW
     uint32_t lastSeenMs;
     bool valid;
   };
@@ -36,18 +38,22 @@ struct WispFleetCache {
   // `lampMacs` is [count][6] MAC bytes from one claim frame.
   void upsertClaims(const uint8_t lampMacs[][6], uint8_t count,
                     uint32_t nowMs);
-  // `entries` is count * 12 bytes: lampMac(6)+baseRGB(3)+shadeRGB(3).
-  void upsertPaints(const uint8_t* entries, uint8_t count, uint32_t nowMs);
+  // `entries` is count * 12 bytes: lampMac(6)+baseRGB(3)+shadeRGB(3). `w` is
+  // count * 2 bytes of baseW,shadeW in entry order, or nullptr for W = 0.
+  void upsertPaints(const uint8_t* entries, const uint8_t* w, uint8_t count,
+                    uint32_t nowMs);
 
   bool containsClaim(const uint8_t mac[6], uint32_t nowMs) const;
-  // Fills baseOut/shadeOut (3 bytes each) on a fresh hit.
+  // Fills baseOut/shadeOut (RGBW, 4 bytes each) on a fresh hit.
   bool findPaint(const uint8_t mac[6], uint32_t nowMs,
-                 uint8_t baseOut[3], uint8_t shadeOut[3]) const;
+                 uint8_t baseOut[4], uint8_t shadeOut[4]) const;
 
-  // [count:1][mac:6*count][baseRGB+shadeRGB:6*count]. Membership is the
-  // union of fresh claim and fresh paint macs (claim order first); color
-  // pair is 00*6 for a mac with no fresh paint. Entries beyond
-  // (outCap-1)/12 are dropped. Returns bytes written.
+  // [count:1][mac:6*count][baseRGB+shadeRGB:6*count]
+  // [painted+baseW+shadeW:3*count]. Membership is the union of fresh claim
+  // and fresh paint macs (claim order first). A mac with fresh paint has
+  // painted = 1 and its colors, black included; one without has painted = 0
+  // and zero colors. Entries beyond (outCap-1)/kBlobEntrySize are dropped.
+  // Returns bytes written.
   size_t buildClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs) const;
 
   void clear();

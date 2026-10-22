@@ -363,17 +363,18 @@ class LampRoster {
                       const uint8_t lampMacs[][6], uint8_t count,
                       const uint8_t selfMac[6], uint32_t nowMs);
 
-  // Accumulate one MSG_WISP_PAINT frame into the fleet cache. Same
+  // Accumulate one MSG_WISP_STATE frame's entries into the fleet cache. Same
   // display-slot admission as cacheWispHello. `entries` is
-  // `count * WISP_PAINT_ENTRY_SIZE` bytes: lampMac(6)+baseRGB(3)+shadeRGB(3)
-  // per entry. Loop-task-only writer (Core 1).
+  // `count * WISP_STATE_ENTRY_SIZE` bytes: lampMac(6)+baseRGB(3)+shadeRGB(3)
+  // per entry; `w` is its W plane (baseW,shadeW per entry) or nullptr.
+  // Loop-task-only writer (Core 1).
   void cacheWispPaint(const uint8_t srcMac[6],
-                      const uint8_t* entries, uint8_t count,
+                      const uint8_t* entries, const uint8_t* w, uint8_t count,
                       uint32_t nowMs);
 
   // Build the binary blob served on CHAR_WISP_CLAIMS and the `wispclaims`
-  // page section: [count:1][mac:6*count][colorPair:6*count], see
-  // WispFleetCache::buildClaimsBlob. Entries beyond (outCap-1)/12 are
+  // page section, see WispFleetCache::buildClaimsBlob. Entries beyond
+  // (outCap-1)/WispFleetCache::kBlobEntrySize are
   // dropped, so a small direct-read buffer serves a truncated set while
   // the page section serves the full accumulation.
   size_t buildWispClaimsBlob(uint8_t* out, size_t outCap, uint32_t nowMs);
